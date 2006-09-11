@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+Copyright (c) 2006 Apple Computer, Inc. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+ -->
+
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+  <key>Verbose</key>
+  <false/>
+
+  <key>RunStandalone</key>
+  <true/>
+
+  <key>DocumentRoot</key>
+  <string>twistedcaldav/test/data/</string>
+
+  <key>Port</key>
+  <integer>8008</integer>
+
+  <key>SSLEnable</key>
+  <true/>
+
+  <key>SSLOnly</key>
+  <false/>
+
+  <key>SSLPort</key>
+  <integer>8443</integer>
+
+  <key>SSLPrivateKey</key>
+  <string>conf/server.pem</string>
+
+  <key>SSLCertificate</key>
+  <string>conf/server.pem</string>
+
+  <key>LogFile</key>
+  <string>bin/caldavd.log</string>
+
+  <key>PIDFile</key>
+  <string>bin/twistd-caldavd.pid</string>
+
+  <key>Repository</key>
+  <string>conf/repository-dev.xml</string>
+
+  <key>CreateAccounts</key>
+  <true/>
+
+  <key>ResetAccountACLs</key>
+  <true/>
+
+</dict>
+</plist>
