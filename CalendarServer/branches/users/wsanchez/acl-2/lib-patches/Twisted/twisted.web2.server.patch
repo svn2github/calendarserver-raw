@@ -1,0 +1,139 @@
+Index: twisted/web2/server.py
+===================================================================
+--- twisted/web2/server.py	(revision 18375)
++++ twisted/web2/server.py	(working copy)
+@@ -1,6 +1,8 @@
+ # -*- test-case-name: twisted.web2.test.test_server -*-
+ # Copyright (c) 2001-2004 Twisted Matrix Laboratories.
+ # See LICENSE for details.
++from twisted.internet.defer import succeed
++from twisted.web2.dav.util import joinURL
+ 
+ 
+ """This is a web-sever which integrates with the twisted.internet
+@@ -150,6 +152,9 @@
+             self._initialprepath = kw['prepathuri']
+             del kw['prepathuri']
+ 
++        self._resourcesByURL = {}
++        self._resourcesFromURL = {}
++
+         # Copy response filters from the class
+         self.responseFilters = self.responseFilters[:]
+         self.files = {}
+@@ -156,7 +161,9 @@
+         self.resources = []
+         http.Request.__init__(self, *args, **kw)
+ 
+-    def addResponseFilter(self, f, atEnd=False):
++    def addResponseFilter(self, f, atEnd=False, onlyOnce = False):
++        if onlyOnce and f in self.responseFilters:
++            return
+         if atEnd:
+             self.responseFilters.append(f)
+         else:
+@@ -263,8 +270,15 @@
+             failedDeferred = self._processingFailed(failure.Failure())
+             return
+         
++        def _registerResource(child):
++            url = "/" + "/".join(self.prepath)
++            self._resourcesByURL[child] = url
++            self._resourcesFromURL[url] = child
++            return child
++        
+         d = defer.Deferred()
+         d.addCallback(self._getChild, self.site.resource, self.postpath)
++        d.addCallback(_registerResource)
+         d.addCallback(lambda res, req: res.renderHTTP(req), self)
+         d.addCallback(self._cbFinishRender)
+         d.addErrback(self._processingFailed)
+@@ -321,7 +335,7 @@
+                 else:
+                     url = "/"
+         
+-                self._rememberURLForResource(quote(url), res)
++                #self._rememberURLForResource(quote(url), res)
+                 return res
+             #else:
+             #    raise ValueError("locateChild must not return StopTraversal with a resource other than self.")
+@@ -342,12 +356,10 @@
+                 self.prepath.append(self.postpath.pop(0))
+ 
+         child = self._getChild(None, newres, newpath, updatepaths=updatepaths)
+-        self._rememberURLForResource(quote(url), child)
++        #self._rememberURLForResource(quote(url), child)
+ 
+         return child
+ 
+-    _resourcesByURL = weakref.WeakKeyDictionary()
+-
+     def _rememberURLForResource(self, url, resource):
+         """
+         Remember the URL of visited resources.
+@@ -387,6 +399,11 @@
+         """
+         if url is None: return None
+ 
++        try:
++            return succeed(self._resourcesFromURL[url])
++        except KeyError:
++            pass
++
+         #
+         # Parse the URL
+         #
+@@ -417,7 +434,52 @@
+                 raise f
+             return None
+ 
+-        return defer.maybeDeferred(self._getChild, None, self.site.resource, segments, updatepaths=False)
++        def _registerResource(child):
++            self._resourcesByURL[child] = path
++            self._resourcesFromURL[path] = child
++            return child
++        
++        d = defer.maybeDeferred(self._getChild, None, self.site.resource, segments, updatepaths=False)
++        d.addCallback(_registerResource)
++        return d
++
++    def locateChildResource(self, res, childpath):
++        """
++        Looks up the child resource with the given name given the parent resource.
++        @param uri: The URL last path segment of the desired resource.
++        @return: a L{Deferred} resulting in the L{IResource} at the
++            given URL or C{None} if no such resource can be located.
++        @raise HTTPError: If C{url} is not a URL on the site that this
++            request is being applied to.  The contained response will
++            have a status code of L{responsecode.BAD_GATEWAY}.
++        @raise HTTPError: If C{url} contains a query or fragment.
++            The contained response will have a status code of
++            L{responsecode.BAD_REQUEST}.
++        """
++        if res is None or childpath is None: return None
++        
++        url = joinURL(self.urlForResource(res), childpath)
++        try:
++            return succeed(self._resourcesFromURL[url])
++        except KeyError:
++            pass
++
++        segment = unquote(childpath)
++
++        def notFound(f):
++            f.trap(http.HTTPError)
++            if f.response.code != responsecode.NOT_FOUND:
++                raise f
++            return None
++
++        def _registerResource(child):
++            self._resourcesByURL[child] = url
++            self._resourcesFromURL[url] = child
++            return child
++        
++        d = defer.maybeDeferred(self._getChild, None, res, [segment], updatepaths=False)
++        d.addCallback(_registerResource)
++        return d
+ 
+     def _processingFailed(self, reason):
+         if reason.check(http.HTTPError) is not None:
