@@ -45,11 +45,13 @@ class AdminOptions(usage.Options):
 
     def parseArgs(self, *rest):
         self.params += rest
+
+    def subCommands(self):
+        return commands.genSubCommandsDef()
+
+    subCommands = property(subCommands)
     
     def postOptions(self):
-        if self.recursing:
-            return
-
         lf = formatters.listFormatters()
         lf.sort()
 
@@ -58,19 +60,6 @@ class AdminOptions(usage.Options):
         else:
             raise usage.UsageError("Please specify a valid formatter: %s" % (
                     ', '.join(lf)))
-
-        sc = commands.listCommands()
-        sc.sort()
-
-        self.subCommands = commands.genSubCommandsDef()
-
-        self.recursing = 1
-
-        self.parseOptions(self.params)
-
-        if self.subCommand not in sc:
-            raise usage.UsageError("Please select one of: %s" % (
-                    ', '.join(sc)))
 
     
 def run():
