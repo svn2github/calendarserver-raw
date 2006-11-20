@@ -20,60 +20,60 @@ from caladmin import caldav
 from twisted.python.urlpath import URLPath
 
 class UserAction(object):
-	def __init__(self, config):
-		self.config = config
-		self.formatter = self.config.parent.formatter
+    def __init__(self, config):
+        self.config = config
+        self.formatter = self.config.parent.formatter
 
-		self.users = list(self.config.params)
+        self.users = list(self.config.params)
 
-	def printQuotaHead(self):
-		if not self.config['list']:
-			self.formatter.printRow(['Name', 'Quota', 'Used', 'Available'], 16)
-			
+    def printQuotaHead(self):
+        if not self.config['list']:
+            self.formatter.printRow(['Name', 'Quota', 'Used', 'Available'], 16)
+            
 
-	def printRecord(self, record):
-		if self.config['list']:
-			self.formatter.printRow([record[0]], 0)
-		else:
-			self.formatter.printRow(record, 16)
+    def printRecord(self, record):
+        if self.config['list']:
+            self.formatter.printRow([record[0]], 0)
+        else:
+            self.formatter.printRow(record, 16)
 
-	def printRecords(self, records):
-		self.printQuotaHead()
+    def printRecords(self, records):
+        self.printQuotaHead()
 
-		for record in records:
-			self.printRecord(record)
+        for record in records:
+            self.printRecord(record)
 
-	def run(self):
-		sh = caldav.makeHandle(self.config['server'],
-							   self.config['username'],
-							   self.config['password'])
+    def run(self):
+        sh = caldav.makeHandle(self.config['server'],
+                               self.config['username'],
+                               self.config['password'])
 
-		if not self.users:
-			d = caldav.getQuotaStats(sh, 'users')
-			d.addCallback(self.printRecords)
+        if not self.users:
+            d = caldav.getQuotaStats(sh, 'users')
+            d.addCallback(self.printRecords)
 
-		else:
-			users = self.users
+        else:
+            users = self.users
 
-			def _getNextUser(ign):
-				if users:
-					user = users.pop(0)
+            def _getNextUser(ign):
+                if users:
+                    user = users.pop(0)
 
-					return _getUser(user)
+                    return _getUser(user)
 
-			def _getUser(user):
-				d = caldav.getQuotaStats(sh, 'users', user)
-				d.addCallback(lambda rec: self.printRecord(list(rec)[0]))
-				d.addCallback(_getNextUser)
+            def _getUser(user):
+                d = caldav.getQuotaStats(sh, 'users', user)
+                d.addCallback(lambda rec: self.printRecord(list(rec)[0]))
+                d.addCallback(_getNextUser)
 
-				return d
+                return d
 
-			self.printQuotaHead()
-			
-			user = users.pop(0)
-			
-			d = _getUser(user)
+            self.printQuotaHead()
+            
+            user = users.pop(0)
+            
+            d = _getUser(user)
 
-		return d
+        return d
 
-			
+            

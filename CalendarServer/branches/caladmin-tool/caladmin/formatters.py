@@ -21,41 +21,41 @@ import sys
 FORMATTERS = {}
 
 def registerFormatter(short, formatter):
-	FORMATTERS[short] = formatter
+    FORMATTERS[short] = formatter
 
 def listFormatters():
-	return FORMATTERS.keys()
+    return FORMATTERS.keys()
 
 def getFormatter(short):
-	return FORMATTERS[short]
+    return FORMATTERS[short]
 
 
 class BaseFormatter(object):
-	def __init__(self, dst=None):
-		self.dst = dst
-		
-		if not self.dst:
-			self.dst = sys.stdout
+    def __init__(self, dst=None):
+        self.dst = dst
+        
+        if not self.dst:
+            self.dst = sys.stdout
 
 
 class PlainFormatter(BaseFormatter):
-	def printRow(self, row, spacelen):
-		for el in row:
-			self.dst.write(str(el))
-			self.dst.write(' '*(spacelen - len(str(el))))
-			
-		self.dst.write('\n')
+    def printRow(self, row, spacelen):
+        for el in row:
+            self.dst.write(str(el))
+            self.dst.write(' '*(spacelen - len(str(el))))
+            
+        self.dst.write('\n')
 
 registerFormatter('plain', PlainFormatter)
 
 
 class CsvFormatter(BaseFormatter):
-	def printRow(self, row, spacelen):
-		for el in row:
-			self.dst.write(str(el))
-			self.dst.write(',')
-		
-		self.dst.write('\n')
+    def printRow(self, row, spacelen):
+        for el in row:
+            self.dst.write(str(el))
+            self.dst.write(',')
+        
+        self.dst.write('\n')
 
 registerFormatter('csv', CsvFormatter)
 

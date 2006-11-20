@@ -64,8 +64,8 @@ from twisted.internet.defer import maybeDeferred
 from twisted.python.failure import Failure
 
 class TwistedSubCommand(SubCommand):
-	"""Subcommand subclass that calls it's action's run method from within a 
-	reactor."""
+    """Subcommand subclass that calls it's action's run method from within a 
+    reactor."""
 
     def postOptions(self):
 
