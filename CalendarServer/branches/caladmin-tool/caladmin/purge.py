@@ -20,7 +20,7 @@ import os
 
 import datetime, dateutil.tz
 
-def purge(collection, purgeDate):
+def purgeEvents(collection, purgeDate):
     """
     Recursively purge all events older than purgeDate.
 
@@ -34,36 +34,28 @@ def purge(collection, purgeDate):
 
     from twistedcaldav import ical
 
-    collection = os.path.abspath(collection)
-
     files = []
     directories = []
 
-    for child in os.listdir(collection):
-        if child == '.db.sqlite':
+    for child in collection.children():
+        if child.basename() == '.db.sqlite':
             continue
 
-        child = os.path.join(collection, child)
-
-        if os.path.isdir(child):
+        if child.isdir():
             directories.append(child)
 
-        elif os.path.isfile(child):
+        elif child.isfile():
             files.append(child)
 
     for directory in directories:
-        purge(directory, purgeDate)
+        purgeEvents(directory, purgeDate)
 
-    for fname in files:
-        f = open(fname)
-
+    for f in files:
         try:
-            component = ical.Component.fromStream(f)
+            component = ical.Component.fromStream(f.open())
         except ValueError:
             # Not a calendar file?
             continue
-
-        f.close()
 
         endDate = component.mainComponent().getEndDateUTC()
         
@@ -81,35 +73,27 @@ def purge(collection, purgeDate):
                 print "Purging %s, %s, %s" % (component.resourceType(), 
                                                component.resourceUID(), 
                                                endDate.isoformat())
-                os.remove(fname)
+                f.remove()
 
 
 class PurgeAction(object):
     def __init__(self, config):
         self.config = config
+        self.calendarCollection = config.parent.calendarCollection
 
     def run(self):
-        assert os.path.exists(self.config['docroot'])
-
-        calendarCollectionRoot = os.path.join(
-            os.path.abspath(self.config['docroot']),
-            'calendars')
-
         if self.config.params:
-            collections = [os.path.join(calendarCollectionRoot, p) 
+            collections = [self.calendarCollection.child(p) 
                            for p in self.config.params]
             
         else:
             collections = []
-
-            for type in os.listdir(calendarCollectionRoot):
-                tRoot = os.path.join(calendarCollectionRoot, type)
-
-                for collection in os.listdir(tRoot):
-                    collections.append(os.path.join(tRoot, collection))
-
+            
+            for type in self.calendarCollection.children():
+                collections.extend(type.children())
+                    
         purgeDate = datetime.date.today()
         purgeDate = purgeDate - datetime.timedelta(self.config['days'])
 
         for collection in collections:
-            purge(collection, purgeDate)
+            purgeEvents(collection, purgeDate)

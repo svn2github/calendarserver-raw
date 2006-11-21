@@ -38,11 +38,7 @@ def genSubCommandsDef():
         yield [command.name, command.shortcut, command, command.help]
 
 
-# Some common parameter definitions
-
-PARAM_DOCROOT = ['docroot', 'D', '/Library/CalendarServer/Documents', 
-                 'Document root for the calendar server data to back up.']
-
+from twisted.python import reflect
 
 class SubCommand(usage.Options):
     name = None
@@ -52,76 +48,96 @@ class SubCommand(usage.Options):
 
     params = ()
 
+    def __init__(self):
+        self._action = reflect.namedAny(self.action)
+        usage.Options.__init__(self)
+
     def parseArgs(self, *rest):
         self.params += rest
 
     def postOptions(self):
-        self.action(self).run()
+        self._action(self).run()
 
 
-from twisted.internet import reactor
-from twisted.internet.defer import maybeDeferred
-from twisted.python.failure import Failure
+class QuotaOptions(SubCommand):
+    name = 'quotas'
+    help = 'Retrieve quota information for principals'
+    action = 'caladmin.quotas.QuotaAction'
+         
+    def __init__(self):
+        SubCommand.__init__(self)
 
-class TwistedSubCommand(SubCommand):
-    """Subcommand subclass that calls it's action's run method from within a 
-    reactor."""
+        self['types'] = []
 
-    def postOptions(self):
+    def opt_users(self):
+        """Show Quotas for user calendars.
+        """
+        
+        self['types'].append('users')
+    opt_u = opt_users
 
-        def _log(failure):
-            failure.printTraceback()
+    def opt_groups(self):
+        """Show Quotas for group calendars.
+        """
+        
+        self['types'].append('groups')
+    opt_g = opt_groups
 
-        def _runRun():
-            try:
-                d = maybeDeferred(self.action(self).run)
-                d.addErrback(_log).addBoth(lambda _: reactor.stop())
-            except:
-                failure = Failure()
-                failure.printTraceback()
-
-                reactor.stop()
-
-
-        reactor.callLater(0, _runRun)
-        reactor.run()
+    def opt_resources(self):
+        """Show Quotas for resource calendars.
+        """
+        
+        self['types'].append('resources')
+    opt_r = opt_resources
 
 
-from caladmin.users import UserAction
+registerCommand(QuotaOptions)
 
-class UserOptions(TwistedSubCommand):
+
+class UserOptions(SubCommand):
     name = 'users'
     help = 'Retrieve information about and perform actions on users.'
-    action = UserAction
+    action = 'caladmin.users.UserAction'
 
     optFlags = [
         ['list', '1', 'List only usernames, one per line.'],
-        ['disabled', 'd', 'Limit display to disabled users.']
-        ]
-
-    optParameters = [
-        ['server', 's', 'http://localhost:8008/', 
-         'The url of the calendar server to query for user information.'],
-        ['username', 'u', None, 
-         'The username to connect to the calendar server'],
-        ['password', 'p', None,
-         'The password'],
+        ['disabled', 'd', 'Limit display to disabled users.'],
+        ['detailed', None, 'Detailed statistics for each account.'],
         ]
 
 registerCommand(UserOptions)
 
 
-from purge import PurgeAction
-
 class PurgeOptions(SubCommand):
     name = 'purge'
     help = ('Keep your store from becoming unnecessarily large by purging '
             'old events.')
-    action = PurgeAction
+    action = 'caladmin.purge.PurgeAction'
 
     optParameters = [
         ['days', 'n', 30, 'Age threshold for purging events.'],
-        PARAM_DOCROOT
         ]
 
 registerCommand(PurgeOptions)
+
+
+class StatsOptions(SubCommand):
+    name = 'stats'
+    help = ('Overall usage statistics.')
+    action = 'caladmin.stats.StatsAction'
+
+
+registerCommand(StatsOptions)
+
+
+class LogOptions(SubCommand):
+    name = 'logs'
+    help = ('Gather and report useful information from the logfiles.')
+    action = 'caladmin.logs.LogAction'
+
+    optParameters = [
+        ['logfile', 'L', '/var/caldavd/server.log', 
+         'Path to the log file to analyze'],
+        ]
+
+registerCommand(LogOptions)
