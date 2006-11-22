@@ -38,11 +38,14 @@ from plistlib import readPlist
 from caladmin import commands
 from caladmin import formatters
 
+from twistedcaldav.caldavd import caldavd_defaults, caldavd
+
 class AdminOptions(usage.Options):
     recursing = 0
     params = ()
 
     optParameters = [
+        ['config', 'c', caldavd().plistfile, "Path to the caldavd.plist"],
         ['format', 'f', 'plain', ("Select an appropriate output formatter: "
                                   "%s" % (formatters.listFormatters(),))]
         ]
@@ -50,30 +53,7 @@ class AdminOptions(usage.Options):
     def __init__(self):
         usage.Options.__init__(self)
 
-        self.config = readPlist('/etc/caldavd/caldavd.plist.default')
-
-        self['config'] = '/etc/caldavd/caldavd.plist'
-
-        self.config.update(readPlist(self['config']))
-
-        self['root'] = self.config['DocumentRoot']
-        self.opt_root(self['root'])
-
-    def opt_config(self, path):
-        """
-        Path to the caldavd.plist config file
-        [default: /etc/caldavd/caldavd.plist] 
-        """ 
-
-        self.config = readPlist(self['config'])
-
-    def opt_root(self, path):
-        """
-        Path to the root of the calendar server document store.
-        [default: /Library/CalendarServer/Documents] 
-        """ 
-
-        self['root'] = filepath.FilePath(path)
+        self.config = None
 
     def parseArgs(self, *rest):
         self.params += rest
@@ -91,8 +71,21 @@ class AdminOptions(usage.Options):
         if self.recursing:
             return
 
-        self.calendarCollection = self['root'].child('calendars')
-        self.principalCollection = self['root'].child('principals')
+        if self['config']:
+            self['config'] = os.path.abspath(self['config'])
+            try:
+                self.config = readPlist(self['config'])
+            except IOError, err:
+                sys.stderr.write(("Could not open configuration file: %s (%s)\n"
+                                  ) % (err.filename,
+                                       err.strerror))
+                sys.stderr.flush()
+
+                self.config = caldavd_defaults
+
+        self.root = filepath.FilePath(self.config['DocumentRoot'])
+        self.calendarCollection = self.root.child('calendars')
+        self.principalCollection = self.root.child('principals')
 
         lf = formatters.listFormatters()
         lf.sort()
