@@ -54,6 +54,7 @@ class QuotaAction(object):
         self.userQuotaBytes = config.parent.config['UserQuotaBytes']
         self.calendarCollection = config.parent.calendarCollection
         self.principalCollection = config.parent.principalCollection
+        self.formatter = config.parent.formatter
 
     def getQuotaStats(self):
 
@@ -90,12 +91,22 @@ class QuotaAction(object):
 
                 childAvailable = childQuota - childUsed
 
-                yield (type,
-                       child.basename(),
+                yield (child.basename(),
+                       type,
                        childQuota,
                        childUsed,
                        childAvailable)
     
     def run(self):
+        if not self.config['types']:
+            self.config['types'] = ['users', 'groups', 'resources']
+
+        self.formatter.printRow(['Name',
+                                 'Type',
+                                 'Quota',
+                                 'Used',
+                                 'Available'],
+                                16)
+                               
         for x in self.getQuotaStats():
-            print x
+            self.formatter.printRow(x, 16)
