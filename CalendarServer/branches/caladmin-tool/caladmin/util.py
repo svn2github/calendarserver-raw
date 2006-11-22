@@ -57,7 +57,7 @@ def prepareByteValue(config, value):
     return value
 
 
-def getPrincipalList(principalCollection, type):
+def getPrincipalList(principalCollection, type, disabled=False):
     typeRoot = principalCollection.child(type)
     assert typeRoot.exists()
     
@@ -65,7 +65,13 @@ def getPrincipalList(principalCollection, type):
     
     for child in typeRoot.listdir():
         if child not in ['.db.sqlite']:
-            pl.append(typeRoot.child(child))
+            p = typeRoot.child(child)
+
+            if disabled:
+                if isPrincipalDisabled(p):
+                    pl.append(p)
+            else:
+                pl.append(p)
 
     return pl
 
@@ -127,3 +133,7 @@ def getCalendarDataCounts(calendarCollection):
                 todoCount += 1
 
     return (calCount, eventCount, todoCount)
+
+
+def isPrincipalDisabled(principal):
+    return False

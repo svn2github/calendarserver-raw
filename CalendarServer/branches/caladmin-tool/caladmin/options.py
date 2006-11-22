@@ -168,6 +168,8 @@ class PrincipalOptions(SubCommand):
     action = 'caladmin.principals.PrincipalAction'
 
     optFlags = [
+        ['list', '1', 'List principal names'],
+        ['disabled', 'd', 'List disabled principals'],
         PARAM_HUMAN,
         PARAM_KILO,
         PARAM_MEGA,
