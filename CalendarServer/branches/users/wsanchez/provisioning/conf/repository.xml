@@ -45,7 +45,7 @@ limitations under the License.
               <ace>
                 <principal><authenticated/></principal>
                 <grant><privilege><read/></privilege></grant>
-				<inheritable/>
+                <inheritable/>
               </ace>
             </acl>
           </properties>
@@ -57,7 +57,7 @@ limitations under the License.
               <ace>
                 <principal><authenticated/></principal>
                 <grant><privilege><read/></privilege></grant>
-				<inheritable/>
+                <inheritable/>
                 <protected/>
               </ace>
             </acl>
