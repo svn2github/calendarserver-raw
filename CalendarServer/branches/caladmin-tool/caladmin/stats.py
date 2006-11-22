@@ -43,6 +43,8 @@ import commands
 
 from twisted.web import microdom
 
+from twistedcaldav import ical
+
 from caladmin.util import prepareByteValue
 
 def getResourceType(fp):
@@ -75,12 +77,17 @@ class StatsAction(object):
         self.calendarCollection = self.config.parent.calendarCollection
         self.principalCollection = self.config.parent.principalCollection
         
+        self.calCount = 0
+        self.eventCount = 0
+        self.todoCount = 0
+
         self.gatherers = [
             self.getAccountCount,
             self.getGroupCount,
             self.getResourceCount,
             self.getCalendarCount,
             self.getEventCount,
+            self.getTodoCount,
             self.getDiskUsage]
 
     def getDiskUsage(self):
@@ -111,17 +118,39 @@ class StatsAction(object):
     def getResourceCount(self):
         return ("# Resources", len(self._getPrincipalList('resources')))
 
-    def getEventCount(self):
-        return ("# Events", 0)
+    def _getDataCounts(self):
+        calCount = 0
+        eventCount = 0
+        todoCount = 0
 
-    def getCalendarCount(self):
-        count = 0
         for child in self.calendarCollection.walk():
             if child.isdir():
                 if getResourceType(child) == (True, 'calendar'):
-                    count += 1
+                    calCount += 1
 
-        return ("# Calendars", count)
+            elif child.isfile():
+                try:
+                    component = ical.Component.fromStream(child.open())
+                except ValueError:
+                    # not a calendar file
+                    continue
+                
+                if component.resourceType() == 'VEVENT':
+                    eventCount += 1
+
+                elif component.resourceType() == 'VTODO':
+                    todoCount += 1
+
+        return (calCount, eventCount, todoCount)
+
+    def getEventCount(self):
+        return ("# Events", self.eventCount)
+
+    def getTodoCount(self):
+        return ("# Todos", self.todoCount)
+
+    def getCalendarCount(self):
+        return ("# Calendars", self.calCount)
 
     def printStatistics(self, head, stats):
         self.formatter.printRow([head], 16)
@@ -132,6 +161,8 @@ class StatsAction(object):
     def run(self):
         assert self.root.exists()
         stats = []
+
+        self.calCount, self.eventCount, self.todoCount = self._getDataCounts()
 
         for gatherer in self.gatherers:
             stats.append(gatherer())
