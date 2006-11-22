@@ -19,22 +19,10 @@
 """
 Statisitcs Types:
 
- Account Stats: 
-  # of calendars
-  # of events
-  # storage used (including things that don't count against quota?)
-  Last login?
-
  Overall Stats:
   # of accounts
   # of calendars
   # of events
-
- Log Stats:
-  # Invitations sent per day/week/month
-  # bytes i/o
-  # requests
-  user agents
 
 """
 import os

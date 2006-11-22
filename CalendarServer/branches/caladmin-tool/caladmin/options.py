@@ -130,32 +130,47 @@ class StatsOptions(SubCommand):
 
 registerCommand(StatsOptions)
 
-
 from twisted.python import filepath
+from twistedcaldav.caldavd import caldavd_defaults
 
 class LogOptions(SubCommand):
     name = 'logs'
     help = ('Gather and report useful information from the logfiles.')
     action = 'caladmin.logs.LogAction'
 
+    optFlags = [
+        ['no-output', 'n', 'Do not output anything to stdout'],
+        PARAM_HUMAN,
+        PARAM_KILO,
+        PARAM_MEGA,
+        PARAM_GIGA,
+        ]
+    
+    optParameters = [
+        ['stats', 's', 'stats.plist',
+         ('Path to destination file for statistics. Note: Stats will be '
+          'updated if this file already exists.')],
+        ]
+
     def __init__(self):
         SubCommand.__init__(self)
 
         self['logfile'] = None
 
-    def opt_logfile(self, logfile):
-        """Path to the log file to be analyzed.
-        [default: /var/log/caldavd/server.log]
-        """ 
+    def opt_logfile(self, path):
+        """Path to input logfile
+        """
 
-        self['logfile'] = filepath.FilePath(logfile)
-
-    opt_l = opt_logfile
+        self['logfile'] = path
 
     def postOptions(self):
         if not self['logfile']:
             self['logfile'] = filepath.FilePath(
                 self.parent.config['ServerLogFile'])
+        else:
+            self['logfile'] = filepath.FilePath(self['logfile'])
+
+        self['stats'] = filepath.FilePath(self['stats'])
 
         SubCommand.postOptions(self)
 

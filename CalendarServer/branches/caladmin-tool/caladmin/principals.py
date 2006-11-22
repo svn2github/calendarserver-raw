@@ -15,6 +15,13 @@
 #
 # DRI: David Reid, dreid@apple.com
 ##
+"""
+ Account Stats: 
+  # of calendars
+  # of events
+  # storage used (including things that don't count against quota?)
+  Last login?
+"""
 
 from caladmin import util
 
