@@ -60,16 +60,18 @@ class AdminOptions(usage.Options):
         self.opt_root(self['root'])
 
     def opt_config(self, path):
-        """Path to the caldavd.plist config file
-        [default: %s] 
-        """ % (self['config'],)
+        """
+        Path to the caldavd.plist config file
+        [default: /etc/caldavd/caldavd.plist] 
+        """ 
 
         self.config = readPlist(self['config'])
 
     def opt_root(self, path):
-        """Path to the root of the calendar server document store.
-        [default: %s] 
-        """ % (self['root'],)
+        """
+        Path to the root of the calendar server document store.
+        [default: /Library/CalendarServer/Documents] 
+        """ 
 
         self['root'] = filepath.FilePath(path)
 
