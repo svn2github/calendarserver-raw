@@ -103,20 +103,6 @@ class QuotaOptions(SubCommand):
 registerCommand(QuotaOptions)
 
 
-class UserOptions(SubCommand):
-    name = 'users'
-    help = 'Retrieve information about and perform actions on users.'
-    action = 'caladmin.users.UserAction'
-
-    optFlags = [
-        ['list', '1', 'List only usernames, one per line.'],
-        ['disabled', 'd', 'Limit display to disabled users.'],
-        ['detailed', None, 'Detailed statistics for each account.'],
-        ]
-
-registerCommand(UserOptions)
-
-
 class PurgeOptions(SubCommand):
     name = 'purge'
     help = ('Keep your store from becoming unnecessarily large by purging '
@@ -143,6 +129,7 @@ class StatsOptions(SubCommand):
         ]
 
 registerCommand(StatsOptions)
+
 
 from twisted.python import filepath
 
@@ -173,3 +160,42 @@ class LogOptions(SubCommand):
         SubCommand.postOptions(self)
 
 registerCommand(LogOptions)
+
+
+class PrincipalOptions(SubCommand):
+    name = None
+    help = ("Gather statistics and act on %s")
+    action = 'caladmin.principals.PrincipalAction'
+
+    optFlags = [
+        PARAM_HUMAN,
+        PARAM_KILO,
+        PARAM_MEGA,
+        PARAM_GIGA,
+        ]
+
+    def postOptions(self):
+        reflect.namedAny(self.action)(self, self.name).run()
+
+
+class UserOptions(PrincipalOptions):
+    name = "users"
+    help = PrincipalOptions.help % (name,)
+
+registerCommand(UserOptions)
+
+
+class GroupOptions(PrincipalOptions):
+    name = "groups"
+    help = PrincipalOptions.help % (name,)
+
+registerCommand(GroupOptions)
+
+
+class ResourceOptions(PrincipalOptions):
+    name = "resources"
+    help = PrincipalOptions.help % (name,)
+
+registerCommand(ResourceOptions)
+
+    

@@ -16,6 +16,14 @@
 # DRI: David Reid, dreid@apple.com
 ##
 
+import xattr
+
+import commands
+
+from twisted.web import microdom
+
+from twistedcaldav import ical
+
 def prepareByteValue(config, value):
     if config['human']:
         KB = value/1024.0
@@ -47,3 +55,75 @@ def prepareByteValue(config, value):
         return '%5.2fKB' % (K,)
 
     return value
+
+
+def getPrincipalList(principalCollection, type):
+    typeRoot = principalCollection.child(type)
+    assert typeRoot.exists()
+    
+    pl = []
+    
+    for child in typeRoot.listdir():
+        if child not in ['.db.sqlite']:
+            pl.append(typeRoot.child(child))
+
+    return pl
+
+
+def getDiskUsage(fp):
+
+    status, output = commands.getstatusoutput(
+        ' '.join(['/usr/bin/du', '-s', fp.path]))
+    
+    if status != 0:
+        return 0
+
+    return int(output.split()[0])
+
+
+def getResourceType(fp):
+    rt = 'WebDAV:{DAV:}resourcetype'
+    x = xattr.xattr(fp.path)
+    if not x.has_key(rt):
+        return None
+    
+    collection = False
+
+    type = None
+
+    dom = microdom.parseString(x[rt])
+    rt = microdom.getElementsByTagName(dom, 'resourcetype')
+
+    for child in rt[0].childNodes:
+        if child.tagName == 'collection':
+            collection = True
+        else:
+            type = child.tagName
+
+    return (collection, type)
+
+
+def getCalendarDataCounts(calendarCollection):
+    calCount = 0
+    eventCount = 0
+    todoCount = 0
+
+    for child in calendarCollection.walk():
+        if child.isdir():
+            if getResourceType(child) == (True, 'calendar'):
+                calCount += 1
+
+        elif child.isfile():
+            try:
+                component = ical.Component.fromStream(child.open())
+            except ValueError:
+                # not a calendar file
+                continue
+            
+            if component.resourceType() == 'VEVENT':
+                eventCount += 1
+                
+            elif component.resourceType() == 'VTODO':
+                todoCount += 1
+
+    return (calCount, eventCount, todoCount)

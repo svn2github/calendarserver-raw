@@ -45,29 +45,7 @@ from twisted.web import microdom
 
 from twistedcaldav import ical
 
-from caladmin.util import prepareByteValue
-
-def getResourceType(fp):
-    rt = 'WebDAV:{DAV:}resourcetype'
-    x = xattr.xattr(fp.path)
-    if not x.has_key(rt):
-        return None
-    
-    collection = False
-
-    type = None
-
-    dom = microdom.parseString(x[rt])
-    rt = microdom.getElementsByTagName(dom, 'resourcetype')
-
-    for child in rt[0].childNodes:
-        if child.tagName == 'collection':
-            collection = True
-        else:
-            type = child.tagName
-
-    return (collection, type)
-        
+from caladmin import util        
 
 class StatsAction(object):
     def __init__(self, config):
@@ -91,57 +69,27 @@ class StatsAction(object):
             self.getDiskUsage]
 
     def getDiskUsage(self):
-        output = commands.getoutput(' '.join(
-                ['/usr/bin/du', '-s', self.root.path]))
-
-        return ("Disk Usage", prepareByteValue(self.config,
-                                               int(output.split()[0])))
-
-    def _getPrincipalList(self, type):
-        typeRoot = self.principalCollection.child(type)
-        assert typeRoot.exists()
-        
-        pl = []
-        
-        for child in typeRoot.listdir():
-            if child not in ['.db.sqlite']:
-                pl.append(child)
-
-        return pl
+        return ("Disk Usage", 
+                util.prepareByteValue(self.config,
+                                      util.getDiskUsage(self.root)))
 
     def getAccountCount(self):
-        return ("# Accounts", len(self._getPrincipalList('users')))
+        return ("# Accounts", 
+                len(util.getPrincipalList(
+                    self.principalCollection,
+                    'users')))
 
     def getGroupCount(self):
-        return ("# Groups", len(self._getPrincipalList('groups')))
+        return ("# Groups", 
+                len(util.getPrincipalList(
+                    self.principalCollection,
+                    'groups')))
 
     def getResourceCount(self):
-        return ("# Resources", len(self._getPrincipalList('resources')))
-
-    def _getDataCounts(self):
-        calCount = 0
-        eventCount = 0
-        todoCount = 0
-
-        for child in self.calendarCollection.walk():
-            if child.isdir():
-                if getResourceType(child) == (True, 'calendar'):
-                    calCount += 1
-
-            elif child.isfile():
-                try:
-                    component = ical.Component.fromStream(child.open())
-                except ValueError:
-                    # not a calendar file
-                    continue
-                
-                if component.resourceType() == 'VEVENT':
-                    eventCount += 1
-
-                elif component.resourceType() == 'VTODO':
-                    todoCount += 1
-
-        return (calCount, eventCount, todoCount)
+        return ("# Resources", 
+                len(util.getPrincipalList(
+                    self.principalCollection,
+                    'resources')))
 
     def getEventCount(self):
         return ("# Events", self.eventCount)
@@ -162,7 +110,9 @@ class StatsAction(object):
         assert self.root.exists()
         stats = []
 
-        self.calCount, self.eventCount, self.todoCount = self._getDataCounts()
+        (self.calCount, 
+         self.eventCount, 
+         self.todoCount) = util.getCalendarDataCounts(self.calendarCollection)
 
         for gatherer in self.gatherers:
             stats.append(gatherer())

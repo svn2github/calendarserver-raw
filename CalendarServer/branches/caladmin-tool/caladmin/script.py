@@ -58,14 +58,14 @@ class AdminOptions(usage.Options):
     def parseArgs(self, *rest):
         self.params += rest
 
-    def parseOptions(self, options=None):
-        if not options:
-            options = ['--help']
+    def parseOptions(self, opts=None):
+        if not opts:
+            opts = ['--help']
 
-        if options == ['--help']:
+        if opts == ['--help']:
             self.subCommands = options.genSubCommandsDef()
 
-        usage.Options.parseOptions(self, options)
+        usage.Options.parseOptions(self, opts)
     
     def postOptions(self):
         if self.recursing:
