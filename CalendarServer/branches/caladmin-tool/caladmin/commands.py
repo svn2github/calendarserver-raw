@@ -48,21 +48,23 @@ class SubCommand(usage.Options):
 
     params = ()
 
-    def __init__(self):
-        self._action = reflect.namedAny(self.action)
-        usage.Options.__init__(self)
-
     def parseArgs(self, *rest):
         self.params += rest
 
     def postOptions(self):
-        self._action(self).run()
+        reflect.namedAny(self.action)(self).run()
 
 
 class QuotaOptions(SubCommand):
     name = 'quotas'
     help = 'Retrieve quota information for principals'
     action = 'caladmin.quotas.QuotaAction'
+
+    optFlags = [
+        ['human', 'h', 'Display quota values in a human readable form.'],
+        ['megabytes', 'm', 'Display quota values in megabytes'],
+        ['kilobytes', 'k', 'Display quota values in kilobytes'],
+        ]
          
     def __init__(self):
         SubCommand.__init__(self)
@@ -129,15 +131,32 @@ class StatsOptions(SubCommand):
 
 registerCommand(StatsOptions)
 
+from twisted.python import filepath
 
 class LogOptions(SubCommand):
     name = 'logs'
     help = ('Gather and report useful information from the logfiles.')
     action = 'caladmin.logs.LogAction'
 
-    optParameters = [
-        ['logfile', 'L', '/var/caldavd/server.log', 
-         'Path to the log file to analyze'],
-        ]
+    def __init__(self):
+        SubCommand.__init__(self)
+
+        self['logfile'] = None
+
+    def opt_logfile(self, logfile):
+        """Path to the log file to be analyzed.
+        [default: /var/log/caldavd/server.log]
+        """ 
+
+        self['logfile'] = filepath.FilePath(logfile)
+
+    opt_l = opt_logfile
+
+    def postOptions(self):
+        if not self['logfile']:
+            self['logfile'] = filepath.FilePath(
+                self.parent.config['ServerLogFile'])
+
+        SubCommand.postOptions(self)
 
 registerCommand(LogOptions)

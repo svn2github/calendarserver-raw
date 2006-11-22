@@ -56,6 +56,29 @@ class QuotaAction(object):
         self.principalCollection = config.parent.principalCollection
         self.formatter = config.parent.formatter
 
+    def prepareValue(self, value):
+        if self.config['human']:
+            h = value/1024.0
+            if h < 1:
+                return '%d' % (value,)
+
+            h2 = h/1024.0
+            if h2 < 1:
+                return '%5.2fKB' % (h,)
+
+            return '%5.2fMB' % (h2,)
+
+        elif self.config['megabytes']:
+            M = value/1024.0/1024.0
+
+            return '%5.2fMB' % (M,)
+
+        elif self.config['kilobytes']:
+            K = value/1024.0
+            return '%5.2fKB' % (K,)
+
+        return value
+
     def getQuotaStats(self):
 
         defaultQuota = getQuotaRoot(self.calendarCollection)
@@ -93,9 +116,9 @@ class QuotaAction(object):
 
                 yield (child.basename(),
                        type,
-                       childQuota,
-                       childUsed,
-                       childAvailable)
+                       self.prepareValue(childQuota),
+                       self.prepareValue(childUsed),
+                       self.prepareValue(childAvailable))
     
     def run(self):
         if not self.config['types']:
