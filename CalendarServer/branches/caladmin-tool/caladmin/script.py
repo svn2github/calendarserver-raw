@@ -35,7 +35,7 @@ from twisted.python import filepath
 
 from plistlib import readPlist
 
-from caladmin import commands
+from caladmin import options
 from caladmin import formatters
 
 from twistedcaldav.caldavd import caldavd_defaults, caldavd
@@ -63,7 +63,7 @@ class AdminOptions(usage.Options):
             options = ['--help']
 
         if options == ['--help']:
-            self.subCommands = commands.genSubCommandsDef()
+            self.subCommands = options.genSubCommandsDef()
 
         usage.Options.parseOptions(self, options)
     
@@ -96,10 +96,10 @@ class AdminOptions(usage.Options):
             raise usage.UsageError("Please specify a valid formatter: %s" % (
                     ', '.join(lf)))
 
-        sc = commands.listCommands()
+        sc = options.listCommands()
         sc.sort()
 
-        self.subCommands = commands.genSubCommandsDef()
+        self.subCommands = options.genSubCommandsDef()
 
         self.recursing = 1
 

@@ -55,15 +55,22 @@ class SubCommand(usage.Options):
         reflect.namedAny(self.action)(self).run()
 
 
+PARAM_HUMAN = ['human', 'h', 'Display byte values in a human readable form.']
+PARAM_MEGA = ['megabytes', 'm', 'Display byte values in megabytes']
+PARAM_KILO = ['kilobytes', 'k', 'Display byte values in kilobytes']
+PARAM_GIGA = ['gigabytes', 'g', 'Display byte values in gigabytes']
+
+
 class QuotaOptions(SubCommand):
     name = 'quotas'
     help = 'Retrieve quota information for principals'
     action = 'caladmin.quotas.QuotaAction'
 
     optFlags = [
-        ['human', 'h', 'Display quota values in a human readable form.'],
-        ['megabytes', 'm', 'Display quota values in megabytes'],
-        ['kilobytes', 'k', 'Display quota values in kilobytes'],
+        PARAM_HUMAN,
+        PARAM_KILO,
+        PARAM_MEGA,
+        PARAM_GIGA,
         ]
          
     def __init__(self):
@@ -128,6 +135,12 @@ class StatsOptions(SubCommand):
     help = ('Overall usage statistics.')
     action = 'caladmin.stats.StatsAction'
 
+    optFlags = [
+        PARAM_HUMAN,
+        PARAM_KILO,
+        PARAM_MEGA,
+        PARAM_GIGA,
+        ]
 
 registerCommand(StatsOptions)
 
