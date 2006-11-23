@@ -54,6 +54,17 @@ class AdminOptions(usage.Options):
         usage.Options.__init__(self)
 
         self.config = None
+        self.format_options = {}
+
+    def opt_option(self, option):
+        if '=' in option:
+            k,v = option.split('=', 1)
+        
+            self.format_options[k] = v
+        else:
+            self.format_options[option] = True
+
+    opt_o = opt_option
 
     def parseArgs(self, *rest):
         self.params += rest
@@ -91,7 +102,8 @@ class AdminOptions(usage.Options):
         lf.sort()
 
         if self['format'] in lf:
-            self.formatter = formatters.getFormatter(self['format'])()
+            self.formatter = formatters.getFormatter(self['format'])
+            self.formatter = self.formatter(options=self.format_options)
         else:
             raise usage.UsageError("Please specify a valid formatter: %s" % (
                     ', '.join(lf)))

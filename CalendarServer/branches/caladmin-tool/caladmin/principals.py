@@ -34,16 +34,18 @@ class PrincipalAction(object):
         self.root = self.config.parent.root
         self.calendarCollection = self.config.parent.calendarCollection
         self.principalCollection = self.config.parent.principalCollection
-        
+    
     def run(self):
+        report = {'type': self.type,
+                  'records': []}
+
         if not self.config.params:
-            principals = util.getPrincipalList(self.principalCollection, 
-                                               self.type, 
+            principals = util.getPrincipalList(self.principalCollection,
+                                               self.type,
                                                disabled=self.config['disabled'])
 
         else:
             principals = []
-
             for p in self.config.params:
                 p = self.principalCollection.child(self.type).child(p)
 
@@ -51,27 +53,37 @@ class PrincipalAction(object):
                     if self.config['disabled']:
                         if util.isPrincipalDisabled(p):
                             principals.append(p)
+
                     else:
                         principals.append(p)
 
-        if not self.config['list']:
-            self.formatter.printRow(['Name', 'Calendars', 'Events', 'Todos', 
-                                     'Disk Usage'], 16)
-
-        for p in principals:
-            pcal = self.calendarCollection.child(self.type).child(p.basename())
-            row = []
-
-            row.append(p.basename())
-
-            if not self.config['list']:
+        def _getRecords():
+            for p in principals:
+                precord = {}
                 
-                row.extend(util.getCalendarDataCounts(pcal))
+                pcal = self.calendarCollection.child(
+                    self.type
+                    ).child(p.basename())
+            
+                precord['principalName'] = p.basename()
                 
-                row.append(util.prepareByteValue(self.config, 
-                                                 util.getDiskUsage(pcal)))
-                
-            self.formatter.printRow(row, 16)
+                precord['calendarHome'] = pcal.path
 
-                    
+                precord.update(
+                    util.getQuotaStatsForPrincipal(
+                        self.config,
+                        pcal,
+                        self.config.parent.config['UserQuotaBytes']))
+
+                precord.update(
+                    util.getCalendarDataCounts(pcal))
+
+                precord['diskUsage'] = util.getDiskUsage(self.config, pcal)
                 
+                precord['disabled'] = util.isPrincipalDisabled(p)
+                
+                yield precord
+
+        report['records'] = _getRecords()
+        
+        return report

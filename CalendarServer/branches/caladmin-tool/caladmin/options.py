@@ -52,55 +52,16 @@ class SubCommand(usage.Options):
         self.params += rest
 
     def postOptions(self):
-        reflect.namedAny(self.action)(self).run()
+        
+        report = reflect.namedAny(self.action)(self).run()
+        self.parent.formatter.config = self
+        self.parent.formatter.printReport(report)
 
 
 PARAM_HUMAN = ['human', 'h', 'Display byte values in a human readable form.']
 PARAM_MEGA = ['megabytes', 'm', 'Display byte values in megabytes']
 PARAM_KILO = ['kilobytes', 'k', 'Display byte values in kilobytes']
 PARAM_GIGA = ['gigabytes', 'g', 'Display byte values in gigabytes']
-
-
-class QuotaOptions(SubCommand):
-    name = 'quotas'
-    help = 'Retrieve quota information for principals'
-    action = 'caladmin.quotas.QuotaAction'
-
-    optFlags = [
-        PARAM_HUMAN,
-        PARAM_KILO,
-        PARAM_MEGA,
-        PARAM_GIGA,
-        ]
-         
-    def __init__(self):
-        SubCommand.__init__(self)
-
-        self['types'] = []
-
-    def opt_users(self):
-        """Show Quotas for user calendars.
-        """
-        
-        self['types'].append('users')
-    opt_u = opt_users
-
-    def opt_groups(self):
-        """Show Quotas for group calendars.
-        """
-        
-        self['types'].append('groups')
-    opt_g = opt_groups
-
-    def opt_resources(self):
-        """Show Quotas for resource calendars.
-        """
-        
-        self['types'].append('resources')
-    opt_r = opt_resources
-
-
-registerCommand(QuotaOptions)
 
 
 class PurgeOptions(SubCommand):
@@ -129,6 +90,7 @@ class StatsOptions(SubCommand):
         ]
 
 registerCommand(StatsOptions)
+
 
 from twisted.python import filepath
 from twistedcaldav.caldavd import caldavd_defaults
@@ -192,7 +154,8 @@ class PrincipalOptions(SubCommand):
         ]
 
     def postOptions(self):
-        reflect.namedAny(self.action)(self, self.name).run()
+        report = reflect.namedAny(self.action)(self, self.name).run()
+        self.parent.formatter.printReport(report)
 
 
 class UserOptions(PrincipalOptions):

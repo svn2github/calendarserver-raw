@@ -76,15 +76,14 @@ def getPrincipalList(principalCollection, type, disabled=False):
     return pl
 
 
-def getDiskUsage(fp):
-
+def getDiskUsage(config, fp):
     status, output = commands.getstatusoutput(
         ' '.join(['/usr/bin/du', '-s', fp.path]))
     
     if status != 0:
         return 0
 
-    return int(output.split()[0])
+    return prepareByteValue(config, int(output.split()[0]))
 
 
 def getResourceType(fp):
@@ -132,8 +131,65 @@ def getCalendarDataCounts(calendarCollection):
             elif component.resourceType() == 'VTODO':
                 todoCount += 1
 
-    return (calCount, eventCount, todoCount)
+    return {'calendarCount': calCount, 
+            'eventCount': eventCount,
+            'todoCount': todoCount}
 
 
 def isPrincipalDisabled(principal):
     return False
+
+
+from twisted.web2.dav.resource import TwistedQuotaRootProperty, TwistedQuotaUsedProperty
+
+quotaRoot = "WebDAV:" + TwistedQuotaRootProperty.sname().replace("/", "%2F")
+quotaUsed = "WebDAV:" + TwistedQuotaUsedProperty.sname().replace("/", "%2F")
+
+def getQuotaRoot(fp):
+    x = xattr.xattr(fp.path)
+    if not x.has_key(quotaRoot):
+        return None
+
+    dom = microdom.parseString(x[quotaRoot])
+
+    qr = microdom.getElementsByTagName(dom, 'quota-root')[0]
+
+    return int(qr.firstChild().value)
+
+
+def getQuotaUsed(fp):
+    x = xattr.xattr(fp.path)
+    if not x.has_key(quotaUsed):
+        return None
+
+    dom = microdom.parseString(x[quotaUsed])
+
+    qu = microdom.getElementsByTagName(dom, 'quota-used')[0]
+
+    return int(qu.firstChild().value)
+
+
+def getQuotaStatsForPrincipal(config, principal, defaultQuota=None, depth=2):
+    quotaRoot = principal
+
+    principalQuota = getQuotaRoot(quotaRoot)
+
+    while not principalQuota and depth > 0:
+        depth -= 1
+        quotaRoot = quotaRoot.parent()
+        principalQuota = getQuotaRoot(quotaRoot)
+
+    if not principalQuota:
+        principalQuota = defaultQuota
+
+    principalUsed = getQuotaUsed(principal)
+    if not principalUsed:
+        principalUsed = 0
+        
+    principalAvail = principalQuota - principalUsed
+    principalFree = (float(principalAvail)/principalQuota)*100
+
+    return {'quotaRoot': prepareByteValue(config, principalQuota), 
+            'quotaUsed': prepareByteValue(config, principalUsed),
+            'quotaAvail': prepareByteValue(config, principalAvail),
+            'quotaFree': principalFree}

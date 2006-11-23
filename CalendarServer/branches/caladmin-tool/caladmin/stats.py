@@ -51,59 +51,43 @@ class StatsAction(object):
             self.getAccountCount,
             self.getGroupCount,
             self.getResourceCount,
-            self.getCalendarCount,
-            self.getEventCount,
-            self.getTodoCount,
             self.getDiskUsage]
 
     def getDiskUsage(self):
-        return ("Disk Usage", 
-                util.prepareByteValue(self.config,
-                                      util.getDiskUsage(self.root)))
+        return ("diskUsage", 
+                util.getDiskUsage(self.config, self.root))
 
     def getAccountCount(self):
-        return ("# Accounts", 
+        return ("accountCount", 
                 len(util.getPrincipalList(
                     self.principalCollection,
                     'users')))
 
     def getGroupCount(self):
-        return ("# Groups", 
+        return ("groupCount", 
                 len(util.getPrincipalList(
                     self.principalCollection,
                     'groups')))
 
     def getResourceCount(self):
-        return ("# Resources", 
+        return ("resourceCount", 
                 len(util.getPrincipalList(
                     self.principalCollection,
                     'resources')))
-
-    def getEventCount(self):
-        return ("# Events", self.eventCount)
-
-    def getTodoCount(self):
-        return ("# Todos", self.todoCount)
-
-    def getCalendarCount(self):
-        return ("# Calendars", self.calCount)
-
-    def printStatistics(self, head, stats):
-        self.formatter.printRow([head], 16)
-
-        for stat in stats:
-            self.formatter.printRow(stat, 16)
 
     def run(self):
         assert self.root.exists()
         stats = []
 
-        (self.calCount, 
-         self.eventCount, 
-         self.todoCount) = util.getCalendarDataCounts(self.calendarCollection)
+        report = {'type': 'stats',
+                  'data': {}}
+
+        report['data'].update(
+            util.getCalendarDataCounts(
+                self.calendarCollection))
 
         for gatherer in self.gatherers:
-            stats.append(gatherer())
+            stat, value = gatherer()
+            report['data'][stat] = value
 
-        self.printStatistics("Overall Statistics", stats)
-
+        return report
