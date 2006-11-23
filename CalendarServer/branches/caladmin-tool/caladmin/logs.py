@@ -26,17 +26,19 @@
 
 import plistlib
 
+from caladmin import util
+
 statsTemplate = plistlib.Dict(
-    BytesOut=0, 
-    Requests=plistlib.Dict(
+    bytesOut=0, 
+    requestCounts=plistlib.Dict(
         PROPFIND=0,
         ), 
-    Invitations=plistlib.Dict(
+    invitations=plistlib.Dict(
         day=0, 
         week=0, 
         month=0, 
         ),
-    UserAgents=plistlib.Dict(),
+    userAgents=plistlib.Dict(),
     )
 
 
@@ -50,29 +52,36 @@ class Stats(object):
             self._data = statsTemplate
             self.save()
 
+    def getBytes(self):
+        return self._data.bytesOut
+
     def addBytes(self, bytes):
-        self._data.BytesOut += bytes
+        self._data.bytesOut += bytes
 
     def addRequest(self, request):
-        if request in self._data.Requests:
-            self._data.Requests[request] += 1
+        if request in self._data.requestCounts:
+            self._data.requestCounts[request] += 1
         else:
-            self._data.Requests[request] = 1
+            self._data.requestCounts[request] = 1
+    
+    def getRequests(self):
+        return self._data.requestCounts
 
     def addUserAgent(self, useragent):
-        if useragent in self._data.UserAgents:
-            self._data.UserAgents[useragent] += 1
+        if useragent in self._data.userAgents:
+            self._data.userAgents[useragent] += 1
         else:
-            self._data.UserAgents[useragent] = 1
+            self._data.userAgents[useragent] = 1
+
+    def getUserAgents(self):
+        return self._data.userAgents
 
     def save(self):
         plistlib.writePlist(self._data, self.fp.path)
 
-
 NORMAL = 1
 INDATE = 2
 INSTRING = 3
-
 
 def parseCLFLine(line):
     state = NORMAL
@@ -127,12 +136,22 @@ class LogAction(object):
             else:
                 pline = parseCLFLine(line)
 
-                print pline
-
                 self.stats.addBytes(int(pline[6]))
                 self.stats.addRequest(pline[4].split(' ')[0])
 
                 if len(pline) > 7:
                     self.stats.addUserAgent(pline[8])
+
+        self.stats.save()    
         
-        self.stats.save()
+        report = {
+            'type': 'logs',
+            'data': {
+                'bytesOut': util.prepareByteValue(self.config, 
+                                                  self.stats.getBytes()),
+                'requestCounts': self.stats.getRequests(),
+                'userAgents': self.stats.getUserAgents(),
+                }
+            }
+
+        return report

@@ -23,9 +23,9 @@ import commands
 from twisted.web import microdom
 
 from twistedcaldav import ical
-
+ 
 def prepareByteValue(config, value):
-    if config['human']:
+    if config.get('human', None):
         KB = value/1024.0
         if KB < 1:
             return '%d' % (value,)
@@ -40,17 +40,17 @@ def prepareByteValue(config, value):
 
         return '%5.2fGB' % (GB,)
 
-    elif config['gigabytes']:
+    elif config.get('gigabytes', None):
         G = value/1024.0/1024.0/1024.0
 
         return '%5.2fGB' % (G,)
 
-    elif config['megabytes']:
+    elif config.get('megabytes', None):
         M = value/1024.0/1024.0
 
         return '%5.2fMB' % (M,)
 
-    elif config['kilobytes']:
+    elif config.get('kilobytes', None):
         K = value/1024.0
         return '%5.2fKB' % (K,)
 

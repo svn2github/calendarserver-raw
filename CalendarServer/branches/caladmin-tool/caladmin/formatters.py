@@ -123,7 +123,8 @@ class CsvFormatter(BaseFormatter):
         self.writeList(self.options['fieldnames'],
                        [report['data']])
                 
-    
+    report_logs = report_stats
+
 registerFormatter(CsvFormatter)
 
 import plistlib
@@ -145,5 +146,7 @@ class PlistFormatter(BaseFormatter):
         plist[report['type']] = report['data']
 
         plistlib.writePlist(plist, self.dest)
+
+    report_logs = report_stats
 
 registerFormatter(PlistFormatter)
