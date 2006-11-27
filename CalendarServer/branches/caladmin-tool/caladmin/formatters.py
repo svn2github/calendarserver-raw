@@ -75,8 +75,94 @@ class BaseFormatter(object):
         self.close()
 
 
+class PPrintFormatter(BaseFormatter):
+    name = "pprint"
+
+registerFormatter(PPrintFormatter)
+
+
 class PlainFormatter(BaseFormatter):
     name = "plain"
+
+    def writeLine(self, fields, spacing=None):
+
+        if not spacing:
+            spacing = self.options.get('spacing', 16)
+
+        for f in fields:
+            self.write(str(f))
+            self.write(' '*(int(spacing) - len(str(f))))
+
+        self.write('\n')
+
+    def writeTable(self, report, fields, headings):
+        if self.options.has_key('fields'):
+            fields = self.options.get('fields', '').split(',')
+
+        self.writeLine((headings[f] for f in fields))
+
+        for record in report['records']:
+            self.writeLine((record[f] for f in fields))
+
+    def writeReport(self, report, name, fields, headings):
+        if self.options.has_key('fields'):
+            fields = self.options.get('fields', '').split(',')
+        
+        if name:
+            self.write('%s:\n' % (name,))
+
+        for f in fields:
+            self.write('  %s: %s\n' % (headings[f], report['data'][f]))
+
+    def report_principals(self, report):
+        fields = ('principalName', 'calendarCount', 'eventCount', 'todoCount',
+                  'quotaRoot', 'quotaUsed', 'quotaAvail')
+
+        headings = {
+            'principalName': 'Name',
+            'calendarCount': '# Calendars',
+            'eventCount': '# Events',
+            'todoCount': '# Todos',
+            'quotaRoot': 'Quota',
+            'quotaUsed': 'Used',
+            'quotaAvail': 'Available',
+            'disabled': 'Disaabled',
+            'quotaFree': 'Free %',
+            'calendarHome': 'Home',
+            }
+
+        self.writeTable(report, fields, headings)
+
+    report_users = report_groups = report_resources = report_principals
+
+    def report_stats(self, report):
+        fields = ('accountCount', 'groupCount', 'calendarCount', 'eventCount', 
+                  'todoCount', 'diskUsage')
+
+        headings = {
+            'accountCount': '# Accounts',
+            'groupCount': '# Groups',
+            'calendarCount': '# Calendars',
+            'eventCount': '# Events',
+            'todoCount': '# Todos',
+            'diskUsage': 'Disk Usage',
+            }
+
+        self.writeReport(report, 'Statistics', fields, headings)
+
+    def report_logs(self, report):
+        self.write('Log Statistics:\n')
+
+        self.write('  Bytes Out: %s\n' % (report['data']['bytesOut'],))
+        self.write('  # Requests:\n')
+
+        for req, count in report['data']['requestCounts'].iteritems():
+            self.write('    %s: %s\n' % (req, count))
+
+        self.write('  User Agents:\n')
+
+        for ua, count in report['data']['userAgents'].iteritems():
+            self.write('    %s: %s\n' % (ua, count))
 
 registerFormatter(PlainFormatter)
 
