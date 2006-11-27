@@ -54,8 +54,9 @@ class SubCommand(usage.Options):
     def postOptions(self):
         
         report = reflect.namedAny(self.action)(self).run()
-        self.parent.formatter.config = self
-        self.parent.formatter.printReport(report)
+        if report:
+            self.parent.formatter.config = self
+            self.parent.formatter.printReport(report)
 
 
 PARAM_HUMAN = ['human', 'h', 'Display byte values in a human readable form.']
@@ -101,7 +102,8 @@ class LogOptions(SubCommand):
     action = 'caladmin.logs.LogAction'
 
     optFlags = [
-        ['no-output', 'n', 'Do not output anything to stdout'],
+        ['nooutput', 'n', 'Do not output anything to stdout'],
+        ['readonly', 'r', 'Just read the current stats in the statistics file'],
         PARAM_HUMAN,
         PARAM_KILO,
         PARAM_MEGA,
@@ -109,7 +111,7 @@ class LogOptions(SubCommand):
         ]
     
     optParameters = [
-        ['stats', 's', 'stats.plist',
+        ['stats', 's', caldavd_defaults['ServerStatsFile'],
          ('Path to destination file for statistics. Note: Stats will be '
           'updated if this file already exists.')],
         ]

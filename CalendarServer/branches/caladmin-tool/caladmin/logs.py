@@ -126,32 +126,41 @@ class LogAction(object):
     def __init__(self, config):
         self.config = config
 
+        self.noOutput = self.config['nooutput']
+        self.readOnly = self.config['readonly']
+
         self.logfile = self.config['logfile']
         self.stats = Stats(self.config['stats'])
 
     def run(self):
-        for line in self.logfile.open():
-            if line.startswith('Log opened') or line.startswith('Log closed'):
-                continue
-            else:
-                pline = parseCLFLine(line)
 
-                self.stats.addBytes(int(pline[6]))
-                self.stats.addRequest(pline[4].split(' ')[0])
+        if not self.readOnly:
+            for line in self.logfile.open():
+                if (line.startswith('Log opened') or 
+                    line.startswith('Log closed')):
+                    continue
+                else:
+                    pline = parseCLFLine(line)
+                    
+                    self.stats.addBytes(int(pline[6]))
+                    self.stats.addRequest(pline[4].split(' ')[0])
 
-                if len(pline) > 7:
-                    self.stats.addUserAgent(pline[8])
+                    if len(pline) > 7:
+                        self.stats.addUserAgent(pline[8])
 
-        self.stats.save()    
-        
-        report = {
-            'type': 'logs',
-            'data': {
-                'bytesOut': util.prepareByteValue(self.config, 
-                                                  self.stats.getBytes()),
-                'requestCounts': self.stats.getRequests(),
-                'userAgents': self.stats.getUserAgents(),
+            self.stats.save()    
+
+        if not self.noOutput:
+            report = {
+                'type': 'logs',
+                'data': {
+                    'bytesOut': util.prepareByteValue(self.config, 
+                                                      self.stats.getBytes()),
+                    'requestCounts': self.stats.getRequests(),
+                    'userAgents': self.stats.getUserAgents(),
+                    }
                 }
-            }
 
-        return report
+            return report
+
+        return None

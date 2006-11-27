@@ -57,6 +57,7 @@ caldavd_defaults = {
     "NotificationsEnabled": False,
     "NotificationCollectionName": "notifications",
     "ServerLogFile": "/var/log/caldavd/server.log",
+    "ServerStatsFile": "/Library/CalendarServer/stats.plist",
     "ErrorLogFile": "/var/log/caldavd/error.log",
     "PIDFile": "/var/run/caldavd.pid",
     "Repository": "etc/caldavd/repository.xml",

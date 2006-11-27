@@ -59,7 +59,7 @@ def prepareByteValue(config, value):
 
 def getPrincipalList(principalCollection, type, disabled=False):
     typeRoot = principalCollection.child(type)
-    assert typeRoot.exists()
+    assert typeRoot.exists(), "Does not exist: %s" % typeRoot.path 
     
     pl = []
     
