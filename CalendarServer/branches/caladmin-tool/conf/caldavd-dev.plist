@@ -50,6 +50,9 @@ limitations under the License.
   <key>ServerLogFile</key>
   <string>server.log</string>
 
+  <key>ServerStatsFile</key>
+  <string>stats.plist</string>
+
   <key>ErrorLogFile</key>
   <string>error.log</string>
 
