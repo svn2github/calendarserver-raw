@@ -94,7 +94,7 @@ registerCommand(StatsOptions)
 
 
 from twisted.python import filepath
-from twistedcaldav.caldavd import caldavd_defaults
+from twistedcaldav.caldavd import DEFAULTS
 
 class LogOptions(SubCommand):
     name = 'logs'
@@ -110,22 +110,22 @@ class LogOptions(SubCommand):
         PARAM_GIGA,
         ]
     
-    optParameters = [
-        ['stats', 's', caldavd_defaults['ServerStatsFile'],
-         ('Path to destination file for statistics. Note: Stats will be '
-          'updated if this file already exists.')],
-        ]
-
     def __init__(self):
         SubCommand.__init__(self)
 
         self['logfile'] = None
+        self['statsfile'] = None
 
     def opt_logfile(self, path):
         """Path to input logfile
         """
 
         self['logfile'] = path
+
+    def opt_statsfile(self, path):
+        """Path to destination statistics plist
+        """
+        self['statsfile'] = path
 
     def postOptions(self):
         if not self['logfile']:
@@ -134,7 +134,11 @@ class LogOptions(SubCommand):
         else:
             self['logfile'] = filepath.FilePath(self['logfile'])
 
-        self['stats'] = filepath.FilePath(self['stats'])
+        if not self['statsfile']:
+            self['statsfile'] = filepath.FilePath(
+                self.parent.config['ServerStatsFile'])
+        else:
+            self['statsfile'] = filepath.FilePath(self['statsfile'])
 
         SubCommand.postOptions(self)
 
@@ -161,21 +165,21 @@ class PrincipalOptions(SubCommand):
 
 
 class UserOptions(PrincipalOptions):
-    name = "users"
+    name = "user"
     help = PrincipalOptions.help % (name,)
 
 registerCommand(UserOptions)
 
 
 class GroupOptions(PrincipalOptions):
-    name = "groups"
+    name = "group"
     help = PrincipalOptions.help % (name,)
 
 registerCommand(GroupOptions)
 
 
 class ResourceOptions(PrincipalOptions):
-    name = "resources"
+    name = "resource"
     help = PrincipalOptions.help % (name,)
 
 registerCommand(ResourceOptions)

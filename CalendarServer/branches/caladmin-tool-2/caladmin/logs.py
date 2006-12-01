@@ -31,7 +31,6 @@ from caladmin import util
 statsTemplate = plistlib.Dict(
     bytesOut=0, 
     requestCounts=plistlib.Dict(
-        PROPFIND=0,
         ), 
     invitations=plistlib.Dict(
         day=0, 
@@ -40,7 +39,6 @@ statsTemplate = plistlib.Dict(
         ),
     userAgents=plistlib.Dict(),
     )
-
 
 class Stats(object):
     def __init__(self, fp):
@@ -130,7 +128,7 @@ class LogAction(object):
         self.readOnly = self.config['readonly']
 
         self.logfile = self.config['logfile']
-        self.stats = Stats(self.config['stats'])
+        self.stats = Stats(self.config['statsfile'])
 
     def run(self):
 

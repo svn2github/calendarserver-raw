@@ -38,7 +38,7 @@ from plistlib import readPlist
 from caladmin import options
 from caladmin import formatters
 
-from twistedcaldav.caldavd import caldavd_defaults, caldavd
+from twistedcaldav.caldavd import DEFAULTS, caldavd
 
 class AdminOptions(usage.Options):
     recursing = 0
@@ -92,7 +92,7 @@ class AdminOptions(usage.Options):
                                        err.strerror))
                 sys.stderr.flush()
 
-                self.config = caldavd_defaults
+                self.config = DEFAULTS
 
         self.root = filepath.FilePath(self.config['DocumentRoot'])
         self.calendarCollection = self.root.child('calendars')

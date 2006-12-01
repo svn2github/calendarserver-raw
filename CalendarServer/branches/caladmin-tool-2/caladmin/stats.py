@@ -61,19 +61,19 @@ class StatsAction(object):
         return ("accountCount", 
                 len(util.getPrincipalList(
                     self.principalCollection,
-                    'users')))
+                    'user')))
 
     def getGroupCount(self):
         return ("groupCount", 
                 len(util.getPrincipalList(
                     self.principalCollection,
-                    'groups')))
+                    'group')))
 
     def getResourceCount(self):
         return ("resourceCount", 
                 len(util.getPrincipalList(
                     self.principalCollection,
-                    'resources')))
+                    'resource')))
 
     def run(self):
         assert self.root.exists()

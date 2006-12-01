@@ -93,7 +93,7 @@ class PurgeAction(object):
                 collections.extend(type.children())
                     
         purgeDate = datetime.date.today()
-        purgeDate = purgeDate - datetime.timedelta(self.config['days'])
+        purgeDate = purgeDate - datetime.timedelta(int(self.config['days']))
 
         for collection in collections:
             purgeEvents(collection, purgeDate)

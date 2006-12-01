@@ -40,33 +40,35 @@ sys.path.insert(0, "/usr/share/caldavd/lib/python")
 Parse the command line and read in a configuration file and then launch the server.
 """
 
-caldavd_defaults = {
+DEFAULTS = {
+    'CreateAccounts': False,
+    'DirectoryService': {'params': {'node': '/Search'},
+                         'type': 'OpenDirectoryService'},
+    'DocumentRoot': '/Library/CalendarServer/Documents',
+    'DropBoxEnabled': True,
+    'DropBoxInheritedACLs': True,
+    'DropBoxName': 'dropbox',
+    'ErrorLogFile': '/var/log/caldavd/error.log',
+    'ManholePort': 0,
+    'MaximumAttachmentSizeBytes': 1048576,
+    'NotificationCollectionName': 'notifications',
+    'NotificationsEnabled': False,
+    'PIDFile': '/var/run/caldavd.pid',
+    'Port': 8008,
+    'Repository': '/etc/caldavd/repository.xml',
+    'ResetAccountACLs': False,
+    'RunStandalone': True,
+    'SSLCertificate': '/etc/certificates/Default.crt',
+    'SSLEnable': False,
+    'SSLOnly': False,
+    'SSLPort': 8443,
+    'SSLPrivateKey': '/etc/certificates/Default.key',
+    'ServerLogFile': '/var/log/caldavd/server.log',
+    'ServerStatsFile': '/Library/CalendarServer/Documents/stats.plist',
+    'UserQuotaBytes': 104857600,
     'Verbose': False,
-    "RunStandalone": True,
-    "DocumentRoot": "/Library/CalendarServer/Documents",
-    "Port": 8008,
-    "SSLEnable": False,
-    "SSLPort": 8443,
-    "SSLOnly": False,
-    "SSLPrivateKey": "/etc/certificates/Default.key",
-    "SSLCertificate": "/etc/certificates/Default.crt",
-    "ManholePort": 0,           
-    "DropBoxEnabled": True,
-    "DropBoxName": "dropbox",
-    "DropBoxInheritedACLs": True,
-    "NotificationsEnabled": False,
-    "NotificationCollectionName": "notifications",
-    "ServerLogFile": "/var/log/caldavd/server.log",
-    "ServerStatsFile": "/Library/CalendarServer/stats.plist",
-    "ErrorLogFile": "/var/log/caldavd/error.log",
-    "PIDFile": "/var/run/caldavd.pid",
-    "Repository": "etc/caldavd/repository.xml",
-    "CreateAccounts": False,
-    "ResetAccountACLs": False,
-    "twistdLocation": "/usr/share/caldavd/bin/twistd",
-    "MaximumAttachmentSizeBytes": 1048576,
-    "UserQuotaBytes": 104857600,
-    }
+    'twistdLocation': '/usr/share/caldavd/bin/twistd'}
+
 
 class caldavd(object):
     """
@@ -76,6 +78,9 @@ class caldavd(object):
     def __init__(self):
         # Option defaults
         self.plistfile = "/etc/caldavd/caldavd.plist"
+
+        self.config = DEFAULTS.copy()
+
         self.action = None
     
     def printit(self):
@@ -87,28 +92,30 @@ class caldavd(object):
         print ""
         print "Configuration File:               %s" % (self.plistfile,)
         print ""
-        print "Run as daemon:                    %s" % (self.daemonize,)
-        print "Document Root:                    %s" % (self.docroot,)
-        print "Repository Configuration:         %s" % (self.repo,)
-        print "Generate Accounts in Repository:  %s" % (self.doacct,)
-        print "Reset ACLs on Generated Accounts: %s" % (self.doacl,)
-        print "Non-ssl Port:                     %s" % (self.port,)
-        print "Use SSL:                          %s" % (self.dossl,)
-        print "SSL Port:                         %s" % (self.sslport,)
-        print "Only Use SSL:                     %s" % (self.onlyssl,)
-        print "SSL Private Key File:             %s" % (self.keyfile,)
-        print "SSL Certificate File:             %s" % (self.certfile,)
-        print "Drop Box Enabled:                 %s" % (self.dropbox,)
-        print "Drop Box Name:                    %s" % (self.dropboxName,)
-        print "Drop Box ACLs are Inherited       %s" % (self.dropboxACLs,)
-        print "Notifications Enabled:            %s" % (self.notifications,)
-        print "Notification Collection Name:     %s" % (self.notifcationName,)
-        print "Server Log File:                  %s" % (self.serverlogfile,)
-        print "Error Log File:                   %s" % (self.errorlogfile,)
-        print "PID File:                         %s" % (self.pidfile,)
-        print "twistd Location:                  %s" % (self.twistd,)
-        print "Maximum Calendar Resource Size:   %d bytes" % (self.maxsize,)
-        print "Global per-user quota limit:      %d bytes" % (self.quota,)
+        print "Run as daemon:                    %s" % (self.config['RunStandalone'],)
+        print "Document Root:                    %s" % (self.config['DocumentRoot'],)
+        print "Repository Configuration:         %s" % (self.config['Repository'],)
+        print "Generate Accounts in Repository:  %s" % (self.config['CreateAccounts'],)
+        print "Reset ACLs on Generated Accounts: %s" % (self.config['ResetAccountACLs'],)
+        print "Non-ssl Port:                     %s" % (self.config['Port'],)
+        print "Use SSL:                          %s" % (self.config['SSLEnable'],)
+        print "SSL Port:                         %s" % (self.config['SSLPort'],)
+        print "Only Use SSL:                     %s" % (self.config['SSLOnly'],)
+        print "SSL Private Key File:             %s" % (self.config['SSLPrivateKey'],)
+        print "SSL Certificate File:             %s" % (self.config['SSLCertificate'],)
+        print "Directory Service:                %s" % (self.config['DirectoryService']["type"],)
+        print "Directory Service Parameters:     %r" % (self.config['DirectoryService']["params"],)
+        print "Drop Box Enabled:                 %s" % (self.config['DropBoxEnabled'],)
+        print "Drop Box Name:                    %s" % (self.config['DropBoxName'],)
+        print "Drop Box ACLs are Inherited       %s" % (self.config['DropBoxInheritedACLs'],)
+        print "Notifications Enabled:            %s" % (self.config['NotificationsEnabled'],)
+        print "Notification Collection Name:     %s" % (self.config['NotificationCollectionName'],)
+        print "Server Log File:                  %s" % (self.config['ServerLogFile'],)
+        print "Error Log File:                   %s" % (self.config['ErrorLogFile'],)
+        print "PID File:                         %s" % (self.config['PIDFile'],)
+        print "twistd Location:                  %s" % (self.config['twistdLocation'],)
+        print "Maximum Calendar Resource Size:   %d bytes" % (self.config['MaximumAttachmentSizeBytes'],)
+        print "Global per-user quota limit:      %d bytes" % (self.config['UserQuotaBytes'],)
 
     def run(self):
         """
@@ -145,11 +152,11 @@ class caldavd(object):
         
         # Create arguments for twistd
         args = [os.path.basename(sys.executable)]
-        args.append(self.twistd)
-        if not self.daemonize:
+        args.append(self.config['twistdLocation'])
+        if not self.config['RunStandalone']:
             args.append("-n")
-        args.append("--logfile=%s" % (self.errorlogfile,))
-        args.append("--pidfile=%s" % (self.pidfile,))
+        args.append("--logfile=%s" % (self.config['ErrorLogFile'],))
+        args.append("--pidfile=%s" % (self.config['PIDFile'],))
         args.append("-y")
         args.append(tac)
 
@@ -176,11 +183,11 @@ class caldavd(object):
         Stop the caldavd server.
         """
         
-        if os.path.exists(self.pidfile):
+        if os.path.exists(self.config['PIDFile']):
             try:
-                pid = int(open(self.pidfile).read())
+                pid = int(open(self.config['PIDFile']).read())
             except ValueError:
-                sys.exit("Pidfile %s contains non-numeric value" % self.pidfile)
+                sys.exit("Pidfile %s contains non-numeric value" % self.config['PIDFile'])
             try:
                 print "Stopping CalDAV Server",
                 os.kill(pid, signal.SIGTERM)
@@ -225,14 +232,14 @@ class caldavd(object):
                 self.usage()
                 return
             elif option == "-v":
-                self.verbose = True
+                self.config['Verbose'] = True
             elif option == "-f":
                 # We should have handled this already
                 pass
             elif option == "-X":
-                self.daemonize = False
+                self.config['RunStandalone'] = False
             elif option == "-T":
-                self.twistd = value
+                self.config['twistdLocation'] = value
             elif option == "-p":
                 do_print = True
             else:
@@ -266,43 +273,13 @@ class caldavd(object):
         self.action = args[0]
     
     def parsePlist(self):
-    	print "Reading configuration file %s." % (self.plistfile,)
+        print "Reading configuration file %s." % (self.plistfile,)
 
         root = readPlist(self.plistfile)
         
-        # dict that maps between plist keys and class attributes
-        mapper = {
-                   "Verbose":                    "verbose",
-                   "RunStandalone":              "daemonize",
-                   "DocumentRoot":               "docroot",
-                   "Port":                       "port",
-                   "SSLEnable":                  "dossl",
-                   "SSLPort":                    "sslport",
-                   "SSLOnly":                    "onlyssl",
-                   "SSLPrivateKey":              "keyfile",
-                   "SSLCertificate":             "certfile",
-                   "ManholePort":                "manhole",
-                   "DropBoxEnabled":             "dropbox",
-                   "DropBoxName":                "dropboxName",
-                   "DropBoxInheritedACLs":       "dropboxACLs",
-                   "NotificationsEnabled":       "notifications",
-                   "NotificationCollectionName": "notifcationName",
-                   "ServerLogFile":              "serverlogfile",
-                   "ErrorLogFile":               "errorlogfile",
-                   "PIDFile":                    "pidfile",
-                   "Repository":                 "repo",
-                   "CreateAccounts":             "doacct",
-                   "ResetAccountACLs":           "doacl",
-                   "twistdLocation":             "twistd",
-                   "MaximumAttachmentSizeBytes": "maxsize",
-                   "UserQuotaBytes":             "quota",
-                  }
-        
         for k,v in root.items():
-            if mapper.has_key(k) and hasattr(self, mapper[k]):
-                setattr(self, mapper[k], v)
-            elif caldavd_defaults.has_key(k) and hasattr(self, mapper[k]):
-                setattr(self, mapper[k], caldavd_defaults[k])
+            if k in self.config:
+                self.config[k] = v
             else:
                 print "Unknown option: %s" % (k,)
 
@@ -310,30 +287,30 @@ class caldavd(object):
         
         result = True
 
-        if not os.path.exists(self.docroot):
-            print "Document Root does not exist: %s" % (self.docroot,)
+        if not os.path.exists(self.config['DocumentRoot']):
+            print "Document Root does not exist: %s" % (self.config['DocumentRoot'],)
             result = False
 
-        if not os.path.exists(self.repo):
-            print "Repository File does not exist: %s" % (self.repo,)
+        if not os.path.exists(self.config['Repository']):
+            print "Repository File does not exist: %s" % (self.config['Repository'],)
             result = False
 
-        if self.dossl and not os.path.exists(self.keyfile):
-            print "SSL Private Key File does not exist: %s" % (self.keyfile,)
+        if self.config['SSLEnable'] and not os.path.exists(self.config['SSLPrivateKey']):
+            print "SSL Private Key File does not exist: %s" % (self.config['SSLPrivateKey'],)
             result = False
 
-        if self.dossl and not os.path.exists(self.certfile):
-            print "SSL Certificate File does not exist: %s" % (self.certfile,)
+        if self.config['SSLEnable'] and not os.path.exists(self.config['SSLCertificate']):
+            print "SSL Certificate File does not exist: %s" % (self.config['SSLCertificate'],)
             result = False
 
-        if not self.dossl and self.onlyssl:
-            self.dossl = True
+        if not self.config['SSLEnable'] and self.config['SSLOnly']:
+            self.config['SSLEnable'] = True
 
-        if not self.daemonize:
-            self.errorlogfile = "-"
+        if not self.config['RunStandalone']:
+            self.config['ErrorLogFile'] = "-"
 
-        if not os.path.exists(self.twistd):
-            print "twistd does not exist: %s" % (self.twistd,)
+        if not os.path.exists(self.config['twistdLocation']):
+            print "twistd does not exist: %s" % (self.config['twistdLocation'],)
             result = False
             
         return result
@@ -354,45 +331,33 @@ Options:
         return """
 from twistedcaldav.repository import startServer
 
-application, site = startServer(%(docroot)s,
-                                %(repo)s,
-                                %(doacct)s,
-                                %(doacl)s,
-                                %(dossl)s,
-                                %(keyfile)s,
-                                %(certfile)s,
-                                %(onlyssl)s,
-                                %(port)d,
-                                %(sslport)d,
-                                %(maxsize)d,
-                                %(quota)s=d,
-                                %(serverlogfile)s,
-                                %(dropbox)s,
-                                %(dropboxName)s,
-                                %(dropboxACLs)s,
-                                %(notifications)s,
-                                %(notifcationName)s,
-                                %(manhole)d)
+application, site = startServer(
+    %(DocumentRoot)r,
+    %(Repository)r,
+    %(CreateAccounts)s,
+    %(ResetAccountACLs)s,
+    %(SSLEnable)s,
+    %(SSLPrivateKey)r,
+    %(SSLCertificate)r,
+    %(SSLOnly)s,
+    %(Port)d,
+    %(SSLPort)d,
+    %(MaximumAttachmentSizeBytes)d,
+    %(UserQuotaBytes)d,
+    %(ServerLogFile)r,
+    %(DirectoryService)r,
+    %(DropBoxEnabled)r,
+    %(DropBoxName)r,
+    %(DropBoxInheritedACLs)r,
+    %(NotificationsEnabled)r,
+    %(NotificationCollectionName)r,
+    %(ManholePort)d,
+)
+""" % self.config
 
-""" % {
-    "docroot":         self.docroot,
-    "repo":            self.repo,
-    "doacct":          self.doacct,
-    "doacl":           self.doacl,
-    "dossl":           self.dossl,
-    "keyfile":         self.keyfile,
-    "certfile":        self.certfile,
-    "onlyssl":         self.onlyssl,
-    "port":            self.port,
-    "sslport":         self.sslport,
-    "maxsize":         self.maxsize,
-    "quota":           self.quota,
-    "serverlogfile":   self.serverlogfile,
-    "dropbox":         self.dropbox,
-    "dropboxName":     self.dropboxName,
-    "dropboxACLs":     self.dropboxACLs,
-    "notifications":   self.notifications,
-    "notifcationName": self.notifcationName,
-    "manhole":         self.manhole,
-    
-}
+
+if __name__ == "__main__":
+    try:
+        caldavd().run()
+    except Exception, e:
+        sys.exit(str(e))
