@@ -67,7 +67,13 @@ DEFAULTS = {
     'ServerStatsFile': '/Library/CalendarServer/Documents/stats.plist',
     'UserQuotaBytes': 104857600,
     'Verbose': False,
-    'twistdLocation': '/usr/share/caldavd/bin/twistd'}
+    'twistdLocation': '/usr/share/caldavd/bin/twistd',
+    'SACLEnable': False,
+    'SACLService': 'com.apple.access_calendar',
+    }
+
+
+CONFIG = DEFAULTS.copy()
 
 
 class caldavd(object):
@@ -79,7 +85,7 @@ class caldavd(object):
         # Option defaults
         self.plistfile = "/etc/caldavd/caldavd.plist"
 
-        self.config = DEFAULTS.copy()
+        self.config = CONFIG
 
         self.action = None
     
@@ -282,6 +288,8 @@ class caldavd(object):
                 self.config[k] = v
             else:
                 print "Unknown option: %s" % (k,)
+
+        CONFIG = self.config
 
     def validate(self):
         
