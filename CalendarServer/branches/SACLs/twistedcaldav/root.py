@@ -96,6 +96,6 @@ class RootResource(DAVFile):
 # We do this after RootResource is defined
 try:
     from appleauth import CheckSACL
-    RootResoruce.CheckSACL = CheckSACL
+    RootResource.CheckSACL = CheckSACL
 except ImportError:
     RootResource.CheckSACL = None
