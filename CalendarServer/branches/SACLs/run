@@ -403,6 +403,22 @@ if ! py_have_module opendirectory; then
 fi;
 
 #
+# PyAppleAuth
+#
+
+if [ `uname -s` == "Darwin" ]; then
+    if ! py_have_module appleauth; then
+        appleauth="${top}/PyAppleAuth";
+
+        svn_get "PyAppleAuth" "${appleauth}" "${svn_uri_base}/PyAppleAuth/trunk" 656;
+        py_build "PyAppleAuth" "${appleauth}" false; # FIXME: make optional
+        py_install "PyAppleAuth" "${appleauth}"
+
+        export PYTHONPATH="${PYTHONPATH}:${appleauth}/build/${py_platform_libdir}";
+    fi;
+fi;
+
+#
 # xattr
 #
 

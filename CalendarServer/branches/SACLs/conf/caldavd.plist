@@ -121,7 +121,7 @@ limitations under the License.
   <string>/usr/share/caldavd/bin/twistd</string>
 
   <key>SACLEnable</key>
-  <false/>
+  <true/>
   
   <key>SACLService</key>
   <string>com.apple.access_calendar</string>
