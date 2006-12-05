@@ -57,10 +57,8 @@ class RootTests(TestCase):
     def setUp(self):
         self.docroot = self.mktemp()
 
-        RootResource.saclService = 'com.apple.access_calendar'
-
         RootResource.CheckSACL = FakeCheckSACL(sacls={
-                'com.apple.access_calendar': ['dreid']})
+                'calendar': ['dreid']})
 
         directory = XMLDirectoryService(xmlFile)
 
