@@ -28,7 +28,8 @@ from twisted.web2.dav.static import DAVFile
 
 
 class RootResource(DAVFile):
-    """A special root resource that contains support checking SACLs
+    """
+    A special root resource that contains support checking SACLs
     """
 
     useSacls = False
@@ -43,7 +44,8 @@ class RootResource(DAVFile):
             self.useSacls = True
 
     def checkSacl(self, request):
-        """Check SACLs against the current request
+        """
+        Check SACLs against the current request
         """
 
         def _authCb((authnUser, authzUser)):

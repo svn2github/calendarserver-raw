@@ -47,6 +47,8 @@
 			<string>../../PyKerberos</string>
 		</dict>
 		<dict>
+			<key>expanded</key>
+			<true/>
 			<key>name</key>
 			<string>conf</string>
 			<key>regexFolderFilter</key>
@@ -117,6 +119,6 @@
 	<key>showFileHierarchyDrawer</key>
 	<true/>
 	<key>windowFrame</key>
-	<string>{{378, 125}, {944, 985}}</string>
+	<string>{{502, 108}, {944, 985}}</string>
 </dict>
 </plist>
