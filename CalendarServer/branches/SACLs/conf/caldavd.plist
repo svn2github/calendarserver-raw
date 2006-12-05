@@ -122,9 +122,5 @@ limitations under the License.
 
   <key>SACLEnable</key>
   <true/>
-  
-  <key>SACLService</key>
-  <string>com.apple.access_calendar</string>
-
 </dict>
 </plist>

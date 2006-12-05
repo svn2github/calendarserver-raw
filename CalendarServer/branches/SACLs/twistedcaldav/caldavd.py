@@ -68,11 +68,12 @@ DEFAULTS = {
     'UserQuotaBytes': 104857600,
     'Verbose': False,
     'twistdLocation': '/usr/share/caldavd/bin/twistd',
-    'SACLEnable': False,
-    'SACLService': 'com.apple.access_calendar',
+    'SACLEnable': True,
     }
 
-
+# FIXME: This doesn't actually work because the webserver runs in a different
+# python process from the commandline util caldavd that actually parses the 
+# plists the twistd plugin will fix this.
 CONFIG = DEFAULTS.copy()
 
 

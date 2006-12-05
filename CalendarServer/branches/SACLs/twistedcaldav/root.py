@@ -32,7 +32,7 @@ class RootResource(DAVFile):
     """
 
     useSacls = False
-    saclService = None
+    saclService = 'calendar'
 
     def __init__(self, path, *args, **kwargs):
         super(RootResource, self).__init__(path, *args, **kwargs)
@@ -40,8 +40,7 @@ class RootResource(DAVFile):
         from twistedcaldav import caldavd
 
         if caldavd.CONFIG['SACLEnable'] and RootResource.CheckSACL:
-            self.saclService = caldavd.CONFIG['SACLService']
-            self.useSacls = caldavd.CONFIG['SACLEnable']
+            self.useSacls = True
 
     def checkSacl(self, request):
         """Check SACLs against the current request
@@ -70,8 +69,8 @@ class RootResource(DAVFile):
             # Figure out the "username" from the davxml.Principal object
             username = authzUser.children[0].children[0].data
             username = username.split('/')[-1]
-
-            if not RootResource.CheckSACL(username, self.saclService):
+            
+            if RootResource.CheckSACL(username, self.saclService) != 0:
                 return Failure(HTTPError(403))
 
             return True

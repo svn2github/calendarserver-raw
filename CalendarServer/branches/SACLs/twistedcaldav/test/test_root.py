@@ -46,9 +46,12 @@ class FakeCheckSACL(object):
 
     def __call__(self, username, service):
         if service not in self.sacls:
-            return False
+            return 1
 
-        return username in self.sacls[service]
+        if username in self.sacls[service]:
+            return 0
+
+        return 1
 
 class RootTests(TestCase):
     def setUp(self):
