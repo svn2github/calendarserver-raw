@@ -79,8 +79,6 @@ if sys.platform == 'darwin':
     data_files.append(('sbs_backup', ['conf/85-calendar.plist']))
     data_files.append(('/usr/libexec/sbs_backup', ['bin/calendar_restore']))
 
-print data_files
-
 setup(
     name             = "twistedcaldav",
     version          = version,
