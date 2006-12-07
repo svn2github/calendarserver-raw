@@ -107,8 +107,12 @@ limitations under the License.
 
   <key>AuthSchemes</key>
   <array>
-<!--     <string>Digest</string> -->
     <string>Basic</string>
+  </array>
+
+  <key>AdminPrincipals</key>
+  <array>
+    <string>/principals/users/admin</string>
   </array>
 
 </dict>

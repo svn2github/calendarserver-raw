@@ -53,6 +53,7 @@ DEFAULTS = {
     'twistdLocation': '/usr/share/caldavd/bin/twistd',
     'SACLEnable': True,
     'AuthSchemes': ['Basic'],
+    'AdminPrincipals': ['/principal/users/admin']
 }
 
 globs = globals()

@@ -30,6 +30,7 @@ from twisted.plugin import IPlugin
 from twisted.cred.portal import Portal
 
 from twisted.web2.dav import auth
+from twisted.web2.dav import davxml
 from twisted.web2.auth import basic
 from twisted.web2.channel import http
 
@@ -73,8 +74,6 @@ class CaldavServiceMaker(object):
         # Setup the Directory
         #
 
-        print config.DirectoryService
-
         directoryClass = namedClass(config.DirectoryService['type'])
 
         directory = directoryClass(**config.DirectoryService['params'])
@@ -101,6 +100,21 @@ class CaldavServiceMaker(object):
         root.putChild('principals', principalCollection)
         root.putChild('calendars', calendarCollection)
 
+        # Configure default ACLs on the root resource
+
+        rootACEs = [
+            davxml.ACE(
+                davxml.Principal(davxml.All()),
+                davxml.Grant(davxml.Privilege(davxml.Read()))),]
+
+        for principal in config.AdminPrincipals:
+            rootACEs.append(
+                davxml.ACE(
+                    davxml.Principal(davxml.HRef(principal)),
+                    davxml.Grant(davxml.Privilege(davxml.All()))))
+
+        root.setAccessControlList(davxml.ACL(*rootACEs))
+
         #
         # Configure the Site and Wrappers
         #
@@ -112,7 +126,8 @@ class CaldavServiceMaker(object):
         portal.registerChecker(directory)
 
         # TODO: figure out the list of supported schemes from the directory
-        schemes = {'basic': basic.BasicCredentialFactory(""),
+        schemes = {'basic': basic.BasicCredentialFactory(directory.realmName
+                                                         or ""),
                    #'digest': digest.DigestCredentialFactory
                    }
 
