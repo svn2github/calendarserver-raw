@@ -105,5 +105,11 @@ limitations under the License.
   <key>SACLEnable</key>
   <true/>
 
+  <key>AuthSchemes</key>
+  <array>
+<!--     <string>Digest</string> -->
+    <string>Basic</string>
+  </array>
+
 </dict>
 </plist>

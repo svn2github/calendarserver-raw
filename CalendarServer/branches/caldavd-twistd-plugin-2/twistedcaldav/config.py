@@ -24,8 +24,9 @@ DEFAULTPLISTFILE = '/etc/caldavd/caldavd.plist'
 
 DEFAULTS = {
     'CreateAccounts': False,
-    'DirectoryService': {'params': {'node': '/Search'},
-                         'type': 'OpenDirectoryService'},
+    'DirectoryService': {
+        'params': {'node': '/Search'},
+        'type': 'twistedcaldav.directory.appleopendirectory.OpenDirectoryService'},
     'DocumentRoot': '/Library/CalendarServer/Documents',
     'DropBoxEnabled': True,
     'DropBoxInheritedACLs': True,
@@ -51,6 +52,7 @@ DEFAULTS = {
     'Verbose': False,
     'twistdLocation': '/usr/share/caldavd/bin/twistd',
     'SACLEnable': True,
+    'AuthSchemes': ['Basic'],
 }
 
 globs = globals()
