@@ -49,7 +49,9 @@ DEFAULTS = {
     'ServerStatsFile': '/Library/CalendarServer/Documents/stats.plist',
     'UserQuotaBytes': 104857600,
     'Verbose': False,
-    'twistdLocation': '/usr/share/caldavd/bin/twistd'}
+    'twistdLocation': '/usr/share/caldavd/bin/twistd',
+    'SACLEnable': True,
+}
 
 globs = globals()
 globs.update(DEFAULTS.copy())
