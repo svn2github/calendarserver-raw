@@ -76,9 +76,9 @@ class CaldavServiceMaker(object):
     # default resource classes
     #
 
-    rootResource = RootResource
-    principalResource = DirectoryPrincipalProvisioningResource
-    calendarResource = CalendarHomeProvisioningFile
+    rootResourceClass = RootResource
+    principalResourceClass = DirectoryPrincipalProvisioningResource
+    calendarResourceClass = CalendarHomeProvisioningFile
 
     def makeService(self, options):
         #
@@ -93,18 +93,18 @@ class CaldavServiceMaker(object):
         # Setup Resource hierarchy
         #
 
-        principalCollection = self.principalResource(
+        principalCollection = self.principalResourceClass(
             os.path.join(config.DocumentRoot, 'principals'),
             '/principals/',
             directory
             )
 
-        calendarCollection = self.calendarResource(
+        calendarCollection = self.calendarResourceClass(
             os.path.join(config.DocumentRoot, 'calendars'),
             directory,
             '/calendars/')
         
-        root = self.rootResource(config.DocumentRoot, 
+        root = self.rootResourceClass(config.DocumentRoot, 
                             principalCollections=(principalCollection,)
                             )
 
