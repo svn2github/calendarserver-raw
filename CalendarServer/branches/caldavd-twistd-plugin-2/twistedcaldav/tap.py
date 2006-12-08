@@ -32,6 +32,7 @@ from twisted.cred.portal import Portal
 from twisted.web2.dav import auth
 from twisted.web2.dav import davxml
 from twisted.web2.auth import basic
+from twisted.web2.auth import digest
 from twisted.web2.channel import http
 
 from twisted.web2.tap import Web2Service
@@ -58,7 +59,6 @@ class CaldavOptions(Options):
             print "Config file %s not found, using defaults" % (self['config'],)
 
         config.parseConfig(self['config'])
-
 
 class CaldavServiceMaker(object):
     implements(IPlugin, service.IServiceMaker)
@@ -101,7 +101,7 @@ class CaldavServiceMaker(object):
             directory,
             '/calendars/')
         
-        root = rootResource(config.DocumentRoot, 
+        root = self.rootResource(config.DocumentRoot, 
                             principalCollections=(principalCollection,)
                             )
 
@@ -133,10 +133,11 @@ class CaldavServiceMaker(object):
 
         portal.registerChecker(directory)
 
+        realm = directory.realmName or ""
+
         # TODO: figure out the list of supported schemes from the directory
-        schemes = {'basic': basic.BasicCredentialFactory(directory.realmName
-                                                         or ""),
-                   #'digest': digest.DigestCredentialFactory
+        schemes = {'basic': basic.BasicCredentialFactory(realm),
+                   'digest': digest.DigestCredentialFactory("md5", realm),
                    }
 
         for scheme in config.AuthSchemes:

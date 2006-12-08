@@ -51,7 +51,7 @@ DEFAULTS = {
     'UserQuotaBytes': 104857600,
     'Verbose': False,
     'twistdLocation': '/usr/share/caldavd/bin/twistd',
-    'SACLEnable': True,
+    'SACLEnable': False,
     'AuthSchemes': ['Basic'],
     'AdminPrincipals': ['/principal/users/admin']
 }
