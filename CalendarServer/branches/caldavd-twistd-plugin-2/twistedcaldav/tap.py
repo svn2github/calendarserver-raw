@@ -60,6 +60,9 @@ class CaldavOptions(Options):
 
         config.parseConfig(self['config'])
 
+        self.parent['logfile'] = config.ErrorLogFile
+        self.parent['pidfile'] = config.PIDFile
+
 class CaldavServiceMaker(object):
     implements(IPlugin, service.IServiceMaker)
 
