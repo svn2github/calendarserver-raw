@@ -159,11 +159,10 @@ class NotificationResource(DAVResource):
     Resource that gets stored in a notification collection and which contains
     the notification details in its content as well as via properties.
     """
-    # FIXME: These don't appear to be in use
-    # liveProperties = DAVResource.liveProperties + (
-    #     (calendarserver_namespace, "time-stamp"),
-    #     (calendarserver_namespace, "changed"   ),
-    # )
+    liveProperties = DAVResource.liveProperties + (
+        (calendarserver_namespace, "time-stamp"),
+        (calendarserver_namespace, "changed"   ),
+    )
 
 # FIXME: This needs to be in static.py, but it's referred to in doNotification() above, which is probably incorrect.
 class NotificationFile(NotificationResource, DAVFile):
