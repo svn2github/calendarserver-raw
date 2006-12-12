@@ -79,7 +79,9 @@ class DropBoxCollectionResource (DAVResource):
             if TwistedACLInheritable() not in ace.children:
                 children = list(ace.children)
                 children.append(TwistedACLInheritable())
-                edited_aces.append(davxml.ACE(children))
+                edited_aces.append(davxml.ACE(*children))
+            else:
+                edited_aces.append(ace)
         
         # Do inherited with possibly modified set of aces
         super(DropBoxCollectionResource, self).writeNewACEs(edited_aces)
