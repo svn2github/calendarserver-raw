@@ -79,10 +79,6 @@ class DirectoryPrincipalProvisioningResource (
         # FIXME: Smells like a hack
         directory.principalCollection = self
 
-        # Provision in __init__() because principals are used prior to request
-        # lookups.
-#         self.provision()        # 
-
         # Create children
         for recordType in self.directory.recordTypes():
             self.putChild(recordType, DirectoryPrincipalTypeResource(self.fp.child(recordType).path, self, recordType))
@@ -174,10 +170,6 @@ class DirectoryPrincipalTypeResource (
         self.directory = parent.directory
         self.recordType = recordType
         self.parent = parent
-
-        # Provision in __init__() because principals are used prior to request
-        # lookups.
-#         self.provision()
 
     def principalForUser(self, user):
         return self.parent.principalForUser(user)
