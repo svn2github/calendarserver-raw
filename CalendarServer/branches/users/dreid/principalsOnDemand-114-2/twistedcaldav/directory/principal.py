@@ -81,7 +81,7 @@ class DirectoryPrincipalProvisioningResource (
 
         # Provision in __init__() because principals are used prior to request
         # lookups.
-        self.provision()
+#         self.provision()        # 
 
         # Create children
         for recordType in self.directory.recordTypes():
@@ -140,6 +140,7 @@ class DirectoryPrincipalProvisioningResource (
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
+        self.provision()
         return self.putChildren.get(name, None)
 
     def listChildren(self):
@@ -176,7 +177,7 @@ class DirectoryPrincipalTypeResource (
 
         # Provision in __init__() because principals are used prior to request
         # lookups.
-        self.provision()
+#         self.provision()
 
     def principalForUser(self, user):
         return self.parent.principalForUser(user)
@@ -196,6 +197,7 @@ class DirectoryPrincipalTypeResource (
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name, record=None):
+        self.provision()
         if name == "":
             return self
 
