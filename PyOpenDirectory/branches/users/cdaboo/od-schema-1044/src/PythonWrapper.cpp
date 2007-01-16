@@ -35,23 +35,8 @@
 // Utility function - not exposed to Python
 static PyObject* CFStringToPyStr(CFStringRef str)
 {
-	PyObject* pystr = NULL;
-	const char* bytes = CFStringGetCStringPtr(str, kCFStringEncodingUTF8);
-	
-	if (bytes == NULL)
-	{
-		char localBuffer[256];
-		Boolean success = CFStringGetCString(str, localBuffer, 256, kCFStringEncodingUTF8);
-		if (!success)
-			localBuffer[0] = 0;
-		pystr = PyString_FromString(localBuffer);
-	}
-	else
-	{
-		pystr = PyString_FromString(bytes);
-	}
-	
-	return pystr;
+	CFStringUtil s(str);
+	return PyString_FromString(s.temp_str());
 }
 
 // Utility function - not exposed to Python

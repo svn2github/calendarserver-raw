@@ -35,6 +35,7 @@ try:
 		else:
 			names = [v for v in d.iterkeys()]
 			names.sort()
+			print "\nlistUsers number of results = %d" % (len(names),)
 			for n in names:
 				print "Name: %s" % n
 				print "dict: %s" % str(d[n])
@@ -47,6 +48,20 @@ try:
 		else:
 			names = [v for v in d.iterkeys()]
 			names.sort()
+			print "\nlistGroups number of results = %d" % (len(names),)
+			for n in names:
+				print "Name: %s" % n
+				print "dict: %s" % str(d[n])
+	
+	def listComputers():
+		d = opendirectory.listAllRecordsWithAttributes(ref, dsattributes.kDSStdRecordTypeComputers,
+													   [dsattributes.kDS1AttrGeneratedUID, dsattributes.kDS1AttrXMLPlist,])
+		if d is None:
+			print "Failed to list computers"
+		else:
+			names = [v for v in d.iterkeys()]
+			names.sort()
+			print "\nlistComputers number of results = %d" % (len(names),)
 			for n in names:
 				print "Name: %s" % n
 				print "dict: %s" % str(d[n])
@@ -121,13 +136,14 @@ try:
 		else:
 			print "Failed to authenticate user"
 	
-	listUsers()
-	listGroups()
-	queryUsers()
-	queryUsersCompoundOr()
-	queryUsersCompoundOrExact()
-	queryUsersCompoundAnd()
-	authentciateBasic()
+	#listUsers()
+	#listGroups()
+	listComputers()
+	#queryUsers()
+	#queryUsersCompoundOr()
+	#queryUsersCompoundOrExact()
+	#queryUsersCompoundAnd()
+	#authentciateBasic()
 
 	ref = None
 except opendirectory.ODError, ex:

@@ -78,7 +78,7 @@ int main (int argc, const char * argv[]) {
 
 	AuthenticateUser(dir, "cdaboo", "appledav1234");
 	AuthenticateUser(dir, "cdaboo", "appledav6585");
-#elif 1
+#elif 0
 	CFStringRef keys[2];
 	keys[0] = CFSTR(kDS1AttrFirstName);
 	keys[1] = CFSTR(kDS1AttrLastName);
@@ -96,6 +96,31 @@ int main (int argc, const char * argv[]) {
 	if (dict != NULL)
 	{
 		printf("\n*** Users: %d ***\n", CFDictionaryGetCount(dict));
+		CFDictionaryApplyFunction(dict, PrintDictionaryDictionary, NULL);
+		CFRelease(dict);
+	}
+	else
+	{
+		printf("\nNo Users returned\n");
+	}
+	CFRelease(array);
+	
+#elif 1
+	CFStringRef keys[2];
+	keys[0] = CFSTR(kDS1AttrENetAddress);
+	CFStringRef values[2];
+	values[0] = CFSTR("00:17:f2:02:35:e4");
+	CFDictionaryRef kvdict = CFDictionaryCreate(kCFAllocatorDefault, (const void **)keys, (const void**)values, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+                        
+	CFStringRef strings[2];
+	strings[0] = CFSTR(kDS1AttrDistinguishedName);
+	strings[1] = CFSTR(kDS1AttrXMLPlist);
+	CFArrayRef array = CFArrayCreate(kCFAllocatorDefault, (const void **)strings, 2, &kCFTypeArrayCallBacks);
+                        
+	CFMutableDictionaryRef dict = dir->QueryRecordsWithAttributes(kvdict, eDSExact, false, false, kDSStdRecordTypeComputers, array);
+	if (dict != NULL)
+	{
+		printf("\n*** Computers: %d ***\n", CFDictionaryGetCount(dict));
 		CFDictionaryApplyFunction(dict, PrintDictionaryDictionary, NULL);
 		CFRelease(dict);
 	}
