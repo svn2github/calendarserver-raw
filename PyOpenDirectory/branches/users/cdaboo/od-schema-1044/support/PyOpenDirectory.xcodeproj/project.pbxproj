@@ -15,6 +15,7 @@
 		AF155A380A501F9D007E1E6E /* DirectoryService.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF155A360A501F9D007E1E6E /* DirectoryService.framework */; };
 		AF155AFD0A502C09007E1E6E /* CFStringUtil.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = AF155AFB0A502C09007E1E6E /* CFStringUtil.h */; };
 		AF155AFE0A502C09007E1E6E /* CFStringUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AF155AFC0A502C09007E1E6E /* CFStringUtil.cpp */; };
+		AFEF82220B571AC200ACEED3 /* Python.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AFEF82210B571AC200ACEED3 /* Python.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -41,6 +42,7 @@
 		AF155A360A501F9D007E1E6E /* DirectoryService.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DirectoryService.framework; path = /System/Library/Frameworks/DirectoryService.framework; sourceTree = "<absolute>"; };
 		AF155AFB0A502C09007E1E6E /* CFStringUtil.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = CFStringUtil.h; path = ../src/CFStringUtil.h; sourceTree = SOURCE_ROOT; };
 		AF155AFC0A502C09007E1E6E /* CFStringUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CFStringUtil.cpp; path = ../src/CFStringUtil.cpp; sourceTree = SOURCE_ROOT; };
+		AFEF82210B571AC200ACEED3 /* Python.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Python.framework; path = /Library/Frameworks/Python.framework; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +52,7 @@
 			files = (
 				AF155A370A501F9D007E1E6E /* CoreFoundation.framework in Frameworks */,
 				AF155A380A501F9D007E1E6E /* DirectoryService.framework in Frameworks */,
+				AFEF82220B571AC200ACEED3 /* Python.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,6 +93,7 @@
 		AF155A3D0A501FA0007E1E6E /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				AFEF82210B571AC200ACEED3 /* Python.framework */,
 				AF155A350A501F9D007E1E6E /* CoreFoundation.framework */,
 				AF155A360A501F9D007E1E6E /* DirectoryService.framework */,
 			);
