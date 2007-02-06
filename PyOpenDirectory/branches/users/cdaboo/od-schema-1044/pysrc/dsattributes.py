@@ -1563,6 +1563,12 @@ kDSNAttrResourceInfo = "dsAttrTypeStandard:ResourceInfo"
 kDSNAttrResourceType = "dsAttrTypeStandard:ResourceType"
 
 """
+ kDSNAttrServicesLocator
+ Attribute describing the services hosted for the record.
+"""
+kDSNAttrServicesLocator = "dsAttrTypeStandard:ServicesLocator"
+
+"""
  kDSNAttrState
  The state or province of a country.
 """
