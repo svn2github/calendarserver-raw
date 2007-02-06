@@ -61,6 +61,7 @@ from twistedcaldav.index import Index, IndexSchedule, db_basename
 from twistedcaldav.notifications import NotificationsCollectionResource, NotificationResource
 from twistedcaldav.resource import CalDAVResource, isCalendarCollectionResource, isPseudoCalendarCollectionResource
 from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
+from twistedcaldav.sqlprops import sqlPropertyStore
 from twistedcaldav.dropbox import DropBoxHomeResource, DropBoxCollectionResource, DropBoxChildResource
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeTypeProvisioningResource
@@ -80,6 +81,14 @@ class CalDAVFile (CalDAVResource, DAVFile):
     ##
     # CalDAV
     ##
+
+    def deadProperties(self):
+        if not hasattr(self, "_dead_properties"):
+            #if self.fp.path.find("user01") != -1:
+                self._dead_properties = sqlPropertyStore(self)
+            #else:
+            #    self._dead_properties = xattrPropertyStore(self)
+        return self._dead_properties
 
     def resourceType(self):
 	if self.isCalendarCollection():
