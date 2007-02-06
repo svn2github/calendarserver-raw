@@ -72,6 +72,9 @@ defaultConfig = {
 
     'ServerType': 'singleprocess',
 
+    'Username': 'daemon',
+    'Groupname': 'daemon',
+
     'MultiProcess': {
         'NumProcesses': 10,
         'LoadBalancer': {

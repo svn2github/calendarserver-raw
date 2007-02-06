@@ -36,6 +36,12 @@ limitations under the License.
   <key>ServerHostName</key>
   <string>localhost</string>
 
+  <key>Username</key>
+  <string>calendar</string>
+
+  <key>Groupname</key>
+  <string>calendar</string>
+
   <key>Port</key>
   <integer>8008</integer>
 

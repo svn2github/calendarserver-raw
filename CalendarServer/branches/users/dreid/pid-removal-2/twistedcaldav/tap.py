@@ -29,6 +29,8 @@ from twisted.python.reflect import namedClass
 from twisted.application import internet, service
 from twisted.plugin import IPlugin
 
+from twisted.scripts.mktap import getid
+
 from twisted.cred.portal import Portal
 
 from twisted.web2.dav import auth
@@ -109,6 +111,9 @@ class CalDAVOptions(Options):
                 elif isinstance(defaultConfig[key], dict):
                     raise UsageError(
                         "We do not support dict options on the command line")
+                        
+                elif value == 'None':
+                    value = None
 
             self.overrides[key] = value
         else:
@@ -123,6 +128,26 @@ class CalDAVOptions(Options):
         parseConfig(self['config'])
 
         config.update(self.overrides)
+
+        uid, gid = None, None
+
+        if self.parent['uid'] or self.parent['gid']:
+            uid, gid = getid(self.parent['uid'], 
+                             self.parent['gid'])
+
+        if uid:
+            if uid != os.getuid() and uid != 0:
+                import pwd
+                username = pwd.getpwuid(os.getuid())[0]
+                raise UsageError(("Only root can drop privileges "
+                                  "you are: %s" % (username,)))
+
+        if gid:
+            if gid != os.getgid() and gid != 0:
+                import grp
+                groupname = grp.getgrgid(os.getuid())[0]
+                raise UsageError(("Only root can drop privileges, "
+                                  "you are: %s" % (groupname,)))
 
         self.parent['logfile'] = config.ErrorLogFile
         self.parent['pidfile'] = config.PIDFile
