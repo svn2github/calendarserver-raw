@@ -70,7 +70,7 @@ limitations under the License.
   <string>/var/log/caldavd/error.log</string>
 
   <key>PIDFile</key>
-  <string>/var/log/caldavd/caldavd.pid</string>
+  <string>/var/run/caldavd.pid</string>
 
   <!--  XML File Directory Service -->
   <!--
