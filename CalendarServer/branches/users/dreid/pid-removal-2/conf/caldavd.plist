@@ -151,12 +151,12 @@ limitations under the License.
   <key>SudoersFile</key>
   <string>/etc/caldavd/sudoers.plist</string>
   <key>ServerType</key>
-  <string>singleprocess</string>
+  <string>multiprocess</string>
   
   <key>MultiProcess</key>
   <dict>
     <key>NumProcesses</key>
-    <integer>0</integer>
+    <integer>1</integer>
 
     <key>LoadBalancer</key>
     <dict>

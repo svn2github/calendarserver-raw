@@ -65,13 +65,17 @@ class TwistdSlaveProcess(object):
     def getCommandLine(self):
         return [
             sys.executable,
-            self.twistd, '-n', 'caldav', 
+            self.twistd,
+            '-u', config.Username,
+            '-g', config.Groupname,
+            '-n', 'caldav',
             '-f', self.configFile,
-            '-o', 'ServerType=singleprocess',
+            '-o', 'ServerType=slave',
             '-o', 'BindAddress=%s' % (','.join(self.interfaces),),
             '-o', 'Port=%s' % (self.port,),
             '-o', 'SSLPort=%s' % (self.sslPort,),
-            '-o', 'PIDFile=None']
+            '-o', 'PIDFile=None',
+            '-o', 'ErrorLogFile=None']
     
     def getHostLine(self, ssl=None):
         name = self.getName()
@@ -111,14 +115,8 @@ def makeService_multiprocess(self, options):
                                      bindAddress,
                                      port, sslport)
 
-        uid, gid = None, None
-        if config.Username or config.Groupname:
-            uid, gid = getid(config.Username, config.Groupname)
-            
         service.addProcess(process.getName(),
                            process.getCommandLine(),
-                           uid=uid,
-                           gid=gid,
                            env=parentEnv)
         
         if not config.SSLOnly:

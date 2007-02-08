@@ -79,7 +79,7 @@ class CalDAVOptions(Options):
         ["config", "f", "/etc/caldavd/caldavd.plist",
          "Path to configuration file."],
         ]
-
+        
     zsh_actions = {"config" : "_files -g '*.plist'"}
 
     def __init__(self, *args, **kwargs):
@@ -159,6 +159,13 @@ class CalDAVOptions(Options):
         if config.SSLEnable:
             self.checkFile(config.SSLPrivateKey, "SSL Private key")
             self.checkFile(config.SSLCertificate, "SSL Public key")
+
+        #
+        # Nuke the file log observer's time format.
+        #
+
+        if not config.ErrorLogFile and config.ServerType == 'slave':
+            log.FileLogObserver.timeFormat = ''
 
     def checkDirectory(self, dirpath, description):
         if not os.path.exists(dirpath):
