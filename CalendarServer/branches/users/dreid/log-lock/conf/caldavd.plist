@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+ -->
+
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+  <key>Verbose</key>
+  <false/>
+
+  <key>RunStandalone</key>
+  <true/>
+
+  <key>DocumentRoot</key>
+  <string>/Library/CalendarServer/Documents</string>
+
+  <key>BindAddress</key>
+  <array>
+  </array>
+
+  <key>ServerHostName</key>
+  <string>localhost</string>
+
+  <key>Username</key>
+  <string>calendar</string>
+
+  <key>Groupname</key>
+  <string>calendar</string>
+
+  <key>Port</key>
+  <integer>8008</integer>
+
+  <key>SSLPort</key>
+  <integer>8443</integer>
+
+  <key>SSLEnable</key>
+  <true/>
+
+  <key>SSLOnly</key>
+  <false/>
+
+  <key>SSLPrivateKey</key>
+  <string>/etc/certificates/Default.key</string>
+
+  <key>SSLCertificate</key>
+  <string>/etc/certificates/Default.crt</string>
+
+  <key>ServerLogFile</key>
+  <string>/var/log/caldavd/server.log</string>
+
+  <key>ServerStatsFile</key>
+  <string>/Library/CalendarServer/Documents/stats.plist</string>
+
+  <key>ErrorLogFile</key>
+  <string>/var/log/caldavd/error.log</string>
+
+  <key>PIDFile</key>
+  <string>/var/run/caldavd.pid</string>
+
+  <!--  XML File Directory Service -->
+  <!--
+  <key>DirectoryService</key>
+  <dict>
+    <key>type</key>
+    <string>twistedcaldav.directory.xmlfile.XMLDirectoryService</string>
+  
+    <key>params</key>
+    <dict>
+      <key>xmlFile</key>
+      <string>/etc/caldavd/accounts.xml</string>
+    </dict>
+  </dict>
+  -->
+  
+  <!--  Open Directory Service -->
+  <key>DirectoryService</key>
+  <dict>
+    <key>type</key>
+    <string>twistedcaldav.directory.appleopendirectory.OpenDirectoryService</string>
+  
+    <key>params</key>
+    <dict>
+      <key>node</key>
+      <string>/Search</string>
+    </dict>
+  </dict>
+  
+  <key>MaximumAttachmentSizeBytes</key>
+  <integer>1048576</integer><!-- 1Mb -->
+
+  <key>UserQuotaBytes</key>
+  <integer>104857600</integer><!-- 100Mb -->
+
+  <key>DropBoxEnabled</key>
+  <true/>
+
+  <key>NotificationsEnabled</key>
+  <true/>
+
+  <key>CalendarUserProxyEnabled</key>
+  <true/>
+
+  <key>SACLEnable</key>
+  <true/>
+
+  <key>Authentication</key>
+  <dict>
+    <key>Basic</key>
+    <dict>
+      <key>Enabled</key>
+      <true/>
+    </dict>
+    <key>Digest</key>
+    <dict>
+      <key>Enabled</key>
+      <false/>
+      <key>Algorithm</key>
+      <string>md5</string>
+    </dict>
+    <key>Kerberos</key>
+    <dict>
+      <key>Enabled</key>
+      <false/>
+      <key>ServicePrincipal</key>
+      <string></string>
+      <key>Realm</key>
+      <string></string>
+    </dict>
+  </dict>
+
+  <key>AdminPrincipals</key>
+  <array>
+    <string>/principals/users/admin/</string>
+  </array>
+
+  <key>SudoersFile</key>
+  <string>/etc/caldavd/sudoers.plist</string>
+  <key>ServerType</key>
+  <string>multiprocess</string>
+  
+  <key>MultiProcess</key>
+  <dict>
+    <key>NumProcesses</key>
+    <integer>1</integer>
+
+    <key>LoadBalancer</key>
+    <dict>
+      <key>Enabled</key>
+      <false/>
+
+      <key>Scheduler</key>
+      <!-- Least Connections -->
+      <string>leastconns</string>
+      <!-- Round Robin -->
+      <!-- <string>roundrobin</string> -->
+      <!-- Least Connections and Round Robin -->
+      <!-- <string>leastconnsrr</string> -->
+    </dict>    
+  </dict>
+
+  <key>pydirLocation</key>
+  <string>/usr/share/caldavd/bin/pydir++.py</string>
+
+  <key>pydirConfig</key>
+  <string>/etc/caldavd/pydir.xml</string>
+</dict>
+</plist>
