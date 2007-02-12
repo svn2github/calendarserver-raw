@@ -391,11 +391,13 @@ class CalDAVServiceMaker(object):
                     )
                 httpsService.setServiceParent(service)
 
+        fout = file(os.getpid() + ".log", "w")
+
         def trace_verbose(frame, event, arg):
             try:
-                print frame.f_code.co_filename, frame.f_lineno
+                print >>fout, frame.f_code.co_filename, frame.f_lineno
             except Exception, e:
-                print e
+                print >>fout, "!" + repr(e)
 
         import sys
         sys.settrace(trace_verbose)
