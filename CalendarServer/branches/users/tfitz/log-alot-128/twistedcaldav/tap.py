@@ -390,7 +390,16 @@ class CalDAVServiceMaker(object):
                     interface=bindAddress
                     )
                 httpsService.setServiceParent(service)
-            
+
+        def trace_verbose(frame, event, arg):
+            try:
+                print frame.f_code.co_filename, frame.f_lineno
+            except Exception, e:
+                print e
+
+        import sys
+        sys.settrace(trace_verbose)
+
         return service
 
     makeService_slave = makeService_singleprocess
