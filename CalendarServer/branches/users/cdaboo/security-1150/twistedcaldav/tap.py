@@ -44,7 +44,7 @@ from twisted.web2.log import LogWrapperResource
 from twisted.web2.server import Site
 
 from twistedcaldav.cluster import makeService_multiprocess, makeService_pydir
-from twistedcaldav.config import config, parseConfig, defaultConfig
+from twistedcaldav.config import config, parseConfig, defaultConfig, ConfigurationError
 from twistedcaldav.logging import RotatingFileAccessLoggingObserver
 from twistedcaldav.root import RootResource
 from twistedcaldav.resource import CalDAVResource
@@ -189,27 +189,26 @@ class CalDAVOptions(Options):
         
     def checkDirectory(self, dirpath, description, access=None, fail=False, permissions=None, uname=None, gname=None):
         if not os.path.exists(dirpath):
-            raise ValueError("%s does not exist: %s" % (description, dirpath,))
+            raise ConfigurationError("%s does not exist: %s" % (description, dirpath,))
         elif not os.path.isdir(dirpath):
-            raise ValueError("%s is not a directory: %s" % (description, dirpath,))
+            raise ConfigurationError("%s is not a directory: %s" % (description, dirpath,))
         elif access and not os.access(dirpath, access):
-            raise ValueError("Insufficient permissions for server on %s directory: %s" % (description, dirpath,))
+            raise ConfigurationError("Insufficient permissions for server on %s directory: %s" % (description, dirpath,))
         self.securityCheck(dirpath, description, fail=fail, permissions=permissions, uname=uname, gname=gname)
     
     def checkFile(self, filepath, description, access=None, fail=False, permissions=None, uname=None, gname=None):
         if not os.path.exists(filepath):
-            raise ValueError("%s does not exist: %s" % (description, filepath,))
+            raise ConfigurationError("%s does not exist: %s" % (description, filepath,))
         elif not os.path.isfile(filepath):
-            raise ValueError("%s is not a file: %s" % (description, filepath,))
+            raise ConfigurationError("%s is not a file: %s" % (description, filepath,))
         elif access and not os.access(filepath, access):
-            raise ValueError("Insufficient permissions for server on %s directory: %s" % (description, filepath,))
+            raise ConfigurationError("Insufficient permissions for server on %s directory: %s" % (description, filepath,))
         self.securityCheck(filepath, description, fail=fail, permissions=permissions, uname=uname, gname=gname)
 
     def securityCheck(self, path, description, fail=False, permissions=None, uname=None, gname=None):
-        
         def raiseOrPrint(txt):
             if fail:
-                ValueError(txt)
+                ConfigurationError(txt)
             else:
                 print "WARNING: %s" % (txt,)
 
