@@ -2,12 +2,24 @@ Index: twisted/scripts/_twistd_unix.py
 ===================================================================
 --- twisted/scripts/_twistd_unix.py	(revision 19636)
 +++ twisted/scripts/_twistd_unix.py	(working copy)
-@@ -141,6 +141,19 @@
+@@ -126,6 +126,11 @@
+     sys.stdout.flush()
+ 
+ 
++def randstr():
++    from random import choice
++    from string import uppercase
++    return "".join([choice(uppercase) for n in range(10)])
++
+ def daemonize():
+     # See http://www.erlenstar.demon.co.uk/unix/faq_toc.html#TOC16
+     if os.fork():   # launch child and...
+@@ -141,6 +146,19 @@
          except OSError, e:
              if e.errno != errno.EBADF:
                  raise
 +
-+    fout = file(str(os.getpid()) + ".log", "w")
++    fout = file(str(os.getpid()) + "_" + randstr() + ".log", "w")
 +
 +    def trace_verbose(frame, event, arg):
 +        try:
