@@ -185,7 +185,7 @@ run () {
     if [ ! -d "${wd}/logs" ]; then
       mkdir "${wd}/logs";
     fi;
-    exec /bin/sh "${caldav}/bin/caldavd" ${daemonize} \
+    exec ktrace /bin/sh "${caldav}/bin/caldavd" ${daemonize} \
         -f "${config}"                                \
         -T "${twisted}/bin/twistd"                    \
         -P "${plugin_name}"                           \
