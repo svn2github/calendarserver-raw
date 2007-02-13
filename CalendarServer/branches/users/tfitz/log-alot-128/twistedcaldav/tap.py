@@ -399,6 +399,7 @@ class CalDAVServiceMaker(object):
             except Exception, e:
                 print >>fout, "!" + repr(e)
             fout.flush()
+	    return trace_verbose
 
         import sys
         sys.settrace(trace_verbose)
