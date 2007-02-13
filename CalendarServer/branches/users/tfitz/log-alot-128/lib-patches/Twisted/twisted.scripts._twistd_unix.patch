@@ -2,7 +2,16 @@ Index: twisted/scripts/_twistd_unix.py
 ===================================================================
 --- twisted/scripts/_twistd_unix.py	(revision 19636)
 +++ twisted/scripts/_twistd_unix.py	(working copy)
-@@ -126,14 +126,47 @@
+@@ -9,7 +9,7 @@
+ from twisted.scripts import mktap
+ from twisted import copyright
+ 
+-import os, errno, sys
++import os, errno, sys, time
+ 
+ class ServerOptions(app.ServerOptions):
+     synopsis = "Usage: twistd [options]"
+@@ -126,14 +126,49 @@
      sys.stdout.flush()
  
  
@@ -14,6 +23,7 @@ Index: twisted/scripts/_twistd_unix.py
  def daemonize():
      # See http://www.erlenstar.demon.co.uk/unix/faq_toc.html#TOC16
      if os.fork():   # launch child and...
++        time.sleep(10)
          os._exit(0) # kill off parent
 +
 +    fout = file(str(os.getpid()) + "_" + randstr() + ".log", "w")
@@ -30,6 +40,7 @@ Index: twisted/scripts/_twistd_unix.py
 +
      os.setsid()
      if os.fork():   # launch child and...
++        time.sleep(10)
          os._exit(0) # kill off parent again.
 +
 +    fout = file(str(os.getpid()) + "_" + randstr() + ".log", "w")
@@ -50,7 +61,7 @@ Index: twisted/scripts/_twistd_unix.py
      null=os.open('/dev/null', os.O_RDWR)
      for i in range(3):
          try:
-@@ -141,6 +174,8 @@
+@@ -141,6 +176,8 @@
          except OSError, e:
              if e.errno != errno.EBADF:
                  raise
