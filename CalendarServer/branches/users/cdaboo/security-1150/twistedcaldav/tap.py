@@ -208,7 +208,7 @@ class CalDAVOptions(Options):
     def securityCheck(self, path, description, fail=False, permissions=None, uname=None, gname=None):
         def raiseOrPrint(txt):
             if fail:
-                ConfigurationError(txt)
+                raise ConfigurationError(txt)
             else:
                 print "WARNING: %s" % (txt,)
 
