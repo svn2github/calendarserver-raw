@@ -390,6 +390,16 @@ class CalDAVServiceMaker(object):
                     interface=bindAddress
                     )
                 httpsService.setServiceParent(service)
+
+        import signal
+        def sighup_handler(num, frame):
+            if frame is None:
+                location = "Unknown"
+            else:
+	        location = str(frame.f_code.co_name) + ": " + str(frame.f_lineno)
+            log.msg("SIGHUP recieved at " + location)
+
+        signal.signal(signal.SIGHUP, sighup_handler)
             
         return service
 
