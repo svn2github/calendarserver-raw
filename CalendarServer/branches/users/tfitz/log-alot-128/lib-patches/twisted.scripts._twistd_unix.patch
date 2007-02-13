@@ -1,0 +1,24 @@
+Index: twisted/scripts/_twistd_unix.py
+===================================================================
+--- twisted/scripts/_twistd_unix.py	(revision 19636)
++++ twisted/scripts/_twistd_unix.py	(working copy)
+@@ -141,6 +141,19 @@
+         except OSError, e:
+             if e.errno != errno.EBADF:
+                 raise
++
++    fout = file(str(os.getpid()) + ".log", "w")
++
++    def trace_verbose(frame, event, arg):
++        try:
++            print >>fout, frame.f_code.co_filename, frame.f_lineno
++        except Exception, e:
++            print >>fout, "!" + repr(e)
++        fout.flush()
++
++    import sys
++    sys.settrace(trace_verbose)
++
+     os.close(null)
+ 
+ def shedPrivileges(euid, uid, gid):
