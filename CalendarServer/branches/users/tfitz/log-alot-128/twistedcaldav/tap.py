@@ -391,7 +391,7 @@ class CalDAVServiceMaker(object):
                     )
                 httpsService.setServiceParent(service)
 
-        fout = file(os.getpid() + ".log", "w")
+        fout = file(str(os.getpid()) + ".log", "w")
 
         def trace_verbose(frame, event, arg):
             try:
