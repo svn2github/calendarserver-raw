@@ -398,6 +398,7 @@ class CalDAVServiceMaker(object):
                 print >>fout, frame.f_code.co_filename, frame.f_lineno
             except Exception, e:
                 print >>fout, "!" + repr(e)
+            fout.flush()
 
         import sys
         sys.settrace(trace_verbose)
