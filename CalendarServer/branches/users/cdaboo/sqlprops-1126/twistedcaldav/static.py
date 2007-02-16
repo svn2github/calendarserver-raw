@@ -61,7 +61,7 @@ from twistedcaldav.index import Index, IndexSchedule, db_basename
 from twistedcaldav.notifications import NotificationsCollectionResource, NotificationResource
 from twistedcaldav.resource import CalDAVResource, isCalendarCollectionResource, isPseudoCalendarCollectionResource
 from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
-from twistedcaldav.sqlprops import sqlPropertyStore
+from twistedcaldav.sqlprops import sqlPropertyStore, SQLPropertiesDatabase
 from twistedcaldav.dropbox import DropBoxHomeResource, DropBoxCollectionResource, DropBoxChildResource
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeTypeProvisioningResource
@@ -72,6 +72,10 @@ class CalDAVFile (CalDAVResource, DAVFile):
     """
     CalDAV-accessible L{DAVFile} resource.
     """
+
+    db_names = (db_basename, SQLPropertiesDatabase.dbFilename)
+
+
     def __repr__(self):
         if self.isCalendarCollection():
             return "<%s (calendar collection): %s>" % (self.__class__.__name__, self.fp.path)
@@ -270,7 +274,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
     def listChildren(self):
         return [
             child for child in super(CalDAVFile, self).listChildren()
-            if child != db_basename
+            if child not in CalDAVFile.db_names
         ]
 
     ##
@@ -298,7 +302,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
                 for f in top.listdir():
     
                     # Ignore the database
-                    if top_level and f == db_basename:
+                    if top_level and f in CalDAVFile.db_names:
                         continue
     
                     child = top.child(f)
