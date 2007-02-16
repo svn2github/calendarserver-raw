@@ -15,6 +15,8 @@
 #
 # DRI: Wilfredo Sanchez, wsanchez@apple.com
 ##
+import time
+from twistedcaldav.root import RootResource
 from twistedcaldav import customxml
 from twistedcaldav import caldavxml
 from twisted.web2.dav import davxml
@@ -68,10 +70,47 @@ class SQLProps (twistedcaldav.test.util.TestCase):
                         msg="Could not find property %s." % prop)
         self.assertTrue(index.get(prop.qname()) == prop,
                         msg="Could not get property %s." % prop)
-        
+    
+    def _testPropertyList(self, proplist):
+        self.assertTrue(len(proplist) == len(SQLProps.props),
+                        msg="Number of properties returned %s not equal to number queried %s." % (len(proplist), len(SQLProps.props),))
+        for prop in SQLProps.props:
+            for p in proplist:
+                if prop == p:
+                    proplist.remove(p)
+                    break
+        self.assertTrue(len(proplist) == 0,
+                        msg="Incorrect properties returned %s." % proplist)
+
+    def _testResourcePropertyList(self, num_resources, resourcedict):
+        self.assertTrue(len(resourcedict) == num_resources,
+                        msg="Number of resources returned %s not equal to number queried %s." % (len(resourcedict), num_resources,))
+        for i in xrange(num_resources):
+            fname = "file%04s.ics" % (i,)
+            self.assertTrue(resourcedict.has_key(fname),
+                            msg="Resource %s not returned in query results" % (fname,))
+            self._testPropertyList(resourcedict[fname])
+
+    def _setupMultipleResources(self, number):
+        self.collection_name, self.collection_uri = self.mkdtemp("sql")
+        for i in xrange(number):
+            rsrc = CalDAVFile(os.path.join(self.collection_name, "file%04s.ics" % (i,)))
+            index = sqlPropertyStore(rsrc)
+            for prop in SQLProps.props:
+                index.set(prop)
+        return index
+
     def test_db_init_directory(self):
         self.collection_name, self.collection_uri = self.mkdtemp("sql")
         rsrc = CalDAVFile(self.collection_name)
+        index = sqlPropertyStore(rsrc)
+        db = index.index._db()
+        self.assertTrue(os.path.exists(os.path.join(os.path.dirname(self.collection_name), SQLPropertiesDatabase.dbFilename)),
+                        msg="Could not initialize index via collection resource.")
+
+    def test_db_init_root(self):
+        self.collection_name, self.collection_uri = self.mkdtemp("sql")
+        rsrc = RootResource(self.collection_name)
         index = sqlPropertyStore(rsrc)
         db = index.index._db()
         self.assertTrue(os.path.exists(os.path.join(self.collection_name, SQLPropertiesDatabase.dbFilename)),
@@ -121,3 +160,28 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         for prop in SQLProps.props:
             self.assertFalse(index.contains(prop.qname()),
                             msg="Could not find property %s." % prop)
+
+    def test_getallproperties(self):
+        index = self._setUpIndex()
+        for prop in SQLProps.props:
+            self._setProperty(index, prop)
+        
+        result = index.getAll([p.qname() for p in SQLProps.props])
+        self._testPropertyList(result)
+
+    def test_getallresourceproperties(self):
+        num_resources = 10
+        index = self._setupMultipleResources(num_resources)
+        result = index.getAllResources([p.qname() for p in SQLProps.props])
+        self._testResourcePropertyList(num_resources, result)
+
+#    def test_timegetallresourceproperties(self):
+#        num_resources = 1000
+#        index = self._setupMultipleResources(num_resources)
+#        t1 = time.time()
+#        result = index.getAllResources([p.qname() for p in SQLProps.props])
+#        t2 = time.time()
+#        self.assertTrue(t1 == t2,
+#                        msg="Time for 1000 prop query = %s" % (t2 - t1,))
+#
+#        self._testResourcePropertyList(num_resources, result)

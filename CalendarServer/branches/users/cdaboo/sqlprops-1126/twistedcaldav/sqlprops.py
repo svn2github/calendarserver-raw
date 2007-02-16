@@ -44,15 +44,13 @@ from twistedcaldav.sql import AbstractSQLDatabase
 
 class sqlPropertyStore (object):
     """
-
+    A dead property store that uses an SQLite database backend.
     """
  
     def _encode(clazz, name):
-        return urllib.quote("{%s}%s" % name, safe='{}:')
+        return "{%s}%s" % name
 
     def _decode(clazz, name):
-        name = urllib.unquote(name)
-
         index = name.find("}")
     
         if (index is -1 or not len(name) > index or not name[0] == "{"):
@@ -98,6 +96,58 @@ class sqlPropertyStore (object):
         doc = davxml.WebDAVDocument.fromString(value)
 
         return doc.root_element
+
+    def getAll(self, qnames):
+        """
+        Read properties from index.
+        
+        @param qnames: C{list} of C{tuple} of property namespace and name.
+        @return: a C{list} of property classes
+        """
+        if not qnames:
+            return None
+
+        if not self.index:
+            raise HTTPError(StatusResponse(
+                responsecode.NOT_FOUND,
+                "No such property: {%s}%s" % qnames[0]
+            ))
+            
+        values = self.index.getAllPropertyValues(self.rname, map(self._encode, qnames))
+        
+        results = []
+        for value in values.itervalues():
+            doc = davxml.WebDAVDocument.fromString(value)
+            results.append(doc.root_element)
+        return results
+
+    def getAllResources(self, qnames):
+        """
+        Read properties for all child resources from index.
+        
+        @param qnames: C{list} of C{tuple} of property namespace and name.
+        @return: a C{dict} with resource name as keys and C{list} of property classes as values
+        """
+        if not qnames:
+            return None
+
+        if not self.index:
+            raise HTTPError(StatusResponse(
+                responsecode.NOT_FOUND,
+                "No such property: {%s}%s" % qnames[0]
+            ))
+            
+        values = self.index.getAllResourcePropertyValues(map(self._encode, qnames))
+        results = {}
+        
+        for key, value in values.iteritems():
+            pvalues = []
+            for pvalue in value.itervalues():
+                doc = davxml.WebDAVDocument.fromString(pvalue)
+                pvalues.append(doc.root_element)
+            results[key] = pvalues
+        
+        return results
 
     def set(self, property):
         """
@@ -150,8 +200,7 @@ class sqlPropertyStore (object):
 
         if self.index:
             results = self.index.listProperties(self.rname)
-            result = [self._decode(name) for name in results]
-            return result
+            return map(self._decode, results)
         else:
             return []
 
@@ -210,7 +259,56 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             return members[0]
         else:
             raise ValueError("Multiple properties of the same name %s stored for resource %s" % (pname, rname,))
+
+    def getAllPropertyValues(self, rname, pnames):
+        """
+        Get specified property values from specific resource.
+    
+        @param rname: a C{str} containing the resource name.
+        @param pnames: a C{list} of C{str} containing the name of the properties to get.
+        @return: a C{dict} containing property name/value.
+        """
         
+        # Remove what is there, then add it back.
+        log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
+        properties = {}
+        statement = "select PROPERTYNAME, PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and ("
+        args = [rname]
+        for i, pname in enumerate(pnames):
+            if i != 0:
+                statement += " or "
+            statement += "PROPERTYNAME=:%s" % (i + 2,)
+            args.append(pname)
+        statement += ")"
+
+        for row in self._db_execute(statement, *args):
+            properties[row[0]] = row[1]
+
+        return properties
+
+    def getAllResourcePropertyValues(self, pnames):
+        """
+        Get specified property values from all resources.
+    
+        @param pnames: a C{list} of C{str} containing the name of the properties to get.
+        @return: a C{dict} containing C{str} keys (names of child resources) and C{dict} values of property name/value.
+        """
+        
+        # Remove what is there, then add it back.
+        log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
+        members = {}
+        statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYVALUE from PROPERTIES where "
+        args = []
+        for i, pname in enumerate(pnames):
+            if i != 0:
+                statement += " or "
+            statement += "PROPERTYNAME=:%s" % (i + 1,)
+            args.append(pname)
+
+        for row in self._db_execute(statement, *args):
+            members.setdefault(row[0], {})[row[1]] = row[2]
+
+        return members
 
     def removeProperty(self, rname, pname):
         """
