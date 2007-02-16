@@ -15,21 +15,16 @@
 #
 # DRI: Wilfredo Sanchez, wsanchez@apple.com
 ##
-from twisted.web2.dav.element.base import WebDAVUnknownElement
-import time
-from twistedcaldav.root import RootResource
-from twistedcaldav import customxml
-from twistedcaldav import caldavxml
-from twisted.web2.dav import davxml
-
-from twistedcaldav.static import CalDAVFile
 
 import os
+import time
 
-from twistedcaldav.sqlprops import SQLPropertiesDatabase
+from twisted.web2.dav import davxml
 
-from twistedcaldav.sqlprops import sqlPropertyStore
-
+from twistedcaldav import caldavxml, customxml
+from twistedcaldav.root import RootResource
+from twistedcaldav.sqlprops import sqlPropertyStore, SQLPropertiesDatabase
+from twistedcaldav.static import CalDAVFile
 import twistedcaldav.test.util
 
 class SQLProps (twistedcaldav.test.util.TestCase):
