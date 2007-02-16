@@ -21,8 +21,6 @@
 #
 # DRI: Wilfredo Sanchez, wsanchez@apple.com
 ##
-from twistedcaldav.root import RootResource
-from twisted.python import log
 
 """
 DAV Property store an sqlite database.
@@ -33,13 +31,14 @@ change.
 
 __all__ = ["sqlPropertyStore"]
 
+import cPickle
 import os
-import urllib
 
+from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError, StatusResponse
-from twisted.web2.dav import davxml
 
+from twistedcaldav.root import RootResource
 from twistedcaldav.sql import AbstractSQLDatabase
 
 class sqlPropertyStore (object):
@@ -93,9 +92,7 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qname
             ))
             
-        doc = davxml.WebDAVDocument.fromString(value)
-
-        return doc.root_element
+        return cPickle.loads(value)
 
     def getAll(self, qnames):
         """
@@ -117,8 +114,7 @@ class sqlPropertyStore (object):
         
         results = []
         for value in values.itervalues():
-            doc = davxml.WebDAVDocument.fromString(value)
-            results.append(doc.root_element)
+            results.append(cPickle.loads(value))
         return results
 
     def getAllResources(self, qnames):
@@ -143,8 +139,7 @@ class sqlPropertyStore (object):
         for key, value in values.iteritems():
             pvalues = []
             for pvalue in value.itervalues():
-                doc = davxml.WebDAVDocument.fromString(pvalue)
-                pvalues.append(doc.root_element)
+                pvalues.append(cPickle.loads(pvalue))
             results[key] = pvalues
         
         return results
@@ -157,7 +152,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setPropertyValue(self.rname, self._encode(property.qname()), property.toxml())
+            self.index.setPropertyValue(self.rname, self._encode(property.qname()), cPickle.dumps(property))
 
     def delete(self, qname):
         """
@@ -222,7 +217,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
     def __init__(self, path):
         path = os.path.join(path, SQLPropertiesDatabase.dbFilename)
-        super(SQLPropertiesDatabase, self).__init__(path, SQLPropertiesDatabase.dbFormatVersion)
+        super(SQLPropertiesDatabase, self).__init__(path, SQLPropertiesDatabase.dbFormatVersion, utf8=True)
 
     def setPropertyValue(self, rname, pname, pvalue):
         """

@@ -15,6 +15,7 @@
 #
 # DRI: Wilfredo Sanchez, wsanchez@apple.com
 ##
+from twisted.web2.dav.element.base import WebDAVUnknownElement
 import time
 from twistedcaldav.root import RootResource
 from twistedcaldav import customxml
@@ -125,6 +126,10 @@ class SQLProps (twistedcaldav.test.util.TestCase):
     def test_setoneproperty(self):
         for prop in SQLProps.props:
             self._setOnePropertyAndTest(prop)
+
+    def test_setunknownproperty(self):
+        doc = davxml.WebDAVDocument.fromString("""<?xml version="1.0" encoding="utf-8" ?><guess/>""")
+        self._setOnePropertyAndTest(doc.root_element)
 
     def test_setmultipleproperties(self):
         index = self._setUpIndex()
