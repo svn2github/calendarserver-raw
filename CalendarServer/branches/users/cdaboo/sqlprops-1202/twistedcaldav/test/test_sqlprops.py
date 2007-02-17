@@ -92,8 +92,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         for i in xrange(number):
             rsrc = CalDAVFile(os.path.join(self.collection_name, "file%04s.ics" % (i,)))
             index = sqlPropertyStore(rsrc)
-            for prop in SQLProps.props:
-                index.set(prop)
+            index.setAll(SQLProps.props)
         return index
 
     def test_db_init_directory(self):
@@ -130,6 +129,16 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         index = self._setUpIndex()
         for prop in SQLProps.props:
             self._setProperty(index, prop)
+        for prop in SQLProps.props:
+            self._testProperty(index, prop)
+        proplist = set(index.list())
+        expected_proplist = set([prop.qname() for prop in SQLProps.props])
+        self.assertTrue(proplist == expected_proplist,
+                        msg="Property lists do not match: %s != %s." % (proplist, expected_proplist))
+
+    def test_setallproperties(self):
+        index = self._setUpIndex()
+        index.setAll(SQLProps.props)
         for prop in SQLProps.props:
             self._testProperty(index, prop)
         proplist = set(index.list())

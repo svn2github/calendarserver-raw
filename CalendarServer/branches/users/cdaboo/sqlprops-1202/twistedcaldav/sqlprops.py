@@ -128,6 +128,16 @@ class sqlPropertyStore (object):
         if self.index:
             self.index.setPropertyValue(self.rname, property.qname(), property)
 
+    def setAll(self, properties):
+        """
+        Write all properties into index.
+        
+        @param properties: C{list} of properties to write
+        """
+
+        if self.index:
+            self.index.setAllPropertyValues(self.rname, [(p.qname(), p) for p in properties])
+
     def delete(self, qname):
         """
         Delete proeprty from index.
@@ -218,6 +228,21 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         # Remove what is there, then add it back.
         self._delete_from_db(rname, self._encode(pname))
         self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue))
+        self._db_commit()
+
+    def setAllPropertyValues(self, rname, properties):
+        """
+        Add a property.
+    
+        @param rname: a C{str} containing the resource name.
+        @param pname: a C{str} containing the name of the property to set.
+        @param pvalue: a C{str} containing the property value to set.
+        """
+        
+        # Remove what is there, then add it back.
+        for p in properties:
+            self._delete_from_db(rname, self._encode(p[0]))
+            self._add_to_db(rname, self._encode(p[0]), cPickle.dumps(p[1]))
         self._db_commit()
 
     def getPropertyValue(self, rname, pname):
