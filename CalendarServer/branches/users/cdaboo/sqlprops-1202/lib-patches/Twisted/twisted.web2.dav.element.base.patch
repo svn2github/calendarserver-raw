@@ -31,9 +31,13 @@ Index: twisted/web2/dav/element/base.py
  
          self.attributes = my_attributes
  
-@@ -190,14 +189,93 @@
+@@ -189,15 +188,97 @@
+     def __contains__(self, child):
          return child in self.children
  
++    def cloneEmpty(self):
++        return self.__class__()
++
      def writeXML(self, output):
 -        document = xml.dom.minidom.Document()
 -        self.addToDOM(document, None)
@@ -129,7 +133,7 @@ Index: twisted/web2/dav/element/base.py
  
      def element(self, document):
          element = document.createElementNS(self.namespace, self.name)
-@@ -324,6 +402,22 @@
+@@ -324,6 +405,22 @@
              log.err("Invalid PCDATA: %r" % (self.data,))
              raise
  
@@ -152,3 +156,25 @@ Index: twisted/web2/dav/element/base.py
  class WebDAVOneShotElement (WebDAVElement):
      """
      Element with exactly one WebDAVEmptyElement child and no attributes.
+@@ -364,6 +461,21 @@
+         PCDATAElement: (0, None),
+     }
+ 
++    def _qname(self):
++        return (self.namespace, self.name)
++
++    def _sname(self):
++        return "{%s}%s" % (self.namespace, self.name)
++
++    qname = _qname
++    sname = _sname
++
++    def cloneEmpty(self):
++        dup = self.__class__()
++        dup.namespace = self.namespace
++        dup.name = self.name
++        return dup
++
+ class WebDAVEmptyElement (WebDAVElement):
+     """
+     WebDAV element with no contents.
