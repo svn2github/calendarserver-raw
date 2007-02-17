@@ -41,6 +41,8 @@ from twisted.web2.http import HTTPError, StatusResponse
 from twistedcaldav.root import RootResource
 from twistedcaldav.sql import AbstractSQLDatabase
 
+DEBUG_LOG = False
+
 class sqlPropertyStore (object):
     """
     A dead property store that uses an SQLite database backend.
@@ -228,7 +230,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         """
         
         # Remove what is there, then add it back.
-        log.msg("getPropertyValue: %s \"%s\" \"%s\"" % (self.dbpath, rname, pname))
+        if DEBUG_LOG:
+            log.msg("getPropertyValue: %s \"%s\" \"%s\"" % (self.dbpath, rname, pname))
         members = []
         for row in self._db_execute("select PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encode(pname)):
             members.append(row[0])
@@ -250,7 +253,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         """
         
         # Remove what is there, then add it back.
-        log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
+        if DEBUG_LOG:
+            log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
         properties = {}
         statement = "select PROPERTYNAME, PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and ("
         args = [rname]
@@ -275,7 +279,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         """
         
         # Remove what is there, then add it back.
-        log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
+        if DEBUG_LOG:
+            log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
         members = {}
         statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYVALUE from PROPERTIES where "
         args = []
