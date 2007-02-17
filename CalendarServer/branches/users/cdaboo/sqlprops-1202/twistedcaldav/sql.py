@@ -35,14 +35,16 @@ class AbstractSQLDatabase(object):
     A generic SQL database.
     """
 
-    def __init__(self, dbpath, version):
+    def __init__(self, dbpath, version, utf8=False):
         """
-        @param resource: the L{twistedcaldav.static.CalDAVFile} resource to
-            index. C{resource} must be a calendar collection (ie.
-            C{resource.isPseudoCalendarCollection()} returns C{True}.)
+        @param dppath: C{str} containing the file path to the database file.
+        @param version: C{str} containing the version for the database schema.
+        @param utf8: C{True} if utf8 encoded C{str} should be returned for SQl TEXT data,
+            C{False} if C{unicode} should be returned.
         """
         self.dbpath = dbpath
         self.version = version
+        self.utf8 = utf8
 
     def _db_type(self):
         """
@@ -58,6 +60,8 @@ class AbstractSQLDatabase(object):
         if not hasattr(self, "_db_connection"):
             db_filename = self.dbpath
             self._db_connection = sqlite.connect(db_filename)
+            if self.utf8:
+                self._db_connection.text_factory = str
 
             #
             # Set up the schema
