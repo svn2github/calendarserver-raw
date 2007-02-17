@@ -71,9 +71,9 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         self.assertTrue(len(proplist) == len(SQLProps.props),
                         msg="Number of properties returned %s not equal to number queried %s." % (len(proplist), len(SQLProps.props),))
         for prop in SQLProps.props:
-            for p in proplist:
-                if prop == p:
-                    proplist.remove(p)
+            for k, v in proplist.iteritems():
+                if prop == v:
+                    del proplist[k]
                     break
         self.assertTrue(len(proplist) == 0,
                         msg="Incorrect properties returned %s." % proplist)

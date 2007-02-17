@@ -46,20 +46,6 @@ class sqlPropertyStore (object):
     A dead property store that uses an SQLite database backend.
     """
  
-    def _encode(clazz, name):
-        return "{%s}%s" % name
-
-    def _decode(clazz, name):
-        index = name.find("}")
-    
-        if (index is -1 or not len(name) > index or not name[0] == "{"):
-            raise ValueError("Invalid encoded name: %r" % (name,))
-    
-        return (name[1:index], name[index+1:])
-
-    _encode = classmethod(_encode)
-    _decode = classmethod(_decode)
-
     def __init__(self, resource):
         self.resource = resource
         if os.path.exists(os.path.dirname(resource.fp.path)):
@@ -85,14 +71,14 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qname
             ))
             
-        value = self.index.getPropertyValue(self.rname, self._encode(qname))
+        value = self.index.getPropertyValue(self.rname, qname)
         if not value:
             raise HTTPError(StatusResponse(
                 responsecode.NOT_FOUND,
                 "No such property: {%s}%s" % qname
             ))
             
-        return cPickle.loads(value)
+        return value
 
     def getAll(self, qnames):
         """
@@ -110,19 +96,14 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qnames[0]
             ))
             
-        values = self.index.getAllPropertyValues(self.rname, map(self._encode, qnames))
-        
-        results = []
-        for value in values.itervalues():
-            results.append(cPickle.loads(value))
-        return results
+        return self.index.getAllPropertyValues(self.rname, qnames)
 
     def getAllResources(self, qnames):
         """
         Read properties for all child resources from index.
         
         @param qnames: C{list} of C{tuple} of property namespace and name.
-        @return: a C{dict} with resource name as keys and C{list} of property classes as values
+        @return: a C{dict} with resource name as keys and C{dict} of property name/classes as values
         """
         if not qnames:
             return None
@@ -133,16 +114,7 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qnames[0]
             ))
             
-        values = self.index.getAllResourcePropertyValues(map(self._encode, qnames))
-        results = {}
-        
-        for key, value in values.iteritems():
-            pvalues = []
-            for pvalue in value.itervalues():
-                pvalues.append(cPickle.loads(pvalue))
-            results[key] = pvalues
-        
-        return results
+        return self.index.getAllResourcePropertyValues(qnames)
 
     def set(self, property):
         """
@@ -152,7 +124,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setPropertyValue(self.rname, self._encode(property.qname()), cPickle.dumps(property))
+            self.index.setPropertyValue(self.rname, property.qname(), property)
 
     def delete(self, qname):
         """
@@ -164,7 +136,7 @@ class sqlPropertyStore (object):
         """
         
         if self.index:
-            self.index.removeProperty(self.rname, self._encode(qname))
+            self.index.removeProperty(self.rname, qname)
 
     def deleteAll(self):
         """
@@ -180,8 +152,8 @@ class sqlPropertyStore (object):
 
     def contains(self, qname):
         if self.index:
-            value = self.index.getPropertyValue(self.rname, self._encode(qname))
-            return value != None
+            value = self.index.getPropertyValue(self.rname, qname)
+            return value is not None
         else:
             return False
 
@@ -194,10 +166,9 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            results = self.index.listProperties(self.rname)
-            return map(self._decode, results)
+            return self.index.listProperties(self.rname)
         else:
-            return []
+            return ()
 
 class SQLPropertiesDatabase(AbstractSQLDatabase):
     """
@@ -215,6 +186,20 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     dbFilename = ".db.sqlproperties"
     dbFormatVersion = "1"
 
+    def _encode(clazz, name):
+        return "{%s}%s" % name
+
+    def _decode(clazz, name):
+        index = name.find("}")
+    
+        if (index is -1 or not len(name) > index or not name[0] == "{"):
+            raise ValueError("Invalid encoded name: %r" % (name,))
+    
+        return (name[1:index], name[index+1:])
+
+    _encode = classmethod(_encode)
+    _decode = classmethod(_decode)
+
     def __init__(self, path):
         path = os.path.join(path, SQLPropertiesDatabase.dbFilename)
         super(SQLPropertiesDatabase, self).__init__(path, SQLPropertiesDatabase.dbFormatVersion, utf8=True)
@@ -229,8 +214,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         """
         
         # Remove what is there, then add it back.
-        self._delete_from_db(rname, pname)
-        self._add_to_db(rname, pname, pvalue)
+        self._delete_from_db(rname, self._encode(pname))
+        self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue))
         self._db_commit()
 
     def getPropertyValue(self, rname, pname):
@@ -245,15 +230,15 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         # Remove what is there, then add it back.
         log.msg("getPropertyValue: %s \"%s\" \"%s\"" % (self.dbpath, rname, pname))
         members = []
-        for row in self._db_execute("select PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, pname):
+        for row in self._db_execute("select PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encode(pname)):
             members.append(row[0])
         setlength =  len(members)
         if setlength == 0:
             return None
         elif setlength == 1:
-            return members[0]
+            return cPickle.loads(members[0])
         else:
-            raise ValueError("Multiple properties of the same name %s stored for resource %s" % (pname, rname,))
+            raise ValueError("Multiple properties of the same name \"%s\" stored for resource \"%s\"" % (pname, rname,))
 
     def getAllPropertyValues(self, rname, pnames):
         """
@@ -273,11 +258,11 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             if i != 0:
                 statement += " or "
             statement += "PROPERTYNAME=:%s" % (i + 2,)
-            args.append(pname)
+            args.append(self._encode(pname))
         statement += ")"
 
         for row in self._db_execute(statement, *args):
-            properties[row[0]] = row[1]
+            properties[self._decode(row[0])] = cPickle.loads(row[1])
 
         return properties
 
@@ -298,10 +283,10 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             if i != 0:
                 statement += " or "
             statement += "PROPERTYNAME=:%s" % (i + 1,)
-            args.append(pname)
+            args.append(self._encode(pname))
 
         for row in self._db_execute(statement, *args):
-            members.setdefault(row[0], {})[row[1]] = row[2]
+            members.setdefault(row[0], {})[self._decode(row[1])] = cPickle.loads(row[2])
 
         return members
 
@@ -314,7 +299,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @return: a C{str} containing the property value.
         """
 
-        self._delete_from_db(rname, pname)
+        self._delete_from_db(rname, self._encode(pname))
         self._db_commit()
 
     def removeResource(self, rname):
@@ -338,7 +323,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
         members = set()
         for row in self._db_execute("select PROPERTYNAME from PROPERTIES where RESOURCENAME = :1", rname):
-            members.add(row[0])
+            members.add(self._decode(row[0]))
         return members
 
     def _add_to_db(self, rname, pname, pvalue):
