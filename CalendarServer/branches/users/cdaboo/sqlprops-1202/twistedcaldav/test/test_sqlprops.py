@@ -19,7 +19,15 @@
 import os
 import time
 
+from twisted.trial.unittest import SkipTest
+from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
+from twisted.web2.dav.fileop import put
+from twisted.web2.dav.resource import TwistedGETContentMD5
+from twisted.web2.dav.test.util import serialize
+from twisted.web2.iweb import IResponse
+from twisted.web2.stream import MemoryStream
+from twisted.web2.test.test_server import SimpleRequest
 
 from twistedcaldav import caldavxml, customxml
 from twistedcaldav.root import RootResource
@@ -194,3 +202,46 @@ class SQLProps (twistedcaldav.test.util.TestCase):
 #                        msg="Time for 1000 prop query = %s" % (t2 - t1,))
 #
 #        self._testResourcePropertyList(num_resources, result)
+
+    def test_deleteresource(self):
+        fpath = os.path.join(self.docroot, "file.ics")
+        rsrc = CalDAVFile(fpath)
+        ms = MemoryStream("Some Data")
+
+        def donePut(status):
+            self.assertTrue(status == responsecode.CREATED)
+            md5 = TwistedGETContentMD5.fromString("MD5")
+            rsrc.writeDeadProperty(md5)
+            
+            # Check index
+            index = sqlPropertyStore(rsrc)
+            self._testProperty(index, md5)
+            
+            def doneDelete(response):
+                response = IResponse(response)
+    
+                if response.code != responsecode.NO_CONTENT:
+                    self.fail("DELETE response %s != %s" % (response.code, responsecode.NO_CONTENT))
+    
+                if os.path.exists(fpath):
+                    self.fail("DELETE did not remove path %s" % (fpath,))
+
+                self.assertFalse(index.contains(md5.qname()),
+                                 msg="Property %s exists after resource was deleted." % md5)
+
+            def work():
+                # Delete resource and test
+                request = SimpleRequest(self.site, "DELETE", "/file.ics")
+                yield (request, doneDelete)
+
+            return serialize(self.send, work())
+
+        d = put(ms, rsrc.fp)
+        d.addCallback(donePut)
+        return d
+    
+    def test_copyresource(self):
+        raise SkipTest("test unimplemented")
+    
+    def test_moveresource(self):
+        raise SkipTest("test unimplemented")

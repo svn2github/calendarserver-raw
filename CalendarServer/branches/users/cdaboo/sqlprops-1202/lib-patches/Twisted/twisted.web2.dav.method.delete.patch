@@ -2,7 +2,7 @@ Index: twisted/web2/dav/method/delete.py
 ===================================================================
 --- twisted/web2/dav/method/delete.py	(revision 18545)
 +++ twisted/web2/dav/method/delete.py	(working copy)
-@@ -58,8 +58,28 @@
+@@ -58,8 +58,31 @@
      yield x
      x.getResult()
  
@@ -23,6 +23,9 @@ Index: twisted/web2/dav/method/delete.py
 -    yield x.getResult()
 +    result = x.getResult()
  
++    # Explicitly delete properties - no one else does it
++    self.deadProperties().deleteAll()
++
 +    # Adjust quota
 +    if myquota is not None:
 +        d = waitForDeferred(self.quotaSizeAdjust(request, -old_size))
