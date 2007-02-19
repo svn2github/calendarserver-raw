@@ -2,7 +2,7 @@ Index: twisted/web2/dav/method/put_common.py
 ===================================================================
 --- twisted/web2/dav/method/put_common.py	(revision 0)
 +++ twisted/web2/dav/method/put_common.py	(revision 0)
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,273 @@
 +##
 +# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
 +#
@@ -210,6 +210,11 @@ Index: twisted/web2/dav/method/put_common.py
 +        yield response
 +        response = response.getResult()
 +
++        # Copy dead properties first, before adding overridden values
++        if source is not None:
++            properties = source.deadProperties().getAll()
++            destination.deadProperties().setSeveral([p for p in properties.itervalues()])
++
 +        # Update the MD5 value on the resource
 +        if source is not None:
 +            # Copy MD5 value from source to destination
@@ -255,6 +260,9 @@ Index: twisted/web2/dav/method/put_common.py
 +            delete(source_uri, source.fp, depth)
 +            rollback.source_deleted = True
 +
++            # Explicitly delete properties - no one else does it
++            source.deadProperties().deleteAll()
++        
 +        # Can now commit changes and forget the rollback details
 +        rollback.Commit()
 +

@@ -73,7 +73,7 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qname
             ))
             
-        value = self.index.getPropertyValue(self.rname, qname)
+        value = self.index.getOnePropertyValue(self.rname, qname)
         if not value:
             raise HTTPError(StatusResponse(
                 responsecode.NOT_FOUND,
@@ -82,12 +82,12 @@ class sqlPropertyStore (object):
             
         return value
 
-    def getAll(self, qnames):
+    def getSeveral(self, qnames):
         """
-        Read properties from index.
+        Read specific properties from index.
         
         @param qnames: C{list} of C{tuple} of property namespace and name.
-        @return: a C{list} of property classes
+        @return: a C{dict} containing property name/value.
         """
         if not qnames:
             return None
@@ -98,11 +98,26 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qnames[0]
             ))
             
-        return self.index.getAllPropertyValues(self.rname, qnames)
+        return self.index.getSeveralPropertyValues(self.rname, qnames)
 
-    def getAllResources(self, qnames):
+    def getAll(self):
         """
-        Read properties for all child resources from index.
+        Read all properties from index.
+        
+        @param qnames: C{list} of C{tuple} of property namespace and name.
+        @return: a C{dict} containing property name/value.
+        """
+        if not self.index:
+            raise HTTPError(StatusResponse(
+                responsecode.NOT_FOUND,
+                "No properties"
+            ))
+            
+        return self.index.getAllPropertyValues(self.rname)
+
+    def getSeveralResources(self, qnames):
+        """
+        Read specific properties for all child resources from index.
         
         @param qnames: C{list} of C{tuple} of property namespace and name.
         @return: a C{dict} with resource name as keys and C{dict} of property name/classes as values
@@ -116,7 +131,7 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qnames[0]
             ))
             
-        return self.index.getAllResourcePropertyValues(qnames)
+        return self.index.getSeveralResourcePropertyValues(qnames)
 
     def set(self, property):
         """
@@ -126,17 +141,17 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setPropertyValue(self.rname, property.qname(), property)
+            self.index.setOnePropertyValue(self.rname, property.qname(), property)
 
-    def setAll(self, properties):
+    def setSeveral(self, properties):
         """
-        Write all properties into index.
+        Write specific properties into index.
         
         @param properties: C{list} of properties to write
         """
 
         if self.index:
-            self.index.setAllPropertyValues(self.rname, [(p.qname(), p) for p in properties])
+            self.index.setSeveralPropertyValues(self.rname, [(p.qname(), p) for p in properties])
 
     def delete(self, qname):
         """
@@ -152,7 +167,7 @@ class sqlPropertyStore (object):
 
     def deleteAll(self):
         """
-        Delete proeprty from index.
+        Delete property from index.
 
         DELETE from PROPERTIES where NAME=<<rname>> and PROPNAME=<<pname>>
 
@@ -164,7 +179,7 @@ class sqlPropertyStore (object):
 
     def contains(self, qname):
         if self.index:
-            value = self.index.getPropertyValue(self.rname, qname)
+            value = self.index.getOnePropertyValue(self.rname, qname)
             return value is not None
         else:
             return False
@@ -216,7 +231,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         path = os.path.join(path, SQLPropertiesDatabase.dbFilename)
         super(SQLPropertiesDatabase, self).__init__(path, SQLPropertiesDatabase.dbFormatVersion, utf8=True)
 
-    def setPropertyValue(self, rname, pname, pvalue):
+    def setOnePropertyValue(self, rname, pname, pvalue):
         """
         Add a property.
     
@@ -230,9 +245,9 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue))
         self._db_commit()
 
-    def setAllPropertyValues(self, rname, properties):
+    def setSeveralPropertyValues(self, rname, properties):
         """
-        Add a property.
+        Add a set of properties.
     
         @param rname: a C{str} containing the resource name.
         @param pname: a C{str} containing the name of the property to set.
@@ -245,7 +260,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             self._add_to_db(rname, self._encode(p[0]), cPickle.dumps(p[1]))
         self._db_commit()
 
-    def getPropertyValue(self, rname, pname):
+    def getOnePropertyValue(self, rname, pname):
         """
         Get a property.
     
@@ -268,7 +283,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         else:
             raise ValueError("Multiple properties of the same name \"%s\" stored for resource \"%s\"" % (pname, rname,))
 
-    def getAllPropertyValues(self, rname, pnames):
+    def getSeveralPropertyValues(self, rname, pnames):
         """
         Get specified property values from specific resource.
     
@@ -279,7 +294,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         
         # Remove what is there, then add it back.
         if DEBUG_LOG:
-            log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
+            log.msg("getSeveralPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
         properties = {}
         statement = "select PROPERTYNAME, PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and ("
         args = [rname]
@@ -295,7 +310,24 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
         return properties
 
-    def getAllResourcePropertyValues(self, pnames):
+    def getAllPropertyValues(self, rname):
+        """
+        Get specified property values from specific resource.
+    
+        @param rname: a C{str} containing the resource name.
+        @return: a C{dict} containing property name/value.
+        """
+        
+        # Remove what is there, then add it back.
+        if DEBUG_LOG:
+            log.msg("getAllPropertyValues: %s" % (self.dbpath,))
+        properties = {}
+        for row in self._db_execute("select PROPERTYNAME, PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1", rname):
+            properties[self._decode(row[0])] = cPickle.loads(row[1])
+
+        return properties
+
+    def getSeveralResourcePropertyValues(self, pnames):
         """
         Get specified property values from all resources.
     

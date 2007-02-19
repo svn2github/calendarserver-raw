@@ -434,6 +434,11 @@ def storeCalendarObjectResource(
         yield response
         response = response.getResult()
 
+        # Copy dead properties first, before adding overridden values
+        if source is not None:
+            properties = source.deadProperties().getAll()
+            destination.deadProperties().setSeveral([p for p in properties.itervalues()])
+
         # Update the MD5 value on the resource
         if source is not None:
             # Copy MD5 value from source to destination
@@ -494,6 +499,10 @@ def storeCalendarObjectResource(
             # Delete the source resource
             delete(source_uri, source.fp, "0")
             rollback.source_deleted = True
+
+            # Explicitly delete properties - no one else does it
+            source.deadProperties().deleteAll()
+
             logging.debug("Source removed %s" % (source.fp.path,), system="Store Resource")
 
         def doSourceIndexRecover():

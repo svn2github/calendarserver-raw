@@ -15,6 +15,8 @@
 #
 # DRI: Wilfredo Sanchez, wsanchez@apple.com
 ##
+from twistedcaldav.ical import Component
+from twisted.web2.dav.element.rfc2518 import DisplayName
 
 import os
 import time
@@ -39,6 +41,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
     """
     SQL properties tests
     """
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
 
     props = (
         davxml.DisplayName.fromString("My Name"),
@@ -69,11 +72,11 @@ class SQLProps (twistedcaldav.test.util.TestCase):
     def _setProperty(self, index, prop):
         index.set(prop)
         
-    def _testProperty(self, index, prop):
+    def _testProperty(self, index, prop, description = ""):
         self.assertTrue(index.contains(prop.qname()),
-                        msg="Could not find property %s." % prop)
+                        msg="Could not find property %s %s." % (description, prop,))
         self.assertTrue(index.get(prop.qname()) == prop,
-                        msg="Could not get property %s." % prop)
+                        msg="Could not get property %s %s." % (description, prop,))
     
     def _testPropertyList(self, proplist):
         self.assertTrue(len(proplist) == len(SQLProps.props),
@@ -100,7 +103,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         for i in xrange(number):
             rsrc = CalDAVFile(os.path.join(self.collection_name, "file%04s.ics" % (i,)))
             index = sqlPropertyStore(rsrc)
-            index.setAll(SQLProps.props)
+            index.setSeveral(SQLProps.props)
         return index
 
     def test_db_init_directory(self):
@@ -146,7 +149,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
 
     def test_setallproperties(self):
         index = self._setUpIndex()
-        index.setAll(SQLProps.props)
+        index.setSeveral(SQLProps.props)
         for prop in SQLProps.props:
             self._testProperty(index, prop)
         proplist = set(index.list())
@@ -183,28 +186,31 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         for prop in SQLProps.props:
             self._setProperty(index, prop)
         
-        result = index.getAll([p.qname() for p in SQLProps.props])
+        result = index.getSeveral([p.qname() for p in SQLProps.props])
         self._testPropertyList(result)
 
     def test_getallresourceproperties(self):
         num_resources = 10
         index = self._setupMultipleResources(num_resources)
-        result = index.getAllResources([p.qname() for p in SQLProps.props])
+        result = index.getSeveralResources([p.qname() for p in SQLProps.props])
         self._testResourcePropertyList(num_resources, result)
 
 #    def test_timegetallresourceproperties(self):
 #        num_resources = 1000
 #        index = self._setupMultipleResources(num_resources)
 #        t1 = time.time()
-#        result = index.getAllResources([p.qname() for p in SQLProps.props])
+#        result = index.getSeveralResources([p.qname() for p in SQLProps.props])
 #        t2 = time.time()
 #        self.assertTrue(t1 == t2,
 #                        msg="Time for 1000 prop query = %s" % (t2 - t1,))
 #
 #        self._testResourcePropertyList(num_resources, result)
 
-    def test_deleteresource(self):
-        fpath = os.path.join(self.docroot, "file.ics")
+    def _do_delete(self, parent):
+        fpath = self.docroot
+        if parent:
+            fpath = os.path.join(fpath, parent)
+        fpath = os.path.join(fpath, "file.ics")
         rsrc = CalDAVFile(fpath)
         ms = MemoryStream("Some Data")
 
@@ -231,7 +237,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
 
             def work():
                 # Delete resource and test
-                request = SimpleRequest(self.site, "DELETE", "/file.ics")
+                request = SimpleRequest(self.site, "DELETE", "/%sfile.ics" % (parent,))
                 yield (request, doneDelete)
 
             return serialize(self.send, work())
@@ -239,9 +245,171 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         d = put(ms, rsrc.fp)
         d.addCallback(donePut)
         return d
+
+    def test_deleteresource(self):
+        return self._do_delete("")
+
+    def test_deletecalendarresource(self):
+
+        def doneMake(response):
+            self.assertTrue(response.code == responsecode.CREATED)
+            return self._do_delete("calendar/")
+
+        # Make a calendar
+        request = SimpleRequest(self.site, "MKCALENDAR", "/calendar/")
+        return self.send(request, doneMake)
+
+    event = """BEGIN:VCALENDAR
+PRODID:Test Case
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+DTSTAMP:20070219T120000Z
+DTSTART:20070219T120000Z
+DTEND:20070219T130000Z
+UID:12345-67890-54321
+END:VEVENT
+END:VCALENDAR
+"""
+
+    def _do_copy(self, src, dst):
+        fpath = self.docroot
+        if src:
+            fpath = os.path.join(fpath, src)
+        fpath = os.path.join(fpath, "file.ics")
+        fpath_new = self.docroot
+        if dst:
+            fpath_new = os.path.join(fpath_new, dst)
+        fpath_new = os.path.join(fpath_new, "copy.ics")
+        rsrc = CalDAVFile(fpath)
+
+        def donePut(response):
+            self.assertTrue(response.code == responsecode.CREATED)
+            displayname = DisplayName.fromString("adisplayname")
+            rsrc.writeDeadProperty(displayname)
+            
+            # Check index
+            index = sqlPropertyStore(rsrc)
+            self._testProperty(index, displayname)
+            
+            def doneCopy(response):
+                response = IResponse(response)
+    
+                if response.code != responsecode.CREATED:
+                    self.fail("COPY response %s != %s" % (response.code, responsecode.NO_CONTENT))
+            
+                if not os.path.exists(fpath):
+                    self.fail("COPY removed original path %s" % (fpath,))
+
+                if not os.path.exists(fpath_new):
+                    self.fail("COPY did not create new path %s" % (fpath_new,))
+
+                self._testProperty(index, displayname, "on original resource")
+
+                rsrc_new = CalDAVFile(fpath_new)
+                index_new = sqlPropertyStore(rsrc_new)
+                self._testProperty(index_new, displayname, "on new resource")
+
+            # Copy resource and test
+            request = SimpleRequest(self.site, "COPY", "/%sfile.ics" % (src,))
+            request.headers.setHeader("destination", "/%scopy.ics" % (dst,))
+            return self.send(request, doneCopy)
+
+        stream = file(os.path.join(self.data_dir, "Holidays", "C318AA54-1ED0-11D9-A5E0-000A958A3252.ics"))
+        try: calendar = str(Component.fromStream(stream))
+        finally: stream.close()
+
+        request = SimpleRequest(self.site, "PUT", "/%sfile.ics" % (src,))
+        request.stream = MemoryStream(calendar)
+        return self.send(request, donePut)
     
     def test_copyresource(self):
-        raise SkipTest("test unimplemented")
+        return self._do_copy("", "")
+
+    def test_copycalendarresource(self):
+
+        def doneMake2(response):
+            self.assertTrue(response.code == responsecode.CREATED)
+            return self._do_copy("calendar1/", "calendar2/")
+
+        def doneMake1(response):
+            self.assertTrue(response.code == responsecode.CREATED)
+            request = SimpleRequest(self.site, "MKCALENDAR", "/calendar2/")
+            return self.send(request, doneMake2)
+
+        # Make a calendar
+        request = SimpleRequest(self.site, "MKCALENDAR", "/calendar1/")
+        return self.send(request, doneMake1)
+
+    def _do_move(self, src, dst):
+        fpath = self.docroot
+        if src:
+            fpath = os.path.join(fpath, src)
+        fpath = os.path.join(fpath, "file.ics")
+        fpath_new = self.docroot
+        if dst:
+            fpath_new = os.path.join(fpath_new, dst)
+        fpath_new = os.path.join(fpath_new, "move.ics")
+        rsrc = CalDAVFile(fpath)
+
+        def donePut(response):
+            self.assertTrue(response.code == responsecode.CREATED)
+            displayname = DisplayName.fromString("adisplayname")
+            rsrc.writeDeadProperty(displayname)
+            
+            # Check index
+            index = sqlPropertyStore(rsrc)
+            self._testProperty(index, displayname)
+            
+            def doneMove(response):
+                response = IResponse(response)
+    
+                if response.code != responsecode.CREATED:
+                    self.fail("MOVE response %s != %s" % (response.code, responsecode.NO_CONTENT))
+            
+                if os.path.exists(fpath):
+                    self.fail("MOVE did not remove original path %s" % (fpath,))
+
+                if not os.path.exists(fpath_new):
+                    self.fail("MOVE did not create new path %s" % (fpath_new,))
+
+                self.assertFalse(index.contains(displayname.qname()),
+                                 msg="Property %s exists after resource was moved." % displayname)
+
+                rsrc_new = CalDAVFile(fpath_new)
+                index_new = sqlPropertyStore(rsrc_new)
+                self._testProperty(index_new, displayname, "on new resource")
+
+            def work():
+                # Move resource and test
+                request = SimpleRequest(self.site, "MOVE", "/%sfile.ics" % (src,))
+                request.headers.setHeader("destination", "/%smove.ics" % (dst,))
+                yield (request, doneMove)
+
+            return serialize(self.send, work())
+
+        stream = file(os.path.join(self.data_dir, "Holidays", "C318AA54-1ED0-11D9-A5E0-000A958A3252.ics"))
+        try: calendar = str(Component.fromStream(stream))
+        finally: stream.close()
+
+        request = SimpleRequest(self.site, "PUT", "/%sfile.ics" % (src,))
+        request.stream = MemoryStream(calendar)
+        return self.send(request, donePut)
     
     def test_moveresource(self):
-        raise SkipTest("test unimplemented")
+        return self._do_move("", "")
+
+    def test_movecalendarresource(self):
+
+        def doneMake2(response):
+            self.assertTrue(response.code == responsecode.CREATED)
+            return self._do_move("calendar1/", "calendar2/")
+
+        def doneMake1(response):
+            self.assertTrue(response.code == responsecode.CREATED)
+            request = SimpleRequest(self.site, "MKCALENDAR", "/calendar2/")
+            return self.send(request, doneMake2)
+
+        # Make a calendar
+        request = SimpleRequest(self.site, "MKCALENDAR", "/calendar1/")
+        return self.send(request, doneMake1)
+
