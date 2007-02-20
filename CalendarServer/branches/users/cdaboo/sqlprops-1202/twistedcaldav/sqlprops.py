@@ -165,6 +165,18 @@ class sqlPropertyStore (object):
         if self.index:
             self.index.removeProperty(self.rname, qname)
 
+    def deleteSeveral(self, properties):
+        """
+        Delete proeprty from index.
+
+        DELETE from PROPERTIES where NAME=<<rname>> and PROPNAME=<<pname>> ...
+
+        @param qname:
+        """
+        
+        if self.index:
+            self.index.removeSeveralProperties(self.rname, [p.qname() for p in properties])
+
     def deleteAll(self):
         """
         Delete property from index.
@@ -357,11 +369,24 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         Remove a property.
     
         @param rname: a C{str} containing the resource name.
-        @param pname: a C{str} containing the name of the property to get.
+        @param pname: a C{str} containing the name of the property to remove.
         @return: a C{str} containing the property value.
         """
 
         self._delete_from_db(rname, self._encode(pname))
+        self._db_commit()
+
+    def removeSeveralProperties(self, rname, pnames):
+        """
+        Remove specified properties.
+    
+        @param rname: a C{str} containing the resource name.
+        @param pnames: a C{list} containing the names of the properties to remove.
+        @return: a C{str} containing the property value.
+        """
+
+        for pname in pnames:
+            self._delete_from_db(rname, self._encode(pname))
         self._db_commit()
 
     def removeResource(self, rname):

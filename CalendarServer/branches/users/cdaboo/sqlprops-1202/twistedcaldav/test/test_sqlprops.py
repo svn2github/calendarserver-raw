@@ -171,6 +171,19 @@ class SQLProps (twistedcaldav.test.util.TestCase):
             self.assertTrue(proplist == expected_proplist,
                             msg="Property lists do not match: %s != %s." % (proplist, expected_proplist))
 
+    def test_deleteseveralproperties(self):
+        index = self._setUpIndex()
+        for prop in SQLProps.props:
+            self._setProperty(index, prop)
+        
+        delete_props = SQLProps.props[:2]
+        remaining_props = SQLProps.props[2:]
+        index.deleteSeveral(delete_props)
+        proplist = set(index.list())
+        expected_proplist = set([prop.qname() for prop in remaining_props])
+        self.assertTrue(proplist == expected_proplist,
+                        msg="Property lists do not match: %s != %s." % (proplist, expected_proplist))
+
     def test_deleteallproperties(self):
         index = self._setUpIndex()
         for prop in SQLProps.props:
