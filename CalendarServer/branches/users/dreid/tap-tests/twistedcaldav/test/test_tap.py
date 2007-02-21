@@ -23,8 +23,12 @@ from twisted.trial import unittest
 
 from twisted.python.usage import Options, UsageError
 from twisted.python.util import sibpath
+from twisted.python.reflect import namedAny
 from twisted.application.service import IService
 from twisted.application import internet
+
+from twisted.web2.dav import auth
+from twisted.web2.log import LogWrapperResource
 
 from twistedcaldav.tap import CalDAVOptions, CalDAVServiceMaker
 from twistedcaldav import tap
@@ -32,6 +36,10 @@ from twistedcaldav import tap
 from twistedcaldav.config import config
 from twistedcaldav import config as config_mod
 from twistedcaldav.py.plistlib import writePlist
+
+from twistedcaldav.directory.aggregate import AggregateDirectoryService
+from twistedcaldav.directory.sudo import SudoDirectoryService
+from twistedcaldav.directory.directory import UnknownRecordTypeError
 
 
 class TestCalDAVOptions(CalDAVOptions):
@@ -191,6 +199,16 @@ class BaseServiceMakerTests(unittest.TestCase):
         self.options.parseOptions(['-f', self.configFile])
 
         return CalDAVServiceMaker().makeService(self.options)
+
+    def getSite(self):
+        """
+        Get the server.Site from the service by finding the HTTPFactory
+        """
+
+        service = self.makeService()
+
+        return service.services[0].args[1].protocolArgs['requestFactory']
+
 
 
 class CalDAVServiceMakerTests(BaseServiceMakerTests):
@@ -355,11 +373,6 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
     single service
     """
 
-    def getSite(self):
-        service = self.makeService()
-
-        return service.services[0].args[1].protocolArgs['requestFactory']
-
     def test_AuthWrapperAllEnabled(self):
         """
         Test the configuration of the authentication wrapper
@@ -371,8 +384,6 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
 
         self.writeConfig()
         site = self.getSite()
-
-        from twisted.web2.dav import auth
 
         self.failUnless(isinstance(
                 site.resource.resource,
@@ -417,8 +428,6 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         """
 
         site = self.getSite()
-
-        from twisted.web2.log import LogWrapperResource
 
         self.failUnless(isinstance(
                 site.resource,
@@ -467,23 +476,84 @@ class DirectoryServiceTest(BaseServiceMakerTests):
         to the same DirectoryService as the calendar hierarchy
         """
 
-    test_sameDirectory.todo = "Not Implemented Yet"
+        site = self.getSite()
+        principals = site.resource.resource.resource.getChild('principals')
+        calendars = site.resource.resource.resource.getChild('calendars')
+
+        self.assertEquals(principals.directory,
+                          calendars.directory)
 
     def test_aggregateDirectory(self):
         """
         Assert that the base directory service is actually
         an AggregateDirectoryService
         """
+        site = self.getSite()
+        principals = site.resource.resource.resource.getChild('principals')
+        directory = principals.directory
 
-    test_aggregateDirectory.todo = "Not implemented yet"
+        self.failUnless(isinstance(
+                directory,
+                AggregateDirectoryService))
 
     def test_sudoDirectoryService(self):
         """
         Test that a sudo directory service is available if the
         SudoersFile is set and exists
         """
+        site = self.getSite()
+        principals = site.resource.resource.resource.getChild('principals')
+        directory = principals.directory
 
-    test_sudoDirectoryService.todo = "Not implemented yet"
+        self.failUnless(self.config['SudoersFile'])
+
+        sudoService = directory.serviceForRecordType(
+            SudoDirectoryService.recordType_sudoers)
+
+        self.assertEquals(sudoService.plistFile.path,
+                          os.path.abspath(self.config['SudoersFile']))
+
+        self.failUnless(SudoDirectoryService.recordType_sudoers in
+                        directory.userRecordTypes)
+
+    def test_sudoDirectoryServiceNoFile(self):
+        """
+        Test that there is no SudoDirectoryService if
+        the SudoersFile does not exist.
+        """
+        self.config['SudoersFile'] = self.mktemp()
+
+        self.writeConfig()
+        site = self.getSite()
+        principals = site.resource.resource.resource.getChild('principals')
+        directory = principals.directory
+
+        self.failUnless(self.config['SudoersFile'])
+
+        self.assertRaises(
+            UnknownRecordTypeError,
+            directory.serviceForRecordType,
+            SudoDirectoryService.recordType_sudoers)
+
+    def test_sudoDirectoryServiceNotConfigured(self):
+        """
+        Test that there is no SudoDirectoryService if
+        the SudoersFile is not configured
+        """
+
+        self.config['SudoersFile'] = ''
+        self.writeConfig()
+
+        site = self.getSite()
+        principals = site.resource.resource.resource.getChild('principals')
+        directory = principals.directory
+
+        self.failIf(self.config['SudoersFile'])
+
+        self.assertRaises(
+            UnknownRecordTypeError,
+            directory.serviceForRecordType,
+            SudoDirectoryService.recordType_sudoers)
 
     def test_configuredDirectoryService(self):
         """
@@ -491,4 +561,18 @@ class DirectoryServiceTest(BaseServiceMakerTests):
         set in the configuration file.
         """
 
-    test_configuredDirectoryService.todo = "Not implemented yet"
+        self.config['SudoersFile'] = ''
+        self.writeConfig()
+
+        site = self.getSite()
+        principals = site.resource.resource.resource.getChild('principals')
+        directory = principals.directory
+
+        realDirectory = directory.serviceForRecordType('users')
+
+        configuredDirectory = namedAny(
+            self.config['DirectoryService']['type'])
+
+        self.failUnless(isinstance(
+                realDirectory,
+                configuredDirectory))
