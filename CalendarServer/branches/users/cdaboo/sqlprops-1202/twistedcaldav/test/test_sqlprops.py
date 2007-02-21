@@ -106,6 +106,26 @@ class SQLProps (twistedcaldav.test.util.TestCase):
             index.setSeveral(SQLProps.props)
         return index
 
+    def _setupMultipleDifferentResources(self, number):
+        self.collection_name, self.collection_uri = self.mkdtemp("sql")
+        for i in xrange(number):
+            rsrc = CalDAVFile(os.path.join(self.collection_name, "file%04s.ics" % (i,)))
+            index = sqlPropertyStore(rsrc)
+            props = (
+                davxml.DisplayName.fromString("My Name %s" % (i,)),
+                davxml.ACL(
+                    davxml.ACE(
+                        davxml.Principal(davxml.HRef.fromString("/principals/users/user%s" % (i + 30,))),
+                        davxml.Grant(davxml.Privilege(davxml.Read())),
+                        davxml.Protected(),
+                    ),
+                ),
+                caldavxml.CalendarDescription.fromString("My Calendar %s" % (i + 50,)),
+                customxml.TwistedScheduleAutoRespond(),
+            )
+            index.setSeveral(props)
+        return index
+
     def test_db_init_directory(self):
         self.collection_name, self.collection_uri = self.mkdtemp("sql")
         rsrc = CalDAVFile(self.collection_name)
@@ -426,3 +446,51 @@ END:VCALENDAR
         request = SimpleRequest(self.site, "MKCALENDAR", "/calendar1/")
         return self.send(request, doneMake1)
 
+    def test_searchone(self):
+        index = self._setupMultipleDifferentResources(20)
+        results = index.search(davxml.DisplayName.qname(), "2")
+        expected = {
+            "file   2.ics" : set((davxml.DisplayName.qname(),)),
+            "file  12.ics" : set((davxml.DisplayName.qname(),)),
+        }
+        self.assertTrue(results == expected,
+            msg="Search results %s != %s" % (results, expected,))
+    
+    def test_searchseveral(self):
+        index = self._setupMultipleDifferentResources(20)
+        results = index.searchSeveral((davxml.DisplayName.qname(), davxml.ACL.qname()), "3")
+        expected = {
+            "file   0.ics" : set((davxml.ACL.qname(),)),
+            "file   1.ics" : set((davxml.ACL.qname(),)),
+            "file   2.ics" : set((davxml.ACL.qname(),)),
+            "file   3.ics" : set((davxml.DisplayName.qname(), davxml.ACL.qname(),)),
+            "file   4.ics" : set((davxml.ACL.qname(),)),
+            "file   5.ics" : set((davxml.ACL.qname(),)),
+            "file   6.ics" : set((davxml.ACL.qname(),)),
+            "file   7.ics" : set((davxml.ACL.qname(),)),
+            "file   8.ics" : set((davxml.ACL.qname(),)),
+            "file   9.ics" : set((davxml.ACL.qname(),)),
+            "file  13.ics" : set((davxml.DisplayName.qname(), davxml.ACL.qname(),)),
+        }
+        self.assertTrue(results == expected,
+            msg="Search results %s != %s" % (results, expected,))
+    
+    def test_searchall(self):
+        index = self._setupMultipleDifferentResources(20)
+        results = index.searchAll("5")
+        expected = {
+            "file   0.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   1.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   2.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   3.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   4.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   5.ics" : set((davxml.DisplayName.qname(), caldavxml.CalendarDescription.qname(), davxml.ACL.qname(),)),
+            "file   6.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   7.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   8.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file   9.ics" : set((caldavxml.CalendarDescription.qname(),)),
+            "file  15.ics" : set((davxml.DisplayName.qname(), caldavxml.CalendarDescription.qname(), davxml.ACL.qname(),)),
+        }
+        self.assertTrue(results == expected,
+            msg="Search results %s != %s" % (results, expected,))
+        pass

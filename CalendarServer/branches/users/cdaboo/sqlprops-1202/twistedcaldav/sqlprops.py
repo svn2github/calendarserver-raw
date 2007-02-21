@@ -209,6 +209,48 @@ class sqlPropertyStore (object):
         else:
             return ()
 
+    def search(self, qname, text):
+        """
+        Search a specific property.
+        
+        @param qname: C{tuple} of property namespace and name.
+        @param text: C{str} containing the text to search for.
+        @return: a C{dict} with a C{str} key for the resource name, and a C{set} of
+            property name C{tuple}'s as values, for each matching property.
+        """
+        if self.index:
+            return self.index.searchOneProperty(qname, text)
+        else:
+            return {}
+
+    def searchSeveral(self, qnames, text):
+        """
+        Search several properties.
+        
+        @param qnames: a C{list} of C{tuple}'s of property namespace and name.
+        @param text: C{str} containing the text to search for.
+        @return: a C{dict} with a C{str} key for the resource name, and a C{set} of
+            property name C{tuple}'s as values, for each matching property.
+        """
+        if self.index:
+            return self.index.searchSeveralProperties(qnames, text)
+        else:
+            return {}
+
+    def searchAll(self, text):
+        """
+        Search all properties.
+        
+        @param text: C{str} containing the text to search for.
+        @return: a C{dict} with a C{str} key for the resource name, and a C{set} of
+            property name C{tuple}'s as values, for each matching property.
+        """
+        if self.index:
+            return self.index.searchAllProperties(text)
+        else:
+            return {}
+
+
 class SQLPropertiesDatabase(AbstractSQLDatabase):
     """
     A database to maintain calendar user proxy group memberships.
@@ -217,7 +259,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     
     Properties Database:
     
-    ROW: RESOURCENAME, PROPERTYNAME, PROPERTYVALUE
+    ROW: RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT, PROPERTYVALUE
     
     """
     
@@ -254,7 +296,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         
         # Remove what is there, then add it back.
         self._delete_from_db(rname, self._encode(pname))
-        self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue))
+        self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue), pvalue.toxml())
         self._db_commit()
 
     def setSeveralPropertyValues(self, rname, properties):
@@ -269,7 +311,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         # Remove what is there, then add it back.
         for p in properties:
             self._delete_from_db(rname, self._encode(p[0]))
-            self._add_to_db(rname, self._encode(p[0]), cPickle.dumps(p[1]))
+            self._add_to_db(rname, self._encode(p[0]), cPickle.dumps(p[1]), p[1].toxml())
         self._db_commit()
 
     def getOnePropertyValue(self, rname, pname):
@@ -285,7 +327,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         if DEBUG_LOG:
             log.msg("getPropertyValue: %s \"%s\" \"%s\"" % (self.dbpath, rname, pname))
         members = []
-        for row in self._db_execute("select PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encode(pname)):
+        for row in self._db_execute("select PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encode(pname)):
             members.append(row[0])
         setlength =  len(members)
         if setlength == 0:
@@ -308,7 +350,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         if DEBUG_LOG:
             log.msg("getSeveralPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
         properties = {}
-        statement = "select PROPERTYNAME, PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1 and ("
+        statement = "select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1 and ("
         args = [rname]
         for i, pname in enumerate(pnames):
             if i != 0:
@@ -334,7 +376,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         if DEBUG_LOG:
             log.msg("getAllPropertyValues: %s" % (self.dbpath,))
         properties = {}
-        for row in self._db_execute("select PROPERTYNAME, PROPERTYVALUE from PROPERTIES where RESOURCENAME = :1", rname):
+        for row in self._db_execute("select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1", rname):
             properties[self._decode(row[0])] = cPickle.loads(row[1])
 
         return properties
@@ -351,7 +393,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         if DEBUG_LOG:
             log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
         members = {}
-        statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYVALUE from PROPERTIES where "
+        statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where "
         args = []
         for i, pname in enumerate(pnames):
             if i != 0:
@@ -413,20 +455,53 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             members.add(self._decode(row[0]))
         return members
 
-    def _add_to_db(self, rname, pname, pvalue):
+    def searchOneProperty(self, pname, text):
+        results = {}
+        liketext = "%%%s%%" % (text,)
+        for row in self._db_execute("select RESOURCENAME, PROPERTYNAME from PROPERTIES where PROPERTYNAME = :1 and PROPERTYVALUE like :2", self._encode(pname), liketext):
+            results.setdefault(row[0], set()).add(self._decode(row[1]))
+        return results
+
+    def searchSeveralProperties(self, pnames, text):
+        results = {}
+        liketext = "%%%s%%" % (text,)
+        statement = "select RESOURCENAME, PROPERTYNAME from PROPERTIES where ("
+        args = []
+        count = 1
+        for p in pnames:
+            if count != 1:
+                statement += " or "
+            statement += "PROPERTYNAME = :%s" % (count,)
+            args.append(self._encode(p))
+            count += 1
+        statement += ") and PROPERTYVALUE like :%s" % (count,)
+        args.append(liketext)
+        for row in self._db_execute(statement, *args):
+            results.setdefault(row[0], set()).add(self._decode(row[1]))
+        return results
+
+    def searchAllProperties(self, text):
+        results = {}
+        liketext = "%%%s%%" % (text,)
+        for row in self._db_execute("select RESOURCENAME, PROPERTYNAME from PROPERTIES where PROPERTYVALUE like :1", liketext):
+            results.setdefault(row[0], set()).add(self._decode(row[1]))
+        return results
+
+    def _add_to_db(self, rname, pname, pobject, pvalue):
         """
         Add a property.
     
         @param rname: a C{str} containing the resource name.
         @param pname: a C{str} containing the name of the property to set.
-        @param pvalue: a C{str} containing the property value to set.
+        @param pobject: a C{str} containing the pickled representation of the property object.
+        @param pvalue: a C{str} containing the text of the property value to set.
         """
         
         self._db_execute(
             """
-            insert into PROPERTIES (RESOURCENAME, PROPERTYNAME, PROPERTYVALUE)
-            values (:1, :2, :3)
-            """, rname, pname, pvalue
+            insert into PROPERTIES (RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT, PROPERTYVALUE)
+            values (:1, :2, :3, :4)
+            """, rname, pname, pobject, pvalue
         )
        
     def _delete_all_from_db(self, rname):
@@ -471,6 +546,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             create table PROPERTIES (
                 RESOURCENAME   text,
                 PROPERTYNAME   text,
+                PROPERTYOBJECT text,
                 PROPERTYVALUE  text
             )
             """
