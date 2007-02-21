@@ -16,14 +16,22 @@
 # DRI: David Reid, dreid@apple.com
 ##
 
+import os
+from copy import deepcopy
+
 from twisted.trial import unittest
 
 from twisted.python.usage import Options, UsageError
+from twisted.python.util import sibpath
+from twisted.application.service import IService
+from twisted.application import internet
 
-from twistedcaldav.tap import CalDAVOptions
+from twistedcaldav.tap import CalDAVOptions, CalDAVServiceMaker
+from twistedcaldav import tap
 
 from twistedcaldav.config import config
 from twistedcaldav import config as config_mod
+from twistedcaldav.py.plistlib import writePlist
 
 
 class TestCalDAVOptions(CalDAVOptions):
@@ -106,7 +114,6 @@ class CalDAVOptionsTest(unittest.TestCase):
         loads the global config with those values properly.
         """
 
-        from copy import deepcopy
         myConfig = deepcopy(config_mod.defaultConfig)
 
         myConfig['Authentication']['Basic']['Enabled'] = False
@@ -116,8 +123,6 @@ class CalDAVOptionsTest(unittest.TestCase):
         myConfig['Port'] = 80
 
         myConfig['ServerHostName'] = 'calendar.calenderserver.org'
-
-        from twistedcaldav.py.plistlib import writePlist
 
         myConfigFile = self.mktemp()
         writePlist(myConfig, myConfigFile)
@@ -135,3 +140,196 @@ class CalDAVOptionsTest(unittest.TestCase):
 
         self.assertEquals(config.Authentication['Basic']['Enabled'],
                           myConfig['Authentication']['Basic']['Enabled'])
+
+
+class BaseServiceMakerTests(unittest.TestCase):
+    """
+    Utility class for ServiceMaker tests.
+    """
+
+    def setUp(self):
+        self.options = TestCalDAVOptions()
+        self.options.parent = Options()
+        self.options.parent['gid'] = None
+        self.options.parent['uid'] = None
+
+        self.config = deepcopy(config_mod.defaultConfig)
+
+        accountsFile = sibpath(os.path.dirname(__file__),
+                               'directory/test/accounts.xml')
+
+        self.config['DirectoryService'] = {
+            'params': {'xmlFile': accountsFile},
+            'type': 'twistedcaldav.directory.xmlfile.XMLDirectoryService'
+            }
+
+        self.config['DocumentRoot'] = self.mktemp()
+
+        self.config['SSLPrivateKey'] = sibpath(__file__, 'data/server.pem')
+        self.config['SSLCertificate'] = sibpath(__file__, 'data/server.pem')
+        self.config['SSLOnly'] = False
+
+        os.mkdir(self.config['DocumentRoot'])
+
+        self.configFile = self.mktemp()
+
+        self.writeConfig()
+
+    def writeConfig(self):
+        """
+        Flush self.config out to self.configFile
+        """
+
+        writePlist(self.config, self.configFile)
+
+    def makeService(self):
+        """
+        Create a service by calling into CalDAVServiceMaker with
+        self.configFile
+        """
+
+        self.options.parseOptions(['-f', self.configFile])
+
+        return CalDAVServiceMaker().makeService(self.options)
+
+
+class SingleServiceTest(BaseServiceMakerTests):
+    """
+    Test various configurations of the single service
+    """
+
+    def test_defaultService(self):
+        """
+        Test the value of a single process service in it's simplest
+        configuration.
+        """
+
+        service = self.makeService()
+
+        self.failUnless(IService(service))
+        
+        self.failUnless(service.services)
+
+        self.failUnless(isinstance(service, tap.CalDAVService))
+
+    def test_defaultListeners(self):
+        """
+        Test that the single process service has sub services with the
+        default TCP and SSL configuration
+        """
+
+        service = self.makeService()
+
+        expectedSubServices = ((internet.TCPServer, self.config['Port']),
+                               (internet.SSLServer, self.config['SSLPort']))
+
+        configuredSubServices = [(s.__class__, s.args) 
+                                 for s in service.services]
+
+        for serviceClass, serviceArgs in configuredSubServices:
+            self.failUnless(
+                serviceClass in (s[0] for s in expectedSubServices))
+
+            self.assertEquals(serviceArgs[0], 
+                              dict(expectedSubServices)[serviceClass])
+
+    def test_SSLKeyConfiguration(self):
+        """
+        Test that the configuration of the SSLServer reflect the config file's
+        SSL Private Key and SSL Certificate
+        """
+
+        service = self.makeService()
+
+        sslService = None
+        for s in service.services:
+            if isinstance(s, internet.SSLServer):
+                sslService = s
+                break
+
+        context = sslService.args[2]
+
+        self.assertEquals(self.config['SSLPrivateKey'],
+                          context.privateKeyFileName)
+
+        self.assertEquals(self.config['SSLCertificate'],
+                          context.certificateFileName)
+
+    def test_noSSL(self):
+        """
+        Test the single service to make sure there is no SSL Service when SSL
+        is disabled
+        """
+
+        self.config['SSLEnable'] = False
+        self.writeConfig()
+        service = self.makeService()
+
+        self.failIf(
+            internet.SSLServer in [s.__class__ for s in service.services])
+
+    def test_SSLOnly(self):
+        """
+        Test the single service to make sure there is no TCPServer when 
+        SSLOnly is turned on.
+        """
+
+        self.config['SSLOnly'] = True
+        self.writeConfig()
+        service = self.makeService()
+
+        self.failIf(
+            internet.TCPServer in [s.__class__ for s in service.services])
+
+    def test_singleBindAddress(self):
+        """
+        Test that the TCPServer and SSLServers are bound to the proper address
+        """
+
+        self.config['BindAddress'] = ['127.0.0.1']
+        self.writeConfig()
+        service = self.makeService()
+        
+        for s in service.services:
+            self.assertEquals(s.kwargs['interface'], '127.0.0.1')
+
+    def test_multipleBindAddress(self):
+        """
+        Test that the TCPServer and SSLServers are bound to the proper 
+        addresses.
+        """
+
+        self.config['BindAddress'] = ['127.0.0.1', '10.0.0.2', '172.53.13.123']
+        self.writeConfig()
+        service = self.makeService()
+
+        tcpServers = []
+        sslServers = []
+
+        for s in service.services:
+            if isinstance(s, internet.TCPServer):
+                tcpServers.append(s)
+            elif isinstance(s, internet.SSLServer):
+                sslServers.append(s)
+
+        self.assertEquals(len(tcpServers), len(self.config['BindAddress']))
+        self.assertEquals(len(sslServers), len(self.config['BindAddress']))
+
+        for addr in self.config['BindAddress']:
+            for s in tcpServers:
+                if s.kwargs['interface'] == addr:
+                    tcpServers.remove(s)
+                    
+            for s in sslServers:
+                if s.kwargs['interface'] == addr:
+                    sslServers.remove(s)
+
+        self.assertEquals(len(tcpServers), 0)
+        self.assertEquals(len(sslServers), 0)
+
+
+class ServiceHTTPFactoryTests(BaseServiceMakerTests):
+    """
+    Test the configuration of the initial resource hierarchy of the
+    single service
+    """

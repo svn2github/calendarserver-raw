@@ -56,10 +56,10 @@ limitations under the License.
   <string></string>
 
   <key>SSLPrivateKey</key>
-  <string>conf/server.pem</string>
+  <string>twistedcaldav/test/data/server.pem</string>
 
   <key>SSLCertificate</key>
-  <string>conf/server.pem</string>
+  <string>twistedcaldav/test/data/server.pem</string>
 
   <key>ServerLogFile</key>
   <string>logs/server.log</string>
