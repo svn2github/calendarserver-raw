@@ -360,12 +360,11 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
 
         return service.services[0].args[1].protocolArgs['requestFactory']
 
-    def test_AuthWrapper(self):
+    def test_AuthWrapperAllEnabled(self):
         """
-        Test the configuration of the authentication wrapper.
+        Test the configuration of the authentication wrapper
+        when all schemes are enabled.
         """
-        #XXX TODO FIXME: Break me up into two smaller tests.
-
         self.config['Authentication']['Digest']['Enabled'] = True
         self.config['Authentication']['Kerberos']['Enabled'] = True
         self.config['Authentication']['Basic']['Enabled'] = True
@@ -388,6 +387,13 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
 
         self.assertEquals(len(expectedSchemes),
                           len(authWrapper.credentialFactories))
+
+    def test_AuthWrapperPartialEnabled(self):
+        """
+        Test that the expected credential factories exist when
+        only a partial set of authentication schemes is
+        enabled.
+        """
 
         self.config['Authentication']['Basic']['Enabled'] = False
         self.config['Authentication']['Kerberos']['Enabled'] = False
@@ -417,3 +423,35 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         self.failUnless(isinstance(
                 site.resource,
                 LogWrapperResource))
+
+    def test_rootResource(self):
+        """
+        Test the root resource
+        """
+        site = self.getSite()
+        root = site.resource.resource.resource
+
+        self.failUnless(isinstance(root, CalDAVServiceMaker.rootResourceClass))
+
+    def test_principalResource(self):
+        """
+        Test the principal resource
+        """
+        site = self.getSite()
+        root = site.resource.resource.resource
+
+        self.failUnless(isinstance(
+                root.getChild('principals'),
+                CalDAVServiceMaker.principalResourceClass))
+
+    def test_calendarResource(self):
+        """
+        Test the calendar resource
+        """
+        site = self.getSite()
+        root = site.resource.resource.resource
+
+        self.failUnless(isinstance(
+                root.getChild('calendars'),
+                CalDAVServiceMaker.calendarResourceClass))
+
