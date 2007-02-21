@@ -455,3 +455,40 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
                 root.getChild('calendars'),
                 CalDAVServiceMaker.calendarResourceClass))
 
+
+class DirectoryServiceTest(BaseServiceMakerTests):
+    """
+    Tests of the directory service
+    """
+
+    def test_sameDirectory(self):
+        """
+        Test that the principal hierarchy has a reference
+        to the same DirectoryService as the calendar hierarchy
+        """
+
+    test_sameDirectory.todo = "Not Implemented Yet"
+
+    def test_aggregateDirectory(self):
+        """
+        Assert that the base directory service is actually
+        an AggregateDirectoryService
+        """
+
+    test_aggregateDirectory.todo = "Not implemented yet"
+
+    def test_sudoDirectoryService(self):
+        """
+        Test that a sudo directory service is available if the
+        SudoersFile is set and exists
+        """
+
+    test_sudoDirectoryService.todo = "Not implemented yet"
+
+    def test_configuredDirectoryService(self):
+        """
+        Test that the real directory service is the directory service
+        set in the configuration file.
+        """
+
+    test_configuredDirectoryService.todo = "Not implemented yet"
