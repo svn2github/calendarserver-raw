@@ -193,6 +193,27 @@ class BaseServiceMakerTests(unittest.TestCase):
         return CalDAVServiceMaker().makeService(self.options)
 
 
+class CalDAVServiceMakerTests(BaseServiceMakerTests):
+    """
+    Test the service maker's behavior
+    """
+
+    def test_makeServiceDispatcher(self):
+        """
+        Test the default options of the dispatching makeService
+        """
+        validServices = ['singleprocess', 'slave', 'master', 'multiprocess']
+
+        for service in validServices:
+            self.config['ServerType'] = service
+            self.writeConfig()
+            self.makeService()
+
+        self.config['ServerType'] = 'Unknown Service'
+        self.writeConfig()
+        self.assertRaises(UsageError, self.makeService)
+
+
 class SingleServiceTest(BaseServiceMakerTests):
     """
     Test various configurations of the single service
@@ -207,7 +228,7 @@ class SingleServiceTest(BaseServiceMakerTests):
         service = self.makeService()
 
         self.failUnless(IService(service))
-        
+
         self.failUnless(service.services)
 
         self.failUnless(isinstance(service, tap.CalDAVService))
@@ -223,14 +244,14 @@ class SingleServiceTest(BaseServiceMakerTests):
         expectedSubServices = ((internet.TCPServer, self.config['Port']),
                                (internet.SSLServer, self.config['SSLPort']))
 
-        configuredSubServices = [(s.__class__, s.args) 
+        configuredSubServices = [(s.__class__, s.args)
                                  for s in service.services]
 
         for serviceClass, serviceArgs in configuredSubServices:
             self.failUnless(
                 serviceClass in (s[0] for s in expectedSubServices))
 
-            self.assertEquals(serviceArgs[0], 
+            self.assertEquals(serviceArgs[0],
                               dict(expectedSubServices)[serviceClass])
 
     def test_SSLKeyConfiguration(self):
@@ -270,7 +291,7 @@ class SingleServiceTest(BaseServiceMakerTests):
 
     def test_SSLOnly(self):
         """
-        Test the single service to make sure there is no TCPServer when 
+        Test the single service to make sure there is no TCPServer when
         SSLOnly is turned on.
         """
 
@@ -289,13 +310,13 @@ class SingleServiceTest(BaseServiceMakerTests):
         self.config['BindAddress'] = ['127.0.0.1']
         self.writeConfig()
         service = self.makeService()
-        
+
         for s in service.services:
             self.assertEquals(s.kwargs['interface'], '127.0.0.1')
 
     def test_multipleBindAddress(self):
         """
-        Test that the TCPServer and SSLServers are bound to the proper 
+        Test that the TCPServer and SSLServers are bound to the proper
         addresses.
         """
 
@@ -319,7 +340,7 @@ class SingleServiceTest(BaseServiceMakerTests):
             for s in tcpServers:
                 if s.kwargs['interface'] == addr:
                     tcpServers.remove(s)
-                    
+
             for s in sslServers:
                 if s.kwargs['interface'] == addr:
                     sslServers.remove(s)
@@ -333,3 +354,66 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
     Test the configuration of the initial resource hierarchy of the
     single service
     """
+
+    def getSite(self):
+        service = self.makeService()
+
+        return service.services[0].args[1].protocolArgs['requestFactory']
+
+    def test_AuthWrapper(self):
+        """
+        Test the configuration of the authentication wrapper.
+        """
+        #XXX TODO FIXME: Break me up into two smaller tests.
+
+        self.config['Authentication']['Digest']['Enabled'] = True
+        self.config['Authentication']['Kerberos']['Enabled'] = True
+        self.config['Authentication']['Basic']['Enabled'] = True
+
+        self.writeConfig()
+        site = self.getSite()
+
+        from twisted.web2.dav import auth
+
+        self.failUnless(isinstance(
+                site.resource.resource,
+                auth.AuthenticationWrapper))
+
+        authWrapper = site.resource.resource
+
+        expectedSchemes = ['negotiate', 'digest', 'basic']
+
+        for scheme in authWrapper.credentialFactories:
+            self.failUnless(scheme in expectedSchemes)
+
+        self.assertEquals(len(expectedSchemes),
+                          len(authWrapper.credentialFactories))
+
+        self.config['Authentication']['Basic']['Enabled'] = False
+        self.config['Authentication']['Kerberos']['Enabled'] = False
+
+        self.writeConfig()
+        site = self.getSite()
+
+        authWrapper = site.resource.resource
+
+        expectedSchemes = ['digest']
+
+        for scheme in authWrapper.credentialFactories:
+            self.failUnless(scheme in expectedSchemes)
+
+        self.assertEquals(len(expectedSchemes),
+                          len(authWrapper.credentialFactories))
+
+    def test_LogWrapper(self):
+        """
+        Test the configuration of the log wrapper
+        """
+
+        site = self.getSite()
+
+        from twisted.web2.log import LogWrapperResource
+
+        self.failUnless(isinstance(
+                site.resource,
+                LogWrapperResource))
