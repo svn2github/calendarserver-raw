@@ -88,9 +88,9 @@ class CalDAVOptions(Options):
 
     def opt_option(self, option):
         """
-        Set an option to override a value in the config file. True, False, int, 
+        Set an option to override a value in the config file. True, False, int,
         and float options are supported, as well as comma seperated lists. Only
-        one option may be given for each --option flag, however multiple 
+        one option may be given for each --option flag, however multiple
         --option flags may be specified.
         """
 
@@ -103,7 +103,7 @@ class CalDAVOptions(Options):
 
                 elif isinstance(defaultConfig[key], (int, float, long)):
                     value = type(defaultConfig[key])(value)
-                
+
                 elif isinstance(defaultConfig[key], (list, tuple)):
                     value = value.split(',')
 
@@ -121,7 +121,8 @@ class CalDAVOptions(Options):
 
     def postOptions(self):
         if not os.path.exists(self['config']):
-            print "Config file %s not found, using defaults" % (self['config'],)
+            log.msg("Config file %s not found, using defaults" % (
+                    self['config'],))
 
         parseConfig(self['config'])
 
@@ -130,7 +131,7 @@ class CalDAVOptions(Options):
         uid, gid = None, None
 
         if self.parent['uid'] or self.parent['gid']:
-            uid, gid = getid(self.parent['uid'], 
+            uid, gid = getid(self.parent['uid'],
                              self.parent['gid'])
 
         if uid:
@@ -262,7 +263,7 @@ class CalDAVServiceMaker(object):
         # Setup the Directory
         #
         directories = []
-        
+
         directoryClass = namedClass(config.DirectoryService['type'])
         
         log.msg("Configuring directory service of type: %s"
@@ -314,11 +315,11 @@ class CalDAVServiceMaker(object):
             directory,
             '/calendars/'
         )
-        
+
         log.msg("Setting up root resource: %r" % (self.rootResourceClass,))
-        
+
         root = self.rootResourceClass(
-            config.DocumentRoot, 
+            config.DocumentRoot,
             principalCollections=(principalCollection,)
         )
 
@@ -335,12 +336,12 @@ class CalDAVServiceMaker(object):
                 davxml.Grant(davxml.Privilege(davxml.Read())),
             ),
         ]
-        
+
         log.msg("Setting up AdminPrincipals")
 
         for principal in config.AdminPrincipals:
             log.msg("Added %s as admin principal" % (principal,))
-            
+
             rootACEs.append(
                 davxml.ACE(
                     davxml.Principal(davxml.HRef(principal)),
@@ -372,10 +373,10 @@ class CalDAVServiceMaker(object):
             scheme = scheme.lower()
 
             credFactory = None
-            
+
             if schemeConfig['Enabled']:
                 log.msg("Setting up scheme: %s" % (scheme,))
-                
+
                 if scheme == 'kerberos':
                     if not NegotiateCredentialFactory:
                         log.msg("Kerberos support not available")
@@ -414,7 +415,7 @@ class CalDAVServiceMaker(object):
 
         #
         # Configure the service
-        # 
+        #
 
         log.msg("Setting up service")
 
@@ -461,7 +462,7 @@ class CalDAVServiceMaker(object):
                     interface=bindAddress
                 )
                 httpsService.setServiceParent(service)
-            
+
         return service
 
     makeService_Combined = makeService_Combined
