@@ -48,10 +48,10 @@ class TestCalDAVOptions(CalDAVOptions):
     empty implementations of checkDirectory and checkFile.
     """
 
-    def checkDirectory(*args):
+    def checkDirectory(*args, **kwargs):
         pass
 
-    def checkFile(*args):
+    def checkFile(*args, **kwargs):
         pass
 
 
@@ -79,23 +79,23 @@ class CalDAVOptionsTest(unittest.TestCase):
         overide the config file
         """
 
-        argv = ['-o', 'SACLEnable',
-                '-o', 'Port=80',
-                '-o', 'BindAddress=127.0.0.1,127.0.0.2,127.0.0.3',
+        argv = ['-o', 'EnableSACLs',
+                '-o', 'HTTPPort=80',
+                '-o', 'BindAddresses=127.0.0.1,127.0.0.2,127.0.0.3',
                 '-o', 'DocumentRoot=/dev/null',
-                '-o', 'Username=None',
-                '-o', 'CalendarUserProxyEnabled=False']
+                '-o', 'UserName=None',
+                '-o', 'EnableProxyPrincipals=False']
 
         self.config.parseOptions(argv)
 
-        self.assertEquals(config.SACLEnable, True)
-        self.assertEquals(config.Port, 80)
-        self.assertEquals(config.BindAddress, ['127.0.0.1',
+        self.assertEquals(config.EnableSACLs, True)
+        self.assertEquals(config.HTTPPort, 80)
+        self.assertEquals(config.BindAddresses, ['127.0.0.1',
                                                '127.0.0.2',
                                                '127.0.0.3'])
         self.assertEquals(config.DocumentRoot, '/dev/null')
-        self.assertEquals(config.Username, None)
-        self.assertEquals(config.CalendarUserProxyEnabled, False)
+        self.assertEquals(config.UserName, None)
+        self.assertEquals(config.EnableProxyPrincipals, False)
 
         argv = ['-o', 'Authentication=This Doesn\'t Matter']
 
@@ -128,7 +128,7 @@ class CalDAVOptionsTest(unittest.TestCase):
 
         myConfig['MultiProcess']['LoadBalancer']['Enabled'] = False
 
-        myConfig['Port'] = 80
+        myConfig['HTTPPort'] = 80
 
         myConfig['ServerHostName'] = 'calendar.calenderserver.org'
 
@@ -144,7 +144,7 @@ class CalDAVOptionsTest(unittest.TestCase):
         self.assertEquals(config.MultiProcess['LoadBalancer']['Enabled'],
                           myConfig['MultiProcess']['LoadBalancer']['Enabled'])
 
-        self.assertEquals(config.Port, myConfig['Port'])
+        self.assertEquals(config.HTTPPort, myConfig['HTTPPort'])
 
         self.assertEquals(config.Authentication['Basic']['Enabled'],
                           myConfig['Authentication']['Basic']['Enabled'])
@@ -173,9 +173,11 @@ class BaseServiceMakerTests(unittest.TestCase):
 
         self.config['DocumentRoot'] = self.mktemp()
 
+        self.config['HTTPPort'] = 8008
+        self.config['SSLPort'] = 8443
+
         self.config['SSLPrivateKey'] = sibpath(__file__, 'data/server.pem')
         self.config['SSLCertificate'] = sibpath(__file__, 'data/server.pem')
-        self.config['SSLOnly'] = False
 
         os.mkdir(self.config['DocumentRoot'])
 
@@ -259,7 +261,7 @@ class SingleServiceTest(BaseServiceMakerTests):
 
         service = self.makeService()
 
-        expectedSubServices = ((internet.TCPServer, self.config['Port']),
+        expectedSubServices = ((internet.TCPServer, self.config['HTTPPort']),
                                (internet.SSLServer, self.config['SSLPort']))
 
         configuredSubServices = [(s.__class__, s.args)
@@ -300,9 +302,12 @@ class SingleServiceTest(BaseServiceMakerTests):
         is disabled
         """
 
-        self.config['SSLEnable'] = False
+        del self.config['SSLPort']
         self.writeConfig()
         service = self.makeService()
+        import pdb; pdb.set_trace()
+
+        self.config['SSLPort']
 
         self.failIf(
             internet.SSLServer in [s.__class__ for s in service.services])
@@ -313,32 +318,32 @@ class SingleServiceTest(BaseServiceMakerTests):
         SSLOnly is turned on.
         """
 
-        self.config['SSLOnly'] = True
+        del self.config['HTTPPort']
         self.writeConfig()
         service = self.makeService()
 
         self.failIf(
             internet.TCPServer in [s.__class__ for s in service.services])
 
-    def test_singleBindAddress(self):
+    def test_singleBindAddresses(self):
         """
         Test that the TCPServer and SSLServers are bound to the proper address
         """
 
-        self.config['BindAddress'] = ['127.0.0.1']
+        self.config['BindAddresses'] = ['127.0.0.1']
         self.writeConfig()
         service = self.makeService()
 
         for s in service.services:
             self.assertEquals(s.kwargs['interface'], '127.0.0.1')
 
-    def test_multipleBindAddress(self):
+    def test_multipleBindAddresses(self):
         """
         Test that the TCPServer and SSLServers are bound to the proper
         addresses.
         """
 
-        self.config['BindAddress'] = ['127.0.0.1', '10.0.0.2', '172.53.13.123']
+        self.config['BindAddresses'] = ['127.0.0.1', '10.0.0.2', '172.53.13.123']
         self.writeConfig()
         service = self.makeService()
 
@@ -351,10 +356,10 @@ class SingleServiceTest(BaseServiceMakerTests):
             elif isinstance(s, internet.SSLServer):
                 sslServers.append(s)
 
-        self.assertEquals(len(tcpServers), len(self.config['BindAddress']))
-        self.assertEquals(len(sslServers), len(self.config['BindAddress']))
+        self.assertEquals(len(tcpServers), len(self.config['BindAddresses']))
+        self.assertEquals(len(sslServers), len(self.config['BindAddresses']))
 
-        for addr in self.config['BindAddress']:
+        for addr in self.config['BindAddresses']:
             for s in tcpServers:
                 if s.kwargs['interface'] == addr:
                     tcpServers.remove(s)

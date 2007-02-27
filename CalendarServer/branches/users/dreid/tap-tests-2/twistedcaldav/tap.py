@@ -109,7 +109,7 @@ class CalDAVOptions(Options):
 
                 elif isinstance(defaultConfig[key], dict):
                     raise UsageError("Dict options not supported on the command line")
-                        
+
                 elif value == 'None':
                     value = None
 
@@ -160,7 +160,7 @@ class CalDAVOptions(Options):
             uname=config.UserName,
             gname=config.GroupName
         )
-            
+
         # Verify that ssl certs exist if needed
         if config.SSLPort:
             self.checkFile(
@@ -182,12 +182,12 @@ class CalDAVOptions(Options):
 
         if not config.ErrorLogFile and config.ProcessType == 'Slave':
             log.FileLogObserver.timeFormat = ''
-        
+
         # Check current umask and warn if changed
         oldmask = os.umask(0027)
         if oldmask != 0027:
             print "WARNING: changing umask from: 0%03o to 0%03o" % (oldmask, 0027,)
-        
+
     def checkDirectory(self, dirpath, description, access=None, fail=False, permissions=None, uname=None, gname=None):
         if not os.path.exists(dirpath):
             raise ConfigurationError("%s does not exist: %s" % (description, dirpath,))
@@ -196,7 +196,7 @@ class CalDAVOptions(Options):
         elif access and not os.access(dirpath, access):
             raise ConfigurationError("Insufficient permissions for server on %s directory: %s" % (description, dirpath,))
         self.securityCheck(dirpath, description, fail=fail, permissions=permissions, uname=uname, gname=gname)
-    
+
     def checkFile(self, filepath, description, access=None, fail=False, permissions=None, uname=None, gname=None):
         if not os.path.exists(filepath):
             raise ConfigurationError("%s does not exist: %s" % (description, filepath,))
@@ -228,7 +228,7 @@ class CalDAVOptions(Options):
             except KeyError:
                 raiseOrPrint("The owner of %s directory %s is unknown (%s) and does not match the expected owner: %s"
                              % (description, path, pathstat[stat.ST_UID], uname))
-                    
+
         if gname:
             import grp
             try:
@@ -239,7 +239,7 @@ class CalDAVOptions(Options):
             except KeyError:
                 raiseOrPrint("The group of %s directory %s is unknown (%s) and does not match the expected group: %s"
                              % (description, path, pathstat[stat.ST_GID], gname))
-                    
+
 
 class CalDAVServiceMaker(object):
     implements(IPlugin, service.IServiceMaker)
@@ -265,10 +265,10 @@ class CalDAVServiceMaker(object):
         directories = []
 
         directoryClass = namedClass(config.DirectoryService['type'])
-        
+
         log.msg("Configuring directory service of type: %s"
                 % (config.DirectoryService['type'],))
-        
+
         baseDirectory = directoryClass(**config.DirectoryService['params'])
 
         directories.append(baseDirectory)
@@ -278,7 +278,7 @@ class CalDAVServiceMaker(object):
         if config.SudoersFile and os.path.exists(config.SudoersFile):
             log.msg("Configuring SudoDirectoryService with file: %s"
                     % (config.SudoersFile,))
-                
+
             sudoDirectory = SudoDirectoryService(config.SudoersFile)
             sudoDirectory.realmName = baseDirectory.realmName
 
@@ -299,7 +299,7 @@ class CalDAVServiceMaker(object):
         #
 
         log.msg("Setting up document root at: %s" % (config.DocumentRoot,))
-        
+
         log.msg("Setting up principal collection: %r" % (self.principalResourceClass,))
 
         principalCollection = self.principalResourceClass(
@@ -425,7 +425,7 @@ class CalDAVServiceMaker(object):
             config.AccessLogFile,))
 
         logObserver = RotatingFileAccessLoggingObserver(config.AccessLogFile)
-        
+
         service = CalDAVService(logObserver)
 
         if not config.BindAddresses:
@@ -449,13 +449,13 @@ class CalDAVServiceMaker(object):
 
             for port in config.BindHTTPPorts:
                 log.msg("Adding server at %s:%s" % (bindAddress, port))
-                
+
                 httpService = internet.TCPServer(int(port), channel, interface=bindAddress)
                 httpService.setServiceParent(service)
 
             for port in config.BindSSLPorts:
                 log.msg("Adding SSL server at %s:%s" % (bindAddress, port))
-            
+
                 httpsService = internet.SSLServer(
                     int(port), channel,
                     DefaultOpenSSLContextFactory(config.SSLPrivateKey, config.SSLCertificate),
