@@ -147,6 +147,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
             if status != responsecode.CREATED:
                 raise HTTPError(status)
     
+            self.create()
             self.writeDeadProperty(resourceType)
             return status
         
@@ -411,6 +412,8 @@ class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
         else:
             fp.open("w").close()
             fp.restat(False)
+
+        self.create()
 
         return True
 

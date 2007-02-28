@@ -38,7 +38,6 @@ from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError, StatusResponse
 
-from twistedcaldav.root import RootResource
 from twistedcaldav.sql import AbstractSQLDatabase
 
 DEBUG_LOG = False
@@ -51,6 +50,7 @@ class sqlPropertyStore (object):
     def __init__(self, resource):
         self.resource = resource
         if os.path.exists(os.path.dirname(resource.fp.path)):
+            from twistedcaldav.root import RootResource
             if resource.isCollection() and isinstance(resource, RootResource):
                 self.rname = ""
                 indexpath = resource.fp.path
@@ -58,8 +58,14 @@ class sqlPropertyStore (object):
                 self.rname = os.path.basename(resource.fp.path)
                 indexpath = os.path.dirname(resource.fp.path)
             self.index = SQLPropertiesDatabase(indexpath)
+            if resource.isCollection():
+                self.childindex = SQLPropertiesDatabase(resource.fp.path)
+            else:
+                self.childindex = None
         else:
+            log.msg("No sqlPropertyStore file for %s" % (os.path.dirname(resource.fp.path),))
             self.index = None
+            self.childindex = None
 
     def get(self, qname):
         """
@@ -100,11 +106,11 @@ class sqlPropertyStore (object):
             
         return self.index.getSeveralPropertyValues(self.rname, qnames)
 
-    def getAll(self):
+    def getAll(self, nohidden=True):
         """
         Read all properties from index.
         
-        @param qnames: C{list} of C{tuple} of property namespace and name.
+        @param nohidden: C{True} to not return hidden properties, C{False} otherwise.
         @return: a C{dict} containing property name/value.
         """
         if not self.index:
@@ -113,7 +119,7 @@ class sqlPropertyStore (object):
                 "No properties"
             ))
             
-        return self.index.getAllPropertyValues(self.rname)
+        return self.index.getAllPropertyValues(self.rname, nohidden)
 
     def getSeveralResources(self, qnames):
         """
@@ -125,13 +131,29 @@ class sqlPropertyStore (object):
         if not qnames:
             return None
 
-        if not self.index:
+        if not self.childindex:
             raise HTTPError(StatusResponse(
                 responsecode.NOT_FOUND,
                 "No such property: {%s}%s" % qnames[0]
             ))
             
-        return self.index.getSeveralResourcePropertyValues(qnames)
+        return self.childindex.getSeveralResourcePropertyValues(qnames)
+
+    def getAllResources(self, nohidden=True):
+        """
+        Read specific properties for all child resources from index.
+        
+        @param nohidden: C{True} to not return hidden properties, C{False} otherwise.
+        @return: a C{dict} with resource name as keys and C{dict} of property name/classes as values
+        """
+
+        if not self.childindex:
+            raise HTTPError(StatusResponse(
+                responsecode.NOT_FOUND,
+                "No proeprties"
+            ))
+            
+        return self.childindex.getAllResourcePropertyValues(nohidden)
 
     def set(self, property):
         """
@@ -141,7 +163,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setOnePropertyValue(self.rname, property.qname(), property)
+            self.index.setOnePropertyValue(self.rname, property.qname(), property, property.hidden)
 
     def setSeveral(self, properties):
         """
@@ -151,7 +173,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setSeveralPropertyValues(self.rname, [(p.qname(), p) for p in properties])
+            self.index.setSeveralPropertyValues(self.rname, [(p.qname(), p, p.hidden) for p in properties])
 
     def delete(self, qname):
         """
@@ -208,6 +230,19 @@ class sqlPropertyStore (object):
             return self.index.listProperties(self.rname)
         else:
             return ()
+
+    def listAll(self):
+        """
+        List all property names for children of this resource.
+        
+        SELECT RESOURCENAME, PROPNAME from PROPERTIES
+        
+        """
+
+        if self.childindex:
+            return self.childindex.listAllProperties()
+        else:
+            return {}
 
     def search(self, qname, text):
         """
@@ -285,18 +320,19 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         path = os.path.join(path, SQLPropertiesDatabase.dbFilename)
         super(SQLPropertiesDatabase, self).__init__(path, SQLPropertiesDatabase.dbFormatVersion, utf8=True)
 
-    def setOnePropertyValue(self, rname, pname, pvalue):
+    def setOnePropertyValue(self, rname, pname, pvalue, hidden):
         """
         Add a property.
     
         @param rname: a C{str} containing the resource name.
         @param pname: a C{str} containing the name of the property to set.
+        @param hidden: C{True} for a hidden proeprty, C{False} otehrwise.
         @param pvalue: a C{str} containing the property value to set.
         """
         
         # Remove what is there, then add it back.
         self._delete_from_db(rname, self._encode(pname))
-        self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue), pvalue.toxml())
+        self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue), pvalue.toxml(), hidden)
         self._db_commit()
 
     def setSeveralPropertyValues(self, rname, properties):
@@ -311,7 +347,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         # Remove what is there, then add it back.
         for p in properties:
             self._delete_from_db(rname, self._encode(p[0]))
-            self._add_to_db(rname, self._encode(p[0]), cPickle.dumps(p[1]), p[1].toxml())
+            self._add_to_db(rname, self._encode(p[0]), cPickle.dumps(p[1]), p[1].toxml(), p[2])
         self._db_commit()
 
     def getOnePropertyValue(self, rname, pname):
@@ -350,12 +386,12 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         if DEBUG_LOG:
             log.msg("getSeveralPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
         properties = {}
-        statement = "select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1 and ("
+        statement = "select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME in ("
         args = [rname]
         for i, pname in enumerate(pnames):
             if i != 0:
-                statement += " or "
-            statement += "PROPERTYNAME=:%s" % (i + 2,)
+                statement += ", "
+            statement += ":%s" % (i + 2,)
             args.append(self._encode(pname))
         statement += ")"
 
@@ -364,19 +400,21 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
         return properties
 
-    def getAllPropertyValues(self, rname):
+    def getAllPropertyValues(self, rname, nohidden):
         """
         Get specified property values from specific resource.
     
         @param rname: a C{str} containing the resource name.
+        @param nohidden: C{True} to not return hidden properties, C{False} otherwise.
         @return: a C{dict} containing property name/value.
         """
         
-        # Remove what is there, then add it back.
-        if DEBUG_LOG:
-            log.msg("getAllPropertyValues: %s" % (self.dbpath,))
         properties = {}
-        for row in self._db_execute("select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1", rname):
+        if nohidden:
+            statement = "select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1 and HIDDEN = 'F'"
+        else:
+            statement = "select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1"
+        for row in self._db_execute(statement, rname):
             properties[self._decode(row[0])] = cPickle.loads(row[1])
 
         return properties
@@ -393,15 +431,34 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         if DEBUG_LOG:
             log.msg("getAllPropertyValues: %s \"%s\"" % (self.dbpath, pnames))
         members = {}
-        statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where "
+        statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where PROPERTYNAME in ("
         args = []
         for i, pname in enumerate(pnames):
             if i != 0:
-                statement += " or "
-            statement += "PROPERTYNAME=:%s" % (i + 1,)
+                statement += ", "
+            statement += ":%s" % (i + 1,)
             args.append(self._encode(pname))
+        statement += ")"
 
         for row in self._db_execute(statement, *args):
+            members.setdefault(row[0], {})[self._decode(row[1])] = cPickle.loads(row[2])
+
+        return members
+
+    def getAllResourcePropertyValues(self, nohidden):
+        """
+        Get specified property values from all resources.
+    
+        @param nohidden: C{True} to not return hidden properties, C{False} otherwise.
+        @return: a C{dict} containing C{str} keys (names of child resources) and C{dict} values of property name/value.
+        """
+        
+        members = {}
+        if nohidden:
+            statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where HIDDEN='F'"
+        else:
+            statement = "select RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT from PROPERTIES"
+        for row in self._db_execute(statement):
             members.setdefault(row[0], {})[self._decode(row[1])] = cPickle.loads(row[2])
 
         return members
@@ -455,6 +512,19 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             members.add(self._decode(row[0]))
         return members
 
+    def listAllProperties(self):
+        """
+        List all properties in child resources.
+    
+        @param rname: a C{str} containing the resource name.
+        @return: a C{dict} containing the resource names and property names.
+        """
+
+        results = {}
+        for row in self._db_execute("select RESOURCENAME, PROPERTYNAME from PROPERTIES"):
+            results.setdefault(row[0], set()).add(self._decode(row[1]))
+        return results
+
     def searchOneProperty(self, pname, text):
         results = {}
         liketext = "%%%s%%" % (text,)
@@ -487,7 +557,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             results.setdefault(row[0], set()).add(self._decode(row[1]))
         return results
 
-    def _add_to_db(self, rname, pname, pobject, pvalue):
+    def _add_to_db(self, rname, pname, pobject, pvalue, hidden):
         """
         Add a property.
     
@@ -497,11 +567,15 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @param pvalue: a C{str} containing the text of the property value to set.
         """
         
+        if hidden:
+            hidden_value = "T"
+        else:
+            hidden_value = "F"
         self._db_execute(
             """
-            insert into PROPERTIES (RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT, PROPERTYVALUE)
-            values (:1, :2, :3, :4)
-            """, rname, pname, pobject, pvalue
+            insert into PROPERTIES (RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT, PROPERTYVALUE, HIDDEN)
+            values (:1, :2, :3, :4, :5)
+            """, rname, pname, pobject, pvalue, hidden_value
         )
        
     def _delete_all_from_db(self, rname):
@@ -547,7 +621,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
                 RESOURCENAME   text,
                 PROPERTYNAME   text,
                 PROPERTYOBJECT text,
-                PROPERTYVALUE  text
+                PROPERTYVALUE  text,
+                HIDDEN         text(1)
             )
             """
         )

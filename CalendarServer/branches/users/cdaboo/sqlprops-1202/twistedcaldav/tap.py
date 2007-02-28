@@ -328,6 +328,10 @@ class CalDAVServiceMaker(object):
         root.putChild('principals', principalCollection)
         root.putChild('calendars', calendarCollection)
 
+        root.create()
+        #principalCollection.provision()
+        #calendarCollection.provision()
+
         # Configure default ACLs on the root resource
 
         log.msg("Setting up default ACEs on root resource")

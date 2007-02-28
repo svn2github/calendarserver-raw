@@ -434,6 +434,12 @@ def storeCalendarObjectResource(
         yield response
         response = response.getResult()
 
+        # Reset dead properties
+        if overwrite:
+            destination.update()
+        else:
+            destination.create()
+
         # Copy dead properties first, before adding overridden values
         if source is not None:
             properties = source.deadProperties().getAll()
@@ -445,11 +451,14 @@ def storeCalendarObjectResource(
             if source.hasDeadProperty(TwistedGETContentMD5):
                 md5 = source.readDeadProperty(TwistedGETContentMD5)
                 destination.writeDeadProperty(md5)
+                etag = source.readDeadProperty(davxml.GETETag)
+                destination.writeDeadProperty(etag)
         else:
             # Finish MD5 calc and write dead property
             md5.close()
             md5 = md5.getMD5()
             destination.writeDeadProperty(TwistedGETContentMD5.fromString(md5))
+            destination.writeDeadProperty(davxml.GETETag.fromString(md5))
 
         response = IResponse(response)
         
