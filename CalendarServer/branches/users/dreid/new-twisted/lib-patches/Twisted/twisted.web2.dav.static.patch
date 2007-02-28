@@ -138,7 +138,7 @@ Index: twisted/web2/dav/static.py
 -        return self.__class__(path, defaultType=self.defaultType, indexNames=self.indexNames[:])
 +        return self.__class__(
 +            path, self.defaultType, self.indexNames[:],
-+            principalCollection=self.principalCollections()
++            principalCollections=self.principalCollections()
 +        )
  
  #
