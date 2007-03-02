@@ -25,6 +25,7 @@ __all__ = [
     "OpenDirectoryInitError",
 ]
 
+import os
 import sys
 
 import opendirectory
@@ -53,11 +54,13 @@ class OpenDirectoryService(DirectoryService):
     def __repr__(self):
         return "<%s %r: %r>" % (self.__class__.__name__, self.realmName, self.node)
 
-    def __init__(self, node="/Search", requireComputerRecord=True, dosetup=True):
+    def __init__(self, node="/Search", requireComputerRecord=True, computerRecordGUID=None, dosetup=True):
         """
         @param node: an OpenDirectory node name to bind to.
         @param requireComputerRecord: C{True} if the directory schema is to be used to determine
             which calendar users are enabled.
+        @param computerRecordGUID: a C{str} containing the GUID for the computer record to lookup.
+            If it is the empty string or None then the lookup is done using the en0 interface address.
         @param dosetup: if C{True} then the directory records are initialized,
                         if C{False} they are not.
                         This should only be set to C{False} when doing unit tests.
@@ -72,6 +75,7 @@ class OpenDirectoryService(DirectoryService):
         self.directory = directory
         self.node = node
         self.requireComputerRecord = requireComputerRecord
+        self.computerRecordGUID = computerRecordGUID
         self._records = {}
         self._delayedCalls = set()
 
@@ -115,8 +119,22 @@ class OpenDirectoryService(DirectoryService):
                 % (self.realmName,)
             )
          
-        # Find a record in /Computers with an ENetAddress attribute value equal to the MAC address
-        # and return some useful attributes.
+        # We try either the current machine's en0 value, or the record GUID if supplied
+        if self.computerRecordGUID:
+            query_attr = dsattributes.kDS1AttrGeneratedUID
+            query_value = self.computerRecordGUID
+            query_type = dsattributes.eDSExact
+            query_description = "GUID: %s" % (query_value,)
+        else:
+            # Get MAC address for en0
+            macaddr = os.popen("/sbin/ifconfig en0|grep ether").read().replace("\n", "").split()[1]
+
+            query_attr = dsattributes.kDS1AttrENetAddress
+            query_value = macaddr
+            query_type = dsattributes.eDSExact
+            query_description = "MAC address: %s" % (query_value,)
+
+        # Return some useful attributes.
         attrs = [
             dsattributes.kDS1AttrGeneratedUID,
             dsattributes.kDSNAttrRecordName,
@@ -125,24 +143,30 @@ class OpenDirectoryService(DirectoryService):
 
         records = opendirectory.queryRecordsWithAttribute(
             self.directory,
-            dsattributes.kDS1AttrXMLPlist,
-            vhostname,
-            dsattributes.eDSContains,
-            True,    # case insentive for hostnames
+            query_attr,
+            query_value,
+            query_type,
+            False,
             dsattributes.kDSStdRecordTypeComputers,
             attrs
         )
-        self._parseComputersRecords(records, vhostname)
 
-    def _parseComputersRecords(self, records, vhostname):
-        
         # Must have some results
         if len(records) == 0:
             raise OpenDirectoryInitError(
-                "Open Directory (node=%s) has no /Computers records with a virtual hostname: %s"
-                % (self.realmName, vhostname,)
+                "Open Directory (node=%s) has no /Computers records with %s"
+                % (self.realmName, query_description,)
+            )
+        elif len(records) > 1:
+            raise OpenDirectoryInitError(
+                "Open Directory (node=%s) has multiple /Computers records with %s"
+                % (self.realmName, query_description,)
             )
 
+        self._parseComputersRecords(records, vhostname, query_description)
+
+    def _parseComputersRecords(self, records, vhostname, query_description):
+        
         # Now find a single record that actually matches the hostname
         found = False
         for recordname, record in records.iteritems():
@@ -156,16 +180,16 @@ class OpenDirectoryService(DirectoryService):
                 continue
             elif found:
                 raise OpenDirectoryInitError(
-                    "Open Directory (node=%s) multiple /Computers records found matching virtual hostname: %s"
-                    % (self.realmName, vhostname,)
+                    "Open Directory (node=%s) has multiple /Computers records with %s"
+                    % (self.realmName, query_description,)
                 )
             else:
                 found = True
                 
         if not found:
             raise OpenDirectoryInitError(
-                "Open Directory (node=%s) no /Computers records with an enabled and valid calendar service were found matching virtual hostname: %s"
-                % (self.realmName, vhostname,)
+                "Open Directory (node=%s) no /Computers records with an enabled and valid calendar service were found with %s"
+                % (self.realmName, query_description,)
             )
     
     def _parseXMLPlist(self, vhostname, recordname, plist, recordguid):

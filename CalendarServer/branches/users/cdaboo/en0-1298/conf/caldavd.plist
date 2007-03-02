@@ -115,6 +115,10 @@ limitations under the License.
       <string>/Search</string>
       <key>requireComputerRecord</key>
       <true/>
+      <!--
+      <key>computerRecordGUID</key>
+      <string></string>
+       -->
     </dict>
   </dict>
 

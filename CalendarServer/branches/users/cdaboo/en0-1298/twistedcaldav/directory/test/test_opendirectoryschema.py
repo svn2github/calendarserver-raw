@@ -918,7 +918,7 @@ else:
             def _doParseRecords(recordlist, title):
                 service = OpenDirectoryService(node="/Search", dosetup=False)
                 try:
-                    service._parseComputersRecords(recordlist, "calendar.apple.com")
+                    service._parseComputersRecords(recordlist, "calendar.apple.com", "test description")
                     self.fail(msg="Record parse should have failed: %s" % (title,))
                 except OpenDirectoryInitError:
                     pass
@@ -941,7 +941,7 @@ else:
             def _doParseRecords(recordlist, title):
                 service = OpenDirectoryService(node="/Search", dosetup=False)
                 try:
-                    service._parseComputersRecords(recordlist, "calendar.apple.com")
+                    service._parseComputersRecords(recordlist, "calendar.apple.com", "test description")
                 except OpenDirectoryInitError, ex:
                     self.fail(msg="Record parse should not have failed: \"%s\" with error: %s" % (title, ex))
                 
