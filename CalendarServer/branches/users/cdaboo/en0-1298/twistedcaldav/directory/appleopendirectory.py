@@ -72,7 +72,6 @@ class OpenDirectoryService(DirectoryService):
         self.directory = directory
         self.node = node
         self.requireComputerRecord = requireComputerRecord
-        self.computerRecordName = ""
         self._records = {}
         self._delayedCalls = set()
 
@@ -253,8 +252,6 @@ class OpenDirectoryService(DirectoryService):
 
         # Create the string we will use to match users with accounts on this server
         self.servicetag = "%s:%s:calendar" % (recordguid, hostguid)
-        
-        self.computerRecordName = recordname
         
         return True
     
