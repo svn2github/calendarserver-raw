@@ -2,6 +2,15 @@ Index: twisted/web2/dav/element/base.py
 ===================================================================
 --- twisted/web2/dav/element/base.py	(revision 18545)
 +++ twisted/web2/dav/element/base.py	(working copy)
+@@ -45,7 +45,7 @@
+ ]
+ 
+ import string
+-import StringIO
++import cStringIO
+ import xml.dom.minidom
+ 
+ import datetime
 @@ -145,21 +145,20 @@
  
          if self.allowed_attributes:
@@ -122,7 +131,8 @@ Index: twisted/web2/dav/element/base.py
 +        output.write(" %s='%s'" % (name, value,))  
 +      
      def toxml(self):
-         output = StringIO.StringIO()
+-        output = StringIO.StringIO()
++        output = cStringIO.StringIO()
          self.writeXML(output)
 -        return output.getvalue()
 +        return str(output.getvalue())
