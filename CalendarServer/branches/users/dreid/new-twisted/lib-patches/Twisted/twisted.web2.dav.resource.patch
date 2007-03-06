@@ -786,6 +786,15 @@ Index: twisted/web2/dav/resource.py
      # HTTP
      ##
  
+@@ -1567,7 +1916,7 @@
+     def findChildren(self, depth, request, callback, privileges=None, inherited_aces=None):
+         return succeed(None)
+ 
+-class DAVPrincipalResource (DAVLeafResource):
++class DAVPrincipalResource (DAVResource):
+     """
+     Resource representing a WebDAV principal.  (RFC 3744, section 2)
+     """
 @@ -1577,7 +1926,7 @@
      # WebDAV
      ##
