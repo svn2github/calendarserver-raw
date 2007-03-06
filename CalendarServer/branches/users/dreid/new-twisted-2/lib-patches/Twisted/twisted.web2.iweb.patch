@@ -1,6 +1,6 @@
 Index: twisted/web2/iweb.py
 ===================================================================
---- twisted/web2/iweb.py	(revision 18545)
+--- twisted/web2/iweb.py	(revision 19725)
 +++ twisted/web2/iweb.py	(working copy)
 @@ -41,14 +41,23 @@
          """

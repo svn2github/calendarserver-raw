@@ -1,6 +1,6 @@
 Index: twisted/python/procutils.py
 ===================================================================
---- twisted/python/procutils.py	(revision 18545)
+--- twisted/python/procutils.py	(revision 19725)
 +++ twisted/python/procutils.py	(working copy)
 @@ -33,7 +33,7 @@
      """
