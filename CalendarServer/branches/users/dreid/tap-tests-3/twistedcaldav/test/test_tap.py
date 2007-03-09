@@ -68,8 +68,9 @@ class CalDAVOptionsTest(unittest.TestCase):
 
         self.config = TestCalDAVOptions()
         self.config.parent = Options()
-        self.config.parent['uid'] = None
-        self.config.parent['gid'] = None
+        self.config.parent['uid'] = 0
+        self.config.parent['gid'] = 0
+        self.config.parent['nodaemon'] = True
 
         config_mod.parseConfig('non-existant-config')
 
@@ -160,6 +161,7 @@ class BaseServiceMakerTests(unittest.TestCase):
         self.options.parent = Options()
         self.options.parent['gid'] = None
         self.options.parent['uid'] = None
+        self.options.parent['nodaemon'] = None
 
         self.config = deepcopy(config_mod.defaultConfig)
 

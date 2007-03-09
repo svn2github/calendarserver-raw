@@ -82,9 +82,13 @@ defaultConfig = {
     # Authentication
     #
     "Authentication": {
-        "Basic"   : { "Enabled": False },                     # Clear text; best avoided
-        "Digest"  : { "Enabled": True,  "Algorithm": "md5" }, # Digest challenge/response
-        "Kerberos": { "Enabled": False, "Realm": "" },        # Kerberos/SPNEGO
+        "Basic"   : { "Enabled": False },               # Clear text; best avoided
+        "Digest"  : {                                   # Digest challenge/response
+            "Enabled": True,  
+            "Algorithm": "md5",
+            "Qop": True,
+            },
+        "Kerberos": { "Enabled": False, "Realm": "" },  # Kerberos/SPNEGO
     },
 
     #
