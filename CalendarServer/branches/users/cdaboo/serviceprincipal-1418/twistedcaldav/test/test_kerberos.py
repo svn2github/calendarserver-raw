@@ -31,10 +31,10 @@ which we are not guaranteed to have for the test.
 class KerberosTests(twistedcaldav.test.util.TestCase):
 
     def test_BasicKerberosCredentials(self):
-        authkerb.BasicKerberosCredentials("test", "test", "http/example.com@EXAMPLE.COM", "EXAMPLE.COM")
+        authkerb.BasicKerberosCredentials("test", "test", "http@EXAMPLE.COM", "EXAMPLE.COM")
 
     def test_BasicKerberosCredentialFactory(self):
-        factory = authkerb.BasicKerberosCredentialFactory("http/example.com@EXAMPLE.COM", "EXAMPLE.COM")
+        factory = authkerb.BasicKerberosCredentialFactory("http/example.com@EXAMPLE.COM")
 
         challenge = factory.getChallenge("peer")
         expected_challenge = {'realm': "EXAMPLE.COM"}
@@ -45,7 +45,7 @@ class KerberosTests(twistedcaldav.test.util.TestCase):
         authkerb.NegotiateCredentials("test")
 
     def test_NegotiateCredentialFactory(self):
-        factory = authkerb.NegotiateCredentialFactory("http/example.com@EXAMPLE.COM", "EXAMPLE.COM")
+        factory = authkerb.NegotiateCredentialFactory("http/example.com@EXAMPLE.COM")
 
         challenge = factory.getChallenge("peer")
         expected_challenge = {}

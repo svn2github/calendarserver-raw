@@ -390,15 +390,7 @@ class CalDAVServiceMaker(object):
 
                     service = schemeConfig['ServicePrincipal']
 
-                    if '@' in service:
-                        rest, kerbRealm = service.split('@', 1)
-                    else:
-                        kerbRealm = config.ServerHostName
-                        
-                    credFactory = NegotiateCredentialFactory(
-                        service,
-                        kerbRealm
-                    )
+                    credFactory = NegotiateCredentialFactory(schemeConfig['ServicePrincipal'])
 
                 elif scheme == 'digest':
                     credFactory = QopDigestCredentialFactory(

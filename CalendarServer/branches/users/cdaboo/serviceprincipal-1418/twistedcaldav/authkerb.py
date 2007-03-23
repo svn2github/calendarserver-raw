@@ -46,6 +46,7 @@ from twisted.web2.auth.interfaces import ICredentialFactory
 from twisted.web2.dav.auth import IPrincipalCredentials
 
 from twistedcaldav import logging
+from twistedcaldav.config import config
 
 import kerberos
 
@@ -73,15 +74,29 @@ class BasicKerberosCredentialFactory:
 
     scheme = 'basic'
 
-    def __init__(self, service, realm):
+    def __init__(self, principal):
         """
-        The realm string can be of the form service/realm@domain. We split that
-        into service@domain, and realm.
+        The principal string must be of the form service/host@realm. We split that
+        into service@realm, and realm. It can also be empty in which case we find
+        the right values automatically from the keytab.
         """
-        self.service = service
+        
+        if not principal:
+            try:
+                principal = kerberos.getServerPrincipalDetails("http", config.ServerHostName)
+            except kerberos.KrbError, ex:
+                logging.err("getServerPrincipalDetails: %s" % (ex[0],), system="BasicKerberosCredentialFactory")
+                raise config.ConfigurationError("Could not automatically determine the server's service principal from the default Kerberos keytab file.")
+
+        try:
+            service, rest = principal.split("/")
+            ignore_host, realm = rest.split("@")
+        except ValueError:
+            raise config.ConfigurationError("Could not parse Kerberos service principal '%s'. Required format is 'service/host@realm'" % (principal,))
+        self.service = "%s@%s" % (service, realm,)
         self.realm = realm
 
-    def getChallenge(self, peer):
+    def getChallenge(self, unused_peer):
         return {'realm': self.realm}
 
     def decode(self, response, request): #@UnusedVariable
@@ -142,19 +157,36 @@ class NegotiateCredentialFactory:
 
     scheme = 'negotiate'
 
-    def __init__(self, service, realm):
+    def __init__(self, principal):
+        """
+        The principal string must be of the form service/host@realm. We split that
+        into service@realm, and realm. It can also be empty in which case we find
+        the right values automatically from the keytab.
+        """
+        
+        if not principal:
+            try:
+                principal = kerberos.getServerPrincipalDetails("http", config.ServerHostName)
+            except kerberos.KrbError, ex:
+                logging.err("getServerPrincipalDetails: %s" % (ex[0],), system="NegotiateCredentialFactory")
+                raise config.ConfigurationError("Could not automatically determine the server's service principal from the default Kerberos keytab file.")
 
-        self.service = service
+        try:
+            service, rest = principal.split("/")
+            ignore_host, realm = rest.split("@")
+        except ValueError:
+            raise config.ConfigurationError("Could not parse Kerberos service principal '%s'. Required format is 'service/host@realm'." % (principal,))
+        self.service = "%s@%s" % (service, realm,)
         self.realm = realm
 
-    def getChallenge(self, peer):
+    def getChallenge(self, unused_peer):
         return {}
 
     def decode(self, base64data, request):
         
         # Init GSSAPI first
         try:
-            result, context = kerberos.authGSSServerInit(self.service);
+            ignore_result, context = kerberos.authGSSServerInit(self.service);
         except kerberos.GSSError, ex:
             logging.err("authGSSServerInit: %s(%s)" % (ex[0][0], ex[1][0],), system="NegotiateCredentialFactory")
             raise error.LoginFailed('Authentication System Failure: %s(%s)' % (ex[0][0], ex[1][0],))
@@ -191,7 +223,7 @@ class NegotiateCredentialFactory:
 
         # Close the context
         try:
-            result = kerberos.authGSSServerClean(context);
+            ignore_result = kerberos.authGSSServerClean(context);
         except kerberos.GSSError, ex:
             logging.err("authGSSServerClean: %s" % (ex[0][0], ex[1][0],), system="NegotiateCredentialFactory")
             raise error.LoginFailed('Authentication System Failure %s(%s)' % (ex[0][0], ex[1][0],))

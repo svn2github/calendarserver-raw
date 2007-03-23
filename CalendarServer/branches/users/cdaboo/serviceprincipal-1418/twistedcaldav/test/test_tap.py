@@ -403,6 +403,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         """
         self.config['Authentication']['Digest']['Enabled'] = True
         self.config['Authentication']['Kerberos']['Enabled'] = True
+        self.config['Authentication']['Kerberos']['ServicePrincipal'] = 'http/hello@bob'
         self.config['Authentication']['Basic']['Enabled'] = True
 
         self.writeConfig()
@@ -427,7 +428,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         Test that the Kerberos Realm defaults to the ServerHostName when
         the principal is not in the form of proto/host@realm
         """
-        self.config['Authentication']['Kerberos']['ServicePrincipal'] = 'http/hello'
+        self.config['Authentication']['Kerberos']['ServicePrincipal'] = 'http/hello@bob'
         self.config['Authentication']['Kerberos']['Enabled'] = True
         self.writeConfig()
         site = self.getSite()
@@ -435,8 +436,8 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         authWrapper = site.resource.resource
 
         ncf = authWrapper.credentialFactories['negotiate']
-        self.assertEquals(ncf.service, 'http/hello')
-        self.assertEquals(ncf.realm, 'localhost')
+        self.assertEquals(ncf.service, 'http@bob')
+        self.assertEquals(ncf.realm, 'bob')
 
     def test_servicePrincipalWithRealm(self):
         """
@@ -451,7 +452,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         authWrapper = site.resource.resource
 
         ncf = authWrapper.credentialFactories['negotiate']
-        self.assertEquals(ncf.service, 'http/hello@bob')
+        self.assertEquals(ncf.service, 'http@bob')
         self.assertEquals(ncf.realm, 'bob')
 
     def test_AuthWrapperPartialEnabled(self):
