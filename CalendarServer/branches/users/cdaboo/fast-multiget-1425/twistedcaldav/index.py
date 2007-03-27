@@ -218,6 +218,21 @@ class AbstractIndex(object):
         uid = self._db_value_for_sql("select UID from RESOURCE where NAME = :1", name)
         return uid is not None
     
+    def resourcesExist(self, names):
+        """
+        Determines whether the specified resource name exists in the index.
+        @param names: a C{list} containing the names of the resources to test
+        @return: a C{list} of all names that exist
+        """
+        statement = "select NAME from RESOURCE where NAME in ("
+        for ctr, ignore_name in enumerate(names):
+            if ctr != 0:
+                statement += ", "
+            statement += ":%s" % (ctr,)
+        statement += ")"
+        results = self._db_values_for_sql(statement, *names)
+        return results
+    
     def search(self, filter):
         """
         Finds resources matching the given qualifiers.
