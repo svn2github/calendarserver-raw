@@ -133,13 +133,16 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
                     responses.append(davxml.StatusResponse(href, davxml.Status.fromResponseCode(responsecode.NOT_FOUND)))
                 else:
                     valid_names.append(name)
-            
+            if not valid_names:
+                yield None
+                return
+        
             # Verify that valid requested resources are calendar objects
-            exists_names = self.index().resourcesExist(valid_names)
+            exists_names = tuple(self.index().resourcesExist(valid_names))
             checked_names = []
             for name in valid_names:
-                href = joinURL(request.uri, name)
                 if name not in exists_names:
+                    href = davxml.HRef.fromString(joinURL(request.uri, name))
                     responses.append(davxml.StatusResponse(href, davxml.Status.fromResponseCode(responsecode.NOT_ALLOWED)))
                 else:
                     checked_names.append(name)
@@ -162,13 +165,13 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
 
             # Get properties for all valid readable resources
             for resource, href in ok_resources:
-                d = waitForDeferred(report_common.responseForHref(request, responses, href, resource, None, propertiesForResource, propertyreq))
+                d = waitForDeferred(report_common.responseForHref(request, responses, davxml.HRef.fromString(href), resource, None, propertiesForResource, propertyreq))
                 yield d
                 d.getResult()
     
             # Indicate error for all valid non-readable resources
             for ignore_resource, href in bad_resources:
-                responses.append(davxml.StatusResponse(href, davxml.Status.fromResponseCode(responsecode.NOT_ALLOWED)))
+                responses.append(davxml.StatusResponse(davxml.HRef.fromString(href), davxml.Status.fromResponseCode(responsecode.NOT_ALLOWED)))
     
         doCalendarResponse = deferredGenerator(doCalendarResponse)
 
