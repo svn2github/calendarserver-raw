@@ -64,15 +64,17 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
     
     if propertyreq.qname() == ("DAV:", "allprop"):
         propertiesForResource = report_common.allPropertiesForResource
+        generate_calendar_data = False
 
     elif propertyreq.qname() == ("DAV:", "propname"):
         propertiesForResource = report_common.propertyNamesForResource
+        generate_calendar_data = False
 
     elif propertyreq.qname() == ("DAV:", "prop"):
         propertiesForResource = report_common.propertyListForResource
         
         # Verify that any calendar-data element matches what we can handle
-        result, message = report_common.validPropertyListCalendarDataTypeVersion(propertyreq)
+        result, message, generate_calendar_data = report_common.validPropertyListCalendarDataTypeVersion(propertyreq)
         if not result:
             log.err(message)
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
