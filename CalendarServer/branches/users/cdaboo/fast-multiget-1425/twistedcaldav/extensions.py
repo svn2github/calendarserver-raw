@@ -81,6 +81,17 @@ class DAVResource (SudoAuthIDMixin, SuperDAVResource):
 
         This implementation works for C{depth} values of C{"0"}, C{"1"}, 
         and C{"infinity"}.  As long as C{self.listChildren} is implemented
+        
+        @param depth: a C{str} for the depth: "0", "1" and "infinity" only allowed.
+        @param request: the L{Request} for the current request in progress
+        @param okcallback: a callback function used on all resources that pass the privilege check,
+            or C{None}
+        @param badcallback: a callback function used on all resources that fail the privilege check,
+            or C{None}
+        @param names: a C{list} of C{str}'s containing the names of the child resources to lookup. If
+            empty or C{None} all children will be examined, otherwise only the ones in the list.
+        @param privileges: a list of privileges to check.
+        @param inherited_aces: the list of parent ACEs that are inherited by all children.
         """
         assert depth in ("0", "1", "infinity"), "Invalid depth: %s" % (depth,)
 
@@ -131,12 +142,14 @@ class DAVResource (SudoAuthIDMixin, SuperDAVResource):
             checked = checked.getResult()
             if checked:
                 for resource, url in items[2]:
-                    okcallback(resource, url)
+                    if okcallback:
+                        okcallback(resource, url)
                     if resource.isCollection():
                         allowed_collections.append((resource, url))
             else:
-                for resource, url in items[2]:
-                    badcallback(resource, url)
+                if badcallback:
+                    for resource, url in items[2]:
+                        badcallback(resource, url)
 
         # TODO: Depth: inifinity support
         if depth == "infinity":
