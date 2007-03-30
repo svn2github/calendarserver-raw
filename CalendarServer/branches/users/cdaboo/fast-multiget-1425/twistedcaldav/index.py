@@ -233,6 +233,14 @@ class AbstractIndex(object):
         results = self._db_values_for_sql(statement, *names)
         return results
     
+    def searchValid(self, filter):
+        if isinstance(filter, caldavxml.Filter):
+            qualifiers = calendarquery.sqlcalendarquery(filter)
+        else:
+            qualifiers = None
+            
+        return qualifiers is not None
+
     def search(self, filter):
         """
         Finds resources matching the given qualifiers.
