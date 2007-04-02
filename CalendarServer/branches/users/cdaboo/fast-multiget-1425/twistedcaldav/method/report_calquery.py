@@ -156,7 +156,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
                   
                 # Now determine which valid resources are readable and which are not
                 ok_resources = []
-                d = self.findChildrenFaster(
+                d = calresource.findChildrenFaster(
                     "1",
                     request,
                     lambda x, y: ok_resources.append((x, y)),
@@ -178,7 +178,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
                     else:
                         calendar = None
                     
-                    d = waitForDeferred(queryCalendarObjectResource(child, child_uri, child_name, calendar, query_ok = index_query_ok))
+                    d = waitForDeferred(queryCalendarObjectResource(child, uri, child_name, calendar, query_ok = index_query_ok))
                     yield d
                     d.getResult()
         else:
