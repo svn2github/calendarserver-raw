@@ -44,6 +44,8 @@ from twistedcaldav.ical import Component
 from twistedcaldav.query import calendarquery
 from twistedcaldav import caldavxml
 
+from vobject.icalendar import utc
+
 db_basename = ".db.sqlite"
 schema_version = "4"
 collection_types = {"Calendar": "Regular Calendar Collection", "iTIP": "iTIP Calendar Collection"}
@@ -548,12 +550,14 @@ class CalendarIndex (AbstractIndex):
         instances = calendar.expandTimeRanges(expand_max)
         for key in instances:
             instance = instances[key]
+            start = instance.start.replace(tzinfo=utc)
+            end = instance.end.replace(tzinfo=utc)
             float = ('N', 'Y')[instance.start.tzinfo is None]
             self._db_execute(
                 """
                 insert into TIMESPAN (NAME, FLOAT, START, END)
                 values (:1, :2, :3, :4)
-                """, name, float, normalizeForIndex(instance.start), normalizeForIndex(instance.end)
+                """, name, float, start, end
             )
 
         self._db_execute(
