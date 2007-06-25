@@ -191,6 +191,17 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
                 self.failIf(principal is None)
                 self.assertEquals(record, principal.record)
 
+    def test_autoSchedule(self):
+        """
+        DirectoryPrincipalProvisioningResource.principalForCalendarUserAddress()
+        """
+        for provisioningResource, recordType, recordResource, record in self._allRecords():
+            principal = provisioningResource.principalForRecord(record)
+            self.failIf(principal is None)
+            self.assertEquals(record.autoSchedule, principal.autoSchedule())
+            if record.shortName == "gemini":
+                self.assertTrue(principal.autoSchedule())
+
     # FIXME: Run DirectoryPrincipalProvisioningResource tests on DirectoryPrincipalTypeResource also
 
     ##

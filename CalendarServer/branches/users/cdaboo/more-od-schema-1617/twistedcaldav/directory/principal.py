@@ -455,6 +455,9 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
         
         return addresses
 
+    def autoSchedule(self):
+        return self.record.autoSchedule
+        
     def scheduleInbox(self, request):
         home = self._calendarHome()
         if home is None:

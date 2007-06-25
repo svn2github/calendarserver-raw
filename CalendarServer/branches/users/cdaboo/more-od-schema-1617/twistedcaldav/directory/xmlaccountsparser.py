@@ -44,6 +44,7 @@ ELEMENT_NAME         = "name"
 ELEMENT_MEMBERS      = "members"
 ELEMENT_MEMBER       = "member"
 ELEMENT_CUADDR       = "cuaddr"
+ELEMENT_AUTOSCHEDULE = "auto-schedule"
 
 ATTRIBUTE_REALM      = "realm"
 ATTRIBUTE_REPEAT     = "repeat"
@@ -143,6 +144,7 @@ class XMLAccountRecord (object):
         self.members = set()
         self.groups = set()
         self.calendarUserAddresses = set()
+        self.autoSchedule = False
 
     def repeat(self, ctr):
         """
@@ -175,6 +177,7 @@ class XMLAccountRecord (object):
         result.name = name
         result.members = self.members
         result.calendarUserAddresses = calendarUserAddresses
+        result.autoSchedule = self.autoSchedule
         return result
 
     def parseXML(self, node):
@@ -199,6 +202,11 @@ class XMLAccountRecord (object):
             elif child_name == ELEMENT_CUADDR:
                 if child.firstChild is not None:
                     self.calendarUserAddresses.add(child.firstChild.data.encode("utf-8"))
+            elif child_name == ELEMENT_AUTOSCHEDULE:
+                # Only Resources & Locations
+                if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+                    raise ValueError("<auto-schedule> element only allowed for Resources and Locations: %s" % (child_name,))
+                self.autoSchedule = True
             else:
                 raise RuntimeError("Unknown account attribute: %s" % (child_name,))
 

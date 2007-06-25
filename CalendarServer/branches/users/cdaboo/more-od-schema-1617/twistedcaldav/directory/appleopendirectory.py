@@ -329,6 +329,21 @@ class OpenDirectoryService(DirectoryService):
                 
         return result
 
+    def _parseResourceInfo(self, plist):
+        """
+        Parse OD ResourceInfo attribute and extract information that the server needs.
+
+        @param plist: the plist that is the attribute value.
+        @type plist: str
+        @return: a C{bool} indicating whether the AutoAcceptsInvitation key was set to true or false,
+            and return C{False} if the key was not present at all.
+        """
+        plist = readPlistFromString(plist)
+        wpframework = plist.get("com.apple.WhitePagesFramework", {})
+        autoaccept = wpframework.get("AutoAcceptsInvitation", False)
+        
+        return autoaccept
+
     def recordTypes(self):
         return (
             DirectoryService.recordType_users,
@@ -395,6 +410,7 @@ class OpenDirectoryService(DirectoryService):
         elif recordType == DirectoryService.recordType_locations:
             listRecordType = dsattributes.kDSStdRecordTypeResources
             query = dsquery.match(dsattributes.kDSNAttrResourceType, "1", dsattributes.eDSExact)
+            attrs.append(dsattributes.kDSNAttrResourceInfo)
         
         elif recordType == DirectoryService.recordType_resources:
             listRecordType = dsattributes.kDSStdRecordTypeResources
@@ -405,6 +421,7 @@ class OpenDirectoryService(DirectoryService):
                 dsquery.match(dsattributes.kDSNAttrResourceType, "4", dsattributes.eDSExact),
                 dsquery.match(dsattributes.kDSNAttrResourceType, "5", dsattributes.eDSExact),
             ))
+            attrs.append(dsattributes.kDSNAttrResourceInfo)
         
         else:
             raise UnknownRecordTypeError("Unknown Open Directory record type: %s"
@@ -484,6 +501,13 @@ class OpenDirectoryService(DirectoryService):
             else:
                 memberGUIDs = ()
 
+            # Special case for resources and locations
+            autoSchedule = False
+            if recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+                resourceInfo = value.get(dsattributes.kDSNAttrResourceInfo)
+                if resourceInfo is not None:
+                    autoSchedule = self._parseResourceInfo(resourceInfo)
+
             records[recordShortName] = OpenDirectoryRecord(
                 service               = self,
                 recordType            = recordType,
@@ -492,6 +516,7 @@ class OpenDirectoryService(DirectoryService):
                 fullName              = realName,
                 calendarUserAddresses = cuaddrset,
                 memberGUIDs           = memberGUIDs,
+                autoSchedule          = autoSchedule,
             )
 
             #log.debug("Populated record: %s" % (records[recordShortName],))
@@ -529,7 +554,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     Open Directory implementation of L{IDirectoryRecord}.
     """
-    def __init__(self, service, recordType, guid, shortName, fullName, calendarUserAddresses, memberGUIDs):
+    def __init__(self, service, recordType, guid, shortName, fullName, calendarUserAddresses, memberGUIDs, autoSchedule):
         super(OpenDirectoryRecord, self).__init__(
             service               = service,
             recordType            = recordType,
@@ -537,6 +562,7 @@ class OpenDirectoryRecord(DirectoryRecord):
             shortName             = shortName,
             fullName              = fullName,
             calendarUserAddresses = calendarUserAddresses,
+            autoSchedule          = autoSchedule,
         )
         self._memberGUIDs = tuple(memberGUIDs)
 
