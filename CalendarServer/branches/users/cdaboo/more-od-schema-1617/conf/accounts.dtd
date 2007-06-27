@@ -25,10 +25,10 @@ DRI: Cyrus Daboo, cdaboo@apple.com
   <!ELEMENT group (uid, guid, password, name, members, cuaddr*)>
     <!ATTLIST group repeat CDATA "1">
 
-  <!ELEMENT resource (uid, guid, password, name, cuaddr*, auto-schedule?)>
+  <!ELEMENT resource (uid, guid, password, name, cuaddr*, auto-schedule?, delegates?)>
     <!ATTLIST resource repeat CDATA "1">
 
-  <!ELEMENT location (uid, guid, password, name, cuaddr*, auto-schedule?)>
+  <!ELEMENT location (uid, guid, password, name, cuaddr*, auto-schedule?, delegates?)>
     <!ATTLIST location repeat CDATA "1">
 
   <!ELEMENT member (#PCDATA)>
@@ -39,6 +39,7 @@ DRI: Cyrus Daboo, cdaboo@apple.com
   <!ELEMENT password      (#PCDATA)>
   <!ELEMENT name          (#PCDATA)>
   <!ELEMENT cuaddr        (#PCDATA)>
-  <!ELEMENT auto-schedule EMPTY>
   <!ELEMENT members       (member*)>
+  <!ELEMENT auto-schedule EMPTY>
+  <!ELEMENT delegates     (member*)>
 >

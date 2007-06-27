@@ -43,6 +43,9 @@ limitations under the License.
     <password>mercury</password>
     <name>Mecury Conference Room, Building 1, 2nd Floor</name>
     <auto-schedule/>
+    <delegates>
+      <member type="users">test</member>
+    </delegates>
   </location>
 </accounts>
 

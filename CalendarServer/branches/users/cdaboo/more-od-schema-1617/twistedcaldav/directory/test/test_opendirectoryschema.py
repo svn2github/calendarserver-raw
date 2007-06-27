@@ -1002,6 +1002,8 @@ else:
         <false/>
         <key>Label</key>
         <string>Location</string>
+        <key>CalendaringDelegate</key>
+        <string>1234-GUID-5678</string>
     </dict>
 </dict>
 </plist>
@@ -1017,6 +1019,8 @@ else:
         <true/>
         <key>Label</key>
         <string>Location</string>
+        <key>CalendaringDelegate</key>
+        <string></string>
     </dict>
 </dict>
 </plist>
@@ -1055,16 +1059,18 @@ else:
         <true/>
         <key>Label</key>
         <string>Location</string>
+        <key>CalendaringDelegate</key>
+        <string>1234-GUID-5678</string>
     </dict>
 </dict>
 </plist>
 """
 
         test_bool = (
-            (plist_good_false, False),
-            (plist_good_true, True),
-            (plist_good_missing, False),
-            (plist_wrong, False),
+            (plist_good_false, False, "1234-GUID-5678"),
+            (plist_good_true, True, ""),
+            (plist_good_missing, False, None),
+            (plist_wrong, False, None),
         )
 
         test_exception = (
@@ -1075,7 +1081,8 @@ else:
             service = OpenDirectoryService(node="/Search", dosetup=False)
             
             for item in ODResourceInfoParse.test_bool:
-                self.assertEqual(service._parseResourceInfo(item[0]), item[1])
+                self.assertEqual(service._parseResourceInfo(item[0])[0], item[1])
+                self.assertEqual(service._parseResourceInfo(item[0])[1], item[2])
             
             for item in ODResourceInfoParse.test_exception:
                 self.assertRaises(item[1], service._parseResourceInfo, item[0])

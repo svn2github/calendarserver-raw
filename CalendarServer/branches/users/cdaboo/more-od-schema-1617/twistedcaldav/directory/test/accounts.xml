@@ -123,6 +123,9 @@ limitations under the License.
     <name>Gemini Twelve</name>
     <cuaddr>mailto:gemini@example.com</cuaddr>
     <auto-schedule/>
+    <delegates>
+      <member>wsanchez</member>
+    </delegates>
   </location>
   <location>
     <uid>apollo</uid>

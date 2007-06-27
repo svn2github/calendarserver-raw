@@ -195,6 +195,15 @@ class DirectoryRecord(object):
     def groups(self):
         return ()
 
+    def delegates(self):
+        return ()
+
+    def delegateFor(self):
+        return ()
+
+    def lockedDelegates(self):
+        return self.recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations)
+
     def verifyCredentials(self, credentials):
         return False
 

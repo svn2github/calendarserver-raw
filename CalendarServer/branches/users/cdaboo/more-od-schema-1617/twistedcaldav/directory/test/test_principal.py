@@ -227,7 +227,15 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         DirectoryPrincipalResource.groupMemberships()
         """
         for provisioningResource, recordType, recordResource, record in self._allRecords():
-            self.failUnless(set(record.groups()).issubset(set(r.record for r in recordResource.groupMemberships())))
+            self.failUnless(set(record.groups()).issubset(set(r.record for r in recordResource.groupMemberships() if hasattr(r, "record"))))
+
+    def test_delegates(self):
+        """
+        DirectoryPrincipalResource.delegates()
+        """
+        for provisioningResource, recordType, recordResource, record in self._allRecords():
+            self.failUnless(set(record.delegates()).issubset(set(r.record for r in recordResource.delegates())))
+            self.assertEqual(record.lockedDelegates(), recordResource.lockedDelegates())
 
     def test_principalUID(self):
         """

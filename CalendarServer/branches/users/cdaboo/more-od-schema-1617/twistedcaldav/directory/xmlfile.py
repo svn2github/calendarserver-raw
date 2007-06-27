@@ -111,9 +111,11 @@ class XMLDirectoryRecord(DirectoryRecord):
             autoSchedule          = xmlPrincipal.autoSchedule,
         )
 
-        self.password = xmlPrincipal.password
-        self._members = xmlPrincipal.members
-        self._groups  = xmlPrincipal.groups
+        self.password     = xmlPrincipal.password
+        self._members     = xmlPrincipal.members
+        self._groups      = xmlPrincipal.groups
+        self._delegates   = xmlPrincipal.delegates
+        self._delegateFor = xmlPrincipal.delegateFor
 
     def members(self):
         for recordType, shortName in self._members:
@@ -122,6 +124,14 @@ class XMLDirectoryRecord(DirectoryRecord):
     def groups(self):
         for shortName in self._groups:
             yield self.service.recordWithShortName(DirectoryService.recordType_groups, shortName)
+
+    def delegates(self):
+        for recordType, shortName in self._delegates:
+            yield self.service.recordWithShortName(recordType, shortName)
+
+    def delegateFor(self):
+        for recordType, shortName in self._delegateFor:
+            yield self.service.recordWithShortName(recordType, shortName)
 
     def verifyCredentials(self, credentials):
         if isinstance(credentials, UsernamePassword):

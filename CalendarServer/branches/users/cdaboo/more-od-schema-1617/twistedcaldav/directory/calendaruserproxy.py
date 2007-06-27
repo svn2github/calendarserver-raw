@@ -33,6 +33,7 @@ from twisted.web2.dav.element.base import dav_namespace
 from twisted.web2.dav.util import joinURL
 from twisted.web2.http import HTTPError, StatusResponse
 
+from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile, DAVPrincipalResource
 from twistedcaldav.extensions import ReadOnlyWritePropertiesResourceMixIn
 from twistedcaldav.sql import AbstractSQLDatabase
@@ -56,6 +57,14 @@ class PermissionsMixIn (ReadOnlyWritePropertiesResourceMixIn):
             ),
         )
         
+        # Add admins
+        aces += tuple([davxml.ACE(
+                    davxml.Principal(davxml.HRef(principal)),
+                    davxml.Grant(davxml.Privilege(davxml.All())),
+                    davxml.Protected(),
+                 ) for principal in config.AdminPrincipals
+                ])
+
         return davxml.ACL(*aces)
 
     def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
@@ -121,7 +130,15 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
         assert isinstance(property, davxml.WebDAVElement)
 
         if property.qname() == (dav_namespace, "group-member-set"):
-            return self.setGroupMemberSet(property, request)
+            if self.parent.lockedDelegates():
+                raise HTTPError(
+                    StatusResponse(
+                        responsecode.FORBIDDEN,
+                        "Delegates cannot be changed."
+                    )
+                )
+            else:
+                return self.setGroupMemberSet(property, request)
 
         return super(CalendarUserProxyPrincipalResource, self).writeProperty(property, request)
 
@@ -202,7 +219,7 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
                 """Principal UID: %s\n"""          % (self.principalUID(),),
                 """Principal URL: %s\n"""          % (link(self.principalURL()),),
                 """\nAlternate URIs:\n"""          , format_list(self.alternateURIs()),
-                """\nGroup members:\n"""           , format_list(link(p.principalURL()) for p in self.groupMembers()),
+                """\nGroup members (%s):\n"""      % ({False:"Unlocked", True:"Locked"}[self.parent.lockedDelegates()]), format_list(link(p.principalURL()) for p in self.groupMembers()),
                 """\nGroup memberships:\n"""       , format_list(link(p.principalURL()) for p in self.groupMemberships()),
                 """</pre></blockquote></div>""",
                 output
@@ -237,9 +254,17 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
         return self.parent.principalCollections()
 
     def groupMembers(self):
-        # Get member GUIDs and map to principal resources
-        members = self._index().getMembers(self.guid)
-        return [self.pcollection.principalForGUID(guid) for guid in members]
+        # If parent principal has fixed set of delegates use those
+        if self.parent.lockedDelegates():
+            # Fixed delegates are only for read-write - the read-only list is empty
+            if self.proxyType == "calendar-proxy-write":
+                return self.parent.delegates()
+            else:
+                return ()
+        else:
+            # Get member GUIDs and map to principal resources
+            members = self._index().getMembers(self.guid)
+            return [self.pcollection.principalForGUID(guid) for guid in members]
 
     def groupMemberships(self):
         # Get membership GUIDs and map to principal resources

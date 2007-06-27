@@ -25,6 +25,7 @@ __all__ = [
     "OpenDirectoryInitError",
 ]
 
+import itertools
 import sys
 
 import opendirectory
@@ -335,14 +336,14 @@ class OpenDirectoryService(DirectoryService):
 
         @param plist: the plist that is the attribute value.
         @type plist: str
-        @return: a C{bool} indicating whether the AutoAcceptsInvitation key was set to true or false,
-            and return C{False} if the key was not present at all.
+        @return: a C{tuple} of C{bool} for auto-accept and C{str} for delegate GUID.
         """
         plist = readPlistFromString(plist)
         wpframework = plist.get("com.apple.WhitePagesFramework", {})
         autoaccept = wpframework.get("AutoAcceptsInvitation", False)
+        delegate = wpframework.get("CalendaringDelegate")
         
-        return autoaccept
+        return (autoaccept, delegate,)
 
     def recordTypes(self):
         return (
@@ -503,10 +504,13 @@ class OpenDirectoryService(DirectoryService):
 
             # Special case for resources and locations
             autoSchedule = False
+            delegateGUIDs = ()
             if recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
                 resourceInfo = value.get(dsattributes.kDSNAttrResourceInfo)
                 if resourceInfo is not None:
-                    autoSchedule = self._parseResourceInfo(resourceInfo)
+                    autoSchedule, delegate = self._parseResourceInfo(resourceInfo)
+                    if delegate:
+                        delegateGUIDs = (delegate,)
 
             records[recordShortName] = OpenDirectoryRecord(
                 service               = self,
@@ -517,6 +521,7 @@ class OpenDirectoryService(DirectoryService):
                 calendarUserAddresses = cuaddrset,
                 memberGUIDs           = memberGUIDs,
                 autoSchedule          = autoSchedule,
+                delegateGUIDs         = delegateGUIDs,
             )
 
             #log.debug("Populated record: %s" % (records[recordShortName],))
@@ -554,7 +559,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     Open Directory implementation of L{IDirectoryRecord}.
     """
-    def __init__(self, service, recordType, guid, shortName, fullName, calendarUserAddresses, memberGUIDs, autoSchedule):
+    def __init__(self, service, recordType, guid, shortName, fullName, calendarUserAddresses, memberGUIDs, autoSchedule, delegateGUIDs):
         super(OpenDirectoryRecord, self).__init__(
             service               = service,
             recordType            = recordType,
@@ -565,6 +570,7 @@ class OpenDirectoryRecord(DirectoryRecord):
             autoSchedule          = autoSchedule,
         )
         self._memberGUIDs = tuple(memberGUIDs)
+        self._delegateGUIDs = tuple(delegateGUIDs)
 
     def members(self):
         if self.recordType != DirectoryService.recordType_groups:
@@ -581,6 +587,25 @@ class OpenDirectoryRecord(DirectoryRecord):
         for groupRecord in self.service.recordsForType(DirectoryService.recordType_groups).itervalues():
             if self.guid in groupRecord._memberGUIDs:
                 yield groupRecord
+
+    def delegates(self):
+        if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+            return
+
+        for guid in self._delegateGUIDs:
+            delegateRecord = self.service.recordWithGUID(guid)
+            if delegateRecord is None:
+                log.err("No record for delegate in %s with GUID %s" % (self.shortName, guid))
+            else:
+                yield delegateRecord
+
+    def delegateFor(self):
+        for delegateRecord in itertools.chain(
+                                  self.service.recordsForType(DirectoryService.recordType_resources).itervalues(),
+                                  self.service.recordsForType(DirectoryService.recordType_locations).itervalues()
+                              ):
+            if self.guid in delegateRecord._delegateGUIDs:
+                yield delegateRecord
 
     def verifyCredentials(self, credentials):
         if isinstance(credentials, UsernamePassword):

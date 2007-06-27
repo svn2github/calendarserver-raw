@@ -69,7 +69,8 @@ else:
                 "GUID",
                 set("mailtoguid@example.com",),
                 [],
-                False
+                False,
+                ()
             )
 
             digestFields = {}
