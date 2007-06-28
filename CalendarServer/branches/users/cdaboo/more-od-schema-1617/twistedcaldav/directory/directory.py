@@ -201,8 +201,8 @@ class DirectoryRecord(object):
     def proxyFor(self):
         return ()
 
-    def lockedProxies(self):
-        return self.recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations)
+    def hasEditableProxyMembership(self):
+        return self.recordType in (DirectoryService.recordType_users, DirectoryService.recordType_groups)
 
     def verifyCredentials(self, credentials):
         return False

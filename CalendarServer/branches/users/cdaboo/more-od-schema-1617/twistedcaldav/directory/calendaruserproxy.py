@@ -130,15 +130,15 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
         assert isinstance(property, davxml.WebDAVElement)
 
         if property.qname() == (dav_namespace, "group-member-set"):
-            if self.parent.lockedProxies():
+            if self.hasEditableMembership():
+                return self.setGroupMemberSet(property, request)
+            else:
                 raise HTTPError(
                     StatusResponse(
                         responsecode.FORBIDDEN,
                         "Proxies cannot be changed."
                     )
                 )
-            else:
-                return self.setGroupMemberSet(property, request)
 
         return super(CalendarUserProxyPrincipalResource, self).writeProperty(property, request)
 
@@ -219,7 +219,7 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
                 """Principal UID: %s\n"""          % (self.principalUID(),),
                 """Principal URL: %s\n"""          % (link(self.principalURL()),),
                 """\nAlternate URIs:\n"""          , format_list(self.alternateURIs()),
-                """\nGroup members (%s):\n"""      % ({False:"Unlocked", True:"Locked"}[self.parent.lockedProxies()]), format_list(link(p.principalURL()) for p in self.groupMembers()),
+                """\nGroup members (%s):\n"""      % ({False:"Locked", True:"Editable"}[self.hasEditableMembership()]), format_list(link(p.principalURL()) for p in self.groupMembers()),
                 """\nGroup memberships:\n"""       , format_list(link(p.principalURL()) for p in self.groupMemberships()),
                 """</pre></blockquote></div>""",
                 output
@@ -254,24 +254,25 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
         return self.parent.principalCollections()
 
     def groupMembers(self):
-        # If parent principal has fixed set of proxies use those
-        if self.parent.lockedProxies():
+        if self.hasEditableMembership():
+            # Get member GUIDs from database and map to principal resources
+            members = self._index().getMembers(self.guid)
+            return [self.pcollection.principalForGUID(guid) for guid in members]
+        else:
             # Fixed proxies are only for read-write - the read-only list is empty
             if self.proxyType == "calendar-proxy-write":
                 return self.parent.proxies()
             else:
                 return ()
-        else:
-            # Get member GUIDs and map to principal resources
-            members = self._index().getMembers(self.guid)
-            return [self.pcollection.principalForGUID(guid) for guid in members]
 
     def groupMemberships(self):
         # Get membership GUIDs and map to principal resources
         memberships = self._index().getMemberships(self.guid)
         return [self.pcollection.principalForGUID(guid) for guid in memberships]
 
-
+    def hasEditableMembership(self):
+        return self.parent.hasEditableProxyMembership()
+        
 class CalendarUserProxyDatabase(AbstractSQLDatabase):
     """
     A database to maintain calendar user proxy group memberships.

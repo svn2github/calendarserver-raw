@@ -235,7 +235,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         """
         for provisioningResource, recordType, recordResource, record in self._allRecords():
             self.failUnless(set(record.proxies()).issubset(set(r.record for r in recordResource.proxies())))
-            self.assertEqual(record.lockedProxies(), recordResource.lockedProxies())
+            self.assertEqual(record.hasEditableProxyMembership(), recordResource.hasEditableProxyMembership())
 
     def test_principalUID(self):
         """

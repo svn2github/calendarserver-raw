@@ -471,8 +471,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
     def proxies(self):
         return self._getRelatives("proxies")
 
-    def lockedProxies(self):
-        return self.record.lockedProxies()
+    def hasEditableProxyMembership(self):
+        return self.record.hasEditableProxyMembership()
 
     def scheduleInbox(self, request):
         home = self._calendarHome()
