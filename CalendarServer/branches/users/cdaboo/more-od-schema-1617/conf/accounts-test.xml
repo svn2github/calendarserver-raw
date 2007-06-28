@@ -47,9 +47,9 @@ limitations under the License.
     <password>resource%02d</password>
     <name>Resource %02d</name>
     <auto-schedule/>
-    <delegates>
+    <proxies>
       <member type="users">user01</member>
-    </delegates>
+    </proxies>
   </resource>
   <group>
     <uid>group01</uid>

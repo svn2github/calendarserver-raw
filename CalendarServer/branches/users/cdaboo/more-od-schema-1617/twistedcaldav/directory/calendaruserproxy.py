@@ -130,11 +130,11 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
         assert isinstance(property, davxml.WebDAVElement)
 
         if property.qname() == (dav_namespace, "group-member-set"):
-            if self.parent.lockedDelegates():
+            if self.parent.lockedProxies():
                 raise HTTPError(
                     StatusResponse(
                         responsecode.FORBIDDEN,
-                        "Delegates cannot be changed."
+                        "Proxies cannot be changed."
                     )
                 )
             else:
@@ -219,7 +219,7 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
                 """Principal UID: %s\n"""          % (self.principalUID(),),
                 """Principal URL: %s\n"""          % (link(self.principalURL()),),
                 """\nAlternate URIs:\n"""          , format_list(self.alternateURIs()),
-                """\nGroup members (%s):\n"""      % ({False:"Unlocked", True:"Locked"}[self.parent.lockedDelegates()]), format_list(link(p.principalURL()) for p in self.groupMembers()),
+                """\nGroup members (%s):\n"""      % ({False:"Unlocked", True:"Locked"}[self.parent.lockedProxies()]), format_list(link(p.principalURL()) for p in self.groupMembers()),
                 """\nGroup memberships:\n"""       , format_list(link(p.principalURL()) for p in self.groupMemberships()),
                 """</pre></blockquote></div>""",
                 output
@@ -254,11 +254,11 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
         return self.parent.principalCollections()
 
     def groupMembers(self):
-        # If parent principal has fixed set of delegates use those
-        if self.parent.lockedDelegates():
-            # Fixed delegates are only for read-write - the read-only list is empty
+        # If parent principal has fixed set of proxies use those
+        if self.parent.lockedProxies():
+            # Fixed proxies are only for read-write - the read-only list is empty
             if self.proxyType == "calendar-proxy-write":
-                return self.parent.delegates()
+                return self.parent.proxies()
             else:
                 return ()
         else:

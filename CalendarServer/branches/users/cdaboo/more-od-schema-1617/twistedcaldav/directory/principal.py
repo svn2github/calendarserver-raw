@@ -433,8 +433,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
         groups = self._getRelatives("groups")
 
         if config.EnableProxyPrincipals:
-            # Get any directory specified delegates
-            groups.update(self._getRelatives("delegateFor", proxy=True))
+            # Get any directory specified proxies
+            groups.update(self._getRelatives("proxyFor", proxy=True))
 
             # Get proxy group GUIDs and map to principal resources
             proxies = self._map_calendar_user_proxy_guids(self._calendar_user_proxy_index().getMemberships(self.principalUID()))
@@ -468,11 +468,11 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
     def autoSchedule(self):
         return self.record.autoSchedule
     
-    def delegates(self):
-        return self._getRelatives("delegates")
+    def proxies(self):
+        return self._getRelatives("proxies")
 
-    def lockedDelegates(self):
-        return self.record.lockedDelegates()
+    def lockedProxies(self):
+        return self.record.lockedProxies()
 
     def scheduleInbox(self, request):
         home = self._calendarHome()

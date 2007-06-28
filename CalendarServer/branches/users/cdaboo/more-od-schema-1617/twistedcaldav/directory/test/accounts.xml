@@ -123,9 +123,9 @@ limitations under the License.
     <name>Gemini Twelve</name>
     <cuaddr>mailto:gemini@example.com</cuaddr>
     <auto-schedule/>
-    <delegates>
+    <proxies>
       <member>wsanchez</member>
-    </delegates>
+    </proxies>
   </location>
   <location>
     <uid>apollo</uid>

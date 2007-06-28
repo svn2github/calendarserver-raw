@@ -195,13 +195,13 @@ class DirectoryRecord(object):
     def groups(self):
         return ()
 
-    def delegates(self):
+    def proxies(self):
         return ()
 
-    def delegateFor(self):
+    def proxyFor(self):
         return ()
 
-    def lockedDelegates(self):
+    def lockedProxies(self):
         return self.recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations)
 
     def verifyCredentials(self, credentials):

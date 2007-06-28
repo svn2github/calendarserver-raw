@@ -336,14 +336,14 @@ class OpenDirectoryService(DirectoryService):
 
         @param plist: the plist that is the attribute value.
         @type plist: str
-        @return: a C{tuple} of C{bool} for auto-accept and C{str} for delegate GUID.
+        @return: a C{tuple} of C{bool} for auto-accept and C{str} for proxy GUID.
         """
         plist = readPlistFromString(plist)
         wpframework = plist.get("com.apple.WhitePagesFramework", {})
         autoaccept = wpframework.get("AutoAcceptsInvitation", False)
-        delegate = wpframework.get("CalendaringDelegate")
+        proxy= wpframework.get("CalendaringDelegate")
         
-        return (autoaccept, delegate,)
+        return (autoaccept, proxy,)
 
     def recordTypes(self):
         return (
@@ -504,13 +504,13 @@ class OpenDirectoryService(DirectoryService):
 
             # Special case for resources and locations
             autoSchedule = False
-            delegateGUIDs = ()
+            proxyGUIDs = ()
             if recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
                 resourceInfo = value.get(dsattributes.kDSNAttrResourceInfo)
                 if resourceInfo is not None:
-                    autoSchedule, delegate = self._parseResourceInfo(resourceInfo)
-                    if delegate:
-                        delegateGUIDs = (delegate,)
+                    autoSchedule, proxy = self._parseResourceInfo(resourceInfo)
+                    if proxy:
+                        proxyGUIDs = (proxy,)
 
             records[recordShortName] = OpenDirectoryRecord(
                 service               = self,
@@ -521,7 +521,7 @@ class OpenDirectoryService(DirectoryService):
                 calendarUserAddresses = cuaddrset,
                 memberGUIDs           = memberGUIDs,
                 autoSchedule          = autoSchedule,
-                delegateGUIDs         = delegateGUIDs,
+                proxyGUIDs            = proxyGUIDs,
             )
 
             #log.debug("Populated record: %s" % (records[recordShortName],))
@@ -559,7 +559,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     Open Directory implementation of L{IDirectoryRecord}.
     """
-    def __init__(self, service, recordType, guid, shortName, fullName, calendarUserAddresses, memberGUIDs, autoSchedule, delegateGUIDs):
+    def __init__(self, service, recordType, guid, shortName, fullName, calendarUserAddresses, memberGUIDs, autoSchedule, proxyGUIDs):
         super(OpenDirectoryRecord, self).__init__(
             service               = service,
             recordType            = recordType,
@@ -570,7 +570,7 @@ class OpenDirectoryRecord(DirectoryRecord):
             autoSchedule          = autoSchedule,
         )
         self._memberGUIDs = tuple(memberGUIDs)
-        self._delegateGUIDs = tuple(delegateGUIDs)
+        self._proxyGUIDs = tuple(proxyGUIDs)
 
     def members(self):
         if self.recordType != DirectoryService.recordType_groups:
@@ -588,24 +588,24 @@ class OpenDirectoryRecord(DirectoryRecord):
             if self.guid in groupRecord._memberGUIDs:
                 yield groupRecord
 
-    def delegates(self):
+    def proxies(self):
         if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
             return
 
-        for guid in self._delegateGUIDs:
-            delegateRecord = self.service.recordWithGUID(guid)
-            if delegateRecord is None:
-                log.err("No record for delegate in %s with GUID %s" % (self.shortName, guid))
+        for guid in self._proxyGUIDs:
+            proxyRecord = self.service.recordWithGUID(guid)
+            if proxyRecord is None:
+                log.err("No record for proxy in %s with GUID %s" % (self.shortName, guid))
             else:
-                yield delegateRecord
+                yield proxyRecord
 
-    def delegateFor(self):
-        for delegateRecord in itertools.chain(
+    def proxyFor(self):
+        for proxyRecord in itertools.chain(
                                   self.service.recordsForType(DirectoryService.recordType_resources).itervalues(),
                                   self.service.recordsForType(DirectoryService.recordType_locations).itervalues()
                               ):
-            if self.guid in delegateRecord._delegateGUIDs:
-                yield delegateRecord
+            if self.guid in proxyRecord._proxyGUIDs:
+                yield proxyRecord
 
     def verifyCredentials(self, credentials):
         if isinstance(credentials, UsernamePassword):

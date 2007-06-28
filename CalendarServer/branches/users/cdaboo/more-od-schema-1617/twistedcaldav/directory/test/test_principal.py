@@ -229,13 +229,13 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         for provisioningResource, recordType, recordResource, record in self._allRecords():
             self.failUnless(set(record.groups()).issubset(set(r.record for r in recordResource.groupMemberships() if hasattr(r, "record"))))
 
-    def test_delegates(self):
+    def test_proxies(self):
         """
-        DirectoryPrincipalResource.delegates()
+        DirectoryPrincipalResource.proxies()
         """
         for provisioningResource, recordType, recordResource, record in self._allRecords():
-            self.failUnless(set(record.delegates()).issubset(set(r.record for r in recordResource.delegates())))
-            self.assertEqual(record.lockedDelegates(), recordResource.lockedDelegates())
+            self.failUnless(set(record.proxies()).issubset(set(r.record for r in recordResource.proxies())))
+            self.assertEqual(record.lockedProxies(), recordResource.lockedProxies())
 
     def test_principalUID(self):
         """

@@ -164,7 +164,7 @@ class XMLFile (
 
         self.assertRaises(ValueError, _findRecords)
 
-    def test_okDelegates(self):
+    def test_okProxies(self):
         service = self.service()
 
         self.xmlFile().open("w").write(
@@ -181,9 +181,9 @@ class XMLFile (
     <password>nimda</password>
     <name>Super User</name>
     <auto-schedule/>
-    <delegates>
+    <proxies>
         <member>test</member>
-    </delegates>
+    </proxies>
   </location>
 </accounts>
 """
@@ -198,10 +198,10 @@ class XMLFile (
                 set(r.shortName for r in service.listRecords(recordType)),
                 set(expectedRecords)
             )
-        self.assertEqual(set([("users", "test",)],), service.recordWithShortName(DirectoryService.recordType_locations, "my office")._delegates)
-        self.assertEqual(set([("locations", "my office",)],), service.recordWithShortName(DirectoryService.recordType_users, "test")._delegateFor)
+        self.assertEqual(set([("users", "test",)],), service.recordWithShortName(DirectoryService.recordType_locations, "my office")._proxies)
+        self.assertEqual(set([("locations", "my office",)],), service.recordWithShortName(DirectoryService.recordType_users, "test")._proxyFor)
 
-    def test_badDelegates(self):
+    def test_badProxies(self):
         service = self.service()
 
         self.xmlFile().open("w").write(
@@ -212,9 +212,9 @@ class XMLFile (
     <uid>my office</uid>
     <password>nimda</password>
     <name>Super User</name>
-    <delegates>
+    <proxies>
         <member>12345-GUID-67890</member>
-    </delegates>
+    </proxies>
   </user>
 </accounts>
 """
