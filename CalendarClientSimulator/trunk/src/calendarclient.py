@@ -115,7 +115,7 @@ class CalendarClient(object):
         self.password = None
         self.interval = 15
         self.eventsperday = 10
-        self.invitesperday = 5 * 24 *60
+        self.invitesperday = 5
         self.cache = None
         self.clearcache = False
         self.verbose = False
@@ -161,13 +161,13 @@ class CalendarClient(object):
     def simulate(self):
         
         self.log("Starting CalendarClient simulation for user %s" % (self.user,))
-        start_poll = time.time() - self.interval - 1
+        start_poll = time.time() - self.interval * 60 - 1
         start_events = time.time()
         start_invites = time.time()
         event_interval = 24 * 60 * 60 / self.eventsperday
         invite_interval = 24 * 60 * 60 / self.invitesperday
         while(True):
-            if time.time() >= start_poll + self.interval:
+            if time.time() >= start_poll + self.interval * 60:
                 start_poll = time.time()
                 self.doPoll()
             if time.time() >= start_events + event_interval:
