@@ -70,3 +70,6 @@ one tool and have a queue of actions set to occur at specific times and a thread
 Prequisites: a CalDAV server with user01 .. user99 as user accounts. Those will be used to create the attendees
 in invites. You can have more users with other names that are used as the simulation user, but they will never
 receive invites (right now).
+
+The tool was designed with the idea that it could be called by another script that can then run multiple instances
+to simulate multiple users. That script could even run the tool on different machines for a distributed test.
