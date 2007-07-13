@@ -24,7 +24,7 @@ import getopt
 from calendarclient import CalendarClient
 
 def usage():
-    print """Usage: ical [options]
+    print """Usage: simulate [options]
 Options:
     --server          URL for server (e.g. https://caldav.example.com:8443) [Required]
     --user            user id for user to login as [Required]
