@@ -196,7 +196,7 @@ class CalendarClient(object):
     
     def doPoll(self):
         self.log("Polling for user %s" % (self.user,))
-        status, headers, data = self.doRequest(self.home, "PROPFIND", {"Content-Type": "application/xml"}, PROPFIND_ctag)
+        status, headers, data = self.doRequest(self.home, "PROPFIND", {"Content-Type": "application/xml", "Depth":"1"}, PROPFIND_ctag)
         if status != 207:
             self.log("Polling failed with status: %d for user: %s" % (status, self.user,))
             return
