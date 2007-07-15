@@ -68,11 +68,11 @@ if __name__ == '__main__':
         elif option == "--password":
             client.password = value
         elif option == "--interval":
-            client.interval = value
+            client.interval = int(value)
         elif option == "--eventsperday":
-            client.eventsperday = value
+            client.eventsperday = int(value)
         elif option == "--invitesperday":
-            client.invitesperday = value
+            client.invitesperday = int(value)
         elif option == "--cache":
             client.cache = value
         elif option == "--verbose":
