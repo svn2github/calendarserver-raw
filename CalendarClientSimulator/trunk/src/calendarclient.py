@@ -330,16 +330,16 @@ class CalendarClient(object):
 
     def generateInviteAttendees(self):
         attendees = []
-#        for _ignore_ctr in range(randint(1, 10)):
-#            attendee = "user%02d" % randint(1,99)
-#            while attendee == self.user:
-#                attendee = "user%02d" % randint(1,99)
-#            attendees.append("/principals/users/%s/" % (attendee,))
+        for _ignore_ctr in range(randint(1, 10)):
+            attendee = "user%02d" % randint(1,99)
+            while attendee == self.user:
+                attendee = "user%02d" % randint(1,99)
+            attendees.append("/principals/users/%s/" % (attendee,))
         
-        if self.user == "user01":
-            attendees.append("/principals/users/user02/")
-        elif self.user == "user02":
-            attendees.append("/principals/users/user01/")
+#        if self.user == "user01":
+#            attendees.append("/principals/users/user02/")
+#        elif self.user == "user02":
+#            attendees.append("/principals/users/user01/")
         return attendees
 
     def doInvite(self):
