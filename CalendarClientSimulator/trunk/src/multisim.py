@@ -18,6 +18,8 @@
 # DRI: Cyrus Daboo, cdaboo@apple.com
 ##
 from os import P_NOWAIT
+from random import randint
+import time
 import signal
 import os
 import sys
@@ -122,6 +124,9 @@ if __name__ == '__main__':
         if verbose:
             cmd.append("--verbose")
 
+        # Add random delay
+        delay = randint(1,1000)
+        time.sleep(delay/1000.0)
         pids.append(os.spawnvp(P_NOWAIT, "python", cmd))
 
     killit = raw_input("Press <RETURN> to cancel all simulations.")
