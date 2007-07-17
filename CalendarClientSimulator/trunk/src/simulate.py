@@ -29,7 +29,7 @@ Options:
     --server          URL for server (e.g. https://caldav.example.com:8443) [Required]
     --user            user id for user to login as [Required]
     --password        password for user [Required]
-    --interval        polling interval in minutes [15]
+    --interval        polling interval in seconds [15 mins]
     --eventsperday    number of events per day to create [10]
     --invitesperday   number of invites per day to send  [5]
     --cache           path to .plist file to cache data [Optional]
