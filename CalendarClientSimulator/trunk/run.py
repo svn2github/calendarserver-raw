@@ -34,7 +34,7 @@ add_paths = []
 svn = "/usr/bin/svn"
 
 packages = [
-    ("PyCalendar", "PyCalendar/src", "http://svn.mulberrymail.com/repos/PyCalendar/trunk", "48"),
+    ("PyCalendar", "PyCalendar/src", "http://svn.mulberrymail.com/repos/PyCalendar/trunk", "50"),
 ]
 
 def usage():
