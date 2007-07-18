@@ -16,6 +16,11 @@
 # DRI: Cyrus Daboo, cdaboo@apple.com
 ##
 
+To setup:
+
+> ./run.py -s
+> export PYTHONPATH=`./run -p`
+
 Usage: simulate [options]
 Options:
     --server          URL for server (e.g. https://caldav.example.com:8443) [Required]
