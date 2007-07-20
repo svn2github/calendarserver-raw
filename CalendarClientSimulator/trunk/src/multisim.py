@@ -119,13 +119,12 @@ if __name__ == '__main__':
             "%d" % (invitesperday,),
         ]
         if cache:
-            cmd.extend(["%s", "--cache", cache % (i,),])
+            cmd.extend(["--cache", cache % (i,),])
         if clearcache:
             cmd.append("--clear-cache")
         if verbose:
             cmd.append("--verbose")
-            cmd.append("--logfile")
-            cmd.append(logfile % (i,))
+            cmd.extend(["--logfile", logfile % (i,)])
 
         # Add random delay
         delay = randint(1,1000)
