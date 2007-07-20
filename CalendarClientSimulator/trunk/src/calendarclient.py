@@ -18,6 +18,7 @@
 
 from xml.etree import ElementTree
 from random import randint
+from random import sample
 import icalutils
 import uuid
 import os
@@ -336,12 +337,11 @@ class CalendarClient(object):
         return data
 
     def generateInviteAttendees(self):
-        attendees = []
-        for _ignore_ctr in range(randint(1, 10)):
-            attendee = "user%02d" % randint(1,99)
-            while attendee == self.user:
-                attendee = "user%02d" % randint(1,99)
-            attendees.append("/principals/users/%s/" % (attendee,))
+        num_attendees = randint(1, 10)
+        my_num = int(self.user[4:])
+        attendee_list = ["user%02d" % i for i in xrange(1,99)if i != my_num]
+        random_list = sample(attendee_list, num_attendees)
+        attendees = ["/principals/users/%s/" % (attendee,) for attendee in random_list]
         
 #        if self.user == "user01":
 #            attendees.append("/principals/users/user02/")
