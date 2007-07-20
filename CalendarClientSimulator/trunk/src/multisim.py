@@ -57,6 +57,7 @@ if __name__ == '__main__':
     cache = "../data/user%02d.plist"
     clearcache = False
     verbose = False
+    logfile = "../logs/user%02d.txt"
     
     options, args = getopt.getopt(sys.argv[1:], "h", [
         "number=",
@@ -123,6 +124,8 @@ if __name__ == '__main__':
             cmd.append("--clear-cache")
         if verbose:
             cmd.append("--verbose")
+            cmd.append("--logfile")
+            cmd.append(logfile % (i,))
 
         # Add random delay
         delay = randint(1,1000)

@@ -35,6 +35,7 @@ Options:
     --cache           path to .plist file to cache data [Optional]
     --clear-cache     clear the cache when starting up [Optional]
     --verbose         print out activity log
+    --logfile         file to write activity log to [Optional]
     
     -h, --help        print this help and exit
 """
@@ -43,6 +44,7 @@ Options:
 if __name__ == '__main__':
 
     client = CalendarClient()
+    logfile = None
     
     options, args = getopt.getopt(sys.argv[1:], "h", [
         "server=",
@@ -54,6 +56,7 @@ if __name__ == '__main__':
         "cache=",
         "clear-cache",
         "verbose",
+        "logfile=",
         "help"
     ])
 
@@ -75,10 +78,19 @@ if __name__ == '__main__':
             client.invitesperday = int(value)
         elif option == "--cache":
             client.cache = value
-        elif option == "--verbose":
-            client.verbose = True
         elif option == "--clear-cache":
             client.clearcache = True
+        elif option == "--verbose":
+            client.verbose = True
+        elif option == "--logfile":
+            
+
+            def logIt(text):
+                logfile = open(value, "a")
+                logfile.write(text + "\n")
+                
+            client.setLogger(logIt)
+
         else:
             print "Unrecognized option: %s" % (option,)
             usage()

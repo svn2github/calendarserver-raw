@@ -98,6 +98,7 @@ class CalendarClient(object):
             },
             "calendar_data": {}
         }
+        self.logger = None
 
     def valid(self):
         if (self.server is None or
@@ -125,7 +126,13 @@ class CalendarClient(object):
 
     def log(self, text):
         if self.verbose:
-            print text
+            if self.logger:
+                self.logger(text)
+            else:
+                print text
+
+    def setLogger(self, logger):
+        self.logger = logger
 
     def simulate(self):
         
