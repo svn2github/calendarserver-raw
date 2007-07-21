@@ -474,7 +474,10 @@ class Index (CalendarIndex):
         except sqlite.Error, e:
             log.err("Unable to reserve UID: %s", (e,))
             self._db_rollback()
-            raise
+            raise ReservationError(
+                "Unable to reserve UID %s for calendar collection %s."
+                % (uid, self.resource)
+            )
     
     def unreserveUID(self, uid):
         """
