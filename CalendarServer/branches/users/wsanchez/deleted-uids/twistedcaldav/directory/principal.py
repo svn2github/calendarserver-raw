@@ -26,6 +26,7 @@ __all__ = [
     "DirectoryPrincipalResource",
 ]
 
+from cgi import escape
 from urllib import unquote
 from urlparse import urlparse
 
@@ -367,6 +368,9 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
         # lookups.
         self.provision()
 
+    def __str__(self):
+        return "(%s) %s" % (self.record.recordType, self.record.shortName)
+
     ##
     # HTTP
     ##
@@ -384,7 +388,13 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
                     log.err("Exception while rendering: %s" % (e,))
                     Failure().printTraceback()
                     yield "  ** %s **: %s\n" % (e.__class__.__name__, e)
-            return "".join(genlist())
+            return "".join(sorted(genlist()))
+
+        def format_principals(principals):
+            return format_list(
+                """<a href="%s">%s</a>""" % (principal.principalURL(), escape(str(principal)))
+                for principal in principals
+            )
 
         def link(url):
             return """<a href="%s">%s</a>""" % (url, url)
@@ -408,8 +418,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
                 """Principal UID: %s\n"""          % (self.principalUID(),),
                 """Principal URL: %s\n"""          % (link(self.principalURL()),),
                 """\nAlternate URIs:\n"""          , format_list(link(u) for u in self.alternateURIs()),
-                """\nGroup members:\n"""           , format_list(link(p.principalURL()) for p in self.groupMembers()),
-                """\nGroup memberships:\n"""       , format_list(link(p.principalURL()) for p in self.groupMemberships()),
+                """\nGroup members:\n"""           , format_principals(self.groupMembers()),
+                """\nGroup memberships:\n"""       , format_principals(self.groupMemberships()),
                 """\nCalendar homes:\n"""          , format_list(link(u) for u in self.calendarHomeURLs()),
                 """\nCalendar user addresses:\n""" , format_list(link(a) for a in self.calendarUserAddresses()),
                 """</pre></blockquote></div>""",
