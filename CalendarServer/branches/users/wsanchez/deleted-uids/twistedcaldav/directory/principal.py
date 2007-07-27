@@ -22,7 +22,7 @@ Implements a directory-backed principal hierarchy.
 
 __all__ = [
     "DirectoryPrincipalProvisioningResource",
-    "DirectoryPrincipalTypeResource",
+    "DirectoryPrincipalTypeProvisioningResource",
     "DirectoryPrincipalResource",
 ]
 
@@ -80,30 +80,22 @@ class DirectoryProvisioningResource(
 
         self.directory = IDirectoryService(directory)
 
-    def principalForShortName(self, type, name):
-        raise NotImplementedError("Subclass must implement principalForShortName()")
+    def principalForShortName(self, recordType, name):
+        return self.principalForRecord(self.directory.recordWithShortName(recordType, name))
 
     def principalForUser(self, user):
         return self.principalForShortName(DirectoryService.recordType_users, user)
 
     def principalForGUID(self, guid):
-        record = self.directory.recordWithGUID(guid)
-        if record:
-            return self.principalForRecord(record)
-        else:
-            return None
+        return principalForUID(guid)
 
     def principalForUID(self, uid):
-        if "#" in uid:
-            # This UID belongs to a sub-principal
-            parent_uid, subType = uid.split("#")
-            return self.principalForGUID(parent_uid).getChild(subType)
-        else:
-            # This UID belongs to a primary principal (UID == GUID)
-            return self.principalForGUID(uid)
+        raise NotImplementedError("Subclass must implement principalForUID()")
 
     def principalForRecord(self, record):
-        return self.principalForShortName(record.recordType, record.shortName)
+        if record is None:
+            return None
+        return self.principalForUID(record.guid)
 
     def principalForCalendarUserAddress(self, address):
         raise NotImplementedError("Subclass must implement principalForCalendarUserAddress()")
@@ -122,15 +114,12 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
         # Create children
         #
         for recordType in self.directory.recordTypes():
-            self.putChild(recordType, DirectoryPrincipalTypeResource(self, recordType))
+            self.putChild(recordType, DirectoryPrincipalTypeProvisioningResource(self, recordType))
 
         self.putChild(uidsResourceName, DirectoryPrincipalUIDProvisioningResource(self))
 
-    def principalForShortName(self, type, name):
-        typeResource = self.getChild(type)
-        if typeResource is None:
-            return None
-        return typeResource.getChild(name)
+    def principalForUID(self, uid):
+        return self.getChild(uidsResourceName).getChild(uid)
 
     def _principalForURI(self, uri):
         scheme, netloc, path, params, query, fragment = urlparse(uri)
@@ -218,8 +207,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     def principalCollections(self):
         return (self,)
 
-# FIXME: Rename to DirectoryPrincipalTypeProvisioningResource
-class DirectoryPrincipalTypeResource (DirectoryProvisioningResource):
+class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource):
     """
     Collection resource which provisions directory principals of a
     specific type as its children, indexed by short name.
@@ -240,8 +228,8 @@ class DirectoryPrincipalTypeResource (DirectoryProvisioningResource):
         self.recordType = recordType
         self.parent = parent
 
-    def principalForShortName(self, type, name):
-        return self.parent.principalForShortName(type, name)
+    def principalForUID(self, uid):
+        return self.parent.principalForUID(uid)
 
     def principalForCalendarUserAddress(self, address):
         return self.parent.principalForCalendarUserAddress(address)
@@ -260,15 +248,10 @@ class DirectoryPrincipalTypeResource (DirectoryProvisioningResource):
             return self
 
         if record is None:
-            record = self.directory.recordWithShortName(self.recordType, name)
-            if record is None:
-                #log.err("No directory record (%s)%s; cannot create principal resource." % (self.recordType, name))
-                return None
+            return self.principalForShortName(self.recordType, name)
         else:
             assert name is None
-            name = record.shortName
-
-        return DirectoryPrincipalResource(self.fp.child(name).path, self, record)
+            return self.principalForRecord(record)
 
     def listChildren(self):
         return (record.shortName for record in self.directory.listRecords(self.recordType))
@@ -301,8 +284,8 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
 
         self.parent = parent
 
-    def principalForShortName(self, type, name):
-        return self.parent.principalForShortName(type, name)
+    def principalForUID(self, uid):
+        return self.parent.principalForUID(uid)
 
     def principalForCalendarUserAddress(self, address):
         return self.parent.principalForCalendarUserAddress(address)
@@ -320,7 +303,25 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
         if name == "":
             return self
 
-        return self.principalForUID(name)
+        if "#" in name:
+            # This UID belongs to a sub-principal
+            primaryUID, subType = name.split("#")
+        else:
+            primaryUID = name
+            subType = None
+
+        record = self.directory.recordWithGUID(primaryUID)
+
+        if record is None:
+            log.err("No principal found for UID: %s" % (name,))
+            return None
+
+        primaryPrincipal = DirectoryPrincipalResource(self.fp.child(name).path, self, record)
+
+        if subType is None:
+            return primaryPrincipal
+        else:
+            return primaryPrincipal.getChild(subType)
 
     def listChildren(self):
         # Not a listable collection
@@ -343,13 +344,24 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
         @param parent: the parent of this resource.
         @param record: the L{IDirectoryRecord} that this resource represents.
         """
-        super(DirectoryPrincipalResource, self).__init__(path, joinURL(parent.principalCollectionURL(), record.shortName))
+        if self.isCollection():
+            slash = "/"
+        else:
+            slash = ""
+
+        assert record is not None, "Principal must have a directory record: %s" % (path,)
+
+        url = joinURL(parent.principalCollectionURL(), record.guid) + slash
+
+        super(DirectoryPrincipalResource, self).__init__(path, url)
 
         self.record = record
         self.parent = parent
-        self._url = joinURL(parent.principalCollectionURL(), record.shortName)
-        if self.isCollection():
-            self._url += "/"
+        self._url   = url
+
+        self._alternate_urls = (
+            joinURL(parent.parent.principalCollectionURL(), record.recordType, record.shortName) + slash,
+        )
 
         # Provision in __init__() because principals are used prior to request
         # lookups.
@@ -395,7 +407,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
                 """Full name: %s\n"""              % (self.record.fullName,),
                 """Principal UID: %s\n"""          % (self.principalUID(),),
                 """Principal URL: %s\n"""          % (link(self.principalURL()),),
-                """\nAlternate URIs:\n"""          , format_list(self.alternateURIs()),
+                """\nAlternate URIs:\n"""          , format_list(link(u) for u in self.alternateURIs()),
                 """\nGroup members:\n"""           , format_list(link(p.principalURL()) for p in self.groupMembers()),
                 """\nGroup memberships:\n"""       , format_list(link(p.principalURL()) for p in self.groupMemberships()),
                 """\nCalendar homes:\n"""          , format_list(link(u) for u in self.calendarHomeURLs()),
@@ -424,7 +436,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
 
     def alternateURIs(self):
         # FIXME: Add API to IDirectoryRecord for getting a record URI?
-        return ()
+        return self._alternate_urls
 
     def principalURL(self):
         return self._url
