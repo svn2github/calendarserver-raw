@@ -388,7 +388,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
                     log.err("Exception while rendering: %s" % (e,))
                     Failure().printTraceback()
                     yield "  ** %s **: %s\n" % (e.__class__.__name__, e)
-            return "".join(sorted(genlist()))
+            return "".join(genlist())
 
         def format_principals(principals):
             return format_list(
