@@ -46,6 +46,9 @@ from twistedcaldav.resource import CalendarPrincipalCollectionResource, Calendar
 from twistedcaldav.static import AutoProvisioningFileMixIn
 from twistedcaldav.directory.idirectory import IDirectoryService
 
+# Use __underbars__ convention to avoid conflicts with directory resource types.
+uidsResourceName = "__uids__"
+
 # FIXME: These should not be tied to DAVFile
 # The reason that they is that web2.dav only implements DAV methods on
 # DAVFile instead of DAVResource.  That should change.
@@ -64,6 +67,19 @@ class DirectoryProvisioningResource(
     CalendarPrincipalCollectionResource,
     DAVFile,
 ):
+    def __init__(self, path, url, directory):
+        """
+        @param path: the path to the file which will back the resource.
+        @param url: the canonical URL for the resource.
+        @param directory: an L{IDirectoryService} to provision principals from.
+        """
+        assert url.endswith("/"), "Collection URL must end in '/'"
+
+        CalendarPrincipalCollectionResource.__init__(self, url)
+        DAVFile.__init__(self, path)
+
+        self.directory = IDirectoryService(directory)
+
     def principalForShortName(self, type, name):
         raise NotImplementedError("Subclass must implement principalForShortName()")
 
@@ -97,24 +113,18 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     Collection resource which provisions directory principals as its children.
     """
     def __init__(self, path, url, directory):
-        """
-        @param path: the path to the file which will back the resource.
-        @param url: the canonical URL for the resource.
-        @param directory: an L{IDirectoryService} to provision principals from.
-        """
-        assert url.endswith("/"), "Collection URL must end in '/'"
-
-        CalendarPrincipalCollectionResource.__init__(self, url)
-        DAVFile.__init__(self, path)
-
-        self.directory = IDirectoryService(directory)
+        DirectoryProvisioningResource.__init__(self, path, url, directory)
 
         # FIXME: Smells like a hack
         self.directory.principalCollection = self
 
+        #
         # Create children
+        #
         for recordType in self.directory.recordTypes():
-            self.putChild(recordType, DirectoryPrincipalTypeResource(self.fp.child(recordType).path, self, recordType))
+            self.putChild(recordType, DirectoryPrincipalTypeResource(self, recordType))
+
+        self.putChild(uidsResourceName, DirectoryPrincipalUIDProvisioningResource(self))
 
     def principalForShortName(self, type, name):
         typeResource = self.getChild(type)
@@ -199,7 +209,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
         return self.putChildren.get(name, None)
 
     def listChildren(self):
-        return self.putChildren.keys()
+        return self.directory.recordTypes()
 
     ##
     # ACL
@@ -208,20 +218,25 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     def principalCollections(self):
         return (self,)
 
+# FIXME: Rename to DirectoryPrincipalTypeProvisioningResource
 class DirectoryPrincipalTypeResource (DirectoryProvisioningResource):
     """
-    Collection resource which provisions directory principals of a specific type as its children.
+    Collection resource which provisions directory principals of a
+    specific type as its children, indexed by short name.
     """
-    def __init__(self, path, parent, recordType):
+    def __init__(self, parent, recordType):
         """
         @param path: the path to the file which will back the resource.
-        @param directory: an L{IDirectoryService} to provision calendars from.
+        @param parent: the parent L{DirectoryPrincipalProvisioningResource}.
         @param recordType: the directory record type to provision.
         """
-        CalendarPrincipalCollectionResource.__init__(self, joinURL(parent.principalCollectionURL(), recordType) + "/")
-        DAVFile.__init__(self, path)
+        DirectoryProvisioningResource.__init__(
+            self,
+            parent.fp.child(recordType).path,
+            joinURL(parent.principalCollectionURL(), recordType) + "/",
+            parent.directory
+        )
 
-        self.directory = parent.directory
         self.recordType = recordType
         self.parent = parent
 
@@ -257,6 +272,59 @@ class DirectoryPrincipalTypeResource (DirectoryProvisioningResource):
 
     def listChildren(self):
         return (record.shortName for record in self.directory.listRecords(self.recordType))
+
+    ##
+    # ACL
+    ##
+
+    def principalCollections(self):
+        return self.parent.principalCollections()
+
+class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
+    """
+    Collection resource which provisions directory principals indexed
+    by UID.
+    """
+    # FIXME: Remove path argument
+    def __init__(self, parent):
+        """
+        @param path: the path to the file which will back the resource.
+        @param directory: an L{IDirectoryService} to provision calendars from.
+        @param recordType: the directory record type to provision.
+        """
+        DirectoryProvisioningResource.__init__(
+            self,
+            parent.fp.child(uidsResourceName).path,
+            joinURL(parent.principalCollectionURL(), uidsResourceName) + "/",
+            parent.directory
+        )
+
+        self.parent = parent
+
+    def principalForShortName(self, type, name):
+        return self.parent.principalForShortName(type, name)
+
+    def principalForCalendarUserAddress(self, address):
+        return self.parent.principalForCalendarUserAddress(address)
+
+    ##
+    # Static
+    ##
+
+    def createSimilarFile(self, path):
+        log.err("Attempt to create clone %r of resource %r" % (path, self))
+        raise HTTPError(responsecode.NOT_FOUND)
+
+    def getChild(self, name):
+        self.provision()
+        if name == "":
+            return self
+
+        return self.principalForUID(name)
+
+    def listChildren(self):
+        # Not a listable collection
+        raise HTTPError(responsecode.FORBIDDEN)
 
     ##
     # ACL
