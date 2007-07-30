@@ -88,7 +88,7 @@ class DirectoryProvisioningResource(
         return self.principalForShortName(DirectoryService.recordType_users, user)
 
     def principalForGUID(self, guid):
-        return principalForUID(guid)
+        return self.principalForUID(guid)
 
     def principalForUID(self, uid):
         raise NotImplementedError("Subclass must implement principalForUID()")
