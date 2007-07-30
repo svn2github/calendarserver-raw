@@ -1,0 +1,111 @@
+<?xml version="1.0" standalone="no"?>
+
+<!DOCTYPE serverinfo SYSTEM "serverinfo.dtd">
+
+<!--
+ Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+
+ DRI: Cyrus Daboo, cdaboo@apple.com
+ -->
+
+<serverinfo>
+	<host>localhost</host>
+	<port>8443</port>
+	<ssl/>
+	<calendarpath>/calendars/users/user01/calendar</calendarpath>
+	<user>user01</user>
+	<pswd>user01</pswd>
+	<substitutions>
+		<substitution>
+			<key>$host:</key>
+			<value>https://localhost:8443</value>
+		</substitution>
+
+		<!-- user id for admin user -->
+		<substitution>
+			<key>$useradmin:</key>
+			<value>admin</value>
+		</substitution>
+		<!-- password for admin user -->
+		<substitution>
+			<key>$pswdadmin:</key>
+			<value>admin</value>
+		</substitution>
+		<!-- relative path to admin principal resource-->
+		<substitution>
+			<key>$principaladmin:</key>
+			<value>/principals/users/admin</value>
+		</substitution>
+
+		<!-- relative path to first user principal resource-->
+		<substitution>
+			<key>$userid1:</key>
+			<value>user01</value>
+		</substitution>
+		<!-- relative path to first user principal resource-->
+		<substitution>
+			<key>$principal:</key>
+			<value>/principals/users/user01</value>
+		</substitution>
+		<!-- relative path to first user calendar home-->
+		<substitution>
+			<key>$pathprefix:</key>
+			<value>/calendars/users/user01</value>
+		</substitution>
+		
+		<!-- user id for second user -->
+		<substitution>
+			<key>$userid2:</key>
+			<value>user02</value>
+		</substitution>
+		<!-- password for second user -->
+		<substitution>
+			<key>$pswd2:</key>
+			<value>user02</value>
+		</substitution>
+		<!-- relative path to second user principal resource-->
+		<substitution>
+			<key>$principal2:</key>
+			<value>/principals/users/user02</value>
+		</substitution>
+		<!-- relative path to second user calendar home-->
+		<substitution>
+			<key>$pathprefix2:</key>
+			<value>/calendars/users/user02</value>
+		</substitution>
+		
+		<!-- user id for third user -->
+		<substitution>
+			<key>$userid3:</key>
+			<value>user03</value>
+		</substitution>
+		<!-- password for third user -->
+		<substitution>
+			<key>$pswd3:</key>
+			<value>user03</value>
+		</substitution>
+		<!-- relative path to third user principal resource-->
+		<substitution>
+			<key>$principal3:</key>
+			<value>/principals/users/user03</value>
+		</substitution>
+		<!-- relative path to third user calendar home-->
+		<substitution>
+			<key>$pathprefix3:</key>
+			<value>/calendars/users/user03</value>
+		</substitution>
+	</substitutions>
+	<serverfilepath>/Users/cyrusdaboo/Documents/Development/Apple/eclipse/CalendarServer/twistedcaldav/test/data/</serverfilepath>
+</serverinfo>
