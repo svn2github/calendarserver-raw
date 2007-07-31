@@ -169,6 +169,7 @@ class RootTests(TestCase):
                                          ['principals'])
 
         def _Eb(failure):
+            failure.trap(HTTPError)
             self.assertEquals(failure.value.response.code, 403)
             
         d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
@@ -198,7 +199,6 @@ class RootTests(TestCase):
 
         def _Eb(failure):
             failure.trap(HTTPError)
-
             self.assertEquals(failure.value.response.code, 401)
 
         d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
@@ -229,6 +229,7 @@ class RootTests(TestCase):
                                          ['principals'])
 
         def _Eb(failure):
+            failure.trap(HTTPError)
             self.assertEquals(failure.value.response.code, 401)
             
         d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
