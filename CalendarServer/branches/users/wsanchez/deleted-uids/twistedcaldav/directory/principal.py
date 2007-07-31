@@ -196,7 +196,10 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
 
     def getChild(self, name):
         self.provision()
-        return self.putChildren.get(name, None)
+        if name == "":
+            return self
+        else:
+            return self.putChildren.get(name, None)
 
     def listChildren(self):
         return self.directory.recordTypes()
@@ -243,16 +246,12 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
         log.err("Attempt to create clone %r of resource %r" % (path, self))
         raise HTTPError(responsecode.NOT_FOUND)
 
-    def getChild(self, name, record=None):
+    def getChild(self, name):
         self.provision()
         if name == "":
             return self
-
-        if record is None:
-            return self.principalForShortName(self.recordType, name)
         else:
-            assert name is None
-            return self.principalForRecord(record)
+            return self.principalForShortName(self.recordType, name)
 
     def listChildren(self):
         return (record.shortName for record in self.directory.listRecords(self.recordType))
@@ -464,11 +463,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
             myRecordType = self.record.recordType
             for relative in getattr(record, method)():
                 if relative not in records:
-                    if relative.recordType == myRecordType: 
-                        found = self.parent.getChild(None, record=relative)
-                    else:
-                        found = self.parent.parent.getChild(relative.recordType).getChild(None, record=relative)
-                    
+                    found = self.parent.principalForRecord(relative)
+
                     if proxy:
                         found = found.getChild("calendar-proxy-write")
                     relatives.add(found)
@@ -605,7 +601,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, C
         log.err("Attempt to create clone %r of resource %r" % (path, self))
         raise HTTPError(responsecode.NOT_FOUND)
 
-    def getChild(self, name, record=None):
+    def getChild(self, name):
         if name == "":
             return self
 
