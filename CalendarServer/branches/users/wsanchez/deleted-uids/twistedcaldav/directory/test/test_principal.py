@@ -120,7 +120,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
                     self.failUnless(isinstance(recordResource, DirectoryPrincipalResource))
 
                     recordURL = typeURL + shortName + "/"
-                    self.assertEquals(recordURL, recordResource.principalURL())
+                    self.assertIn(recordURL, (recordResource.principalURL(),) + tuple(recordResource.alternateURIs()))
 
                     principalCollections = recordResource.principalCollections()
                     self.assertEquals(set((provisioningURL,)), set(pc.principalCollectionURL() for pc in principalCollections))
