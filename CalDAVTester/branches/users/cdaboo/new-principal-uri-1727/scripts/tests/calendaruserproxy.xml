@@ -691,7 +691,7 @@
 					<callback>dataString</callback>
 					<arg>
 						<name>contains</name>
-						<value>&lt;href&gt;$rprincipal1:calendar-proxy-write/&lt;/href&gt;</value>
+						<value>&lt;href&gt;$rprincipaluri1:calendar-proxy-write/&lt;/href&gt;</value>
 					</arg>
 				</verify>
 			</request>

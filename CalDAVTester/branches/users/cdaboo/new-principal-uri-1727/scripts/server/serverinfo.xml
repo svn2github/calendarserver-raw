@@ -247,6 +247,10 @@
 		<!-- relative path to first resource principal resource-->
 		<substitution>
 			<key>$rprincipal1:</key>
+			<value>/principals/resources/resource01/</value>
+		</substitution>
+		<substitution>
+			<key>$rprincipaluri1:</key>
 			<value>/principals/__uids__/resource01/</value>
 		</substitution>
 		<substitution>
