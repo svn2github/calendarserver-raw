@@ -168,7 +168,7 @@ class XMLAccountRecord (object):
             shortName = self.shortName % ctr
         else:
             shortName = self.shortName
-        if self.guid.find("%") != -1:
+        if self.guid and self.guid.find("%") != -1:
             guid = self.guid % ctr
         else:
             guid = self.guid
