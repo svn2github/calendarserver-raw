@@ -141,7 +141,7 @@ class RootTests(TestCase):
 
             self.assertEquals(request.authzUser, 
                               davxml.Principal(
-                    davxml.HRef('/principals/users/dreid/')))
+                    davxml.HRef('/principals/__uids__/5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1/')))
             
         d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
         d.addCallback(_Cb)
