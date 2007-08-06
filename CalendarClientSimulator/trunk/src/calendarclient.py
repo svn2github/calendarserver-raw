@@ -19,6 +19,7 @@
 from xml.etree import ElementTree
 from random import randint
 from random import sample
+import md5
 import icalutils
 import uuid
 import os
@@ -66,6 +67,101 @@ def unq(s):
     else:
         return s
 
+algorithms = {
+    'md5': md5.new,
+    'md5-sess': md5.new,
+}
+
+# DigestCalcHA1
+def calcHA1(
+    pszAlg,
+    pszUserName,
+    pszRealm,
+    pszPassword,
+    pszNonce,
+    pszCNonce,
+    preHA1=None
+):
+    """
+    @param pszAlg: The name of the algorithm to use to calculate the digest.
+        Currently supported are md5 md5-sess and sha.
+
+    @param pszUserName: The username
+    @param pszRealm: The realm
+    @param pszPassword: The password
+    @param pszNonce: The nonce
+    @param pszCNonce: The cnonce
+
+    @param preHA1: If available this is a str containing a previously
+       calculated HA1 as a hex string. If this is given then the values for
+       pszUserName, pszRealm, and pszPassword are ignored.
+    """
+
+    if (preHA1 and (pszUserName or pszRealm or pszPassword)):
+        raise TypeError(("preHA1 is incompatible with the pszUserName, "
+                         "pszRealm, and pszPassword arguments"))
+
+    if preHA1 is None:
+        # We need to calculate the HA1 from the username:realm:password
+        m = algorithms[pszAlg]()
+        m.update(pszUserName)
+        m.update(":")
+        m.update(pszRealm)
+        m.update(":")
+        m.update(pszPassword)
+        HA1 = m.digest()
+    else:
+        # We were given a username:realm:password
+        HA1 = preHA1.decode('hex')
+
+    if pszAlg == "md5-sess":
+        m = algorithms[pszAlg]()
+        m.update(HA1)
+        m.update(":")
+        m.update(pszNonce)
+        m.update(":")
+        m.update(pszCNonce)
+        HA1 = m.digest()
+
+    return HA1.encode('hex')
+
+# DigestCalcResponse
+def calcResponse(
+    HA1,
+    algo,
+    pszNonce,
+    pszNonceCount,
+    pszCNonce,
+    pszQop,
+    pszMethod,
+    pszDigestUri,
+    pszHEntity,
+):
+    m = algorithms[algo]()
+    m.update(pszMethod)
+    m.update(":")
+    m.update(pszDigestUri)
+    if pszQop == "auth-int":
+        m.update(":")
+        m.update(pszHEntity)
+    HA2 = m.digest().encode('hex')
+
+    m = algorithms[algo]()
+    m.update(HA1)
+    m.update(":")
+    m.update(pszNonce)
+    m.update(":")
+    if pszNonceCount and pszCNonce and pszQop:
+        m.update(pszNonceCount)
+        m.update(":")
+        m.update(pszCNonce)
+        m.update(":")
+        m.update(pszQop)
+        m.update(":")
+    m.update(HA2)
+    respHash = m.digest().encode('hex')
+    return respHash
+
 class CalendarClient(object):
     """
     CalendarClient client simulator.
@@ -100,6 +196,7 @@ class CalendarClient(object):
             "calendar_data": {}
         }
         self.logger = None
+        self.authType = None
 
     def valid(self):
         if (self.server is None or
@@ -373,6 +470,79 @@ class CalendarClient(object):
 
     def doRequest(self, ruri, method='GET', headers={}, data=None):
         
+        if self.authType == "basic":
+            return self.doBasicRequest(ruri, method, headers, data)
+        elif self.authType == "digest":
+            return self.doDigestRequest(ruri, method, headers, data)
+        else:
+            # Do on demand auth
+            status, response_headers, response_data = self.doAuthenticatedRequest(ruri, method, headers, data)
+            if status == 401:
+                # Get WWW-Authenticate
+                for header, value in response_headers:
+                    if header == "www-authenticate":
+                        www_authenticate = value
+                        if www_authenticate.lower().startswith("basic"):
+                            self.authType = "basic"
+                            return self.doBasicRequest(ruri, method, headers, data)
+                        elif www_authenticate.lower().startswith("digest"):
+                            self.authType = "digest"
+                            return self.doDigestRequest(ruri, method, headers, data, www_authenticate)
+                        break
+
+            return status, response_headers, response_data
+
+    def doBasicRequest(self, ruri, method='GET', headers={}, data=None):
+ 
+        basicauth = "%s:%s" % (self.user, self.password)
+        basicauth = "Basic " + basicauth.encode("base64")
+        headers["Authorization"] = basicauth
+        return self.doAuthenticatedRequest(ruri, method, headers, data)
+
+    def doDigestRequest(self, ruri, method='GET', headers={}, data=None, www_authenticate=None):
+
+        details = None
+        if hasattr(self, "digest_details"):
+            details = self.digest_details
+        else:
+            www_authenticate = www_authenticate[7:]
+            parts = www_authenticate.split(',')
+    
+            details = {}
+
+            for (k, v) in [p.split('=', 1) for p in parts]:
+                details[k.strip()] = unq(v.strip())
+                
+            self.digest_details = details
+
+        if details:
+            digest = calcResponse(
+                calcHA1(details.get('algorithm'), self.user, details.get('realm'), self.password, details.get('nonce'), details.get('cnonce')),
+                details.get('algorithm'), details.get('nonce'), details.get('nc'), details.get('cnonce'), details.get('qop'), method, ruri, None
+            )
+    
+            if details.get('qop'):
+                response = ('Digest username="%s", realm="%s", '
+                        'nonce="%s", uri="%s", '
+                        'response=%s, algorithm=%s, cnonce="%s", qop=%s, nc=%s' % (self.user, details.get('realm'), details.get('nonce'), ruri, digest, details.get('algorithm'), details.get('cnonce'), details.get('qop'), details.get('nc'), ))
+            else:
+                response = ('Digest username="%s", realm="%s", '
+                        'nonce="%s", uri="%s", '
+                        'response=%s, algorithm=%s' % (self.user, details.get('realm'), details.get('nonce'), ruri, digest, details.get('algorithm'), ))
+        else:
+            return 401, {}, ""
+ 
+        #if www_authenticate
+        headers["Authorization"] = response
+        status, response_headers, response_data = self.doAuthenticatedRequest(ruri, method, headers, data)
+        if status == 401 and www_authenticate is None:
+            www_authenticate = response_headers["www-authenticate"]
+            return self.doDigestRequest(ruri, method, headers, data, www_authenticate)
+        else:
+            return status, response_headers, response_data
+
+    def doAuthenticatedRequest(self, ruri, method='GET', headers={}, data=None):
+        
         if self.server.startswith("https://"):
             conn = httplib.HTTPSConnection(self.server[8:])
         elif self.server.startswith("http://"):
@@ -380,10 +550,6 @@ class CalendarClient(object):
         else:
             raise ValueError("Server address invalid: %s" (self.server,))
         
-        basicauth = "%s:%s" % (self.user, self.password)
-        basicauth = "Basic " + basicauth.encode("base64")
-        headers["Authorization"] = basicauth
-
         if data:
             conn.request(method, ruri, data, headers=headers)
         else:
