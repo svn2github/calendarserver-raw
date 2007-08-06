@@ -19,6 +19,7 @@
 ##
 from os import P_NOWAIT
 from random import randint
+import resource
 import time
 import signal
 import os
@@ -100,6 +101,15 @@ if __name__ == '__main__':
             usage()
             raise ValueError
 
+    # Check resource limits for the number of processes we need to create
+    soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+    if count > soft - 25:
+        if count > hard - 25:
+            print "Number of processes requested: %d is greater than the hard resource limit: %d" % (count, hard)
+            raise ValueError
+        else:
+            resource.setrlimit(resource.RLIMIT_NPROC, count)
+    
     pids = []
     for i in range(1, count + 1):
         cmd = [
