@@ -536,10 +536,10 @@ class CalendarClient(object):
         headers["Authorization"] = response
         status, response_headers, response_data = self.doAuthenticatedRequest(ruri, method, headers, data)
         if status == 401 and www_authenticate is None:
-            www_authenticate = response_headers["www-authenticate"]
-            return self.doDigestRequest(ruri, method, headers, data, www_authenticate)
-        else:
-            return status, response_headers, response_data
+            for header, value in response_headers:
+                if header == "www-authenticate":
+                    return self.doDigestRequest(ruri, method, headers, data, value)
+        return status, response_headers, response_data
 
     def doAuthenticatedRequest(self, ruri, method='GET', headers={}, data=None):
         
