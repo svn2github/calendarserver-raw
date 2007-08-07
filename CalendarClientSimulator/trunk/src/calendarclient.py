@@ -538,6 +538,7 @@ class CalendarClient(object):
         if status == 401 and www_authenticate is None:
             for header, value in response_headers:
                 if header == "www-authenticate":
+                    delattr(self, "digest_details")
                     return self.doDigestRequest(ruri, method, headers, data, value)
         return status, response_headers, response_data
 
