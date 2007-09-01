@@ -131,57 +131,19 @@ def processRequest(request, principal, inbox, calendar, child):
             
     if not has_rid:
         # Compare the new one with each existing one.
-        delete_child = False
-        for i in info:
-            # For any that are older, delete them.
-            if compareSyncInfo(i, newinfo) < 0:
-                try:
-                    d = waitForDeferred(deleteResource(inbox, i[0]))
-                    yield d
-                    d.getResult()
-                    logging.info("[ITIP]: deleted iTIP message %s in Inbox that was older than the new one." % (i[0],))
-                except:
-                    log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
-                    raise iTipException
-            else:
-                # For any that are newer or the same, mark the new one to be deleted.
-                delete_child = True
+        d = waitForDeferred(processOthersInInbox(info, newinfo, inbox, child))
+        yield d
+        delete_child = d.getResult()
 
-        # Delete the new one if so marked.
         if delete_child:
-            try:
-                d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
-                yield d
-                d.getResult()
-                logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it was older than existing ones." % (child.fp.basename(),))
-            except:
-                log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
-                raise iTipException
             yield None
             return
 
         # Next we want to try and find a match to any components on existing calendars listed as contributing
         # to free-busy as we will need to update those with the new one.
-        
-        # Find the current recipients calendar-free-busy-set
-        fbset = waitForDeferred(principal.calendarFreeBusyURIs(request))
-        yield fbset
-        fbset = fbset.getResult()
-
-        # Find the first calendar in the list with a component matching the one we are processing
-        calmatch = None
-        for calURL in fbset:
-            updatecal = waitForDeferred(request.locateResource(calURL))
-            yield updatecal
-            updatecal = updatecal.getResult()
-            if updatecal is None or not updatecal.exists() or not isCalendarCollectionResource(updatecal):
-                # We will ignore missing calendars. If the recipient has failed to
-                # properly manage the free busy set that should not prevent us from working.
-                continue
-            calmatch = matchComponentInCalendar(updatecal, calendar, None)
-            if calmatch:
-                logging.info("[ITIP]: found calendar component %s matching new iTIP message in %s." % (calmatch[0], calURL))
-                break
+        d = waitForDeferred(findCalendarMatch(request, principal, calendar))
+        yield d
+        calmatch, updatecal, calURL = d.getResult()
         
         # If we have a match then we need to check whether we are updating etc
         d = waitForDeferred(checkForReply(request, principal, calendar))
@@ -223,8 +185,7 @@ def processRequest(request, principal, inbox, calendar, child):
                 return
         else:
             # Write new resource into first calendar in f-b-set
-            if len(fbset) != 0 and accepted:
-                calURL = fbset[0]
+            if calURL and accepted:
                 updatecal = waitForDeferred(request.locateResource(calURL))
                 yield updatecal
                 updatecal = updatecal.getResult()
@@ -333,57 +294,19 @@ def processCancel(request, principal, inbox, calendar, child):
             
     if not has_rid:
         # Compare the new one with each existing one.
-        delete_child = False
-        for i in info:
-            # For any that are older, delete them.
-            if compareSyncInfo(i, newinfo) < 0:
-                try:
-                    d = waitForDeferred(deleteResource(inbox, i[0]))
-                    yield d
-                    d.getResult()
-                    logging.info("[ITIP]: deleted iTIP message %s in Inbox that was older than the new one." % (i[0],))
-                except:
-                    log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
-                    raise iTipException
-            else:
-                # For any that are newer or the same, mark the new one to be deleted.
-                delete_child = True
+        d = waitForDeferred(processOthersInInbox(info, newinfo, inbox, child))
+        yield d
+        delete_child = d.getResult()
 
-        # Delete the new one if so marked.
         if delete_child:
-            try:
-                d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
-                yield d
-                d.getResult()
-                logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it was older than existing ones." % (child.fp.basename(),))
-            except:
-                log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
-                raise iTipException
             yield None
             return
 
         # Next we want to try and find a match to any components on existing calendars listed as contributing
         # to free-busy as we will need to update those with the new one.
-        
-        # Find the current recipients calendar-free-busy-set
-        fbset = waitForDeferred(principal.calendarFreeBusyURIs(request))
-        yield fbset
-        fbset = fbset.getResult()
-
-        # Find the first calendar in the list with a component matching the one we are processing
-        calmatch = None
-        for calURL in fbset:
-            updatecal = waitForDeferred(request.locateResource(calURL))
-            yield updatecal
-            updatecal = updatecal.getResult()
-            if updatecal is None or not updatecal.exists() or not isCalendarCollectionResource(updatecal):
-                # We will ignore missing calendars. If the recipient has failed to
-                # properly manage the free busy set that should not prevent us from working.
-                continue
-            calmatch = matchComponentInCalendar(updatecal, calendar, None)
-            if calmatch:
-                logging.info("[ITIP]: found calendar component %s matching new iTIP message in %s." % (calmatch[0], calURL))
-                break
+        d = waitForDeferred(findCalendarMatch(request, principal, calendar))
+        yield d
+        calmatch, updatecal, calURL = d.getResult()
         
         # If we have a match then we need to check whether we are updating etc
         if calmatch:
@@ -415,20 +338,21 @@ def processCancel(request, principal, inbox, calendar, child):
         else:
             # Nothing to do
             pass
-        
-        # Remove the now processed incoming request.
-        try:
-            d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
-            yield d
-            d.getResult()
-            logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it has been processed." % (child.fp.basename(),))
-        except:
-            log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
-            raise iTipException
-        yield None
-        return
     else:
         raise NotImplementedError
+
+        
+    # Remove the now processed incoming request.
+    try:
+        d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
+        yield d
+        d.getResult()
+        logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it has been processed." % (child.fp.basename(),))
+    except:
+        log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
+        raise iTipException
+    yield None
+    return
 
 processCancel = deferredGenerator(processCancel)
 
@@ -700,6 +624,72 @@ def canAutoRespond(calendar):
         return False
     
     return True
+
+def processOthersInInbox(info, newinfo, inbox, child):
+    # Compare the new one with each existing one.
+    delete_child = False
+    for i in info:
+        # For any that are older, delete them.
+        if compareSyncInfo(i, newinfo) < 0:
+            try:
+                d = waitForDeferred(deleteResource(inbox, i[0]))
+                yield d
+                d.getResult()
+                logging.info("[ITIP]: deleted iTIP message %s in Inbox that was older than the new one." % (i[0],))
+            except:
+                log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
+                raise iTipException
+        else:
+            # For any that are newer or the same, mark the new one to be deleted.
+            delete_child = True
+
+    # Delete the new one if so marked.
+    if delete_child:
+        try:
+            d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
+            yield d
+            d.getResult()
+            logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it was older than existing ones." % (child.fp.basename(),))
+        except:
+            log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
+            raise iTipException
+    
+    yield delete_child
+
+processOthersInInbox = deferredGenerator(processOthersInInbox)    
+
+def findCalendarMatch(request, principal, calendar):
+    # Try and find a match to any components on existing calendars listed as contributing
+    # to free-busy as we will need to update those with the new one.
+    
+    # Find the current recipients calendar-free-busy-set
+    fbset = waitForDeferred(principal.calendarFreeBusyURIs(request))
+    yield fbset
+    fbset = fbset.getResult()
+
+    # Find the first calendar in the list with a component matching the one we are processing
+    calmatch = None
+    updatecal = None
+    calURL = None
+    for calURL in fbset:
+        updatecal = waitForDeferred(request.locateResource(calURL))
+        yield updatecal
+        updatecal = updatecal.getResult()
+        if updatecal is None or not updatecal.exists() or not isCalendarCollectionResource(updatecal):
+            # We will ignore missing calendars. If the recipient has failed to
+            # properly manage the free busy set that should not prevent us from working.
+            continue
+        calmatch = matchComponentInCalendar(updatecal, calendar, None)
+        if calmatch:
+            logging.info("[ITIP]: found calendar component %s matching new iTIP message in %s." % (calmatch[0], calURL))
+            break
+    
+    if not calmatch and len(fbset):
+        calURL = fbset[0]
+
+    yield calmatch, updatecal, calURL
+
+findCalendarMatch = deferredGenerator(findCalendarMatch)    
 
 def matchComponentInCalendar(collection, calendar, ignore):
     """
