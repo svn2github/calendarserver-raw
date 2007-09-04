@@ -334,7 +334,7 @@ def processRequest2(request, principal, inbox, calendar, child):
         check_reply = False
         if calmatch:
             # See whether the new component is older than any existing ones and throw it away if so
-            newinfo = getSyncInfo(calendar)
+            newinfo = getSyncInfo(child.fp.basename(), calendar)
             cal = updatecal.iCalendar(calmatch)
             info = getSyncInfo(calmatch, cal)
             if compareSyncInfo(info, newinfo) < 0:
@@ -1110,7 +1110,14 @@ def mergeComponents(newcal, oldcal):
     
     # FIXME: going to ignore VTIMEZONE - i.e. will assume that the component being added
     # use a TZID that is already specified in the old component set.
-    
+
+    # We will update the SEQUENCE on the master to the highest value of the current one on the master
+    # or the ones in the components we are changing.
+    existing_master = oldcal.masterComponent()
+    max_sequence = existing_master.propertyValue("SEQUENCE")
+    if max_sequence is None:
+        max_sequence = 0
+
     for component in newcal.subcomponents():
         if component.name() == "VTIMEZONE":
             continue
@@ -1120,6 +1127,13 @@ def mergeComponents(newcal, oldcal):
         if old_component:
             oldcal.removeComponent(old_component)
         oldcal.addComponent(component)
+        max_sequence = max(max_sequence, component.propertyValue("SEQUENCE"))
+
+    seq = existing_master.getProperty("SEQUENCE")
+    if seq:
+        seq.setValue(max_sequence)
+    else:
+        existing_master.addProperty(Property("SEQUENCE", max_sequence))
 
 def getAllInfo(collection, calendar, ignore):
     """
