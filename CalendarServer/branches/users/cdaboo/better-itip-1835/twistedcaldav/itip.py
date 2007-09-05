@@ -333,15 +333,30 @@ def processRequest2(request, principal, inbox, calendar, child):
         # If we have a match then we need to check whether we are updating etc
         check_reply = False
         if calmatch:
-            # See whether the new component is older than any existing ones and throw it away if so
-            newinfo = getSyncInfo(child.fp.basename(), calendar)
+            # Check each component to see whether its new
             cal = updatecal.iCalendar(calmatch)
-            info = getSyncInfo(calmatch, cal)
-            if compareSyncInfo(info, newinfo) < 0:
-                # Existing resource is older and will be replaced
-                check_reply = True
-            else:
-                processed = "older"
+            old_master = cal.masterComponent()
+            processed = "older"
+            new_components = [component for component in calendar.subcomponents()]
+            for component in new_components:
+                if component.name() == "VTIMEZONE":
+                    continue
+                
+                newinfo = (None,) + getComponentSyncInfo(component)
+                old_component = findMatchingComponent(component, cal)
+                if old_component:
+                    info = (None,) + getComponentSyncInfo(old_component)
+                elif old_master:
+                    info = (None,) + getComponentSyncInfo(old_master)
+                else:
+                    info = None
+                    
+                if info is None or compareSyncInfo(info, newinfo) < 0:
+                    # Existing resource is older and will be replaced
+                    check_reply = True
+                    processed = "processed"
+                else:
+                    calendar.removeComponent(component)
         else:
             # We have a new request which we can reply to
             check_reply = True
@@ -522,7 +537,9 @@ def processCancel(request, principal, inbox, calendar, child):
             existing_calendar = updatecal.iCalendar(calmatch)
             existing_master = existing_calendar.masterComponent()
             exdates = []
-            max_sequence = existing_master.propertyValue("SEQUENCE")
+            max_sequence = None
+            if existing_master:
+                max_sequence = existing_master.propertyValue("SEQUENCE")
             if max_sequence is None:
                 max_sequence = 0
 
@@ -543,7 +560,7 @@ def processCancel(request, principal, inbox, calendar, child):
                         
                         # Remove the existing component.
                         existing_calendar.removeComponent(old_component)
-                else:
+                elif existing_master:
                     # We are trying to CANCEL a non-overridden instance, so we need to
                     # check SEQUENCE/DTSTAMP with the master.
                     if compareComponents(existing_master, component) < 0:
@@ -554,16 +571,28 @@ def processCancel(request, principal, inbox, calendar, child):
             # If we have any EXDATEs lets add them to the existing calendar object and write
             # it back.
             if exdates:
-                existing_master.addProperty(Property("EXDATE", exdates))
-                seq = existing_master.getProperty("SEQUENCE")
-                if seq:
-                    seq.setValue(max_sequence)
+                if existing_master:
+                    existing_master.addProperty(Property("EXDATE", exdates))
+                    seq = existing_master.getProperty("SEQUENCE")
+                    if seq:
+                        seq.setValue(max_sequence)
+                    else:
+                        existing_master.addProperty(Property("SEQUENCE", max_sequence))
+
+                # See if there are still components in the calendar - we might have deleted the last overridden instance
+                # in which case the calendar object is empty (except for VTIMEZONEs).
+                if existing_calendar.mainType() is None:
+                    # Delete the now empty calendar object
+                    d = waitForDeferred(deleteResource(updatecal, calmatch))
+                    yield d
+                    d.getResult()
+                    logging.info("[ITIP]: deleted calendar component %s after cancellations from iTIP message in %s." % (calmatch, calURL))
                 else:
-                    existing_master.addProperty(Property("SEQUENCE", max_sequence))
-                newchild = waitForDeferred(writeResource(request, calURL, updatecal, calmatch, existing_calendar))
-                yield newchild
-                newchild = newchild.getResult()
-                logging.info("[ITIP]: updated calendar component %s with cancellations from iTIP message in %s." % (calmatch, calURL))
+                    # Update the existing calendar object
+                    newchild = waitForDeferred(writeResource(request, calURL, updatecal, calmatch, existing_calendar))
+                    yield newchild
+                    newchild = newchild.getResult()
+                    logging.info("[ITIP]: updated calendar component %s with cancellations from iTIP message in %s." % (calmatch, calURL))
                 processed = "processed"
             else:
                 processed = "older"
@@ -1114,7 +1143,9 @@ def mergeComponents(newcal, oldcal):
     # We will update the SEQUENCE on the master to the highest value of the current one on the master
     # or the ones in the components we are changing.
     existing_master = oldcal.masterComponent()
-    max_sequence = existing_master.propertyValue("SEQUENCE")
+    max_sequence = None
+    if existing_master:
+        max_sequence = existing_master.propertyValue("SEQUENCE")
     if max_sequence is None:
         max_sequence = 0
 
@@ -1129,11 +1160,12 @@ def mergeComponents(newcal, oldcal):
         oldcal.addComponent(component)
         max_sequence = max(max_sequence, component.propertyValue("SEQUENCE"))
 
-    seq = existing_master.getProperty("SEQUENCE")
-    if seq:
-        seq.setValue(max_sequence)
-    else:
-        existing_master.addProperty(Property("SEQUENCE", max_sequence))
+    if existing_master:
+        seq = existing_master.getProperty("SEQUENCE")
+        if seq:
+            seq.setValue(max_sequence)
+        else:
+            existing_master.addProperty(Property("SEQUENCE", max_sequence))
 
 def getAllInfo(collection, calendar, ignore):
     """
