@@ -378,12 +378,12 @@ class CalendarClient(object):
 
         # Generate accepted data and write to main calendar
         caldata = icalutils.generateiTIPSave(calendar, me)
-        self.createEvent(caldata)
-        
-        # Generate reply and POST
-        self.log("        Sending  iTIP Reply   from: %s to:   %s" % (self.user, organizer.split("/")[-2],))
-        caldata, recipient = icalutils.generateiTIPReply(calendar, me)
-        self.doSchedule(self.outbox, caldata, headers={"originator":me, "recipient":recipient})
+        if self.createEvent(caldata):
+            
+            # Generate reply and POST
+            self.log("        Sending  iTIP Reply   from: %s to:   %s" % (self.user, organizer.split("/")[-2],))
+            caldata, recipient = icalutils.generateiTIPReply(calendar, me)
+            self.doSchedule(self.outbox, caldata, headers={"originator":me, "recipient":recipient})
 
     def processiTIPReply(self, calendar):
         # Extract attendee from iTIP reply
@@ -396,11 +396,11 @@ class CalendarClient(object):
             if entry["uid"] == uid:
                 break
         else:
-            return
+            return True
         
         # Update calendar data with attendee status
         caldata = icalutils.updateAttendeeStatus(entry["data"], attendee)
-        self.putEvent(href, caldata)
+        return self.putEvent(href, caldata)
 
     def doCreateEvent(self, organizer=None, attendees=None):
         caldata = icalutils.generateVEVENT(organizer, attendees)
@@ -408,27 +408,29 @@ class CalendarClient(object):
 
     def createEvent(self, caldata):
         uri = "%s%s.ics" % (self.calendar, uuid.uuid4(),)
-        self.putEvent(uri, caldata, True)
-        return uri
+        if self.putEvent(uri, caldata, True):
+            return uri
+        else:
+            return None
 
     def putEvent(self, uri, caldata, creating=False):
         try:
             status, _ignore_headers, _ignore_data = self.doRequest(uri, "PUT", {"Content-Type": "text/calendar"}, caldata)
             if creating and (status != 201) or not creating and status not in (200, 204):
                 self.log("Event write failed with status: %d for user: %s" % (status, self.user,))
-                return
+                return False
         except Exception, e:
             self.log("Event write failed with exception: %s for user: %s" % (e, self.user,))
-            return
+            return False
         
         try:
             status, headers, data = self.doRequest(uri, "GET")
             if status != 200:
                 self.log("Event read failed with status: %d for user: %s" % (status, self.user,))
-                return
+                return False
         except Exception, e:
             self.log("Event read failed with exception: %s for user: %s" % (e, self.user,))
-            return
+            return False
 
         for header, value in headers:
             if header == "etag":
@@ -440,6 +442,8 @@ class CalendarClient(object):
                 }
                 self.writeCache()
                 break
+        
+        return True
 
     def getEvent(self, uri):
         
@@ -481,16 +485,17 @@ class CalendarClient(object):
         # Create invite on main calendar
         new_uri = self.doCreateEvent(organizer, attendees)
 
-        # Do free busy lookup
-        fbdata = icalutils.generateVFREEBUSY(organizer, attendees)
-        self.doSchedule(self.outbox, fbdata, headers={"originator":organizer, "recipient":", ".join((organizer,) + tuple(attendees))})
-
-        # TODO: Update invite (simulates a time shift after f-b lookup)
-        
-        # Do outbox POST
-        entry = self.data["calendar_data"][new_uri]
-        caldata = entry["data"].replace("VERSION:", "METHOD:REQUEST\nVERSION:")
-        self.doSchedule(self.outbox, caldata, headers={"originator":organizer, "recipient":", ".join(attendees)})
+        if new_uri:
+            # Do free busy lookup
+            fbdata = icalutils.generateVFREEBUSY(organizer, attendees)
+            self.doSchedule(self.outbox, fbdata, headers={"originator":organizer, "recipient":", ".join((organizer,) + tuple(attendees))})
+    
+            # TODO: Update invite (simulates a time shift after f-b lookup)
+            
+            # Do outbox POST
+            entry = self.data["calendar_data"][new_uri]
+            caldata = entry["data"].replace("VERSION:", "METHOD:REQUEST\nVERSION:")
+            self.doSchedule(self.outbox, caldata, headers={"originator":organizer, "recipient":", ".join(attendees)})
 
     def doRequest(self, ruri, method='GET', headers={}, data=None):
         
