@@ -32,6 +32,7 @@ def usage():
     print """Usage: simulate [options]
 Options:
     --number          number of users to simulate [10]
+    --startat         user number to start at
     --server          URL for server (e.g. https://caldav.example.com:8443) [Required]
     --user            user id for user to login as [user%02d]
     --password        password for user [user%02d]
@@ -49,6 +50,7 @@ Options:
 if __name__ == '__main__':
 
     count = 5
+    startat = 1
     server = None
     user = "user%02d"
     password = "user%02d"
@@ -62,6 +64,7 @@ if __name__ == '__main__':
     
     options, args = getopt.getopt(sys.argv[1:], "h", [
         "number=",
+        "startat=",
         "server=",
         "interval=",
         "eventsperday=",
@@ -78,6 +81,8 @@ if __name__ == '__main__':
             sys.exit(0)
         elif option == "--number":
             count = int(value)
+        elif option == "--startat":
+            startat = int(value)
         elif option == "--server":
             server = value
         elif option == "--user":
@@ -111,7 +116,7 @@ if __name__ == '__main__':
             resource.setrlimit(resource.RLIMIT_NPROC, count)
     
     pids = []
-    for i in range(1, count + 1):
+    for i in range(startat, count + startat):
         cmd = [
             "python",
             "./simulate.py",

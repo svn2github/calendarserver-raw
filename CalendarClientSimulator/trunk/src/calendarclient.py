@@ -434,9 +434,12 @@ class CalendarClient(object):
         return data
 
     def generateInviteAttendees(self):
+        # Randonly invite anywhere betweem 1 and 10 attendees.
+        # Pick attendees out of a pool of 100 users which this user is in.
         num_attendees = randint(1, 10)
         my_num = int(self.user[4:])
-        attendee_list = ["user%02d" % i for i in xrange(1,99)if i != my_num]
+        offset = (my_num / 100) * 100
+        attendee_list = ["user%02d" % i for i in xrange(offset + 1, offset + 99)if i != my_num]
         random_list = sample(attendee_list, num_attendees)
         attendees = ["/principals/users/%s/" % (attendee,) for attendee in random_list]
         
