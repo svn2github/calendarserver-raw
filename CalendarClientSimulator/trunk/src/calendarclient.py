@@ -261,6 +261,7 @@ class CalendarClient(object):
                 return
         except Exception, e:
             self.log("Polling: %s exception: %s" % (self.user, e,))
+            return
             
         # Parse the XML to find changed ctags
         changed = []
@@ -414,11 +415,17 @@ class CalendarClient(object):
                 return
         except Exception, e:
             self.log("Event write failed with exception: %s for user: %s" % (e, self.user,))
-        
-        status, headers, data = self.doRequest(uri, "GET")
-        if status != 200:
-            self.log("Event read failed with status: %d for user: %s" % (status, self.user,))
             return
+        
+        try:
+            status, headers, data = self.doRequest(uri, "GET")
+            if status != 200:
+                self.log("Event read failed with status: %d for user: %s" % (status, self.user,))
+                return
+        except Exception, e:
+            self.log("Event read failed with exception: %s for user: %s" % (e, self.user,))
+            return
+
         for header, value in headers:
             if header == "etag":
                 etag = unq(value)
@@ -439,6 +446,7 @@ class CalendarClient(object):
                 return None
         except Exception, e:
             self.log("Event read of %s failed with exception: %s for user: %s" % (uri, e, self.user,))
+            return None
 
         return data
 
@@ -579,6 +587,7 @@ class CalendarClient(object):
                 return None
         except Exception, e:
             self.log("Polling failed with exception: %s for user: %s" % (e, self.user,))
+            return None
 
         # Parse the XML to find etags
         hrefs = {}
@@ -608,6 +617,7 @@ class CalendarClient(object):
                 return
         except Exception, e:
             self.log("Polling failed with exception: %s for user: %s" % (e, self.user,))
+            return
 
         # Parse the XML to find etags
         results = {}
@@ -640,6 +650,7 @@ class CalendarClient(object):
                 return
         except Exception, e:
             self.log("POST failed with exception: %s for user: %s" % (e, self.user,))
+            return
             
         # Parse the XML to find etags
         results = {}
