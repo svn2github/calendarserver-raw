@@ -254,10 +254,13 @@ class CalendarClient(object):
     
     def doPoll(self):
         self.log("Polling: %s" % (self.user,))
-        status, _ignore_headers, data = self.doRequest(self.home, "PROPFIND", {"Content-Type": "application/xml", "Depth":"1"}, PROPFIND_ctag)
-        if status != 207:
-            self.log("Polling: %s failed: %d" % (self.user, status,))
-            return
+        try:
+            status, _ignore_headers, data = self.doRequest(self.home, "PROPFIND", {"Content-Type": "application/xml", "Depth":"1"}, PROPFIND_ctag)
+            if status != 207:
+                self.log("Polling: %s failed: %d" % (self.user, status,))
+                return
+        except Exception, e:
+            self.log("Polling: %s exception: %s" % (self.user, e,))
             
         # Parse the XML to find changed ctags
         changed = []
@@ -404,10 +407,13 @@ class CalendarClient(object):
         return uri
 
     def putEvent(self, uri, caldata, creating=False):
-        status, _ignore_headers, _ignore_data = self.doRequest(uri, "PUT", {"Content-Type": "text/calendar"}, caldata)
-        if creating and (status != 201) or not creating and status not in (200, 204):
-            self.log("Event write failed with status: %d for user: %s" % (status, self.user,))
-            return
+        try:
+            status, _ignore_headers, _ignore_data = self.doRequest(uri, "PUT", {"Content-Type": "text/calendar"}, caldata)
+            if creating and (status != 201) or not creating and status not in (200, 204):
+                self.log("Event write failed with status: %d for user: %s" % (status, self.user,))
+                return
+        except Exception, e:
+            self.log("Event write failed with exception: %s for user: %s" % (e, self.user,))
         
         status, headers, data = self.doRequest(uri, "GET")
         if status != 200:
@@ -426,10 +432,13 @@ class CalendarClient(object):
 
     def getEvent(self, uri):
         
-        status, _ignore_headers, data = self.doRequest(uri, "GET")
-        if status != 200:
-            self.log("Event read of %s failed with status: %d for user: %s" % (uri, status, self.user,))
-            return None
+        try:
+            status, _ignore_headers, data = self.doRequest(uri, "GET")
+            if status != 200:
+                self.log("Event read of %s failed with status: %d for user: %s" % (uri, status, self.user,))
+                return None
+        except Exception, e:
+            self.log("Event read of %s failed with exception: %s for user: %s" % (uri, e, self.user,))
 
         return data
 
@@ -563,11 +572,14 @@ class CalendarClient(object):
         return response.status, response.getheaders(), data
 
     def doPropfindDepth1(self, uri):
-        status, _ignore_headers, data = self.doRequest(uri, "PROPFIND", {"Content-Type": "application/xml", "Depth": "1"}, PROPFIND_etag)
-        if status != 207:
-            self.log("Polling failed with status: %d for user: %s" % (status, self.user,))
-            return None
-            
+        try:
+            status, _ignore_headers, data = self.doRequest(uri, "PROPFIND", {"Content-Type": "application/xml", "Depth": "1"}, PROPFIND_etag)
+            if status != 207:
+                self.log("Polling failed with status: %d for user: %s" % (status, self.user,))
+                return None
+        except Exception, e:
+            self.log("Polling failed with exception: %s for user: %s" % (e, self.user,))
+
         # Parse the XML to find etags
         hrefs = {}
         xml = ElementTree.XML(data)
@@ -588,12 +600,15 @@ class CalendarClient(object):
         return hrefs
 
     def doMultiget(self, uri, hrefs):
-        hreftxt = "\n".join(["<D:href>%s</D:href>" % href for href in hrefs])
-        status, _ignore_headers, data = self.doRequest(uri, "REPORT", {"Content-Type": "application/xml"}, REPORT_multiget % (hreftxt,))
-        if status != 207:
-            self.log("Polling failed with status: %d for user: %s" % (status, self.user,))
-            return
-            
+        try:
+            hreftxt = "\n".join(["<D:href>%s</D:href>" % href for href in hrefs])
+            status, _ignore_headers, data = self.doRequest(uri, "REPORT", {"Content-Type": "application/xml"}, REPORT_multiget % (hreftxt,))
+            if status != 207:
+                self.log("Polling failed with status: %d for user: %s" % (status, self.user,))
+                return
+        except Exception, e:
+            self.log("Polling failed with exception: %s for user: %s" % (e, self.user,))
+
         # Parse the XML to find etags
         results = {}
         xml = ElementTree.XML(data)
@@ -617,11 +632,14 @@ class CalendarClient(object):
         return results
 
     def doSchedule(self, uri, data, headers):
-        headers["Content-Type"] = "text/calendar"
-        status, headers, data = self.doRequest(uri, "POST", headers, data)
-        if status != 200:
-            self.log("POST failed with status: %d for user: %s" % (status, self.user,))
-            return
+        try:
+            headers["Content-Type"] = "text/calendar"
+            status, headers, data = self.doRequest(uri, "POST", headers, data)
+            if status != 200:
+                self.log("POST failed with status: %d for user: %s" % (status, self.user,))
+                return
+        except Exception, e:
+            self.log("POST failed with exception: %s for user: %s" % (e, self.user,))
             
         # Parse the XML to find etags
         results = {}
@@ -632,6 +650,9 @@ class CalendarClient(object):
         return results
 
     def doDelete(self, uri):
-        status, _ignore_headers, _ignore_data = self.doRequest(uri, "DELETE")
-        if status != 204:
-            self.log("Delete of %s failed with status: %d for user: %s" % (uri, status, self.user,))
+        try:
+            status, _ignore_headers, _ignore_data = self.doRequest(uri, "DELETE")
+            if status != 204:
+                self.log("Delete of %s failed with status: %d for user: %s" % (uri, status, self.user,))
+        except Exception, e:
+            self.log("Delete of %s failed with exception: %s for user: %s" % (uri, e, self.user,))
