@@ -329,12 +329,13 @@ class CalendarClient(object):
             results = self.doMultiget(uri, changed)
             
             # Cache the new etags - we don't care about the data
-            for href, (etag, data) in results.iteritems():
-                self.data["calendar_data"][href] = {
-                    "etag": etag,
-                    "uid" : icalutils.parseUID(data),
-                    "data": data,
-                }
+            if results:
+                for href, (etag, data) in results.iteritems():
+                    self.data["calendar_data"][href] = {
+                        "etag": etag,
+                        "uid" : icalutils.parseUID(data),
+                        "data": data,
+                    }
 
     def doInboxPoll(self, uri):
         self.log("    Getting calendar: %s for: %s" % (uri, self.user,))
