@@ -93,8 +93,8 @@ def calcHA1(
     @param pszCNonce: The cnonce
 
     @param preHA1: If available this is a str containing a previously
-       calculated HA1 as a hex string. If this is given then the values for
-       pszUserName, pszRealm, and pszPassword are ignored.
+        calculated HA1 as a hex string. If this is given then the values for
+        pszUserName, pszRealm, and pszPassword are ignored.
     """
 
     if (preHA1 and (pszUserName or pszRealm or pszPassword)):
@@ -172,7 +172,7 @@ class CalendarClient(object):
     outboxURI = "/calendars/users/%s/outbox/"
     inboxURI = "/calendars/users/%s/inbox/"
     
-    sleep = 5
+    sleep = 1
 
     def __init__(self):
         self.server = None
@@ -235,11 +235,14 @@ class CalendarClient(object):
     def simulate(self):
         
         self.log("Starting CalendarClient simulation for user %s" % (self.user,))
-        start_poll = time.time() - self.interval - 1
-        start_events = time.time()
-        start_invites = time.time()
+        self.doPoll()
+        
+        # Do polling loop using a randomly distributed start time for polling and events/invites
+        start_poll = time.time() - randint(0, self.interval - 1)
         event_interval = 24 * 60 * 60 / self.eventsperday
         invite_interval = 24 * 60 * 60 / self.invitesperday
+        start_events = time.time() - randint(0, event_interval - 1)
+        start_invites = time.time() - randint(0, invite_interval - 1)
         while(True):
             if time.time() >= start_poll + self.interval:
                 start_poll = time.time()
