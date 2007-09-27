@@ -17,7 +17,7 @@
  **/
 
 #include <CoreFoundation/CoreFoundation.h>
-#include <Python.h>
+#include <Python/Python.h>
 
 #include "CDirectoryService.h"
 #include "CFStringUtil.h"
@@ -175,7 +175,42 @@ static PyObject* CFArrayArrayDictionaryToPyList(CFArrayRef list)
 		CFArrayRef nested = (CFArrayRef)CFArrayGetValueAtIndex(list, i);
 		PyObject* pylist = CFArrayStringDictionaryToPyList(nested);
 		if (pylist != NULL)
+		{
 			PyList_SetItem(result, j++, pylist);
+		}
+	}
+	
+	return result;
+}
+
+// Utility function - not exposed to Python
+static void CFArrayStringDictionaryToPyDict(CFArrayRef list, PyObject* result)
+{
+	CFIndex lsize = (list != NULL) ? CFArrayGetCount(list) : 0;
+	if (lsize != 2)
+		return;
+	
+	CFStringRef str = (CFStringRef)CFArrayGetValueAtIndex(list, 0);
+	PyObject* pystrkey = CFStringToPyStr(str);
+	
+	CFDictionaryRef dict = (CFDictionaryRef)CFArrayGetValueAtIndex(list, 1);
+	PyObject* pydictvalue = CFDictionaryToPyDict(dict);
+	
+	PyDict_SetItem(result, pystrkey, pydictvalue);
+	Py_DECREF(pystrkey);
+	Py_DECREF(pydictvalue);
+}
+
+// Utility function - not exposed to Python
+static PyObject* CFArrayArrayDictionaryToPyDict(CFArrayRef list)
+{
+	CFIndex lsize = (list != NULL) ? CFArrayGetCount(list) : 0;
+	
+	PyObject* result = PyDict_New();
+	for(CFIndex i = 0; i < lsize; i++)
+	{
+		CFArrayRef nested = (CFArrayRef)CFArrayGetValueAtIndex(list, i);
+		CFArrayStringDictionaryToPyDict(nested, result);
 	}
 	
 	return result;
@@ -230,11 +265,183 @@ def listAllRecordsWithAttributes(obj, recordType, attributes):
     @param obj: C{object} the object obtained from an odInit call.
     @param recordType: C{str} containing the OD record type to lookup.
     @param attributes: C{list} containing the attributes to return for each record.
+	@return: C{dict} containing a C{dict} of attributes for each record found,  
+        or C{None} otherwise.
+ */
+extern "C" PyObject *listAllRecordsWithAttributes(PyObject *self, PyObject *args)
+{
+	PyObject* pyds;
+	const char* recordType;
+	PyObject* attributes;
+    if (!PyArg_ParseTuple(args, "OsO", &pyds, &recordType, &attributes) || !PyCObject_Check(pyds) || !PyList_Check(attributes))
+    {
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices listAllRecordsWithAttributes: could not parse arguments", 0));		
+        return NULL;
+    }
+	
+	// Convert list to CFArray of CFString
+	CFArrayRef cfattributes = PyListToCFArray(attributes);
+	if (cfattributes == NULL)
+    {
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices listAllRecordsWithAttributes: could not parse attributes list", 0));		
+        return NULL;
+    }
+
+	CDirectoryService* ds = static_cast<CDirectoryService*>(PyCObject_AsVoidPtr(pyds));
+	if (ds != NULL)
+	{
+		CFMutableArrayRef list = ds->ListAllRecordsWithAttributes(recordType, cfattributes);
+		if (list != NULL)
+		{
+			PyObject* result = CFArrayArrayDictionaryToPyDict(list);
+			CFRelease(list);
+			CFRelease(cfattributes);
+			
+			return result;
+		}
+	}
+	else
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices listAllRecordsWithAttributes: invalid directory service argument", 0));		
+	
+	CFRelease(cfattributes);
+	return NULL;
+}
+
+/*
+def queryRecordsWithAttribute(obj, attr, value, matchType, casei, recordType, attributes):
+    """
+    List records in Open Directory matching specified attribute and value, and return key attributes for each one.
+    
+    @param obj: C{object} the object obtained from an odInit call.
+    @param attr: C{str} for the attribute to query.
+    @param value: C{str} for the attribute value to query.
+    @param matchType: C{int} DS match type to use when searching.
+    @param casei: C{True} to do case-insenstive match, C{False} otherwise.
+    @param recordType: C{str} containing the OD record type to lookup.
+    @param attributes: C{list} containing the attributes to return for each record.
+	@return: C{dict} containing a C{dict} of attributes for each record found,  
+        or C{None} otherwise.
+    """
+ */
+extern "C" PyObject *queryRecordsWithAttribute(PyObject *self, PyObject *args)
+{
+	PyObject* pyds;
+	const char* attr;
+	const char* value;
+	int matchType;
+	PyObject* caseio;
+	bool casei;
+	const char* recordType;
+	PyObject* attributes;
+    if (!PyArg_ParseTuple(args, "OssiOsO", &pyds, &attr, &value, &matchType, &caseio, &recordType, &attributes) ||
+    	!PyCObject_Check(pyds) || !PyBool_Check(caseio) || !PyList_Check(attributes))
+    {
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices queryRecordsWithAttributes: could not parse arguments", 0));		
+        return NULL;
+    }
+
+	casei = (caseio == Py_True);
+
+	// Convert list to CFArray of CFString
+	CFArrayRef cfattributes = PyListToCFArray(attributes);
+	if (cfattributes == NULL)
+    {
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices queryRecordsWithAttributes: could not parse attributes list", 0));		
+        return NULL;
+    }
+
+	CDirectoryService* ds = static_cast<CDirectoryService*>(PyCObject_AsVoidPtr(pyds));
+	if (ds != NULL)
+	{
+		CFMutableArrayRef list = ds->QueryRecordsWithAttribute(attr, value, matchType, casei, recordType, cfattributes);
+		if (list != NULL)
+		{
+			PyObject* result = CFArrayArrayDictionaryToPyDict(list);
+			CFRelease(list);
+			CFRelease(cfattributes);
+			
+			return result;
+		}
+	}
+	else
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices queryRecordsWithAttributes: invalid directory service argument", 0));		
+	
+	CFRelease(cfattributes);
+	return NULL;
+}
+
+/*
+def queryRecordsWithAttributes(obj, query, casei, recordType, attributes):
+    """
+    List records in Open Directory matching specified compound query, and return key attributes for each one.
+    
+    @param obj: C{object} the object obtained from an odInit call.
+    @param query: C{str} the compound query string.
+    @param casei: C{True} to do case-insenstive match, C{False} otherwise.
+    @param recordType: C{str} containing the OD record type to lookup.
+    @param attributes: C{list} containing the attributes to return for each record.
+	@return: C{dict} containing a C{dict} of attributes for each record found,  
+        or C{None} otherwise.
+    """
+ */
+extern "C" PyObject *queryRecordsWithAttributes(PyObject *self, PyObject *args)
+{
+	PyObject* pyds;
+	const char* query;
+	PyObject* caseio;
+	bool casei;
+	const char* recordType;
+	PyObject* attributes;
+    if (!PyArg_ParseTuple(args, "OsOsO", &pyds, &query, &caseio, &recordType, &attributes) ||
+    	!PyCObject_Check(pyds) || !PyBool_Check(caseio) || !PyList_Check(attributes))
+    {
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices queryRecordsWithAttributes: could not parse arguments", 0));		
+        return NULL;
+    }
+
+	casei = (caseio == Py_True);
+
+	// Convert list to CFArray of CFString
+	CFArrayRef cfattributes = PyListToCFArray(attributes);
+	if (cfattributes == NULL)
+    {
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices queryRecordsWithAttributes: could not parse attributes list", 0));		
+        return NULL;
+    }
+
+	CDirectoryService* ds = static_cast<CDirectoryService*>(PyCObject_AsVoidPtr(pyds));
+	if (ds != NULL)
+	{
+		CFMutableArrayRef list = ds->QueryRecordsWithAttributes(query, casei, recordType, cfattributes);
+		if (list != NULL)
+		{
+			PyObject* result = CFArrayArrayDictionaryToPyDict(list);
+			CFRelease(list);
+			CFRelease(cfattributes);
+			
+			return result;
+		}
+	}
+	else
+		PyErr_SetObject(ODException_class, Py_BuildValue("((s:i))", "DirectoryServices queryRecordsWithAttributes: invalid directory service argument", 0));		
+	
+	CFRelease(cfattributes);
+	return NULL;
+}
+
+/*
+def listAllRecordsWithAttributes_list(obj, recordType, attributes):
+    """
+    List records in Open Directory, and return key attributes for each one.
+    
+    @param obj: C{object} the object obtained from an odInit call.
+    @param recordType: C{str} containing the OD record type to lookup.
+    @param attributes: C{list} containing the attributes to return for each record.
     @return: C{list} containing a C{list} of C{str} (record name) and C{dict} attributes 
          for each record found, or C{None} otherwise.
     """
  */
-extern "C" PyObject *listAllRecordsWithAttributes(PyObject *self, PyObject *args)
+extern "C" PyObject *listAllRecordsWithAttributes_list(PyObject *self, PyObject *args)
 {
 	PyObject* pyds;
 	const char* recordType;
@@ -274,7 +481,7 @@ extern "C" PyObject *listAllRecordsWithAttributes(PyObject *self, PyObject *args
 }
 
 /*
-def queryRecordsWithAttribute(obj, attr, value, matchType, casei, recordType, attributes):
+def queryRecordsWithAttribute_list(obj, attr, value, matchType, casei, recordType, attributes):
     """
     List records in Open Directory matching specified attribute and value, and return key attributes for each one.
     
@@ -289,7 +496,7 @@ def queryRecordsWithAttribute(obj, attr, value, matchType, casei, recordType, at
          for each record found, or C{None} otherwise.
     """
  */
-extern "C" PyObject *queryRecordsWithAttribute(PyObject *self, PyObject *args)
+extern "C" PyObject *queryRecordsWithAttribute_list(PyObject *self, PyObject *args)
 {
 	PyObject* pyds;
 	const char* attr;
@@ -337,7 +544,7 @@ extern "C" PyObject *queryRecordsWithAttribute(PyObject *self, PyObject *args)
 }
 
 /*
-def queryRecordsWithAttributes(obj, query, casei, recordType, attributes):
+def queryRecordsWithAttributes_list(obj, query, casei, recordType, attributes):
     """
     List records in Open Directory matching specified compound query, and return key attributes for each one.
     
@@ -350,7 +557,7 @@ def queryRecordsWithAttributes(obj, query, casei, recordType, attributes):
          for each record found, or C{None} otherwise.
     """
  */
-extern "C" PyObject *queryRecordsWithAttributes(PyObject *self, PyObject *args)
+extern "C" PyObject *queryRecordsWithAttributes_list(PyObject *self, PyObject *args)
 {
 	PyObject* pyds;
 	const char* query;
@@ -491,6 +698,12 @@ static PyMethodDef ODMethods[] = {
     {"queryRecordsWithAttribute",  queryRecordsWithAttribute, METH_VARARGS,
 		"List records in Open Directory matching specified attribute/value, and return key attributes for each one."},
     {"queryRecordsWithAttributes",  queryRecordsWithAttributes, METH_VARARGS,
+		"List records in Open Directory matching specified criteria, and return key attributes for each one."},
+    {"listAllRecordsWithAttributes_list",  listAllRecordsWithAttributes_list, METH_VARARGS,
+		"List all records of the specified type in Open Directory, returning requested attributes."},
+    {"queryRecordsWithAttribute_list",  queryRecordsWithAttribute_list, METH_VARARGS,
+		"List records in Open Directory matching specified attribute/value, and return key attributes for each one."},
+    {"queryRecordsWithAttributes_list",  queryRecordsWithAttributes_list, METH_VARARGS,
 		"List records in Open Directory matching specified criteria, and return key attributes for each one."},
     {"authenticateUserBasic",  authenticateUserBasic, METH_VARARGS,
 		"Authenticate a user with a password to Open Directory using plain text authentication."},
