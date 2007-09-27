@@ -34,12 +34,11 @@ try:
 		if d is None:
 			print "Failed to list users"
 		else:
-			names = [v for v in d.iterkeys()]
-			names.sort()
-			print "\nlistUsers number of results = %d" % (len(names),)
-			for n in names:
-				print "Name: %s" % n
-				print "dict: %s" % str(d[n])
+			d.sort(cmp=lambda x, y: x[0] < y[0])
+			print "\nlistUsers number of results = %d" % (len(d),)
+			for name, record in d:
+				print "Name: %s" % name
+				print "dict: %s" % str(record)
 	
 	def listGroups():
 		d = opendirectory.listAllRecordsWithAttributes(ref, dsattributes.kDSStdRecordTypeGroups,
@@ -47,12 +46,11 @@ try:
 		if d is None:
 			print "Failed to list groups"
 		else:
-			names = [v for v in d.iterkeys()]
-			names.sort()
-			print "\nlistGroups number of results = %d" % (len(names),)
-			for n in names:
-				print "Name: %s" % n
-				print "dict: %s" % str(d[n])
+			d.sort(cmp=lambda x, y: x[0] < y[0])
+			print "\nlistGroups number of results = %d" % (len(d),)
+			for name, record in d:
+				print "Name: %s" % name
+				print "dict: %s" % str(record)
 	
 	def listComputers():
 		d = opendirectory.listAllRecordsWithAttributes(ref, dsattributes.kDSStdRecordTypeComputers,
@@ -60,12 +58,11 @@ try:
 		if d is None:
 			print "Failed to list computers"
 		else:
-			names = [v for v in d.iterkeys()]
-			names.sort()
-			print "\nlistComputers number of results = %d" % (len(names),)
-			for n in names:
-				print "Name: %s" % n
-				print "dict: %s" % str(d[n])
+			d.sort(cmp=lambda x, y: x[0] < y[0])
+			print "\nlistComputers number of results = %d" % (len(d),)
+			for name, record in d:
+				print "Name: %s" % name
+				print "dict: %s" % str(record)
 	
 	def querySimple(title, attr, value, matchType, casei, recordType, attrs):
 		d = opendirectory.queryRecordsWithAttribute(
@@ -80,12 +77,11 @@ try:
 		if d is None:
 			print "Failed to query users"
 		else:
-			names = [v for v in d.iterkeys()]
-			names.sort()
-			print "\n%s number of results = %d" % (title, len(names),)
-			for n in names:
-				print "Name: %s" % n
-				print "dict: %s" % str(d[n])
+			d.sort(cmp=lambda x, y: x[0] < y[0])
+			print "\n%s number of results = %d" % (title, len(d),)
+			for name, record in d:
+				print "Name: %s" % name
+				print "dict: %s" % str(record)
 		
 	def queryCompound(title, compound, casei, recordType, attrs):
 		d = opendirectory.queryRecordsWithAttributes(
@@ -98,12 +94,11 @@ try:
 		if d is None:
 			print "Failed to query users"
 		else:
-			names = [v for v in d.iterkeys()]
-			names.sort()
-			print "\n%s number of results = %d" % (title, len(names),)
-			for n in names:
-				print "Name: %s" % n
-				print "dict: %s" % str(d[n])
+			d.sort(cmp=lambda x, y: x[0] < y[0])
+			print "\n%s number of results = %d" % (title, len(d),)
+			for name, record in d:
+				print "Name: %s" % name
+				print "dict: %s" % str(record)
 		
 	def queryUsers():
 		querySimple(
@@ -155,9 +150,9 @@ try:
 		else:
 			print "Failed to authenticate user"
 	
-	#listUsers()
-	#listGroups()
-	#listComputers()
+	listUsers()
+	listGroups()
+	listComputers()
 	queryUsers()
 	queryUsersCompoundOr()
 	queryUsersCompoundOrExact()

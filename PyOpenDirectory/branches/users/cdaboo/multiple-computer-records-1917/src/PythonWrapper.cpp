@@ -144,6 +144,43 @@ static PyObject* CFDictionaryDictionaryToPyDict(CFDictionaryRef dict)
 	return result;
 }
 
+// Utility function - not exposed to Python
+static PyObject* CFArrayStringDictionaryToPyList(CFArrayRef list)
+{
+	CFIndex lsize = (list != NULL) ? CFArrayGetCount(list) : 0;
+	if (lsize != 2)
+		return NULL;
+	
+	PyObject* result = PyList_New(lsize);
+
+	CFStringRef str = (CFStringRef)CFArrayGetValueAtIndex(list, 0);
+	PyObject* pystr = CFStringToPyStr(str);
+	PyList_SetItem(result, 0, pystr);
+	
+	CFDictionaryRef dict = (CFDictionaryRef)CFArrayGetValueAtIndex(list, 1);
+	PyObject* pydict = CFDictionaryToPyDict(dict);
+	PyList_SetItem(result, 1, pydict);
+	
+	return result;
+}
+
+// Utility function - not exposed to Python
+static PyObject* CFArrayArrayDictionaryToPyList(CFArrayRef list)
+{
+	CFIndex lsize = (list != NULL) ? CFArrayGetCount(list) : 0;
+	
+	PyObject* result = PyList_New(lsize);
+	for(CFIndex i = 0, j = 0; i < lsize; i++)
+	{
+		CFArrayRef nested = (CFArrayRef)CFArrayGetValueAtIndex(list, i);
+		PyObject* pylist = CFArrayStringDictionaryToPyList(nested);
+		if (pylist != NULL)
+			PyList_SetItem(result, j++, pylist);
+	}
+	
+	return result;
+}
+
 PyObject* ODException_class = NULL;
 
 /*
@@ -193,8 +230,8 @@ def listAllRecordsWithAttributes(obj, recordType, attributes):
     @param obj: C{object} the object obtained from an odInit call.
     @param recordType: C{str} containing the OD record type to lookup.
     @param attributes: C{list} containing the attributes to return for each record.
-    @return: C{dict} containing a C{dict} of attributes for each record found, 
-        or C{None} otherwise.
+    @return: C{list} containing a C{list} of C{str} (record name) and C{dict} attributes 
+         for each record found, or C{None} otherwise.
     """
  */
 extern "C" PyObject *listAllRecordsWithAttributes(PyObject *self, PyObject *args)
@@ -219,11 +256,11 @@ extern "C" PyObject *listAllRecordsWithAttributes(PyObject *self, PyObject *args
 	CDirectoryService* ds = static_cast<CDirectoryService*>(PyCObject_AsVoidPtr(pyds));
 	if (ds != NULL)
 	{
-		CFMutableDictionaryRef dict = ds->ListAllRecordsWithAttributes(recordType, cfattributes);
-		if (dict != NULL)
+		CFMutableArrayRef list = ds->ListAllRecordsWithAttributes(recordType, cfattributes);
+		if (list != NULL)
 		{
-			PyObject* result = CFDictionaryDictionaryToPyDict(dict);
-			CFRelease(dict);
+			PyObject* result = CFArrayArrayDictionaryToPyList(list);
+			CFRelease(list);
 			CFRelease(cfattributes);
 			
 			return result;
@@ -248,8 +285,8 @@ def queryRecordsWithAttribute(obj, attr, value, matchType, casei, recordType, at
     @param casei: C{True} to do case-insenstive match, C{False} otherwise.
     @param recordType: C{str} containing the OD record type to lookup.
     @param attributes: C{list} containing the attributes to return for each record.
-    @return: C{dict} containing a C{dict} of attributes for each record found, 
-        or C{None} otherwise.
+    @return: C{list} containing a C{list} of C{str} (record name) and C{dict} attributes 
+         for each record found, or C{None} otherwise.
     """
  */
 extern "C" PyObject *queryRecordsWithAttribute(PyObject *self, PyObject *args)
@@ -282,11 +319,11 @@ extern "C" PyObject *queryRecordsWithAttribute(PyObject *self, PyObject *args)
 	CDirectoryService* ds = static_cast<CDirectoryService*>(PyCObject_AsVoidPtr(pyds));
 	if (ds != NULL)
 	{
-		CFMutableDictionaryRef dict = ds->QueryRecordsWithAttribute(attr, value, matchType, casei, recordType, cfattributes);
-		if (dict != NULL)
+		CFMutableArrayRef list = ds->QueryRecordsWithAttribute(attr, value, matchType, casei, recordType, cfattributes);
+		if (list != NULL)
 		{
-			PyObject* result = CFDictionaryDictionaryToPyDict(dict);
-			CFRelease(dict);
+			PyObject* result = CFArrayArrayDictionaryToPyList(list);
+			CFRelease(list);
 			CFRelease(cfattributes);
 			
 			return result;
@@ -309,8 +346,8 @@ def queryRecordsWithAttributes(obj, query, casei, recordType, attributes):
     @param casei: C{True} to do case-insenstive match, C{False} otherwise.
     @param recordType: C{str} containing the OD record type to lookup.
     @param attributes: C{list} containing the attributes to return for each record.
-    @return: C{dict} containing a C{dict} of attributes for each record found, 
-        or C{None} otherwise.
+    @return: C{list} containing a C{list} of C{str} (record name) and C{dict} attributes 
+         for each record found, or C{None} otherwise.
     """
  */
 extern "C" PyObject *queryRecordsWithAttributes(PyObject *self, PyObject *args)
@@ -341,11 +378,11 @@ extern "C" PyObject *queryRecordsWithAttributes(PyObject *self, PyObject *args)
 	CDirectoryService* ds = static_cast<CDirectoryService*>(PyCObject_AsVoidPtr(pyds));
 	if (ds != NULL)
 	{
-		CFMutableDictionaryRef dict = ds->QueryRecordsWithAttributes(query, casei, recordType, cfattributes);
-		if (dict != NULL)
+		CFMutableArrayRef list = ds->QueryRecordsWithAttributes(query, casei, recordType, cfattributes);
+		if (list != NULL)
 		{
-			PyObject* result = CFDictionaryDictionaryToPyDict(dict);
-			CFRelease(dict);
+			PyObject* result = CFArrayArrayDictionaryToPyList(list);
+			CFRelease(list);
 			CFRelease(cfattributes);
 			
 			return result;

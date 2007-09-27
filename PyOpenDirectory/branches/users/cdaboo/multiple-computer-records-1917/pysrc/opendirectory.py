@@ -36,8 +36,8 @@ def listAllRecordsWithAttributes(obj, recordType, attributes):
     @param obj: C{object} the object obtained from an odInit call.
     @param recordType: C{str} containing the OD record type to lookup.
     @param attributes: C{list} containing the attributes to return for each record.
-    @return: C{dict} containing a C{dict} of attributes for each record found, 
-        or C{None} otherwise.
+    @return: C{list} containing a C{list} of C{str} (record name) and C{dict} attributes 
+         for each record found, or C{None} otherwise.
     """
 
 def queryRecordsWithAttribute(obj, attr, value, matchType, casei, recordType, attributes):
@@ -51,8 +51,8 @@ def queryRecordsWithAttribute(obj, attr, value, matchType, casei, recordType, at
     @param casei: C{True} to do case-insenstive match, C{False} otherwise.
     @param recordType: C{str} containing the OD record type to lookup.
     @param attributes: C{list} containing the attributes to return for each record.
-    @return: C{dict} containing a C{dict} of attributes for each record found, 
-        or C{None} otherwise.
+    @return: C{list} containing a C{list} of C{str} (record name) and C{dict} attributes 
+         for each record found, or C{None} otherwise.
     """
 
 def queryRecordsWithAttributes(obj, compound, casei, recordType, attributes):
@@ -64,8 +64,8 @@ def queryRecordsWithAttributes(obj, compound, casei, recordType, attributes):
     @param casei: C{True} to do case-insenstive match, C{False} otherwise.
     @param recordType: C{str} containing the OD record type to lookup.
     @param attributes: C{list} containing the attributes to return for each record.
-    @return: C{dict} containing a C{dict} of attributes for each record found, 
-        or C{None} otherwise.
+    @return: C{list} containing a C{list} of C{str} (record name) and C{dict} attributes 
+         for each record found, or C{None} otherwise.
     """
 
 def authenticateUserBasic(obj, guid, user, pswd):
