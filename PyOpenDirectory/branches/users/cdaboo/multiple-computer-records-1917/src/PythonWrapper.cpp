@@ -17,7 +17,7 @@
  **/
 
 #include <CoreFoundation/CoreFoundation.h>
-#include <Python/Python.h>
+#include <Python.h>
 
 #include "CDirectoryService.h"
 #include "CFStringUtil.h"
