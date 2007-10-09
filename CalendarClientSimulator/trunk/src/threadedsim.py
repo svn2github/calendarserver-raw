@@ -17,20 +17,20 @@
 #
 # DRI: Cyrus Daboo, cdaboo@apple.com
 ##
-from os import P_NOWAIT
+
 from random import randint
-import resource
+from clientscheduler import ClientScheduler
+from calendarclient import CalendarClient
 import time
-import signal
-import os
 import sys
 import getopt
 
 # Simulate a whole bunch of users
 
 def usage():
-    print """Usage: multisim [options]
+    print """Usage: threadedsim [options]
 Options:
+    --pool            number of threads processing clients [10]
     --number          number of users to simulate [10]
     --startat         user number to start at [1]
     --server          URL for server (e.g. https://caldav.example.com:8443) [Required]
@@ -41,7 +41,9 @@ Options:
     --invitesperday   number of invites per day to send  [5]
     --cache           path to .plist file to cache data [../data/user%02d.plist]
     --clear-cache     clear the cache when starting up [Optional]
+    --no-throttle     do not throttle the task queue when scheduler is too busy [Optional]
     --verbose         print out activity log
+    --logging         log activity
     
     -h, --help        print this help and exit
 """
@@ -49,6 +51,7 @@ Options:
 
 if __name__ == '__main__':
 
+    pool = 10
     count = 10
     startat = 1
     server = None
@@ -59,10 +62,13 @@ if __name__ == '__main__':
     invitesperday = 5
     cache = "../data/user%02d.plist"
     clearcache = False
+    throttle = True
     verbose = False
+    logging = False
     logfile = "../logs/user%02d.txt"
     
     options, args = getopt.getopt(sys.argv[1:], "h", [
+        "pool=",
         "number=",
         "startat=",
         "server=",
@@ -71,7 +77,9 @@ if __name__ == '__main__':
         "invitesperday=",
         "cache=",
         "clear-cache",
+        "no-throttle",
         "verbose",
+        "logging",
         "help"
     ])
 
@@ -79,6 +87,8 @@ if __name__ == '__main__':
         if option in ("-h", "--help"):
             usage()
             sys.exit(0)
+        elif option == "--pool":
+            pool = int(value)
         elif option == "--number":
             count = int(value)
         elif option == "--startat":
@@ -97,8 +107,12 @@ if __name__ == '__main__':
             invitesperday = int(value)
         elif option == "--cache":
             cache = value
+        elif option == "--no-throttle":
+            throttle = False
         elif option == "--verbose":
             verbose = True
+        elif option == "--logging":
+            logging = True
         elif option == "--clear-cache":
             clearcache = True
         else:
@@ -106,47 +120,42 @@ if __name__ == '__main__':
             usage()
             raise ValueError
 
-    # Check resource limits for the number of processes we need to create
-    soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
-    if count > soft - 25:
-        if count > hard - 25:
-            print "Number of processes requested: %d is greater than the hard resource limit: %d" % (count, hard)
-            raise ValueError
-        else:
-            resource.setrlimit(resource.RLIMIT_NPROC, count)
+    if server is None:
+        usage()
+        raise ValueError
+        
+    # Create the scheduler that will manage the thread pool and client polling
+    scheduler = ClientScheduler(num_threads=pool, throttle=throttle)
+    scheduler.run()
     
-    pids = []
+    # Create clients and add to scheduler
     for i in range(startat, count + startat):
-        cmd = [
-            "python",
-            "./simulate.py",
-            "--server",
-            server,
-            "--user",
-            user % (i,),
-            "--password",
-            password % (i,),
-            "--interval",
-            "%d" % (interval,),
-            "--eventsperday",
-            "%d" % (eventsperday,),
-            "--invitesperday",
-            "%d" % (invitesperday,),
-        ]
+        client = CalendarClient()
+        client.server = server
+        client.user = user % (i,)
+        client.password = password % (i,)
+        client.interval = interval
+        client.eventsperday = eventsperday
+        client.invitesperday = invitesperday
         if cache:
-            cmd.extend(["--cache", cache % (i,),])
+            client.cache = cache % (i,)
         if clearcache:
-            cmd.append("--clear-cache")
+            client.clearcache = True
         if verbose:
-            cmd.append("--verbose")
-            cmd.extend(["--logfile", logfile % (i,)])
+            client.verbose = True
+        if logging:
+            def logIt(text):
+                logger = open(logfile % (i,), "a")
+                logger.write(text + "\n")
+                
+            client.setLogger(logIt)
 
         # Add random delay
         delay = randint(1,1000)
         time.sleep(delay/1000.0)
-        pids.append(os.spawnvp(P_NOWAIT, "python", cmd))
-
-    killit = raw_input("Press <RETURN> to cancel all simulations.")
+        
+        client.valid()
+        scheduler.add(client)
     
-    for pid in pids:
-        os.kill(pid, signal.SIGKILL)
+    killit = raw_input("Press <RETURN> to cancel all simulations.")
+    scheduler.stop()

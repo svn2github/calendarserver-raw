@@ -255,7 +255,33 @@ class CalendarClient(object):
                 self.doInvite()
             time.sleep(CalendarClient.sleep)
     
-    def doPoll(self):
+    def start(self):
+        
+        self.log("Starting CalendarClient simulation for user %s" % (self.user,))
+        self.doPoll()
+
+        self.start_poll = time.time() - randint(0, self.interval - 1)
+        self.event_interval = 24 * 60 * 60 / self.eventsperday
+        self.invite_interval = 24 * 60 * 60 / self.invitesperday
+        self.start_events = time.time() - randint(0, self.event_interval - 1)
+        self.start_invites = time.time() - randint(0, self.invite_interval - 1)
+        
+    def pending(self):
+        
+        run_tasks = []
+        if time.time() >= self.start_poll + self.interval:
+            self.start_poll = time.time()
+            run_tasks.append((self.doPoll, (), {},))
+        if time.time() >= self.start_events + self.event_interval:
+            self.start_events = time.time()
+            run_tasks.append((self.doCreateEvent, (), {},))
+        if time.time() >= self.start_invites + self.invite_interval:
+            self.start_invites = time.time()
+            run_tasks.append((self.doInvite, (), {},))
+            
+        return run_tasks
+    
+    def doPoll(self, *args, **kwargs):
         self.log("Polling: %s" % (self.user,))
         try:
             status, _ignore_headers, data = self.doRequest(self.home, "PROPFIND", {"Content-Type": "application/xml", "Depth":"1"}, PROPFIND_ctag)
@@ -474,7 +500,7 @@ class CalendarClient(object):
 #            attendees.append("/principals/users/user01/")
         return attendees
 
-    def doInvite(self):
+    def doInvite(self, *args, **kwargs):
         # Generate data for this user
         organizer = "/principals/users/%s/" % (self.user,)
 

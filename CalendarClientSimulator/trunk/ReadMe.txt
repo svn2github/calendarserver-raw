@@ -98,3 +98,30 @@ This tool generates multiple simulations for a range of users (1 through the num
 option). Each simulation is a seperate process running the simulate tool, with the options set for each user
 number. The tool starts all the simulations and then waits for a key press, after which it kills all the simulation
 processes.
+
+Usage: threadedsim [options]
+Options:
+    --pool			  number of threads processing clients [10]
+    --number          number of users to simulate [10]
+    --server          URL for server (e.g. https://caldav.example.com:8443) [Required]
+    --user            user id for user to login as [user%02d]
+    --password        password for user [user%02d]
+    --interval        polling interval in seconds [15 mins]
+    --eventsperday    number of events per day to create [10]
+    --invitesperday   number of invites per day to send  [5]
+    --cache           path to .plist file to cache data [../data/user%02d.plist]
+    --clear-cache     clear the cache when starting up [Optional]
+    --no-throttle     do not throttle the task queue when scheduler is too busy [Optional]
+    --verbose         print out activity log
+    --logging         log activity
+    
+    -h, --help        print this help and exit
+
+This tool generates multiple client simulations for a range of users (1 through the number specified with the --number
+option) and runs a single multi-threaded process to handle all client activity. The tool starts all the simulations and
+then waits for a key press, after which it stops all the simulation threads and then exists. You will need to tune the
+thread pool size based on the number of clients and activity level and server load. The tool will print out status
+when it starts to get overloaded and a warning when all threads are busy. If throttling is enabled the tool will stop
+client requests being queued when the queue size is 2x the thread pool size. It will re-enable queing once the number
+of busy threads is 1/2 the thread pool size.
+
