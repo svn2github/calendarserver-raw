@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+<!--
+    Logging levels:
+        "none"    - no logging.
+        "error"   - errors only.
+        "warning" - errors and warnings only.
+        "info"    - errors, warnings and info.
+        "debug"   - errors, warnings, info and debug.
+-->
+
+	<!-- Default log level for all systems. -->
+	<key>Default Log Level</key>
+	<string>error</string>
+
+	<!-- Log levels overriding the default level for specific systems. -->
+	<!-- The keys in the dict are the system names, the string values the overridden log levels. -->
+	<key>System Log Levels</key>
+	<dict>
+		<!-- Its useful to have a higher than normal logging for the startup phase. -->
+		<key>Startup</key>
+		<string>info</string>
+		<key>OpenDirectoryService:starting</key>
+		<string>info</string>
+
+		<!-- To track down auto-response issues enable this. -->
+		<!--
+		<key>iTIP</key>
+		<string>info</string>
+		-->
+
+		<!-- To track down iTIP messaging issues enable this. -->
+		<!--
+		<key>CalDAV Outbox POST</key>
+		<string>info</string>
+		-->
+	</dict>
+
+</dict>
+</plist>

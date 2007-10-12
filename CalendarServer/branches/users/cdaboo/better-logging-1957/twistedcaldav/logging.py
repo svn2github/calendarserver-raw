@@ -34,93 +34,7 @@ from twisted.web2.log import LogWrapperResource
 
 from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService
-
-#
-# Logging levels:
-#  0 - no logging
-#  1 - errors only
-#  2 - errors and warnings only
-#  3 - errors, warnings and info
-#  4 - errors, warnings, info and debug
-#
-
-logtypes = {"none": 0, "error": 1, "warning": 2, "info": 3, "debug": 4}
-
-currentLogLevel = logtypes["error"]
-previousLogLevel = logtypes["debug"]
-
-def toggle():
-    """
-    Toggle between normal mode and full debug mode.
-    """
-
-    global currentLogLevel
-    global previousLogLevel
-    tempLevel = currentLogLevel
-    currentLogLevel = previousLogLevel
-    previousLogLevel = tempLevel
-    
-    for key, value in logtypes.iteritems():
-        if value == currentLogLevel:
-            log.msg("Switching to log level: %s" % (key,))
-            break
-    else:
-        log.msg("Switching to log level: %d" % (currentLogLevel,))
-            
-
-def canLog(type):
-    """
-    Determine whether a particular log level type is current active.
-
-    @param type: a string with one of the types above.
-    @return:     True if the log level is currently active.
-    """
-
-    return currentLogLevel >= logtypes.get(type, 1)
-
-def info(message, **kwargs):
-    """
-    Log a message at the "info" level.
-
-    @param message:  message to log.
-    @param **kwargs: additional log arguments.
-    """
-
-    if canLog("info"):
-        log.msg(message, **kwargs)
-
-def warn(message, **kwargs):
-    """
-    Log a message at the "warning" level.
-
-    @param message:  message to log.
-    @param **kwargs: additional log arguments.
-    """
-
-    if canLog("warning"):
-        log.msg(message, **kwargs)
-
-def err(message, **kwargs):
-    """
-    Log a message at the "error" level.
-
-    @param message:  message to log.
-    @param **kwargs: additional log arguments.
-    """
-
-    if canLog("error"):
-        log.msg(message, **kwargs)
-
-def debug(message, **kwargs):
-    """
-    Log a message at the "debug" level.
-
-    @param message:  message to log.
-    @param **kwargs: additional log arguments.
-    """
-
-    if canLog("debug"):
-        log.msg(message, debug=True, **kwargs)
+from twistedcaldav.logger import logger
 
 class DirectoryLogWrapperResource(LogWrapperResource):
     
@@ -193,7 +107,6 @@ class CommonAccessLoggingObserverExtensions(BaseCommonAccessLoggingObserver):
                 (time.time() - request.initTime) * 1000,
                 )
             )
-
 
 class RotatingFileAccessLoggingObserver(CommonAccessLoggingObserverExtensions):
     """
@@ -304,7 +217,7 @@ class RotatingFileAccessLoggingObserver(CommonAccessLoggingObserverExtensions):
             log.msg("Cannot rotate log file to %s because it already exists." % (newpath,))
             return
         self.logMessage("Log closed - rotating: [%s]." % (datetime.datetime.now().ctime(),), False)
-        info("Rotating log file to: %s" % (newpath,), system="Logging")
+        logger.info("Rotating log file to: %s" % (newpath,), id="Logging")
         self.f.close()
         os.rename(self.logpath, newpath)
         self._open()

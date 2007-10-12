@@ -105,12 +105,12 @@ defaultConfig = {
     #
     # Logging
     #
-    "Verbose": False,
-    "AccessLogFile"  : "/var/log/caldavd/access.log",                   # Apache-style access log
-    "ErrorLogFile"   : "/var/log/caldavd/error.log",                    # Server activity log
-    "ServerStatsFile": "/var/run/caldavd/stats.plist",
-    "PIDFile"        : "/var/run/caldavd.pid",
-    "RotateAccessLog": False,
+    "LoggerOptionsFile"  : "/etc/caldavd/logger.plist",                     # Options for the logger system
+    "AccessLogFile"      : "/var/log/caldavd/access.log",                   # Apache-style access log
+    "ErrorLogFile"       : "/var/log/caldavd/error.log",                    # Server activity log
+    "ServerStatsFile"    : "/var/run/caldavd/stats.plist",
+    "PIDFile"            : "/var/run/caldavd.pid",
+    "RotateAccessLog"    : False,
 
     #
     # SSL/TLS
@@ -214,6 +214,10 @@ class Config (object):
                 del self._data["DirectoryService"]["params"][param]
 
         self.updateServerCapabilities()
+        
+        # Make sure logger levels are read in and setup
+        from twistedcaldav.logger import logger
+        logger.readOptions()
 
     def updateServerCapabilities(self):
         """

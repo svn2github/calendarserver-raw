@@ -41,6 +41,7 @@ from twisted.web2.channel import http
 from twisted.web2.server import Site
 
 from twistedcaldav import logging
+from twistedcaldav.logger import logger
 from twistedcaldav.cluster import makeService_Combined, makeService_Master
 from twistedcaldav.config import config, parseConfig, defaultConfig, ConfigurationError
 from twistedcaldav.root import RootResource
@@ -347,11 +348,6 @@ class CalDAVServiceMaker(object):
 
     def makeService_Slave(self, options):
         
-        # Change log level to at least "info" as its useful to have that during startup
-        old_logging = logging.currentLogLevel
-        if logging.currentLogLevel < logging.logtypes["info"]:
-            logging.currentLogLevel = logging.logtypes["info"]
-
         #
         # Setup the Directory
         #
@@ -359,8 +355,8 @@ class CalDAVServiceMaker(object):
 
         directoryClass = namedClass(config.DirectoryService['type'])
 
-        logging.info("Configuring directory service of type: %s"
-                % (config.DirectoryService['type'],), system="startup")
+        logger.info("Configuring directory service of type: %s"
+                % (config.DirectoryService['type'],), id="Startup")
 
         baseDirectory = directoryClass(**config.DirectoryService['params'])
 
@@ -369,8 +365,8 @@ class CalDAVServiceMaker(object):
         sudoDirectory = None
 
         if config.SudoersFile and os.path.exists(config.SudoersFile):
-            logging.info("Configuring SudoDirectoryService with file: %s"
-                    % (config.SudoersFile,), system="startup")
+            logger.info("Configuring SudoDirectoryService with file: %s"
+                    % (config.SudoersFile,), id="Startup")
 
             sudoDirectory = SudoDirectoryService(config.SudoersFile)
             sudoDirectory.realmName = baseDirectory.realmName
@@ -378,8 +374,8 @@ class CalDAVServiceMaker(object):
             CalDAVResource.sudoDirectory = sudoDirectory
             directories.insert(0, sudoDirectory)
         else:
-            logging.info("Not using SudoDirectoryService; file doesn't exist: %s"
-                    % (config.SudoersFile,), system="startup")
+            logger.info("Not using SudoDirectoryService; file doesn't exist: %s"
+                    % (config.SudoersFile,), id="Startup")
 
         directory = AggregateDirectoryService(directories)
 
@@ -391,9 +387,9 @@ class CalDAVServiceMaker(object):
         # Setup Resource hierarchy
         #
 
-        logging.info("Setting up document root at: %s" % (config.DocumentRoot,), system="startup")
+        logger.info("Setting up document root at: %s" % (config.DocumentRoot,), id="Startup")
 
-        logging.info("Setting up principal collection: %r" % (self.principalResourceClass,), system="startup")
+        logger.info("Setting up principal collection: %r" % (self.principalResourceClass,), id="Startup")
 
         principalCollection = self.principalResourceClass(
             os.path.join(config.DocumentRoot, 'principals'),
@@ -401,7 +397,7 @@ class CalDAVServiceMaker(object):
             directory
         )
 
-        logging.info("Setting up calendar collection: %r" % (self.calendarResourceClass,), system="startup")
+        logger.info("Setting up calendar collection: %r" % (self.calendarResourceClass,), id="Startup")
 
         calendarCollection = self.calendarResourceClass(
             os.path.join(config.DocumentRoot, 'calendars'),
@@ -409,7 +405,7 @@ class CalDAVServiceMaker(object):
             '/calendars/'
         )
 
-        logging.info("Setting up root resource: %r" % (self.rootResourceClass,), system="startup")
+        logger.info("Setting up root resource: %r" % (self.rootResourceClass,), id="Startup")
 
         root = self.rootResourceClass(
             config.DocumentRoot,
@@ -421,7 +417,7 @@ class CalDAVServiceMaker(object):
 
         # Configure default ACLs on the root resource
 
-        logging.info("Setting up default ACEs on root resource", system="startup")
+        logger.info("Setting up default ACEs on root resource", id="Startup")
 
         rootACEs = [
             davxml.ACE(
@@ -430,10 +426,10 @@ class CalDAVServiceMaker(object):
             ),
         ]
 
-        logging.info("Setting up AdminPrincipals", system="startup")
+        logger.info("Setting up AdminPrincipals", id="Startup")
 
         for principal in config.AdminPrincipals:
-            logging.info("Added %s as admin principal" % (principal,), system="startup")
+            logger.info("Added %s as admin principal" % (principal,), id="Startup")
 
             rootACEs.append(
                 davxml.ACE(
@@ -444,7 +440,7 @@ class CalDAVServiceMaker(object):
                 )
             )
 
-        logging.info("Setting root ACL", system="startup")
+        logger.info("Setting root ACL", id="Startup")
 
         root.setAccessControlList(davxml.ACL(*rootACEs))
 
@@ -460,7 +456,7 @@ class CalDAVServiceMaker(object):
 
         realm = directory.realmName or ""
 
-        logging.info("Configuring authentication for realm: %s" % (realm,), system="startup")
+        logger.info("Configuring authentication for realm: %s" % (realm,), id="Startup")
 
         for scheme, schemeConfig in config.Authentication.iteritems():
             scheme = scheme.lower()
@@ -468,11 +464,11 @@ class CalDAVServiceMaker(object):
             credFactory = None
 
             if schemeConfig['Enabled']:
-                logging.info("Setting up scheme: %s" % (scheme,), system="startup")
+                logger.info("Setting up scheme: %s" % (scheme,), id="Startup")
 
                 if scheme == 'kerberos':
                     if not NegotiateCredentialFactory:
-                        logging.info("Kerberos support not available", system="startup")
+                        logger.info("Kerberos support not available", id="Startup")
                         continue
 
                     try:
@@ -482,7 +478,7 @@ class CalDAVServiceMaker(object):
                         else:
                             credFactory = NegotiateCredentialFactory(principal=principal)
                     except ValueError:
-                        logging.info("Could not start Kerberos", system="startup")
+                        logger.info("Could not start Kerberos", id="Startup")
                         continue
 
                 elif scheme == 'digest':
@@ -497,12 +493,12 @@ class CalDAVServiceMaker(object):
                     credFactory = BasicCredentialFactory(realm)
 
                 else:
-                    logging.err("Unknown scheme: %s" % (scheme,), system="startup")
+                    logger.err("Unknown scheme: %s" % (scheme,), id="Startup")
 
             if credFactory:
                 credentialFactories.append(credFactory)
 
-        logging.info("Configuring authentication wrapper", system="startup")
+        logger.info("Configuring authentication wrapper", id="Startup")
 
         authWrapper = auth.AuthenticationWrapper(
             root,
@@ -517,7 +513,7 @@ class CalDAVServiceMaker(object):
         # Configure the service
         #
 
-        logging.info("Setting up service", system="startup")
+        logger.info("Setting up service", id="Startup")
 
         if config.ProcessType == 'Slave':
             if config.MultiProcess['ProcessCount'] > 1 and config.MultiProcess['LoadBalancer']['Enabled']:
@@ -536,8 +532,7 @@ class CalDAVServiceMaker(object):
 
             logObserver = logging.RotatingFileAccessLoggingObserver(config.AccessLogFile)
 
-        logging.info("Configuring log observer: %s" % (
-            logObserver,), system="startup")
+        logger.info("Configuring log observer: %s" % (logObserver,), id="Startup")
 
         service = CalDAVService(logObserver)
 
@@ -562,20 +557,17 @@ class CalDAVServiceMaker(object):
                 config.BindSSLPorts = [config.SSLPort]
 
             for port in config.BindHTTPPorts:
-                logging.info("Adding server at %s:%s" % (bindAddress, port), system="startup")
+                logger.info("Adding server at %s:%s" % (bindAddress, port), id="Startup")
 
                 httpService = internet.TCPServer(int(port), channel, interface=bindAddress)
                 httpService.setServiceParent(service)
 
             for port in config.BindSSLPorts:
-                logging.info("Adding SSL server at %s:%s" % (bindAddress, port), system="startup")
+                logger.info("Adding SSL server at %s:%s" % (bindAddress, port), id="Startup")
 
                 contextFactory = ChainingOpenSSLContextFactory(config.SSLPrivateKey, config.SSLCertificate, certificateChainFile=config.SSLAuthorityChain)
                 httpsService = internet.SSLServer(int(port), channel, contextFactory, interface=bindAddress)
                 httpsService.setServiceParent(service)
-
-        # Change log level back to what it was before
-        logging.currentLogLevel = old_logging
 
         return service
 
@@ -605,7 +597,7 @@ class CalDAVServiceMaker(object):
                     location = "Unknown"
                 else:
                     location = str(frame.f_code.co_name) + ": " + str(frame.f_lineno)
-                log.msg("SIGHUP recieved at " + location)
+                log.msg("SIGHUP received at " + location)
             signal.signal(signal.SIGHUP, sighup_handler)
 
             def sigusr1_handler(num, frame):
@@ -613,10 +605,20 @@ class CalDAVServiceMaker(object):
                     location = "Unknown"
                 else:
                     location = str(frame.f_code.co_name) + ": " + str(frame.f_lineno)
-                log.msg("SIGUSR1 recieved at " + location)
-                logging.toggle()
+                log.msg("SIGUSR1 received at " + location)
+                logger.toggle()
 
             signal.signal(signal.SIGUSR1, sigusr1_handler)
+
+            def sigusr2_handler(num, frame):
+                if frame is None:
+                    location = "Unknown"
+                else:
+                    location = str(frame.f_code.co_name) + ": " + str(frame.f_lineno)
+                log.msg("SIGUSR2 received at " + location)
+                logger.readOptions()
+
+            signal.signal(signal.SIGUSR2, sigusr2_handler)
 
             return service
 

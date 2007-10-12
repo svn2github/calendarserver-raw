@@ -26,17 +26,16 @@ testConfig = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Verbose</key>
-  <true/>
-  <key>HTTPPort</key>
-  <integer>8008</integer>
+    <key>RotateAccessLog</key>
+    <true/>
+    <key>HTTPPort</key>
+    <integer>8008</integer>
 </dict>
 </plist>
 """
 
-def _testVerbose(testCase):
-    from twistedcaldav.config import config
-    testCase.assertEquals(config.Verbose, True)
+def _testRotateAccessLog(testCase):
+    testCase.assertEquals(config.RotateAccessLog, True)
 
 
 class ConfigTests(unittest.TestCase):
@@ -55,20 +54,20 @@ class ConfigTests(unittest.TestCase):
             self.assertEquals(getattr(config, key), value)
 
     def testLoadConfig(self):
-        self.assertEquals(config.Verbose, False)
+        self.assertEquals(config.RotateAccessLog, False)
 
         config.loadConfig(self.testConfig)
 
-        self.assertEquals(config.Verbose, True)
+        self.assertEquals(config.RotateAccessLog, True)
 
     def testScoping(self):
-        self.assertEquals(config.Verbose, False)
+        self.assertEquals(config.RotateAccessLog, False)
 
         config.loadConfig(self.testConfig)
 
-        self.assertEquals(config.Verbose, True)
+        self.assertEquals(config.RotateAccessLog, True)
 
-        _testVerbose(self)
+        _testRotateAccessLog(self)
 
     def testReloading(self):
         self.assertEquals(config.HTTPPort, 0)
@@ -175,7 +174,7 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEquals(
             config.DirectoryService["params"],
-            SuperDuperAwesomeService.defaultParameters
+            SuperDuperAwesomeService.defaultParameters #@UndefinedVariable
         )
 
     testDirectoryService_unknownType.todo = "unimplemented"
