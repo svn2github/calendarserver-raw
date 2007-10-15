@@ -23,8 +23,10 @@
 		<!-- Its useful to have a higher than normal logging for the startup phase. -->
 		<key>Startup</key>
 		<string>info</string>
-		<key>OpenDirectoryService:starting</key>
-		<string>info</string>
+
+		<!-- We're likely to want to keep a close eye on security related issues. -->
+		<key>Security</key>
+		<string>warning</string>
 
 		<!-- To track down auto-response issues enable this. -->
 		<!--
