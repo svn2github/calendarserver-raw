@@ -23,7 +23,6 @@ CalDAV MKCALENDAR method.
 __all__ = ["http_MKCALENDAR"]
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.python.failure import Failure
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
@@ -33,6 +32,7 @@ from twisted.web2.dav.util import parentForURL
 from twisted.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav import caldavxml
+from twistedcaldav.logger import logger
 
 def http_MKCALENDAR(self, request):
     """
@@ -52,16 +52,16 @@ def http_MKCALENDAR(self, request):
     x.getResult()
 
     if self.exists():
-        log.err("Attempt to create collection where file exists: %s"
-                % (self.fp.path,))
+        logger.err("Attempt to create collection where file exists: %s"
+                % (self.fp.path,), id=(self, "http",))
         raise HTTPError(ErrorResponse(
             responsecode.FORBIDDEN,
             (davxml.dav_namespace, "resource-must-be-null"))
         )
 
     if not parent.isCollection():
-        log.err("Attempt to create collection with non-collection parent: %s"
-                % (self.fp.path,))
+        logger.err("Attempt to create collection with non-collection parent: %s"
+                % (self.fp.path,), id=(self, "http",))
         raise HTTPError(ErrorResponse(
             responsecode.CONFLICT,
             (caldavxml.caldav_namespace, "calendar-collection-location-ok"))
@@ -79,7 +79,7 @@ def http_MKCALENDAR(self, request):
         yield result
         result = result.getResult()
     except ValueError, e:
-        log.err("Error while handling MKCALENDAR: %s" % (e,))
+        logger.err("Error while handling MKCALENDAR: %s" % (e,), id=(self, "http",))
         raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, str(e)))
 
     if doc is not None:
@@ -90,7 +90,7 @@ def http_MKCALENDAR(self, request):
 
             error = ("Non-%s element in MKCALENDAR request body: %s"
                      % (caldavxml.MakeCalendar.name, makecalendar))
-            log.err(error)
+            logger.err(error, id=(self, "http",))
             raise HTTPError(StatusResponse(responsecode.UNSUPPORTED_MEDIA_TYPE, error))
 
         errors = PropertyStatusResponseQueue("PROPPATCH", request.uri, responsecode.NO_CONTENT)

@@ -27,7 +27,6 @@ __all__ = [
 from cgi import escape
 
 from twisted.internet.defer import succeed
-from twisted.python import log
 from twisted.python.failure import Failure
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
@@ -38,6 +37,7 @@ from twisted.web2.http import HTTPError, StatusResponse
 from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile, DAVPrincipalResource
 from twistedcaldav.extensions import ReadOnlyWritePropertiesResourceMixIn
+from twistedcaldav.logger import logger
 from twistedcaldav.sql import AbstractSQLDatabase
 from twistedcaldav.sql import db_prefix
 from twistedcaldav.static import AutoProvisioningFileMixIn
@@ -214,7 +214,7 @@ class CalendarUserProxyPrincipalResource (AutoProvisioningFileMixIn, Permissions
                     if item is None:
                         yield " '()\n"
                 except Exception, e:
-                    log.err("Exception while rendering: %s" % (e,))
+                    logger.err("Exception while rendering: %s" % (e,), id=self)
                     Failure().printTraceback()
                     yield "  ** %s **: %s\n" % (e.__class__.__name__, e)
             return "".join(genlist())

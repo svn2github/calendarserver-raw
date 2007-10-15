@@ -23,7 +23,6 @@ CalDAV freebusy report
 __all__ = ["report_urn_ietf_params_xml_ns_caldav_free_busy_query"]
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav.element.base import dav_namespace
 from twisted.web2.dav.http import ErrorResponse
@@ -33,6 +32,7 @@ from twisted.web2.http_headers import MimeType
 from twisted.web2.stream import MemoryStream
 
 from twistedcaldav import caldavxml
+from twistedcaldav.logger import logger
 from twistedcaldav.method import report_common
 
 def report_urn_ietf_params_xml_ns_caldav_free_busy_query(self, request, freebusy): #@UnusedVariable
@@ -41,7 +41,7 @@ def report_urn_ietf_params_xml_ns_caldav_free_busy_query(self, request, freebusy
     (CalDAV-access-09, section 7.8)
     """
     if not self.isCollection():
-        log.err("freebusy report is only allowed on collection resources %s" % (self,))
+        logger.err("freebusy report is only allowed on collection resources %s" % (self,), id=("report_freebusy", "http",))
         raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Not a calendar collection"))
 
     if freebusy.qname() != (caldavxml.caldav_namespace, "free-busy-query"):
@@ -75,7 +75,7 @@ def report_urn_ietf_params_xml_ns_caldav_free_busy_query(self, request, freebusy
         yield d
         d.getResult()
     except NumberOfMatchesWithinLimits:
-        log.err("Too many matching components in free-busy report")
+        logger.err("Too many matching components in free-busy report", id=("report_freebusy", "http",))
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "number-of-matches-within-limits")))
     
     # Now build a new calendar object with the free busy info we have

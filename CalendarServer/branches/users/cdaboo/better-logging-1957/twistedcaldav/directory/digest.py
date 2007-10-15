@@ -18,9 +18,9 @@
 
 from twistedcaldav.sql import AbstractSQLDatabase
 from twistedcaldav.sql import db_prefix
+from twistedcaldav.logger import logger
 
 from twisted.cred import error
-from twisted.python import log
 from twisted.web2.auth.digest import DigestCredentialFactory
 from twisted.web2.auth.digest import DigestedCredentials
 
@@ -182,7 +182,7 @@ class DigestCredentialsDB(AbstractSQLDatabase):
             self.exceptions += 1
             if self.exceptions >= self.exceptionLimit:
                 self._db_close()
-                log.err("Reset digest credentials database connection: %s" % (e,))
+                logger.err("Reset digest credentials database connection: %s" % (e,), id=(self, "Security",))
             raise
 
     def set(self, key, value):
@@ -197,7 +197,7 @@ class DigestCredentialsDB(AbstractSQLDatabase):
             self.exceptions += 1
             if self.exceptions >= self.exceptionLimit:
                 self._db_close()
-                log.err("Reset digest credentials database connection: %s" % (e,))
+                logger.err("Reset digest credentials database connection: %s" % (e,), id=(self, "Security",))
             raise
 
     def get(self, key):
@@ -218,7 +218,7 @@ class DigestCredentialsDB(AbstractSQLDatabase):
             self.exceptions += 1
             if self.exceptions >= self.exceptionLimit:
                 self._db_close()
-                log.err("Reset digest credentials database connection: %s" % (e,))
+                logger.err("Reset digest credentials database connection: %s" % (e,), id=(self, "Security",))
             raise
 
     def delete(self, key):
@@ -232,7 +232,7 @@ class DigestCredentialsDB(AbstractSQLDatabase):
             self.exceptions += 1
             if self.exceptions >= self.exceptionLimit:
                 self._db_close()
-                log.err("Reset digest credentials database connection: %s" % (e,))
+                logger.err("Reset digest credentials database connection: %s" % (e,), id=(self, "Security",))
             raise
 
     def keys(self):
@@ -250,7 +250,7 @@ class DigestCredentialsDB(AbstractSQLDatabase):
             self.exceptions += 1
             if self.exceptions >= self.exceptionLimit:
                 self._db_close()
-                log.err("Reset digest credentials database connection: %s" % (e,))
+                logger.err("Reset digest credentials database connection: %s" % (e,), id=(self, "Security",))
             raise
 
     def _set_in_db(self, key, value):
@@ -352,6 +352,7 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
         
         # Make sure it is not a duplicate
         if self.db.has_key(c):
+            logger.err("nonce value already cached in credentials database: %s" % (c,), id=(self, "Security",))
             raise AssertionError("nonce value already cached in credentials database: %s" % (c,))
 
         # The database record is a tuple of (client ip, nonce-count, timestamp)
@@ -409,9 +410,11 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
 
         username = auth.get('username')
         if not username:
+            logger.warn("No username", id=(self, "Security",))
             raise error.LoginFailed('Invalid response, no username given.')
 
         if 'nonce' not in auth:
+            logger.warn("No nonce for: %s" % (auth.get('username'),), id=(self, "Security",))
             raise error.LoginFailed('Invalid response, no nonce given.')
 
         # Now verify the nonce/cnonce values for this client
@@ -425,6 +428,7 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
                 del credentials.fields['qop']
             return credentials
         else:
+            logger.warn("Invalid nonce/cnonce for: %s" % (auth.get('username'),), id=(self, "Security",))
             raise error.LoginFailed('Invalid nonce/cnonce values')
 
     def validate(self, auth, request):
@@ -447,21 +451,25 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
 
         # First check we have this nonce
         if not self.db.has_key(nonce):
+            logger.warn("Invalid nonce for: %s" % (auth.get('username'),), id=(self, "Security",))
             raise error.LoginFailed('Invalid nonce value: %s' % (nonce,))
         db_clientip, db_nonce_count, db_timestamp = self.db.get(nonce)
 
         # Next check client ip
         if db_clientip != clientip:
             self.invalidate(nonce)
+            logger.warn("Client IPs do not match for: %s" % (auth.get('username'),), id=(self, "Security",))
             raise error.LoginFailed('Client IPs do not match: %s and %s' % (clientip, db_clientip,))
         
         # cnonce and nonce-count MUST be present if qop is present
         if auth.get('qop') is not None:
             if auth.get('cnonce') is None:
                 self.invalidate(nonce)
+                logger.warn("Missing cnonce for: %s" % (auth.get('username'),), id=(self, "Security",))
                 raise error.LoginFailed('cnonce is required when qop is specified')
             if nonce_count is None:
                 self.invalidate(nonce)
+                logger.warn("Missing nonce-count for: %s" % (auth.get('username'),), id=(self, "Security",))
                 raise error.LoginFailed('nonce-count is required when qop is specified')
                 
             # Next check the nonce-count is one greater than the previous one and update it in the DB
@@ -469,9 +477,11 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
                 nonce_count = int(nonce_count, 16)
             except ValueError:
                 self.invalidate(nonce)
+                logger.warn("nonce-count not valid for: %s" % (auth.get('username'),), id=(self, "Security",))
                 raise error.LoginFailed('nonce-count is not a valid hex string: %s' % (auth.get('nonce-count'),))            
             if nonce_count != db_nonce_count + 1:
                 self.invalidate(nonce)
+                logger.warn("nonce-count out of sequence for: %s" % (auth.get('username'),), id=(self, "Security",))
                 raise error.LoginFailed('nonce-count value out of sequence: %s should be one more than %s' % (nonce_count, db_nonce_count,))
             self.db.set(nonce, (db_clientip, nonce_count, db_timestamp))
         else:
@@ -479,6 +489,7 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
             # i.e. we can't allow a qop auth then a non-qop auth with the same nonce
             if db_nonce_count != 0:
                 self.invalidate(nonce)
+                logger.warn("nonce-count not allowed for: %s" % (auth.get('username'),), id=(self, "Security",))
                 raise error.LoginFailed('nonce-count was sent with this nonce: %s' % (nonce,))                
         
         # Now check timestamp
@@ -486,6 +497,7 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
             self.invalidate(nonce)
             if request.remoteAddr:
                 request.remoteAddr.stale = True
+            logger.warn("Digest credentials expired for: %s" % (auth.get('username'),), id=(self, "Security",))
             raise error.LoginFailed('Digest credentials expired')
 
         return True
@@ -514,5 +526,5 @@ class QopDigestCredentialFactory(DigestCredentialFactory):
                         self.invalidate(key)
             except Exception, e:
                 # Clean-up errors can be logged but we should ignore them
-                log.err("Error cleaning digest credentials: %s" % (e,))
+                logger.err("Error cleaning digest credentials: %s" % (e,), id=(self, "Security",))
                 pass

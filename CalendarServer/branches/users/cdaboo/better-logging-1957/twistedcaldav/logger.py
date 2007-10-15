@@ -116,15 +116,33 @@ class Logger(object):
         @return:     True if the log level is currently active.
         """
         
+        current_level = -1
         if kwargs.has_key("id"):
             id = kwargs["id"]
-            if type(id) == types.ClassType:
-                kwargs["system"] = id.__name__
-            elif type(id) == types.InstanceType:
-                kwargs["system"] = id.__class__.__name__
-            elif type(id) in types.StringTypes:
-                kwargs["system"] = id
-        current_level = self.options.systemLogLevels.get(kwargs.get("system", ""), self.options.currentLogLevel)
+            if type(id) not in (types.TupleType, types.ListType,):
+                id = (id,)
+            items = []
+            for item in id:
+                if type(item) in (
+                    types.StringType,
+                    types.UnicodeType,
+                    types.IntType,
+                    types.LongType,
+                    types.FloatType,
+                    types.BooleanType,
+                ):
+                    item = str(item)
+                elif getattr(item, "__name__", None):
+                    item = item.__name__
+                elif getattr(item, "__class__", None):
+                    item = item.__class__.__name__
+                else:
+                    item = str(item)
+                current_level = max(current_level, self.options.systemLogLevels.get(item, self.options.currentLogLevel))
+                items.append(item)
+            kwargs["system"] = ",".join(items)
+        if current_level == -1:
+            current_level = self.options.currentLogLevel
         return current_level >= Logger.logtypes.get(level, 1)
     
     def info(self, message, **kwargs):

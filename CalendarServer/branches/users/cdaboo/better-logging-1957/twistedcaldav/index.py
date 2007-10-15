@@ -37,9 +37,8 @@ try:
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite
 
-from twisted.python import log
-
 from twistedcaldav.ical import Component
+from twistedcaldav.logger import logger
 from twistedcaldav.query import calendarquery
 from twistedcaldav.sql import AbstractSQLDatabase
 from twistedcaldav.sql import db_prefix
@@ -161,7 +160,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase):
             name_utf8 = name.encode("utf-8")
             if name is not None and self.resource.getChild(name_utf8) is None:
                 # Clean up
-                log.err("Stale resource record found for child %s with UID %s in %s" % (name, uid, self.resource))
+                logger.err("Stale resource record found for child %s with UID %s in %s" % (name, uid, self.resource), id=self)
                 self._delete_from_db(name, uid)
                 self._db_commit()
             else:
@@ -282,8 +281,8 @@ class AbstractCalendarIndex(AbstractSQLDatabase):
             if self.resource.getChild(name.encode("utf-8")):
                 yield row
             else:
-                log.err("Calendar resource %s is missing from %s. Removing from index."
-                        % (name, self.resource))
+                logger.err("Calendar resource %s is missing from %s. Removing from index."
+                        % (name, self.resource), id=self)
                 self.deleteResource(name)
 
     def _db_version(self):
@@ -473,7 +472,7 @@ class Index (CalendarIndex):
                 % (uid, self.resource)
             )
         except sqlite.Error, e:
-            log.err("Unable to reserve UID: %s", (e,))
+            logger.err("Unable to reserve UID: %s", (e,), id=self)
             self._db_rollback()
             raise
     
@@ -494,7 +493,7 @@ class Index (CalendarIndex):
             self._db_execute("delete from RESERVED where UID = :1", uid)
             self._db_commit()
         except sqlite.Error, e:
-            log.err("Unable to unreserve UID: %s", (e,))
+            logger.err("Unable to unreserve UID: %s", (e,), id=self)
             self._db_rollback()
             raise
     
@@ -516,7 +515,7 @@ class Index (CalendarIndex):
                     self._db_execute("delete from RESERVED where UID = :1", uid)
                     self._db_commit()
                 except sqlite.Error, e:
-                    log.err("Unable to unreserve UID: %s", (e,))
+                    logger.err("Unable to unreserve UID: %s", (e,), id=self)
                     self._db_rollback()
                     raise
                 return False
@@ -572,7 +571,7 @@ class Index (CalendarIndex):
             try:
                 stream = fp.child(name).open()
             except (IOError, OSError), e:
-                log.err("Unable to open resource %s: %s" % (name, e))
+                logger.err("Unable to open resource %s: %s" % (name, e), id=self)
                 continue
 
             try:
@@ -581,9 +580,9 @@ class Index (CalendarIndex):
                     calendar = Component.fromStream(stream)
                     calendar.validateForCalDAV()
                 except ValueError:
-                    log.err("Non-calendar resource: %s" % (name,))
+                    logger.err("Non-calendar resource: %s" % (name,), id=self)
                 else:
-                    #log.msg("Indexing resource: %s" % (name,))
+                    logger.debug("Indexing resource: %s" % (name,), id=self)
                     self.addResource(name, calendar, True)
             finally:
                 stream.close()
@@ -683,7 +682,7 @@ class IndexSchedule (CalendarIndex):
             try:
                 stream = fp.child(name).open()
             except (IOError, OSError), e:
-                log.err("Unable to open resource %s: %s" % (name, e))
+                logger.err("Unable to open resource %s: %s" % (name, e), id=self)
                 continue
 
             try:
@@ -693,9 +692,9 @@ class IndexSchedule (CalendarIndex):
                     calendar.validCalendarForCalDAV()
                     calendar.validateComponentsForCalDAV(True)
                 except ValueError:
-                    log.err("Non-calendar resource: %s" % (name,))
+                    logger.err("Non-calendar resource: %s" % (name,), id=self)
                 else:
-                    #log.msg("Indexing resource: %s" % (name,))
+                    logger.debug("Indexing resource: %s" % (name,), id=self)
                     self.addResource(name, calendar)
             finally:
                 stream.close()

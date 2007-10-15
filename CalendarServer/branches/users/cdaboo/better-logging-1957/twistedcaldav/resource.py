@@ -32,8 +32,6 @@ from zope.interface import implements
 
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred, maybeDeferred, succeed
-from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.idav import IDAVPrincipalCollectionResource
@@ -57,9 +55,6 @@ from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.ical import allowedComponents
 from twistedcaldav.ical import Component as iComponent
-
-from twistedcaldav.directory.directory import DirectoryService
-from twistedcaldav.directory.sudo import SudoDirectoryService
 
 if twistedcaldav.__version__:
     serverVersion = twisted.web2.server.VERSION + " TwistedCalDAV/" + twistedcaldav.__version__

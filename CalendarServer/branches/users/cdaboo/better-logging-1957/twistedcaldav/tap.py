@@ -426,10 +426,10 @@ class CalDAVServiceMaker(object):
             ),
         ]
 
-        logger.info("Setting up AdminPrincipals", id="Startup")
+        logger.info("Setting up AdminPrincipals", id=["Startup", "Security",])
 
         for principal in config.AdminPrincipals:
-            logger.info("Added %s as admin principal" % (principal,), id="Startup")
+            logger.info("Added %s as admin principal" % (principal,), id=["Startup", "Security",])
 
             rootACEs.append(
                 davxml.ACE(
@@ -440,7 +440,7 @@ class CalDAVServiceMaker(object):
                 )
             )
 
-        logger.info("Setting root ACL", id="Startup")
+        logger.info("Setting root ACL", id=["Startup", "Security",])
 
         root.setAccessControlList(davxml.ACL(*rootACEs))
 
@@ -456,7 +456,7 @@ class CalDAVServiceMaker(object):
 
         realm = directory.realmName or ""
 
-        logger.info("Configuring authentication for realm: %s" % (realm,), id="Startup")
+        logger.info("Configuring authentication for realm: %s" % (realm,), id=["Startup", "Security",])
 
         for scheme, schemeConfig in config.Authentication.iteritems():
             scheme = scheme.lower()
@@ -464,11 +464,11 @@ class CalDAVServiceMaker(object):
             credFactory = None
 
             if schemeConfig['Enabled']:
-                logger.info("Setting up scheme: %s" % (scheme,), id="Startup")
+                logger.info("Setting up scheme: %s" % (scheme,), id=["Startup", "Security",])
 
                 if scheme == 'kerberos':
                     if not NegotiateCredentialFactory:
-                        logger.info("Kerberos support not available", id="Startup")
+                        logger.warn("Kerberos support not available", id=["Startup", "Security",])
                         continue
 
                     try:
@@ -478,7 +478,7 @@ class CalDAVServiceMaker(object):
                         else:
                             credFactory = NegotiateCredentialFactory(principal=principal)
                     except ValueError:
-                        logger.info("Could not start Kerberos", id="Startup")
+                        logger.warn("Could not start Kerberos", id=["Startup", "Security",])
                         continue
 
                 elif scheme == 'digest':
@@ -493,12 +493,12 @@ class CalDAVServiceMaker(object):
                     credFactory = BasicCredentialFactory(realm)
 
                 else:
-                    logger.err("Unknown scheme: %s" % (scheme,), id="Startup")
+                    logger.err("Unknown scheme: %s" % (scheme,), id=["Startup", "Security",])
 
             if credFactory:
                 credentialFactories.append(credFactory)
 
-        logger.info("Configuring authentication wrapper", id="Startup")
+        logger.info("Configuring authentication wrapper", id=["Startup", "Security",])
 
         authWrapper = auth.AuthenticationWrapper(
             root,

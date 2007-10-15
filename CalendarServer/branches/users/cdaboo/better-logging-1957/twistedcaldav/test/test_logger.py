@@ -189,3 +189,71 @@ class LoggerTests(unittest.TestCase):
         self.assertFalse(logger.canLog("warning", {"id":"Dummy"}))
         self.assertFalse(logger.canLog("info", {"id":"Dummy"}))
         self.assertFalse(logger.canLog("debug", {"id":"Dummy"}))
+
+    def testMultipleLogging(self):
+        self.loadLogfile(testLogger_More)
+
+        args = {"id": ["Startup",]}
+        self.assertTrue(logger.canLog("error", args))
+        self.assertEquals(args["system"], "Startup")
+        self.assertTrue(logger.canLog("warning", args))
+        self.assertTrue(logger.canLog("info", args))
+        self.assertFalse(logger.canLog("debug", args))
+
+        args = {"id": ["Startup", "iTIP"]}
+        self.assertTrue(logger.canLog("error", args))
+        self.assertEquals(args["system"], "Startup,iTIP")
+        self.assertTrue(logger.canLog("warning", args))
+        self.assertTrue(logger.canLog("info", args))
+        self.assertTrue(logger.canLog("debug", args))
+
+        args = {"id": ["Dummy1", "Dummy2"]}
+        self.assertFalse(logger.canLog("error", args))
+        self.assertEquals(args["system"], "Dummy1,Dummy2")
+        self.assertFalse(logger.canLog("warning", args))
+        self.assertFalse(logger.canLog("info", args))
+        self.assertFalse(logger.canLog("debug", args))
+
+        args = {"id": ["Dummy1", "Startup"]}
+        self.assertTrue(logger.canLog("error", args))
+        self.assertEquals(args["system"], "Dummy1,Startup")
+        self.assertTrue(logger.canLog("warning", args))
+        self.assertTrue(logger.canLog("info", args))
+        self.assertFalse(logger.canLog("debug", args))
+
+    def testTypesLogging(self):
+        self.loadLogfile(testLogger_More)
+
+        class _A(object):
+            pass
+
+        class _B(object):
+            pass
+
+        args = {"id": [_A, "Startup"]}
+        self.assertTrue(logger.canLog("error", args))
+        self.assertEquals(args["system"], "_A,Startup")
+        self.assertTrue(logger.canLog("warning", args))
+        self.assertTrue(logger.canLog("info", args))
+        self.assertFalse(logger.canLog("debug", args))
+
+        args = {"id": [_B(), "Startup"]}
+        self.assertTrue(logger.canLog("error", args))
+        self.assertEquals(args["system"], "_B,Startup")
+        self.assertTrue(logger.canLog("warning", args))
+        self.assertTrue(logger.canLog("info", args))
+        self.assertFalse(logger.canLog("debug", args))
+
+        args = {"id": [123, "Startup"]}
+        self.assertTrue(logger.canLog("error", args))
+        self.assertEquals(args["system"], "123,Startup")
+        self.assertTrue(logger.canLog("warning", args))
+        self.assertTrue(logger.canLog("info", args))
+        self.assertFalse(logger.canLog("debug", args))
+
+        args = {"id": [u'Testing', "Startup"]}
+        self.assertTrue(logger.canLog("error", args))
+        self.assertEquals(args["system"], "Testing,Startup")
+        self.assertTrue(logger.canLog("warning", args))
+        self.assertTrue(logger.canLog("info", args))
+        self.assertFalse(logger.canLog("debug", args))

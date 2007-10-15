@@ -31,7 +31,6 @@ __all__ = ["http_REPORT"]
 
 import string
 
-from twisted.python import log
 from twisted.internet.defer import deferredGenerator, waitForDeferred
 from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError, StatusResponse
@@ -41,6 +40,7 @@ from twisted.web2.dav.http import ErrorResponse
 from twisted.web2.dav.util import davXMLFromStream
 
 from twistedcaldav import caldavxml
+from twistedcaldav.logger import logger
 
 max_number_of_matches = 500
 
@@ -52,7 +52,7 @@ def http_REPORT(self, request):
     Respond to a REPORT request. (RFC 3253, section 3.6)
     """
     if not self.fp.exists():
-        log.err("File not found: %s" % (self.fp.path,))
+        logger.err("File not found: %s" % (self.fp.path,), id=(self, "http",))
         raise HTTPError(responsecode.NOT_FOUND)
 
     #
@@ -63,7 +63,7 @@ def http_REPORT(self, request):
         yield doc
         doc = doc.getResult()
     except ValueError, e:
-        log.err("Error while handling REPORT body: %s" % (e,))
+        logger.err("Error while handling REPORT body: %s" % (e,), id=(self, "http",))
         raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, str(e)))
 
     if doc is None:
@@ -108,8 +108,8 @@ def http_REPORT(self, request):
         #
         # Requested report is not supported.
         #
-        log.err("Unsupported REPORT {%s}%s for resource %s (no method %s)"
-                % (namespace, name, self, method_name))
+        logger.err("Unsupported REPORT {%s}%s for resource %s (no method %s)"
+                % (namespace, name, self, method_name), id=(self, "http",))
 
         raise HTTPError(ErrorResponse(
             responsecode.FORBIDDEN,

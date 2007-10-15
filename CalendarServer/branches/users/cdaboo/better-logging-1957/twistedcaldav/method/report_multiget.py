@@ -23,7 +23,6 @@ CalDAV multiget report
 __all__ = ["report_urn_ietf_params_xml_ns_caldav_calendar_multiget"]
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.element.base import dav_namespace
@@ -33,6 +32,7 @@ from twisted.web2.dav.util import joinURL
 from twisted.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.caldavxml import caldav_namespace
+from twistedcaldav.logger import logger
 from twistedcaldav.method import report_common
 
 from urllib import unquote
@@ -55,7 +55,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
         yield parent
         parent = parent.getResult()
         if not parent.isPseudoCalendarCollection():
-            log.err("calendar-multiget report is not allowed on a resource outside of a calendar collection %s" % (self,))
+            logger.err("calendar-multiget report is not allowed on a resource outside of a calendar collection %s" % (self,), id=("report_multiget", "http",))
             raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Must be calendar resource"))
 
     responses = []
@@ -77,14 +77,14 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
         # Verify that any calendar-data element matches what we can handle
         result, message, generate_calendar_data = report_common.validPropertyListCalendarDataTypeVersion(propertyreq)
         if not result:
-            log.err(message)
+            logger.err(message, id=("report_multiget", "http",))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
     else:
         raise AssertionError("We shouldn't be here")
 
     # Check size of results is within limit
     if len(resources) > max_number_of_multigets:
-        log.err("Too many results in multiget report: %d" % len(resources))
+        logger.err("Too many results in multiget report: %d" % len(resources), id=("report_multiget", "http",))
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "number-of-matches-within-limits")))
 
     """

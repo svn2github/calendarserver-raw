@@ -29,7 +29,6 @@ __all__ = [
 ]
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.python.failure import Failure
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
@@ -46,6 +45,7 @@ from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.dateops import clipPeriod, normalizePeriodList, timeRangesOverlap
 from twistedcaldav.ical import Component, Property, iCalendarProductID
 from twistedcaldav.instance import InstanceList
+from twistedcaldav.logger import logger
 
 from vobject.icalendar import utc
 
@@ -104,8 +104,8 @@ def responseForHref(request, responses, href, resource, calendar, propertiesForR
     @param href: the L{HRef} element of the resource being targetted.
     @param resource: the L{CalDAVFile} for the targetted resource.
     @param calendar: the L{Component} for the calendar for the resource. This may be None
-                     if the calendar has not already been read in, in which case the resource
-                     will be used to get the calendar if needed.
+        if the calendar has not already been read in, in which case the resource
+        will be used to get the calendar if needed.
     @param propertiesForResource: the method to use to get the list of properties to return.
     @param propertyreq: the L{PropertyContainer} element for the properties of interest.
     """
@@ -135,8 +135,8 @@ def allPropertiesForResource(request, prop, resource, calendar=None): #@UnusedVa
     @param prop: the L{PropertyContainer} element for the properties of interest.
     @param resource: the L{CalDAVFile} for the targetted resource.
     @param calendar: the L{Component} for the calendar for the resource. This may be None
-                     if the calendar has not already been read in, in which case the resource
-                     will be used to get the calendar if needed.
+        if the calendar has not already been read in, in which case the resource
+        will be used to get the calendar if needed.
     @return: a map of OK and NOT FOUND property values.
     """
 
@@ -154,8 +154,8 @@ def propertyNamesForResource(request, prop, resource, calendar=None): #@UnusedVa
     @param prop: the L{PropertyContainer} element for the properties of interest.
     @param resource: the L{CalDAVFile} for the targetted resource.
     @param calendar: the L{Component} for the calendar for the resource. This may be None
-                     if the calendar has not already been read in, in which case the resource
-                     will be used to get the calendar if needed.
+        if the calendar has not already been read in, in which case the resource
+        will be used to get the calendar if needed.
     @return: a map of OK and NOT FOUND property values.
     """
 
@@ -176,8 +176,8 @@ def propertyListForResource(request, prop, resource, calendar=None):
     @param prop: the L{PropertyContainer} element for the properties of interest.
     @param resource: the L{CalDAVFile} for the targetted resource.
     @param calendar: the L{Component} for the calendar for the resource. This may be None
-                     if the calendar has not already been read in, in which case the resource
-                     will be used to get the calendar if needed.
+        if the calendar has not already been read in, in which case the resource
+        will be used to get the calendar if needed.
     @return: a map of OK and NOT FOUND property values.
     """
     
@@ -213,8 +213,8 @@ def _namedPropertiesForResource(request, props, resource, calendar=None):
     @param props: a list of property elements or qname tuples for the properties of interest.
     @param resource: the L{CalDAVFile} for the targetted resource.
     @param calendar: the L{Component} for the calendar for the resource. This may be None
-                     if the calendar has not already been read in, in which case the resource
-                     will be used to get the calendar if needed.
+        if the calendar has not already been read in, in which case the resource
+        will be used to get the calendar if needed.
     @return: a map of OK and NOT FOUND property values.
     """
     properties_by_status = {
@@ -253,7 +253,7 @@ def _namedPropertiesForResource(request, props, resource, calendar=None):
     
                 status = statusForFailure(f, "getting property: %s" % (qname,))
                 if status != responsecode.NOT_FOUND:
-                    log.err("Error reading property %r for resource %s: %s" % (qname, request.uri, f.value))
+                    logger.err("Error reading property %r for resource %s: %s" % (qname, request.uri, f.value), id=("report_common", "http",))
                 if status not in properties_by_status: properties_by_status[status] = []
                 properties_by_status[status].append(propertyName(qname))
         else:
@@ -346,7 +346,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
         # between our initial index query and getting here. For now we will ignore this errror, but in
         # the longer term we need to simplement some form of locking, perhaps.
         if calendar is None:
-            log.err("Calendar %s is missing from calendar collection %r" % (name, calresource))
+            logger.err("Calendar %s is missing from calendar collection %r" % (name, calresource), id=("report_common", "http",))
             continue
         
         # Ignore ones of this UID

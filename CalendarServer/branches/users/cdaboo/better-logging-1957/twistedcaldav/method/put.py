@@ -23,13 +23,13 @@ CalDAV PUT method.
 __all__ = ["http_PUT"]
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav.http import ErrorResponse
 from twisted.web2.dav.util import allDataFromStream, parentForURL
 from twisted.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.caldavxml import caldav_namespace
+from twistedcaldav.logger import logger
 from twistedcaldav.method.put_common import storeCalendarObjectResource
 from twistedcaldav.resource import isPseudoCalendarCollectionResource
 
@@ -46,7 +46,7 @@ def http_PUT(self, request):
         # Content-type check
         content_type = request.headers.getHeader("content-type")
         if content_type is not None and (content_type.mediaType, content_type.mediaSubtype) != ("text", "calendar"):
-            log.err("MIME type %s not allowed in calendar collection" % (content_type,))
+            logger.err("MIME type %s not allowed in calendar collection" % (content_type,), id=(self, "http",))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
             
         # Read the calendar component from the stream
@@ -74,7 +74,7 @@ def http_PUT(self, request):
             return
 
         except ValueError, e:
-            log.err("Error while handling (calendar) PUT: %s" % (e,))
+            logger.err("Error while handling (calendar) PUT: %s" % (e,), id=(self, "http",))
             raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, str(e)))
 
     else:

@@ -32,7 +32,6 @@ import urllib
 import cgi
 import time
 
-from twisted.python import log
 from twisted.internet.defer import succeed, deferredGenerator, waitForDeferred
 from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError, Response, RedirectResponse
@@ -48,6 +47,7 @@ from twisted.web2.dav.resource import DAVPrincipalResource as SuperDAVPrincipalR
 from twisted.web2.dav.util import joinURL
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.directory.directory import DirectoryService
+from twistedcaldav.logger import logger
 
 class SudoSACLMixin(object):
     """
@@ -116,7 +116,7 @@ class SudoSACLMixin(object):
         if isSudoPrincipal(authid):
             if authz:
                 if isSudoPrincipal(authz):
-                    log.msg("Cannot proxy as another proxy: user '%s' as user '%s'" % (authid, authz))
+                    logger.err("Cannot proxy as another proxy: user '%s' as user '%s'" % (authid, authz), id=(self, "Security",))
                     raise HTTPError(responsecode.FORBIDDEN)
                 else:
                     authzPrincipal = getPrincipalForType(
@@ -126,18 +126,17 @@ class SudoSACLMixin(object):
                         authzPrincipal = self.findPrincipalForAuthID(authz)
 
                     if authzPrincipal is not None:
-                        log.msg("Allow proxy: user '%s' as '%s'" % (authid, authz,))
+                        logger.info("Allow proxy: user '%s' as '%s'" % (authid, authz,), id=(self, "Security",))
                         yield authzPrincipal
                         return
                     else:
-                        log.msg("Could not find authorization user id: '%s'" % 
-                                (authz,))
+                        logger.err("Could not find authorization user id: '%s'" % (authz,), id=(self, "Security",))
                         raise HTTPError(responsecode.FORBIDDEN)
             else:
-                log.msg("Cannot authenticate proxy user '%s' without X-Authorize-As header" % (authid, ))
+                logger.err("Cannot authenticate proxy user '%s' without X-Authorize-As header" % (authid, ), id=(self, "Security",))
                 raise HTTPError(responsecode.BAD_REQUEST)
         elif authz:
-            log.msg("Cannot proxy: user '%s' as '%s'" % (authid, authz,))
+            logger.err("Cannot proxy: user '%s' as '%s'" % (authid, authz,), id=(self, "Security",))
             raise HTTPError(responsecode.FORBIDDEN)
         else:
             # No proxy - do default behavior
@@ -520,12 +519,12 @@ class DAVFile (SudoSACLMixin, SuperDAVFile):
                         value = property.toxml()
                 except HTTPError, e:
                     if e.response.code == responsecode.NOT_FOUND:
-                        log.err("Property {%s}%s was returned by listProperties() but does not exist for resource %s."
-                                % (qname[0], qname[1], self))
+                        logger.err("Property {%s}%s was returned by listProperties() but does not exist for resource %s."
+                                % (qname[0], qname[1], self), id=(self, "http",))
                         continue
 
                     if e.response.code != responsecode.UNAUTHORIZED:
-                        log.err("Unable to read property %s for dirlist: %s" % (qname, e))
+                        logger.err("Unable to read property %s for dirlist: %s" % (qname, e), id=(self, "http",))
                         raise
 
                     name = "{%s}%s" % qname

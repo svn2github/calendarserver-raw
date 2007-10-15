@@ -20,13 +20,12 @@ import os
 import sys
 import tempfile
 
-from twisted.python import log
-
 from twisted.runner import procmon
 from twisted.application import internet, service
 
 from twistedcaldav import logging
 from twistedcaldav.config import config
+from twistedcaldav.logger import logger
 
 from twistedcaldav.util import getNCPU
 
@@ -143,13 +142,12 @@ def makeService_Combined(self, options):
     if config.MultiProcess['ProcessCount'] == 0:
         try:
             config.MultiProcess['ProcessCount'] = getNCPU()
-            log.msg("%d processors found, configuring %d processes." % (
+            logger.info("%d processors found, configuring %d processes." % (
                     config.MultiProcess['ProcessCount'],
-                    config.MultiProcess['ProcessCount']))
+                    config.MultiProcess['ProcessCount']), id="Startup")
 
         except NotImplementedError, err:
-            log.msg('Could not autodetect number of CPUs:')
-            log.msg(err)
+            logger.warn('Could not autodetect number of CPUs: %s' % (err,), id="Startup")
             config.MultiProcess['ProcessCount'] = 1
 
     if config.MultiProcess['ProcessCount'] > 1:
@@ -266,17 +264,17 @@ def makeService_Combined(self, options):
         os.write(fd, pdconfig)
         os.close(fd)
 
-        log.msg("Adding pydirector service with configuration: %s" % (fname,))
+        logger.info("Adding pydirector service with configuration: %s" % (fname,), id="Startup")
 
         monitor.addProcess('pydir', [sys.executable,
                                      config.PythonDirector['pydir'],
                                      fname],
                            env=parentEnv)
 
-    logger = logging.AMPLoggingFactory(
+    factory = logging.AMPLoggingFactory(
         logging.RotatingFileAccessLoggingObserver(config.AccessLogFile))
 
-    loggingService = internet.UNIXServer(config.ControlSocket, logger)
+    loggingService = internet.UNIXServer(config.ControlSocket, factory)
 
     loggingService.setServiceParent(s)
 
@@ -287,7 +285,7 @@ def makeService_Master(self, options):
 
     parentEnv = {'PYTHONPATH': os.environ.get('PYTHONPATH', ''),}
 
-    log.msg("Adding pydirector service with configuration: %s" % (config.PythonDirector['ConfigFile'],))
+    logger.info("Adding pydirector service with configuration: %s" % (config.PythonDirector['ConfigFile'],), id="Startup")
 
     service.addProcess('pydir', [sys.executable,
                                  config.PythonDirector['pydir'],

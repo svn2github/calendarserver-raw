@@ -27,14 +27,13 @@ change.
 See draft spec: http://ietf.webdav.org/caldav/draft-dusseault-caldav.txt
 """
 
-from twisted.python import log
-
 from twisted.web2.dav import davxml
 
 from twistedcaldav.dateops import clipPeriod, timeRangesOverlap
 from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.ical import parse_date_or_datetime
+from twistedcaldav.logger import logger
 
 from vobject.icalendar import utc
 
@@ -96,7 +95,7 @@ class CalDAVTimeZoneElement (CalDAVTextElement):
 #            calendar = self.calendar()
 #            if calendar is None: raise ValueError("No data")
 #        except ValueError, e:
-#            log.err("Invalid iCalendar data (%s): %r" % (calendar, e))
+#            logger.err("Invalid iCalendar data (%s): %r" % (calendar, e), id=self)
 #            raise
 #
 #        found = False
@@ -435,7 +434,7 @@ class CalendarData (CalDAVElement):
                 #try:
                 #    self.calendar()
                 #except ValueError, e:
-                #    log.err("Invalid iCalendar data (%s): %r" % (e, data))
+                #    logger.err("Invalid iCalendar data (%s): %r" % (e, data), id=self)
                 #    raise
 
         if "content-type" in attributes:
@@ -900,32 +899,32 @@ class ComponentFilter (CalDAVFilterElement):
         if level == 0:
             # Must have VCALENDAR at the top
             if (self.filter_name != "VCALENDAR") or timerange:
-                log.msg("Top-level comp-filter must be VCALENDAR, instead: %s" % (self.filter_name,))
+                logger.err("Top-level comp-filter must be VCALENDAR, instead: %s" % (self.filter_name,), id=(self, "caldav",))
                 return False
         elif level == 1:
             # Dissallow VCALENDAR, VALARM, STANDARD, DAYLIGHT, AVAILABLE at the top, everything else is OK
             if self.filter_name in ("VCALENDAR", "VALARM", "STANDARD", "DAYLIGHT", "AVAILABLE"):
-                log.msg("comp-filter wrong component type: %s" % (self.filter_name,))
+                logger.err("comp-filter wrong component type: %s" % (self.filter_name,), id=(self, "caldav",))
                 return False
             
             # time-range only on VEVENT, VTODO, VJOURNAL, VFREEBUSY, VAVAILABILITY
             if timerange and self.filter_name not in ("VEVENT", "VTODO", "VJOURNAL", "VFREEBUSY", "VAVAILABILITY"):
-                log.msg("time-range cannot be used with component %s" % (self.filter_name,))
+                logger.err("time-range cannot be used with component %s" % (self.filter_name,), id=(self, "caldav",))
                 return False
         elif level == 2:
             # Dissallow VCALENDAR, VTIMEZONE, VEVENT, VTODO, VJOURNAL, VFREEBUSY, VAVAILABILITY at the top, everything else is OK
             if (self.filter_name in ("VCALENDAR", "VTIMEZONE", "VEVENT", "VTODO", "VJOURNAL", "VFREEBUSY", "VAVAILABILITY")):
-                log.msg("comp-filter wrong sub-component type: %s" % (self.filter_name,))
+                logger.err("comp-filter wrong sub-component type: %s" % (self.filter_name,), id=(self, "caldav",))
                 return False
             
             # time-range only on VALARM, AVAILABLE
             if timerange and self.filter_name not in ("VALARM", "AVAILABLE",):
-                log.msg("time-range cannot be used with sub-component %s" % (self.filter_name,))
+                logger.err("time-range cannot be used with sub-component %s" % (self.filter_name,), id=(self, "caldav",))
                 return False
         else:
             # Dissallow all std iCal components anywhere else
             if (self.filter_name in ("VCALENDAR", "VTIMEZONE", "VEVENT", "VTODO", "VJOURNAL", "VFREEBUSY", "VALARM", "STANDARD", "DAYLIGHT", "AVAILABLE")) or timerange:
-                log.msg("comp-filter wrong standard component type: %s" % (self.filter_name,))
+                logger.err("comp-filter wrong standard component type: %s" % (self.filter_name,), id=(self, "caldav",))
                 return False
         
         # Test each property
@@ -996,7 +995,7 @@ class PropertyFilter (CalDAVFilterElement):
         
         # time-range only on COMPLETED, CREATED, DTSTAMP, LAST-MODIFIED
         if timerange and self.filter_name not in ("COMPLETED", "CREATED", "DTSTAMP", "LAST-MODIFIED"):
-            log.msg("time-range cannot be used with property %s" % (self.filter_name,))
+            logger.err("time-range cannot be used with property %s" % (self.filter_name,), id=(self, "caldav",))
             return False
 
         # Test the time-range
@@ -1199,16 +1198,16 @@ class TimeRange (CalDAVTimeRangeElement):
         """
         
         if not isinstance(self.start, datetime.datetime):
-            log.msg("start attribute in <time-range> is not a date-time: %s" % (self.start,))
+            logger.err("start attribute in <time-range> is not a date-time: %s" % (self.start,), id=(self, "caldav",))
             return False
         if not isinstance(self.end, datetime.datetime):
-            log.msg("end attribute in <time-range> is not a date-time: %s" % (self.end,))
+            logger.err("end attribute in <time-range> is not a date-time: %s" % (self.end,), id=(self, "caldav",))
             return False
         if self.start.tzinfo != utc:
-            log.msg("start attribute in <time-range> is not UTC: %s" % (self.start,))
+            logger.err("start attribute in <time-range> is not UTC: %s" % (self.start,), id=(self, "caldav",))
             return False
         if self.end.tzinfo != utc:
-            log.msg("end attribute in <time-range> is not UTC: %s" % (self.start,))
+            logger.err("end attribute in <time-range> is not UTC: %s" % (self.start,), id=(self, "caldav",))
             return False
 
         # No other tests
