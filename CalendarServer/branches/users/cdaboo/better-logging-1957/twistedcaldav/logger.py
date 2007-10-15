@@ -43,6 +43,8 @@ class LoggerOptions(object):
         
         self.systemLogLevels = {}
         
+        self.accounting = {}
+        
     def read(self, fname=None):
         
         if not fname:
@@ -66,6 +68,8 @@ class LoggerOptions(object):
                     log.msg("Ignoring unknown logging level '%s' for system: %s" % (value, key,), system="Logger")
             
             self.systemLogLevels = newLogLevels
+            
+            self.accounting = options.get("Accounting", {"Enabled":False,})
 
 class Logger(object):
     #
@@ -188,6 +192,9 @@ class Logger(object):
     
         if self.canLog("debug", kwargs):
             log.msg(message, debug=True, **kwargs)
+
+    def accounting(self):
+        return self.options.accounting
 
 # Create the global instance of the logger
 logger = Logger()

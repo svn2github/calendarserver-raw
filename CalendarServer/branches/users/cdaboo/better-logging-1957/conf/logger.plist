@@ -41,5 +41,18 @@
 		-->
 	</dict>
 
+	<!-- Per User Accounting -->
+	<key>Accounting</key>
+	<dict>
+	    <key>Enabled</key>
+	    <false/>
+	    <key>LogDirectory</key>
+	    <string>/var/log/caldavd/logs</string>
+	    <key>iTIP</key>
+	    <false/>
+	    <key>principals</key>
+	    <array></array>
+	</dict>
+
 </dict>
 </plist>

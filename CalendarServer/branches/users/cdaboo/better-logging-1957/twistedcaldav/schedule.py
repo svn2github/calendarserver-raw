@@ -38,6 +38,7 @@ from twisted.web2.dav.util import joinURL
 
 from twistedcaldav import caldavxml
 from twistedcaldav import itip
+from twistedcaldav.accounting import accounting
 from twistedcaldav.logger import logger
 from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.caldavxml import caldav_namespace, TimeRange
@@ -334,6 +335,11 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
         else:
             # Do regular invite (fan-out)
             freebusy = False
+
+        # Do accounting
+        if not freebusy and accounting.isiTIPEnabled(oprincipal):
+            data = "Originator: %s\nRecipients: %s\n\n%s" % (originator, ", ".join(recipients), str(calendar),)
+            accounting.writeData(oprincipal, accounting.type_iTIP, data)
 
         # Prepare for multiple responses
         responses = ScheduleResponseQueue("POST", responsecode.OK)
