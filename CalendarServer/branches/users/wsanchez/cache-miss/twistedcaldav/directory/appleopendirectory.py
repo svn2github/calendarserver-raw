@@ -415,7 +415,6 @@ class OpenDirectoryService(DirectoryService):
             return None
 
     def reloadCache(self, recordType, shortName=None):
-        
         if shortName:
             logging.info("Faulting record %s into %s record cache" % (shortName, recordType), system="OpenDirectoryService")
         else:
@@ -428,7 +427,7 @@ class OpenDirectoryService(DirectoryService):
         disabled_names = set()
         disabled_guids = set()
 
-        for (key, value) in results:
+        for (recordShortName, value) in results:
             enabledForCalendaring = True
 
             if self.requireComputerRecord:
@@ -437,26 +436,27 @@ class OpenDirectoryService(DirectoryService):
                         enabledForCalendaring = False
                         logging.debug(
                             "Group %s is not enabled for calendaring but may be used in ACLs"
-                            % (key,), system="OpenDirectoryService"
+                            % (recordShortName,), system="OpenDirectoryService"
                         )
                     else:
                         logging.err(
-                            "Directory (incorrectly) returned a record with no ServicesLocator attribute: %s"
-                            % (key,), system="OpenDirectoryService"
+                            "Directory (incorrectly) returned a record with no ServicesLocator attribute: (%s)%s"
+                            % (recordType, recordShortName), system="OpenDirectoryService"
                         )
                         continue
 
             # Now get useful record info.
-            recordShortName = key
-            guid = value.get(dsattributes.kDS1AttrGeneratedUID)
-            if not guid:
+            recordGUID     = value.get(dsattributes.kDS1AttrGeneratedUID)
+            recordFullName = value.get(dsattributes.kDS1AttrDistinguishedName)
+            recordNodeName = value.get(dsattributes.kDSNAttrMetaNodeLocation)
+
+            if not recordGUID:
+                logging.info("Record (%s)%s in node %s has no GUID; ignoring." % (recordType, recordShortName, recordNodeName))
                 continue
-            realName = value.get(dsattributes.kDS1AttrDistinguishedName)
-            nodename = value.get(dsattributes.kDSNAttrMetaNodeLocation)
 
             # Get calendar user addresses from directory record.
             if enabledForCalendaring:
-                calendarUserAddresses = self._calendarUserAddresses(recordType, key, value)
+                calendarUserAddresses = self._calendarUserAddresses(recordType, recordShortName, value)
             else:
                 calendarUserAddresses = ()
 
@@ -488,10 +488,10 @@ class OpenDirectoryService(DirectoryService):
             record = OpenDirectoryRecord(
                 service               = self,
                 recordType            = recordType,
-                guid                  = guid,
-                nodename              = nodename,
+                guid                  = recordGUID,
+                nodeName              = recordNodeName,
                 shortName             = recordShortName,
-                fullName              = realName,
+                fullName              = recordFullName,
                 calendarUserAddresses = calendarUserAddresses,
                 autoSchedule          = autoSchedule,
                 enabledForCalendaring = enabledForCalendaring,
@@ -499,8 +499,11 @@ class OpenDirectoryService(DirectoryService):
                 proxyGUIDs            = proxyGUIDs,
             )
 
+            del recordShortName
+            del recordGUID
+
             def disableRecord(record):
-                logging.warn("Record disabled due to conflicting records: %s" % (record,), system="OpenDirectoryService")
+                logging.warn("Record disabled due to conflict: %s" % (record,), system="OpenDirectoryService")
 
                 shortName = record.shortName
                 guid      = record.guid
@@ -514,25 +517,25 @@ class OpenDirectoryService(DirectoryService):
                     del guids[guid]
 
             # Check for disabled items
-            if recordShortName in disabled_names or guid in disabled_guids:
+            if record.shortName in disabled_names or record.guid in disabled_guids:
                 disableRecord(record)
             else:
                 # Check for duplicate items and disable all names/guids for mismatched duplicates.
-                if recordShortName in records:
-                    existing_record = records[recordShortName]
-                elif guid in guids:
-                    existing_record = guids[guid]
+                if record.shortName in records:
+                    existing_record = records[record.shortName]
+                elif record.guid in guids:
+                    existing_record = guids[record.guid]
                 else:
                     existing_record = None
 
                 if existing_record is not None:
-                    if guid != existing_record.guid or recordShortName != existing_record.shortName:
+                    if record.guid != existing_record.guid or record.shortName != existing_record.shortName:
                         disableRecord(existing_record)
                         disableRecord(record)
 
-                if recordShortName not in disabled_names:
-                    records[recordShortName] = guids[guid] = record
-                    logging.debug("Populated record: %s" % (records[recordShortName],), system="OpenDirectoryService")
+                if record.shortName not in disabled_names:
+                    records[record.shortName] = guids[record.guid] = record
+                    logging.debug("Populated record: %s" % (records[record.shortName],), system="OpenDirectoryService")
 
         if shortName is None:
             #
@@ -589,7 +592,6 @@ class OpenDirectoryService(DirectoryService):
             logging.info("Found %d records for %s record cache" % (len(self._records[recordType]["guids"]), recordType), system="OpenDirectoryService")
 
     def _queryDirectory(self, recordType, shortName=None):
-
         attrs = [
             dsattributes.kDS1AttrGeneratedUID,
             dsattributes.kDS1AttrDistinguishedName,
@@ -715,7 +717,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     Open Directory implementation of L{IDirectoryRecord}.
     """
     def __init__(
-        self, service, recordType, guid, nodename, shortName, fullName,
+        self, service, recordType, guid, nodeName, shortName, fullName,
         calendarUserAddresses, autoSchedule, enabledForCalendaring,
         memberGUIDs, proxyGUIDs,
     ):
@@ -729,9 +731,25 @@ class OpenDirectoryRecord(DirectoryRecord):
             autoSchedule          = autoSchedule,
             enabledForCalendaring = enabledForCalendaring,
         )
-        self._nodename = nodename
+        self.nodeName = nodeName
         self._memberGUIDs = tuple(memberGUIDs)
         self._proxyGUIDs = tuple(proxyGUIDs)
+
+    def __repr__(self):
+        if self.service.realmName == self.nodeName:
+            location = self.nodeName
+        else:
+            location = "%s->%s" % (self.service.realmName, self.nodeName)
+
+        return "<%s[%s@%s(%s)] %s(%s) %r>" % (
+            self.__class__.__name__,
+            self.recordType,
+            self.service.guid,
+            location,
+            self.guid,
+            self.shortName,
+            self.fullName
+        )
 
     def members(self):
         if self.recordType != DirectoryService.recordType_groups:
@@ -769,7 +787,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     def verifyCredentials(self, credentials):
         if isinstance(credentials, UsernamePassword):
             try:
-                return opendirectory.authenticateUserBasic(self.service.directory, self._nodename, self.shortName, credentials.password)
+                return opendirectory.authenticateUserBasic(self.service.directory, self.nodeName, self.shortName, credentials.password)
             except opendirectory.ODError, e:
                 logging.err("Open Directory (node=%s) error while performing basic authentication for user %s: %s"
                             % (self.service.realmName, self.shortName, e), system="OpenDirectoryService")
@@ -800,7 +818,7 @@ class OpenDirectoryRecord(DirectoryRecord):
 
                 return opendirectory.authenticateUserDigest(
                     self.service.directory,
-                    self._nodename,
+                    self.nodeName,
                     self.shortName,
                     challenge,
                     response,
