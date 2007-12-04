@@ -45,8 +45,8 @@ from twistedcaldav.directory.directory import DirectoryError, UnknownRecordTypeE
 
 from plistlib import readPlistFromString, readPlist
 
-_serverPreferences = '/Library/Preferences/com.apple.servermgr_info.plist'
-_saclGroup = 'com.apple.access_calendar'
+serverPreferences = '/Library/Preferences/com.apple.servermgr_info.plist'
+saclGroup = 'com.apple.access_calendar'
 
 recordListCacheTimeout = 60 * 30 # 30 minutes
 
@@ -93,12 +93,10 @@ class OpenDirectoryService(DirectoryService):
                     logging.err("Unable to locate virtual host record: %s" % (e,), system="OpenDirectoryService")
                     raise
 
-                if os.path.exists(_serverPreferences):
-                    serverInfo = readPlist(_serverPreferences)
+                if os.path.exists(serverPreferences):
+                    serverInfo = readPlist(serverPreferences)
 
-                    self.isWorkgroupServer = serverInfo.get(
-                        'ServiceConfig', {}).get(
-                        'IsWorkgroupServer', False)
+                    self.isWorkgroupServer = serverInfo.get('ServiceConfig', {}).get('IsWorkgroupServer', False)
 
                     if self.isWorkgroupServer:
                         logging.info("Enabling Workgroup Server compatibility mode", system="OpenDirectoryService")
@@ -137,7 +135,10 @@ class OpenDirectoryService(DirectoryService):
                  dsattributes.kDSNAttrNestedGroups])
 
             if not result:
-                logging.err("Couldn't find group %s when trying to expand nested groups." % (groupGUID,), system="OpenDirectoryService")
+                logging.err(
+                    "Couldn't find group %s when trying to expand nested groups."
+                    % (groupGUID,), system="OpenDirectoryService"
+                )
                 continue
 
             group = result[0][1]
@@ -206,7 +207,7 @@ class OpenDirectoryService(DirectoryService):
         if len(records) == 0:
             raise OpenDirectoryInitError(
                 "Open Directory (node=%s) has no /Computers records with a virtual hostname: %s"
-                % (self.realmName, vhostname,)
+                % (self.realmName, vhostname)
             )
 
         # Now find all appropriate records and determine the enabled (only) service tags for each.
@@ -230,14 +231,14 @@ class OpenDirectoryService(DirectoryService):
             raise OpenDirectoryInitError(
                 "Open Directory (node=%s) no /Computers records with an enabled and valid "
                 "calendar service were found matching virtual hostname: %s"
-                % (self.realmName, vhostname,)
+                % (self.realmName, vhostname)
             )
 
     def _parseServiceInfo(self, vhostname, recordname, record):
 
         # Extract some useful attributes
         recordguid = record[dsattributes.kDS1AttrGeneratedUID]
-        recordlocation = "%s/Computers/%s" % (record[dsattributes.kDSNAttrMetaNodeLocation], recordname,)
+        recordlocation = "%s/Computers/%s" % (record[dsattributes.kDSNAttrMetaNodeLocation], recordname)
 
         # First check for apple-serviceinfo attribute
         plist = record.get('dsAttrTypeNative:apple-serviceinfo', None)
@@ -251,7 +252,7 @@ class OpenDirectoryService(DirectoryService):
             logging.err(
                 "Open Directory (node=%s) %s record does not have a "
                 "com.apple.macosxserver.virtualhosts in its apple-serviceinfo attribute value"
-                % (self.realmName, recordlocation,), system="OpenDirectoryService"
+                % (self.realmName, recordlocation), system="OpenDirectoryService"
             )
             return False
         
@@ -310,14 +311,14 @@ class OpenDirectoryService(DirectoryService):
         # Create the string we will use to match users with accounts on this server
         servicetag = "%s:%s:calendar" % (recordguid, hostguid)
         
-        self.computerRecords[recordlocation] = (recordname, enabled, servicetag,)
+        self.computerRecords[recordlocation] = (recordname, enabled, servicetag)
         
         if enabled:
             self.servicetags.add(servicetag)
         
         return True
     
-    def _getCalendarUserAddresses(self, recordType, recordName, record):
+    def _calendarUserAddresses(self, recordType, recordName, record):
         """
         Extract specific attributes from the directory record for use as calendar user address.
         
@@ -325,7 +326,6 @@ class OpenDirectoryService(DirectoryService):
         @param record: a C{dict} containing the attributes retrieved from the directory.
         @return: a C{set} of C{str} for each expanded calendar user address.
         """
-        
         # Now get the addresses
         result = set()
         
@@ -350,9 +350,9 @@ class OpenDirectoryService(DirectoryService):
         plist = readPlistFromString(plist)
         wpframework = plist.get("com.apple.WhitePagesFramework", {})
         autoaccept = wpframework.get("AutoAcceptsInvitation", False)
-        proxy= wpframework.get("CalendaringDelegate")
+        proxy = wpframework.get("CalendaringDelegate")
         
-        return (autoaccept, proxy,)
+        return (autoaccept, proxy)
 
     def recordTypes(self):
         return (
@@ -374,8 +374,10 @@ class OpenDirectoryService(DirectoryService):
 
                 def onError(f):
                     storage["status"] = "stale" # Keep trying
-                    logging.err("Unable to load records of type %s from OpenDirectory due to unexpected error: %s"
-                            % (recordType, f), system="OpenDirectoryService")
+                    logging.err(
+                        "Unable to load records of type %s from OpenDirectory due to unexpected error: %s"
+                        % (recordType, f), system="OpenDirectoryService"
+                    )
 
                 d = deferToThread(self.reloadCache, recordType)
                 d.addErrback(onError)
@@ -400,7 +402,7 @@ class OpenDirectoryService(DirectoryService):
         except KeyError:
             # Cache miss; try looking the record up, in case it is new
             # FIXME: This is a blocking call (hopefully it's a fast one)
-            self.reloadCache(recordType, shortName)
+            self.reloadCache(recordType, shortName=shortName)
             return self.recordsForType(recordType).get(shortName, None)
 
     def recordWithGUID(self, guid):
@@ -415,7 +417,7 @@ class OpenDirectoryService(DirectoryService):
     def reloadCache(self, recordType, shortName=None):
         
         if shortName:
-            logging.info("Trying to add record %s to %s record cache" % (shortName, recordType,), system="OpenDirectoryService")
+            logging.info("Faulting record %s into %s record cache" % (shortName, recordType), system="OpenDirectoryService")
         else:
             logging.info("Reloading %s record cache" % (recordType,), system="OpenDirectoryService")
 
@@ -433,9 +435,15 @@ class OpenDirectoryService(DirectoryService):
                 if not value.get(dsattributes.kDSNAttrServicesLocator):
                     if recordType == DirectoryService.recordType_groups:
                         enabledForCalendaring = False
-                        logging.debug("Group %s is not enabled for calendaring but may be used in ACLs" % (key,), system="OpenDirectoryService")
+                        logging.debug(
+                            "Group %s is not enabled for calendaring but may be used in ACLs"
+                            % (key,), system="OpenDirectoryService"
+                        )
                     else:
-                        logging.err("Directory (incorrectly) returned a record with no ServicesLocator attribute: %s" % (key,), system="OpenDirectoryService")
+                        logging.err(
+                            "Directory (incorrectly) returned a record with no ServicesLocator attribute: %s"
+                            % (key,), system="OpenDirectoryService"
+                        )
                         continue
 
             # Now get useful record info.
@@ -448,7 +456,7 @@ class OpenDirectoryService(DirectoryService):
 
             # Get calendar user addresses from directory record.
             if enabledForCalendaring:
-                calendarUserAddresses = self._getCalendarUserAddresses(recordType, key, value)
+                calendarUserAddresses = self._calendarUserAddresses(recordType, key, value)
             else:
                 calendarUserAddresses = ()
 
@@ -562,14 +570,14 @@ class OpenDirectoryService(DirectoryService):
             if shortName in storage["disabled_names"] or record.guid in storage["disabled_guids"]:
                 storage["disabled_guids"].add(record.guid)
                 storage["disabled_names"].add(shortName)
-                logging.warn("Record disabled: %s, with GUID: %s" % (shortName, record.guid,), system="OpenDirectoryService")
+                logging.warn("Record disabled: %s, with GUID: %s" % (shortName, record.guid), system="OpenDirectoryService")
                 records = {}
             elif record.guid in storage["guids"]:
                 # Got a duplicate GUID - for now we disable the record  being looked up. On the next cache refresh
                 # the existing record will also get disabled.
                 storage["disabled_guids"].add(record.guid)
                 storage["disabled_names"].add(shortName)
-                logging.warn("Record disabled: %s, with GUID: %s" % (shortName, record.guid,), system="OpenDirectoryService")
+                logging.warn("Record disabled: %s, with GUID: %s" % (shortName, record.guid), system="OpenDirectoryService")
                 records = {}
             else:
                 storage["records"][shortName] = record
@@ -617,37 +625,32 @@ class OpenDirectoryService(DirectoryService):
                     results = opendirectory.queryRecordsWithAttribute_list(
                         self.directory,
                         dsattributes.kDSNAttrRecordName,
-                        _saclGroup,
+                        saclGroup,
                         dsattributes.eDSExact,
                         False,
                         dsattributes.kDSStdRecordTypeGroups,
-                        [dsattributes.kDSNAttrGroupMembers,
-                         dsattributes.kDSNAttrNestedGroups])
+                        [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups]
+                    )
 
                     if len(results) == 1:
-                        members = results[0][1].get(
-                            dsattributes.kDSNAttrGroupMembers, [])
-    
-                        nestedGroups = results[0][1].get(
-                            dsattributes.kDSNAttrNestedGroups, [])
+                        members      = results[0][1].get(dsattributes.kDSNAttrGroupMembers, [])
+                        nestedGroups = results[0][1].get(dsattributes.kDSNAttrNestedGroups, [])
                     else:
                         members = []
                         nestedGroups = []
 
                     guidQueries = []
 
-                    for GUID in self._expandGroupMembership(members,
-                                                            nestedGroups):
+                    for GUID in self._expandGroupMembership(members, nestedGroups):
                         guidQueries.append(
-                            dsquery.match(dsattributes.kDS1AttrGeneratedUID,
-                                          GUID, dsattributes.eDSExact))
+                            dsquery.match(dsattributes.kDS1AttrGeneratedUID, GUID, dsattributes.eDSExact)
+                        )
 
                     if not guidQueries:
                         logging.warn("No SACL enabled users found.", system="OpenDirectoryService")
                         return ()
 
-                    query = dsquery.expression(dsquery.expression.OR,
-                                               guidQueries)
+                    query = dsquery.expression(dsquery.expression.OR, guidQueries)
 
             #
             # For groups, we'll load all entries, even if they don't
@@ -655,12 +658,15 @@ class OpenDirectoryService(DirectoryService):
             #
             elif recordType != DirectoryService.recordType_groups:
                 tag_queries = []
+
                 for tag in self.servicetags:
                     tag_queries.append(dsquery.match(dsattributes.kDSNAttrServicesLocator, tag, dsattributes.eDSExact))
+
                 if len(tag_queries) == 1:
                     subquery = tag_queries[0]
                 else:
                     subquery = dsquery.expression(dsquery.expression.OR, tag_queries)
+
                 if query is None:
                     query = subquery
                 else:
@@ -672,7 +678,6 @@ class OpenDirectoryService(DirectoryService):
                 query = subquery
             else:
                 query = dsquery.expression(dsquery.expression.AND, (subquery, query))
-
 
         try:
             if query:
@@ -756,9 +761,9 @@ class OpenDirectoryRecord(DirectoryRecord):
 
     def proxyFor(self):
         for proxyRecord in itertools.chain(
-                                  self.service.recordsForType(DirectoryService.recordType_resources).itervalues(),
-                                  self.service.recordsForType(DirectoryService.recordType_locations).itervalues()
-                              ):
+            self.service.recordsForType(DirectoryService.recordType_resources).itervalues(),
+            self.service.recordsForType(DirectoryService.recordType_locations).itervalues(),
+        ):
             if self.guid in proxyRecord._proxyGUIDs:
                 yield proxyRecord
 
@@ -768,7 +773,7 @@ class OpenDirectoryRecord(DirectoryRecord):
                 return opendirectory.authenticateUserBasic(self.service.directory, self._nodename, self.shortName, credentials.password)
             except opendirectory.ODError, e:
                 logging.err("Open Directory (node=%s) error while performing basic authentication for user %s: %s"
-                        % (self.service.realmName, self.shortName, e), system="OpenDirectoryService")
+                            % (self.service.realmName, self.shortName, e), system="OpenDirectoryService")
                 return False
         elif isinstance(credentials, DigestedCredentials):
             try:
@@ -777,15 +782,21 @@ class OpenDirectoryRecord(DirectoryRecord):
                 
                 try:
                     challenge = 'Digest realm="%(realm)s", nonce="%(nonce)s", algorithm=%(algorithm)s' % credentials.fields
-                    response = ('Digest username="%(username)s", '
-                                'realm="%(realm)s", '
-                                'nonce="%(nonce)s", '
-                                'uri="%(uri)s", '
-                                'response="%(response)s",'
-                                'algorithm=%(algorithm)s') % credentials.fields
+                    response = (
+                        'Digest username="%(username)s", '
+                        'realm="%(realm)s", '
+                        'nonce="%(nonce)s", '
+                        'uri="%(uri)s", '
+                        'response="%(response)s",'
+                        'algorithm=%(algorithm)s'
+                    ) % credentials.fields
                 except KeyError, e:
-                    logging.err("Open Directory (node=%s) error while performing digest authentication for user %s: missing digest response field: %s in: %s"
-                            % (self.service.realmName, self.shortName, e, credentials.fields), system="OpenDirectoryService")
+                    logging.err(
+                        "Open Directory (node=%s) error while performing digest authentication for user %s: "
+                        "missing digest response field: %s in: %s"
+                        % (self.service.realmName, self.shortName, e, credentials.fields),
+                        system="OpenDirectoryService"
+                    )
                     return False
 
                 return opendirectory.authenticateUserDigest(
@@ -797,8 +808,10 @@ class OpenDirectoryRecord(DirectoryRecord):
                     credentials.method
                 )
             except opendirectory.ODError, e:
-                logging.err("Open Directory (node=%s) error while performing digest authentication for user %s: %s"
-                        % (self.service.realmName, self.shortName, e), system="OpenDirectoryService")
+                logging.err(
+                    "Open Directory (node=%s) error while performing digest authentication for user %s: %s"
+                    % (self.service.realmName, self.shortName, e), system="OpenDirectoryService"
+                )
                 return False
 
         return super(OpenDirectoryRecord, self).verifyCredentials(credentials)
