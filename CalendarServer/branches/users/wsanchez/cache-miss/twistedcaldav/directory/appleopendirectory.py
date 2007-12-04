@@ -498,41 +498,41 @@ class OpenDirectoryService(DirectoryService):
                 memberGUIDs           = memberGUIDs,
                 proxyGUIDs            = proxyGUIDs,
             )
-            
+
+            def disableRecord(record):
+                logging.warn("Record disabled due to conflicting records: %s" % (record,), system="OpenDirectoryService")
+
+                shortName = record.shortName
+                guid      = record.guid
+
+                disabled_names.add(shortName)
+                disabled_guids.add(guid)
+
+                if shortName in records:
+                    del records[shortName]
+                if guid in guids:
+                    del guids[guid]
+
             # Check for disabled items
             if recordShortName in disabled_names or guid in disabled_guids:
-                disabled_names.add(recordShortName)
-                disabled_guids.add(guid)
-                logging.warn("Record disabled: %s, with GUID: %s" % (recordShortName, guid,), system="OpenDirectoryService")
+                disableRecord(record)
             else:
                 # Check for duplicate items and disable all names/guids for mismatched duplicates.
-                ok_to_add = True
                 if recordShortName in records:
                     existing_record = records[recordShortName]
-                    if existing_record.guid != guid:
-                        disabled_names.add(recordShortName)
-                        disabled_guids.add(guid)
-                        disabled_guids.add(existing_record.guid)
-                        del records[existing_record.shortName]
-                        del guids[existing_record.guid]
-                        logging.warn("Record disabled: %s, with GUID: %s" % (existing_record.shortName, existing_record.guid,), system="OpenDirectoryService")
-                        logging.warn("Record disabled: %s, with GUID: %s" % (recordShortName, guid,), system="OpenDirectoryService")
-                        ok_to_add = False
                 elif guid in guids:
                     existing_record = guids[guid]
-                    if existing_record.shortName != recordShortName:
-                        disabled_names.add(recordShortName)
-                        disabled_guids.add(guid)
-                        disabled_names.add(existing_record.shortName)
-                        del records[existing_record.shortName]
-                        del guids[existing_record.guid]
-                        logging.warn("Record disabled: %s, with GUID: %s" % (existing_record.shortName, existing_record.guid,), system="OpenDirectoryService")
-                        logging.warn("Record disabled: %s, with GUID: %s" % (recordShortName, guid,), system="OpenDirectoryService")
-                        ok_to_add = False
-                
-                if ok_to_add:
+                else:
+                    existing_record = None
+
+                if existing_record is not None:
+                    if guid != existing_record.guid or recordShortName != existing_record.shortName:
+                        disableRecord(existing_record)
+                        disableRecord(record)
+
+                if recordShortName not in disabled_names:
                     records[recordShortName] = guids[guid] = record
-                    logging.debug("Populated record: %s, with GUID: %s" % (records[recordShortName], guid,), system="OpenDirectoryService")
+                    logging.debug("Populated record: %s" % (records[recordShortName],), system="OpenDirectoryService")
 
         if shortName is None:
             #
@@ -584,9 +584,9 @@ class OpenDirectoryService(DirectoryService):
                 storage["guids"][record.guid] = record
 
         if shortName:
-            logging.info("Added %d records for %s in %s record cache" % (len(records), shortName, recordType,), system="OpenDirectoryService")
+            logging.info("Added %d records for %s in %s record cache" % (len(records), shortName, recordType), system="OpenDirectoryService")
         else:
-            logging.info("Found %d records for %s record cache" % (len(self._records[recordType]["guids"]), recordType,), system="OpenDirectoryService")
+            logging.info("Found %d records for %s record cache" % (len(self._records[recordType]["guids"]), recordType), system="OpenDirectoryService")
 
     def _queryDirectory(self, recordType, shortName=None):
 
@@ -616,8 +616,7 @@ class OpenDirectoryService(DirectoryService):
             attrs.append(dsattributes.kDSNAttrResourceInfo)
         
         else:
-            raise UnknownRecordTypeError("Unknown Open Directory record type: %s"
-                                         % (recordType,))
+            raise UnknownRecordTypeError("Unknown Open Directory record type: %s" % (recordType))
 
         if self.requireComputerRecord:
             if self.isWorkgroupServer and recordType == DirectoryService.recordType_users:
