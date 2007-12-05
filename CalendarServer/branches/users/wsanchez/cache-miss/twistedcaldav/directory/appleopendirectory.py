@@ -131,8 +131,8 @@ class OpenDirectoryService(DirectoryService):
                 dsattributes.eDSExact,
                 False,
                 dsattributes.kDSStdRecordTypeGroups,
-                [dsattributes.kDSNAttrGroupMembers,
-                 dsattributes.kDSNAttrNestedGroups])
+                [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups]
+            )
 
             if not result:
                 logging.err(
