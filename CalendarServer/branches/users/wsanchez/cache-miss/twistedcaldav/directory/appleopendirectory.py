@@ -451,7 +451,7 @@ class OpenDirectoryService(DirectoryService):
             recordNodeName = value.get(dsattributes.kDSNAttrMetaNodeLocation)
 
             if not recordGUID:
-                logging.info("Record (%s)%s in node %s has no GUID; ignoring." % (recordType, recordShortName, recordNodeName))
+                logging.debug("Record (%s)%s in node %s has no GUID; ignoring." % (recordType, recordShortName, recordNodeName))
                 continue
 
             # Get calendar user addresses from directory record.
