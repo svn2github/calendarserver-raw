@@ -406,21 +406,30 @@ class OpenDirectoryService(DirectoryService):
             return self.recordsForType(recordType).get(shortName, None)
 
     def recordWithGUID(self, guid):
-        # Override super's implementation with something faster.
-        for recordType in self.recordTypes():
-            record = self._storage(recordType)["guids"].get(guid, None)
-            if record:
-                return record
-        else:
-            return None
+        def lookup():
+            for recordType in self.recordTypes():
+                record = self._storage(recordType)["guids"].get(guid, None)
+                if record:
+                    return record
+            else:
+                return None
 
-    def reloadCache(self, recordType, shortName=None):
+        record = lookup()
+
+        if record is None:
+            # Cache miss; try looking the record up, in case it is new
+            self.reloadCache(recordType, guid=guid)
+            record = lookup()
+
+        return record
+
+    def reloadCache(self, recordType, shortName=None, guid=None):
         if shortName:
             logging.info("Faulting record %s into %s record cache" % (shortName, recordType), system="OpenDirectoryService")
         else:
             logging.info("Reloading %s record cache" % (recordType,), system="OpenDirectoryService")
 
-        results = self._queryDirectory(recordType, shortName)
+        results = self._queryDirectory(recordType, shortName=shortName, guid=guid)
         
         records  = {}
         guids    = {}
@@ -436,12 +445,12 @@ class OpenDirectoryService(DirectoryService):
                         enabledForCalendaring = False
                         logging.debug(
                             "Group %s is not enabled for calendaring but may be used in ACLs"
-                            % (recordShortName,), system="OpenDirectoryService"
+                            % (key,), system="OpenDirectoryService"
                         )
                     else:
                         logging.err(
-                            "Directory (incorrectly) returned a record with no ServicesLocator attribute: (%s)%s"
-                            % (recordType, recordShortName), system="OpenDirectoryService"
+                            "Directory (incorrectly) returned a record with no ServicesLocator attribute: %s"
+                            % (key,), system="OpenDirectoryService"
                         )
                         continue
 
@@ -537,7 +546,7 @@ class OpenDirectoryService(DirectoryService):
                     records[record.shortName] = guids[record.guid] = record
                     logging.debug("Populated record: %s" % (records[record.shortName],), system="OpenDirectoryService")
 
-        if shortName is None:
+        if shortName is None and guid is None:
             #
             # Replace the entire cache
             #
@@ -566,7 +575,6 @@ class OpenDirectoryService(DirectoryService):
             #
             # Update one record, if found
             #
-            assert len(records) == 1, "shortName = %r, records = %r" % (shortName, len(records))
             
             # Need to check that this record has not been disabled
             storage = self._records[recordType]
@@ -586,12 +594,13 @@ class OpenDirectoryService(DirectoryService):
                 storage["records"][shortName] = record
                 storage["guids"][record.guid] = record
 
-        if shortName:
-            logging.info("Added %d records for %s in %s record cache" % (len(records), shortName, recordType), system="OpenDirectoryService")
+        if shortName is not None or guid is not None:
+            assert len(records) == 1, "shortName = %r, guid = %r, records = %r" % (shortName, guid, len(records))
+            logging.info("Added record (shortName=%r, guid=%r) to %s record cache" % (shortName, guid, recordType), system="OpenDirectoryService")
         else:
             logging.info("Found %d records for %s record cache" % (len(self._records[recordType]["guids"]), recordType), system="OpenDirectoryService")
 
-    def _queryDirectory(self, recordType, shortName=None):
+    def _queryDirectory(self, recordType, shortName=None, guid=None):
         attrs = [
             dsattributes.kDS1AttrGeneratedUID,
             dsattributes.kDS1AttrDistinguishedName,
@@ -622,7 +631,7 @@ class OpenDirectoryService(DirectoryService):
 
         if self.requireComputerRecord:
             if self.isWorkgroupServer and recordType == DirectoryService.recordType_users:
-                if shortName is None:
+                if shortName is None and guid is None:
                     results = opendirectory.queryRecordsWithAttribute_list(
                         self.directory,
                         dsattributes.kDSNAttrRecordName,
@@ -675,6 +684,12 @@ class OpenDirectoryService(DirectoryService):
 
         if shortName is not None:
             subquery = dsquery.match(dsattributes.kDSNAttrRecordName, shortName, dsattributes.eDSExact)
+        elif guid is not None:
+            subquery = dsquery.match(dsattributes.kDSNAttrRecordGUID, guid, dsattributes.eDSExact)
+        else:
+            subquery = None
+
+        if subquery is not None:
             if query is None:
                 query = subquery
             else:
