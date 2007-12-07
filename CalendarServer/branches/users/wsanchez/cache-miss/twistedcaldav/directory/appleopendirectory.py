@@ -431,10 +431,20 @@ class OpenDirectoryService(DirectoryService):
 
         results = self._queryDirectory(recordType, shortName=shortName, guid=guid)
         
-        records  = {}
-        guids    = {}
-        disabled_names = set()
-        disabled_guids = set()
+        if shortName is None and guid is None:
+            records = {}
+            guids   = {}
+
+            disabledNames = set()
+            disabledGUIDs = set()
+        else:
+            storage = self._records[recordType]
+
+            records = storage["records"]
+            guids   = storage["guids"]
+
+            disabledNames = storage["disabled names"]
+            disabledGUIDs = storage["disabled guids"]
 
         for (recordShortName, value) in results:
             enabledForCalendaring = True
@@ -517,8 +527,8 @@ class OpenDirectoryService(DirectoryService):
                 shortName = record.shortName
                 guid      = record.guid
 
-                disabled_names.add(shortName)
-                disabled_guids.add(guid)
+                disabledNames.add(shortName)
+                disabledGUIDs.add(guid)
 
                 if shortName in records:
                     del records[shortName]
@@ -526,7 +536,7 @@ class OpenDirectoryService(DirectoryService):
                     del guids[guid]
 
             # Check for disabled items
-            if record.shortName in disabled_names or record.guid in disabled_guids:
+            if record.shortName in disabledNames or record.guid in disabledGUIDs:
                 disableRecord(record)
             else:
                 # Check for duplicate items and disable all names/guids for mismatched duplicates.
@@ -542,9 +552,9 @@ class OpenDirectoryService(DirectoryService):
                         disableRecord(existing_record)
                         disableRecord(record)
 
-                if record.shortName not in disabled_names:
+                if record.shortName not in disabledNames:
                     records[record.shortName] = guids[record.guid] = record
-                    logging.debug("Populated record: %s" % (records[record.shortName],), system="OpenDirectoryService")
+                    logging.debug("Added record %s to OD record cache" % (record,), system="OpenDirectoryService")
 
         if shortName is None and guid is None:
             #
@@ -554,8 +564,8 @@ class OpenDirectoryService(DirectoryService):
                 "status"        : "new",
                 "records"       : records,
                 "guids"         : guids,
-                "disabled_names": disabled_names,
-                "disabled_guids": disabled_guids,
+                "disabled names": disabledNames,
+                "disabled guids": disabledGUIDs,
             }
 
             def rot():
@@ -571,34 +581,7 @@ class OpenDirectoryService(DirectoryService):
 
             self._records[recordType] = storage
 
-        elif records:
-            #
-            # Update one record, if found
-            #
-            
-            # Need to check that this record has not been disabled
-            storage = self._records[recordType]
-            if shortName in storage["disabled_names"] or record.guid in storage["disabled_guids"]:
-                storage["disabled_guids"].add(record.guid)
-                storage["disabled_names"].add(shortName)
-                logging.warn("Record disabled: %s, with GUID: %s" % (shortName, record.guid), system="OpenDirectoryService")
-                records = {}
-            elif record.guid in storage["guids"]:
-                # Got a duplicate GUID - for now we disable the record  being looked up. On the next cache refresh
-                # the existing record will also get disabled.
-                storage["disabled_guids"].add(record.guid)
-                storage["disabled_names"].add(shortName)
-                logging.warn("Record disabled: %s, with GUID: %s" % (shortName, record.guid), system="OpenDirectoryService")
-                records = {}
-            else:
-                storage["records"][shortName] = record
-                storage["guids"][record.guid] = record
-
-        if shortName is not None or guid is not None:
-            assert len(records) == 1, "shortName = %r, guid = %r, records = %r" % (shortName, guid, len(records))
-            logging.info("Added record (shortName=%r, guid=%r) to %s record cache" % (shortName, guid, recordType), system="OpenDirectoryService")
-        else:
-            logging.info("Found %d records for %s record cache" % (len(self._records[recordType]["guids"]), recordType), system="OpenDirectoryService")
+            logging.debug("Added %d records to %s OD record cache" % (len(self._records[recordType]["guids"]), recordType), system="OpenDirectoryService")
 
     def _queryDirectory(self, recordType, shortName=None, guid=None):
         attrs = [
