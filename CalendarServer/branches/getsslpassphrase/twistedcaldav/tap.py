@@ -311,10 +311,19 @@ class CalDAVOptions(Options):
 from OpenSSL import SSL
 from twisted.internet.ssl import DefaultOpenSSLContextFactory
 
+def _getSSLPassphrase(*args):
+    import commands
+    return commands.getoutput("%s %s:%s DSA" % (config.SSLPassPhraseDialog,
+                                                config.ServerHostName,
+                                                config.SSLPort))
+
+
 class ChainingOpenSSLContextFactory(DefaultOpenSSLContextFactory):
     def __init__(self, privateKeyFileName, certificateFileName,
-                 sslmethod=SSL.SSLv23_METHOD, certificateChainFile=None):
+                 sslmethod=SSL.SSLv23_METHOD, certificateChainFile=None,
+                 passwdCallback=None):
         self.certificateChainFile = certificateChainFile
+        self.passwdCallback = passwdCallback
 
         DefaultOpenSSLContextFactory.__init__(self,
                                               privateKeyFileName,
@@ -322,10 +331,19 @@ class ChainingOpenSSLContextFactory(DefaultOpenSSLContextFactory):
                                               sslmethod=sslmethod)
 
     def cacheContext(self):
-        DefaultOpenSSLContextFactory.cacheContext(self)
+        # Unfortunate code duplication.
+        ctx = SSL.Context(self.sslmethod)
+
+        if self.passwdCallback is not None:
+            ctx.set_passwd_cb(self.passwdCallback)
+
+        ctx.use_certificate_file(self.certificateFileName)
+        ctx.use_privatekey_file(self.privateKeyFileName)
 
         if self.certificateChainFile != '':
-            self._context.use_certificate_chain_file(self.certificateChainFile)
+            ctx.use_certificate_chain_file(self.certificateChainFile)
+
+        self._context = ctx
 
 
 class CalDAVServiceMaker(object):
@@ -570,7 +588,12 @@ class CalDAVServiceMaker(object):
             for port in config.BindSSLPorts:
                 logging.info("Adding SSL server at %s:%s" % (bindAddress, port), system="startup")
 
-                contextFactory = ChainingOpenSSLContextFactory(config.SSLPrivateKey, config.SSLCertificate, certificateChainFile=config.SSLAuthorityChain)
+                contextFactory = ChainingOpenSSLContextFactory(
+                    config.SSLPrivateKey,
+                    config.SSLCertificate,
+                    certificateChainFile=config.SSLAuthorityChain,
+                    passwdCallback=_getSSLPassphrase)
+
                 httpsService = internet.SSLServer(int(port), channel, contextFactory, interface=bindAddress)
                 httpsService.setServiceParent(service)
 
