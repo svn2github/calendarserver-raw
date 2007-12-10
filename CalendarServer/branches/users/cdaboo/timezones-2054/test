@@ -1,0 +1,62 @@
+#!/bin/bash
+
+##
+# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# DRI: Wilfredo Sanchez, wsanchez@apple.com
+##
+
+random="--random=$(date "+%s")";
+
+usage ()
+{
+  program="$(basename "$0")";
+
+  if [ "${1--}" != "-" ]; then echo "$@"; echo; fi;
+
+  echo "Usage: ${program} [-hnr]";
+  echo "Options:";
+  echo "        -h  Print this help and exit";
+  echo "        -n  Do not use color";
+  echo "        -o  Do not run tests in random order.";
+  echo "        -u  Run until the tests fail.";
+
+  if [ "${1-}" == "-" ]; then return 0; fi;
+  exit 64;
+}
+
+while getopts "nhou" option; do
+  case "${option}" in
+    '?') usage; ;;
+    'h') usage -; exit 0; ;;
+    'n') no_colour="--reporter=bwverbose"; ;;
+    'o') random=""; ;;
+    'u') until_fail="--until-failure"; ;;
+  esac;
+done;
+shift $((${OPTIND} - 1));
+
+     wd="$(cd "$(dirname "$0")" && pwd -L)";
+twisted="$(cd "${wd}/.." && pwd -L)/Twisted";
+
+export PYTHONPATH="$("${wd}/run" -p)";
+
+if [ $# -gt 0 ]; then
+    test_modules="$@";
+else
+    test_modules="twistedcaldav twisted";
+fi;
+
+cd "${wd}" && "${twisted}/bin/trial" ${random} ${until_fail} ${no_colour} ${test_modules};
