@@ -312,10 +312,29 @@ from OpenSSL import SSL
 from twisted.internet.ssl import DefaultOpenSSLContextFactory
 
 def _getSSLPassphrase(*args):
+    sslPrivKey = open(config.SSLPrivateKey)
+
+    type = None
+    for line in sslPrivKey.readlines():
+        if '-----BEGIN RSA PRIVATE KEY-----' in line:
+            type = 'RSA'
+            break
+        elif '-----BEGIN DSA PRIVATE KEY-----' in line:
+            type = 'DSA'
+            break
+
+    sslPrivKey.close()
+
+    if type is None:
+        logging.err('Could not get private key type for %s' % (
+                config.SSLPrivateKey,))
+        return False
+
     import commands
-    return commands.getoutput("%s %s:%s DSA" % (config.SSLPassPhraseDialog,
-                                                config.ServerHostName,
-                                                config.SSLPort))
+    return commands.getoutput("%s %s:%s %s" % (config.SSLPassPhraseDialog,
+                                               config.ServerHostName,
+                                               config.SSLPort,
+                                               type))
 
 
 class ChainingOpenSSLContextFactory(DefaultOpenSSLContextFactory):
