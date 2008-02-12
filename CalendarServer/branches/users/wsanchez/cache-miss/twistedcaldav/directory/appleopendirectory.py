@@ -418,8 +418,11 @@ class OpenDirectoryService(DirectoryService):
 
         if record is None:
             # Cache miss; try looking the record up, in case it is new
-            self.reloadCache(recordType, guid=guid)
-            record = lookup()
+            for recordType in self.recordTypes():
+                self.reloadCache(recordType, guid=guid)
+                record = lookup()
+                if record is not None:
+                    break
 
         return record
 
