@@ -537,6 +537,8 @@ class CalendarClient(object):
                 for header, value in response_headers:
                     if header == "www-authenticate":
                         www_authenticate = value
+                        if www_authenticate.lower().startswith("negotiate"):
+                            www_authenticate = www_authenticate.split(" ", 1)[1]
                         if www_authenticate.lower().startswith("basic"):
                             self.authType = "basic"
                             return self.doBasicRequest(ruri, method, headers, data)
@@ -559,7 +561,7 @@ class CalendarClient(object):
         details = None
         if hasattr(self, "digest_details"):
             details = self.digest_details
-        else:
+        elif www_authenticate:
             www_authenticate = www_authenticate[7:]
             parts = www_authenticate.split(',')
     
@@ -594,7 +596,11 @@ class CalendarClient(object):
             for header, value in response_headers:
                 if header == "www-authenticate":
                     delattr(self, "digest_details")
-                    return self.doDigestRequest(ruri, method, headers, data, value)
+                    www_authenticate = value
+                    if www_authenticate.lower().startswith("negotiate"):
+                        www_authenticate = www_authenticate.split(" ", 1)[1]
+                    if www_authenticate.lower().startswith("digest"):
+                        return self.doDigestRequest(ruri, method, headers, data, www_authenticate)
         return status, response_headers, response_data
 
     def doAuthenticatedRequest(self, ruri, method='GET', headers={}, data=None):
