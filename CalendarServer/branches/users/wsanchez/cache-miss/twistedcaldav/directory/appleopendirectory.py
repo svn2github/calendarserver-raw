@@ -674,7 +674,7 @@ class OpenDirectoryService(DirectoryService):
         if shortName is not None:
             subquery = dsquery.match(dsattributes.kDSNAttrRecordName, shortName, dsattributes.eDSExact)
         elif guid is not None:
-            subquery = dsquery.match(dsattributes.kDSNAttrRecordGUID, guid, dsattributes.eDSExact)
+            subquery = dsquery.match(dsattributes.kDS1AttrGeneratedUID, guid, dsattributes.eDSExact)
         else:
             subquery = None
 
