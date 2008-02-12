@@ -422,14 +422,17 @@ class OpenDirectoryService(DirectoryService):
                 self.reloadCache(recordType, guid=guid)
                 record = lookup()
                 if record is not None:
+                    logging.info("Faulted record with GUID %s into %s record cache" % (guid, recordType))
                     break
+            else:
+                logging.info("Unable to find any record with GUID %s" % (guid,))
 
         return record
 
     def reloadCache(self, recordType, shortName=None, guid=None):
         if shortName:
             logging.info("Faulting record %s into %s record cache" % (shortName, recordType), system="OpenDirectoryService")
-        else:
+        elif guid is None:
             logging.info("Reloading %s record cache" % (recordType,), system="OpenDirectoryService")
 
         results = self._queryDirectory(recordType, shortName=shortName, guid=guid)
@@ -458,12 +461,12 @@ class OpenDirectoryService(DirectoryService):
                         enabledForCalendaring = False
                         logging.debug(
                             "Group %s is not enabled for calendaring but may be used in ACLs"
-                            % (key,), system="OpenDirectoryService"
+                            % (recordShortName,), system="OpenDirectoryService"
                         )
                     else:
                         logging.err(
                             "Directory (incorrectly) returned a record with no ServicesLocator attribute: %s"
-                            % (key,), system="OpenDirectoryService"
+                            % (recordShortName,), system="OpenDirectoryService"
                         )
                         continue
 
