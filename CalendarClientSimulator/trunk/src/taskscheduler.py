@@ -69,7 +69,7 @@ class taskscheduler(object):
                         try:
                             callback(*args, **kwargs)
                         except Exception, e:
-                            print "Thread task exception: %s" (e,)
+                            print "Thread task exception: %s" % (e,)
                     elif cmd == "stop":
                         print "Thread #%d stopping." % (thread_num,)
                         loop = False
@@ -106,4 +106,3 @@ class taskscheduler(object):
             thread.join()
             print "Stopped thread: #%d" % (ctr + 1,)
         print "Stopped threaded scheduler"
-        
