@@ -422,10 +422,10 @@ class OpenDirectoryService(DirectoryService):
                 self.reloadCache(recordType, guid=guid)
                 record = lookup()
                 if record is not None:
-                    logging.info("Faulted record with GUID %s into %s record cache" % (guid, recordType))
+                    logging.info("Faulted record with GUID %s into %s record cache" % (guid, recordType), system="OpenDirectoryService")
                     break
             else:
-                logging.info("Unable to find any record with GUID %s" % (guid,))
+                logging.info("Unable to find any record with GUID %s" % (guid,), system="OpenDirectoryService")
 
         return record
 
@@ -476,7 +476,8 @@ class OpenDirectoryService(DirectoryService):
             recordNodeName = value.get(dsattributes.kDSNAttrMetaNodeLocation)
 
             if not recordGUID:
-                logging.debug("Record (%s)%s in node %s has no GUID; ignoring." % (recordType, recordShortName, recordNodeName))
+                logging.debug("Record (%s)%s in node %s has no GUID; ignoring." % (recordType, recordShortName, recordNodeName),
+                              system="OpenDirectoryService")
                 continue
 
             # Get calendar user addresses from directory record.
