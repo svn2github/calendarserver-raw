@@ -21,7 +21,6 @@ CalDAV calendar-query report
 __all__ = ["report_urn_ietf_params_xml_ns_caldav_calendar_query"]
 
 from twisted.internet.defer import deferredGenerator, succeed, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.element.base import dav_namespace
@@ -32,6 +31,7 @@ from twisted.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.customxml import TwistedCalendarAccessProperty
+from twistedcaldav.logger import logger
 from twistedcaldav.method import report_common
 
 import urllib
@@ -53,7 +53,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
         yield parent
         parent = parent.getResult()
         if not parent.isPseudoCalendarCollection():
-            log.err("calendar-query report is not allowed on a resource outside of a calendar collection %s" % (self,))
+            logger.err("calendar-query report is not allowed on a resource outside of a calendar collection %s" % (self,), id=(self, "http",))
             raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Must be calendar collection or calendar resource"))
 
     responses = []
@@ -66,7 +66,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
     # Get the original timezone provided in the query, if any, and validate it now
     query_tz = calendar_query.timezone
     if query_tz is not None and not query_tz.valid():
-        log.err("CalDAV:timezone must contain one VTIMEZONE component only: %s" % (query_tz,))
+        logger.err("CalDAV:timezone must contain one VTIMEZONE component only: %s" % (query_tz,), id=(self, "http",))
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data")))
     if query_tz:
         filter.settimezone(query_tz)
@@ -85,7 +85,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
         # Verify that any calendar-data element matches what we can handle
         result, message, generate_calendar_data = report_common.validPropertyListCalendarDataTypeVersion(query)
         if not result:
-            log.err(message)
+            logger.err(message, id=(self, "http",))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
         
     else:
@@ -93,7 +93,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
 
     # Verify that the filter element is valid
     if (filter is None) or not filter.valid():
-        log.err("Invalid filter element: %r" % (filter,))
+        logger.err("Invalid filter element: %r" % (filter,), id=(self, "http",))
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-filter")))
 
     matchcount = [0]
@@ -239,7 +239,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
         yield d
         d.getResult()
     except NumberOfMatchesWithinLimits:
-        log.err("Too many matching components in calendar-query report")
+        logger.err("Too many matching components in calendar-query report", id=(self, "http",))
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "number-of-matches-within-limits")))
     
     yield MultiStatusResponse(responses)

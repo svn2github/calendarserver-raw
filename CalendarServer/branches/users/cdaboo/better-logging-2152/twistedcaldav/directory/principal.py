@@ -29,7 +29,6 @@ from cgi import escape
 from urllib import unquote
 from urlparse import urlparse
 
-from twisted.python import log
 from twisted.python.failure import Failure
 from twisted.internet.defer import succeed
 from twisted.web2 import responsecode
@@ -43,6 +42,7 @@ from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyPrincipalResource
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVFile, DAVPrincipalResource
+from twistedcaldav.logger import logger
 from twistedcaldav.resource import CalendarPrincipalCollectionResource, CalendarPrincipalResource
 from twistedcaldav.static import AutoProvisioningFileMixIn
 from twistedcaldav.directory.idirectory import IDirectoryService
@@ -191,7 +191,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     ##
 
     def createSimilarFile(self, path):
-        log.err("Attempt to create clone %r of resource %r" % (path, self))
+        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
@@ -243,7 +243,7 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
     ##
 
     def createSimilarFile(self, path):
-        log.err("Attempt to create clone %r of resource %r" % (path, self))
+        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
@@ -295,7 +295,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
     ##
 
     def createSimilarFile(self, path):
-        log.err("Attempt to create clone %r of resource %r" % (path, self))
+        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
@@ -313,7 +313,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
         record = self.directory.recordWithGUID(primaryUID)
 
         if record is None:
-            log.err("No principal found for UID: %s" % (name,))
+            logger.err("No principal found for UID: %s" % (name,), id=(self, "Directory",))
             return None
 
         if record.enabledForCalendaring:
@@ -464,12 +464,11 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
 
         if record not in records:
             records.add(record)
-            myRecordType = self.record.recordType
             for relative in getattr(record, method)():
                 if relative not in records:
                     found = self.parent.principalForRecord(relative)
                     if found is None:
-                        log.err("No principal found for directory record: %r" % (relative,))
+                        logger.err("No principal found for directory record: %r" % (relative,), id=(self, "Directory",))
                     else:
                         if proxy:
                             found = found.getChild("calendar-proxy-write")
@@ -512,7 +511,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     ##
 
     def createSimilarFile(self, path):
-        log.err("Attempt to create clone %r of resource %r" % (path, self))
+        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
@@ -695,7 +694,7 @@ def format_list(items, *args):
             if item is None:
                 yield " '()\n"
         except Exception, e:
-            log.err("Exception while rendering: %s" % (e,))
+            logger.err("Exception while rendering: %s" % (e,), id=("format_list",))
             Failure().printTraceback()
             yield "  ** %s **: %s\n" % (e.__class__.__name__, e)
     return "".join(genlist())

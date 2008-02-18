@@ -29,7 +29,7 @@ try:
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite
 
-from twisted.python import log
+from twistedcaldav.logger import logger
 
 db_prefix = ".db."
 
@@ -74,7 +74,7 @@ class AbstractSQLDatabase(object):
                 else:
                     self._db_connection = sqlite.connect(db_filename)
             except:
-                log.err("Unable to open database: %s" % (db_filename,))
+                logger.err("Unable to open database: %s" % (db_filename,), id=self)
                 raise
 
             #
@@ -105,11 +105,11 @@ class AbstractSQLDatabase(object):
 
                     if (version != self._db_version()) or (type != self._db_type()):
                         if version != self._db_version():
-                            log.err("Database %s has different schema (v.%s vs. v.%s)"
-                                    % (db_filename, version, self._db_version()))
+                            logger.err("Database %s has different schema (v.%s vs. v.%s)"
+                                       % (db_filename, version, self._db_version()), id=self)
                         if type != self._db_type():
-                            log.err("Database %s has different type (%s vs. %s)"
-                                    % (db_filename, type, self._db_type()))
+                            logger.err("Database %s has different type (%s vs. %s)"
+                                    % (db_filename, type, self._db_type()), id=self)
 
                         # Delete this index and start over
                         q.close()
@@ -140,7 +140,7 @@ class AbstractSQLDatabase(object):
         @param db_filename: the file name of the index database.
         @param q:           a database cursor to use.
         """
-        log.msg("Initializing database %s" % (db_filename,))
+        logger.info("Initializing database %s" % (db_filename,), id=self)
 
         # We need an exclusive lock here as we are making a big change to the database and we don't
         # want other processes to get stomped on or stomp on us.
@@ -247,7 +247,7 @@ class AbstractSQLDatabase(object):
             try:
                 q.execute(sql, query_params)
             except:
-                log.err("Exception while executing SQL: %r %r" % (sql, query_params))
+                logger.err("Exception while executing SQL: %r %r" % (sql, query_params), id=self)
                 raise
             return q.fetchall()
         finally:

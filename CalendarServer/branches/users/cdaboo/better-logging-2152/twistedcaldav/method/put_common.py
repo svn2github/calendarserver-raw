@@ -25,7 +25,7 @@ from twisted.internet.defer import Deferred
 from twisted.internet.defer import deferredGenerator
 from twisted.internet.defer import maybeDeferred
 from twisted.internet.defer import waitForDeferred
-from twisted.python import failure, log
+from twisted.python import failure
 from twisted.python.filepath import FilePath
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
@@ -41,7 +41,7 @@ from twisted.web2.http import StatusResponse
 from twisted.web2.iweb import IResponse
 from twisted.web2.stream import MemoryStream
 
-from twistedcaldav import logging
+from twistedcaldav.logger import logger
 from twistedcaldav.config import config
 from twistedcaldav.caldavxml import NoUIDConflict
 from twistedcaldav.caldavxml import NumberOfRecurrencesWithinLimits
@@ -90,19 +90,19 @@ def storeCalendarObjectResource(
         assert (calendardata is None and source is not None) or (calendardata is not None and source is None)
         assert not deletesource or (deletesource and source is not None)
     except AssertionError:
-        log.err("Invalid arguments to storeCalendarObjectResource():")
-        log.err("request=%s\n" % (request,))
-        log.err("sourcecal=%s\n" % (sourcecal,))
-        log.err("destinationcal=%s\n" % (destinationcal,))
-        log.err("source=%s\n" % (source,))
-        log.err("source_uri=%s\n" % (source_uri,))
-        log.err("sourceparent=%s\n" % (sourceparent,))
-        log.err("destination=%s\n" % (destination,))
-        log.err("destination_uri=%s\n" % (destination_uri,))
-        log.err("destinationparent=%s\n" % (destinationparent,))
-        log.err("calendardata=%s\n" % (calendardata,))
-        log.err("deletesource=%s\n" % (deletesource,))
-        log.err("isiTIP=%s\n" % (isiTIP,))
+        logger.err("Invalid arguments to storeCalendarObjectResource():", id="Store Resource")
+        logger.err("request=%s\n" % (request,), id="Store Resource")
+        logger.err("sourcecal=%s\n" % (sourcecal,), id="Store Resource")
+        logger.err("destinationcal=%s\n" % (destinationcal,), id="Store Resource")
+        logger.err("source=%s\n" % (source,), id="Store Resource")
+        logger.err("source_uri=%s\n" % (source_uri,), id="Store Resource")
+        logger.err("sourceparent=%s\n" % (sourceparent,), id="Store Resource")
+        logger.err("destination=%s\n" % (destination,), id="Store Resource")
+        logger.err("destination_uri=%s\n" % (destination_uri,), id="Store Resource")
+        logger.err("destinationparent=%s\n" % (destinationparent,), id="Store Resource")
+        logger.err("calendardata=%s\n" % (calendardata,), id="Store Resource")
+        logger.err("deletesource=%s\n" % (deletesource,), id="Store Resource")
+        logger.err("isiTIP=%s\n" % (isiTIP,), id="Store Resource")
         raise
 
     class RollbackState(object):
@@ -129,52 +129,52 @@ def storeCalendarObjectResource(
             """
             if self.active:
                 self.active = False
-                logging.debug("Rollback: rollback", system="Store Resource")
+                logger.debug("Rollback: rollback", id="Store Resource")
                 try:
                     if self.source_copy and self.source_deleted:
                         self.source_copy.moveTo(source.fp)
-                        logging.debug("Rollback: source restored %s to %s" % (self.source_copy.path, source.fp.path), system="Store Resource")
+                        logger.debug("Rollback: source restored %s to %s" % (self.source_copy.path, source.fp.path), id="Store Resource")
                         self.source_copy = None
                         self.source_deleted = False
                     if self.destination_copy:
                         destination.fp.remove()
-                        logging.debug("Rollback: destination restored %s to %s" % (self.destination_copy.path, destination.fp.path), system="Store Resource")
+                        logger.debug("Rollback: destination restored %s to %s" % (self.destination_copy.path, destination.fp.path), id="Store Resource")
                         self.destination_copy.moveTo(destination.fp)
                         self.destination_copy = None
                     elif self.destination_created:
                         if destinationcal:
                             doRemoveDestinationIndex()
-                            logging.debug("Rollback: destination index removed %s" % (destination.fp.path,), system="Store Resource")
+                            logger.debug("Rollback: destination index removed %s" % (destination.fp.path,), id="Store Resource")
                             self.destination_index_deleted = False
                         destination.fp.remove()
-                        logging.debug("Rollback: destination removed %s" % (destination.fp.path,), system="Store Resource")
+                        logger.debug("Rollback: destination removed %s" % (destination.fp.path,), id="Store Resource")
                         self.destination_created = False
                     if self.destination_index_deleted:
                         # Must read in calendar for destination being re-indexed
                         doDestinationIndex(destination.iCalendar())
                         self.destination_index_deleted = False
-                        logging.debug("Rollback: destination re-indexed %s" % (destination.fp.path,), system="Store Resource")
+                        logger.debug("Rollback: destination re-indexed %s" % (destination.fp.path,), id="Store Resource")
                     if self.source_index_deleted:
                         doSourceIndexRecover()
                         self.destination_index_deleted = False
-                        logging.debug("Rollback: source re-indexed %s" % (source.fp.path,), system="Store Resource")
+                        logger.debug("Rollback: source re-indexed %s" % (source.fp.path,), id="Store Resource")
                 except:
-                    log.err("Rollback: exception caught and not handled: %s" % failure.Failure())
+                    logger.err("Rollback: exception caught and not handled: %s" % failure.Failure(), id="Store Resource")
 
         def Commit(self):
             """
             Commit the resource changes by wiping the rollback state.
             """
             if self.active:
-                logging.debug("Rollback: commit", system="Store Resource")
+                logger.debug("Rollback: commit", id="Store Resource")
                 self.active = False
                 if self.source_copy:
                     self.source_copy.remove()
-                    logging.debug("Rollback: removed source backup %s" % (self.source_copy.path,), system="Store Resource")
+                    logger.debug("Rollback: removed source backup %s" % (self.source_copy.path,), id="Store Resource")
                     self.source_copy = None
                 if self.destination_copy:
                     self.destination_copy.remove()
-                    logging.debug("Rollback: removed destination backup %s" % (self.destination_copy.path,), system="Store Resource")
+                    logger.debug("Rollback: removed destination backup %s" % (self.destination_copy.path,), id="Store Resource")
                     self.destination_copy = None
                 self.destination_created = False
                 self.source_deleted = False
@@ -349,7 +349,7 @@ def storeCalendarObjectResource(
             # Valid resource name check
             result, message = validResourceName()
             if not result:
-                log.err(message)
+                logger.err(message, id="Store Resource")
                 raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Resource name not allowed"))
 
             if not sourcecal:
@@ -357,7 +357,7 @@ def storeCalendarObjectResource(
                 if source is not None:
                     result, message = validContentType()
                     if not result:
-                        log.err(message)
+                        logger.err(message, id="Store Resource")
                         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
                 
                     # At this point we need the calendar data to do more tests
@@ -366,19 +366,19 @@ def storeCalendarObjectResource(
                     try:
                         calendar = Component.fromString(calendardata)
                     except ValueError, e:
-                        log.err(str(e))
+                        logger.err(str(e), id="Store Resource")
                         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data")))
                         
                 # Valid calendar data check
                 result, message = validCalendarDataCheck()
                 if not result:
-                    log.err(message)
+                    logger.err(message, id="Store Resource")
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data")))
                     
                 # Valid calendar data for CalDAV check
                 result, message = validCalDAVDataCheck()
                 if not result:
-                    log.err(message)
+                    logger.err(message, id="Store Resource")
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-object-resource")))
 
                 # Must have a valid UID at this point
@@ -388,7 +388,7 @@ def storeCalendarObjectResource(
                 source_index = sourceparent.index()
                 uid = source_index.resourceUIDForName(source.fp.basename())
                 if uid is None:
-                    log.err("Source calendar does not have a UID: %s" % source.fp.basename())
+                    logger.err("Source calendar does not have a UID: %s" % source.fp.basename(), id="Store Resource")
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-object-resource")))
 
                 # FIXME: We need this here because we have to re-index the destination. Ideally it
@@ -398,7 +398,7 @@ def storeCalendarObjectResource(
             # Valid calendar data size check
             result, message = validSizeCheck()
             if not result:
-                log.err(message)
+                logger.err(message, id="Store Resource")
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "max-resource-size")))
 
             # Check access
@@ -438,7 +438,7 @@ def storeCalendarObjectResource(
             if not isiTIP:
                 result, message, rname = noUIDConflict(uid)
                 if not result:
-                    log.err(message)
+                    logger.err(message, id="Store Resource")
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN,
                         NoUIDConflict(davxml.HRef.fromString(joinURL(parentForURL(destination_uri), rname.encode("utf-8"))))
                     ))
@@ -484,16 +484,16 @@ def storeCalendarObjectResource(
             rollback.destination_copy = FilePath(destination.fp.path)
             rollback.destination_copy.path += ".rollback"
             copyToWithXAttrs(destination.fp, rollback.destination_copy)
-            logging.debug("Rollback: backing up destination %s to %s" % (destination.fp.path, rollback.destination_copy.path), system="Store Resource")
+            logger.debug("Rollback: backing up destination %s to %s" % (destination.fp.path, rollback.destination_copy.path), id="Store Resource")
         else:
             rollback.destination_created = True
-            logging.debug("Rollback: will create new destination %s" % (destination.fp.path,), system="Store Resource")
+            logger.debug("Rollback: will create new destination %s" % (destination.fp.path,), id="Store Resource")
 
         if deletesource:
             rollback.source_copy = FilePath(source.fp.path)
             rollback.source_copy.path += ".rollback"
             copyToWithXAttrs(source.fp, rollback.source_copy)
-            logging.debug("Rollback: backing up source %s to %s" % (source.fp.path, rollback.source_copy.path), system="Store Resource")
+            logger.debug("Rollback: backing up source %s to %s" % (source.fp.path, rollback.source_copy.path), id="Store Resource")
     
         """
         Handle actual store operations here.
@@ -557,15 +557,15 @@ def storeCalendarObjectResource(
             # Add or update the index for this resource.
             try:
                 destination_index.addResource(destination.fp.basename(), caltoindex)
-                logging.debug("Destination indexed %s" % (destination.fp.path,), system="Store Resource")
+                logger.debug("Destination indexed %s" % (destination.fp.path,), id="Store Resource")
             except TooManyInstancesError, ex:
-                log.err("Cannot index calendar resource as there are too many recurrence instances %s" % destination)
+                logger.err("Cannot index calendar resource as there are too many recurrence instances %s" % destination, id="Store Resource")
                 raise HTTPError(ErrorResponse(
                     responsecode.FORBIDDEN,
                     NumberOfRecurrencesWithinLimits(PCDATAElement(str(ex.max_allowed)))
                 ))
             except (ValueError, TypeError), ex:
-                log.err("Cannot index calendar resource: %s" % (ex,))
+                logger.err("Cannot index calendar resource: %s" % (ex,), id="Store Resource")
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data")))
 
             destination.writeDeadProperty(davxml.GETContentType.fromString("text/calendar"))
@@ -580,19 +580,19 @@ def storeCalendarObjectResource(
             if destinationcal:
                 destination_index.deleteResource(destination.fp.basename())
                 rollback.destination_index_deleted = True
-                logging.debug("Destination index removed %s" % (destination.fp.path,), system="Store Resource")
+                logger.debug("Destination index removed %s" % (destination.fp.path,), id="Store Resource")
 
         def doSourceDelete():
             # Delete index for original item
             if sourcecal:
                 source_index.deleteResource(source.fp.basename())
                 rollback.source_index_deleted = True
-                logging.debug("Source index removed %s" % (source.fp.path,), system="Store Resource")
+                logger.debug("Source index removed %s" % (source.fp.path,), id="Store Resource")
 
             # Delete the source resource
             delete(source_uri, source.fp, "0")
             rollback.source_deleted = True
-            logging.debug("Source removed %s" % (source.fp.path,), system="Store Resource")
+            logger.debug("Source removed %s" % (source.fp.path,), id="Store Resource")
 
         def doSourceIndexRecover():
             """
@@ -642,7 +642,7 @@ def storeCalendarObjectResource(
             new_dest_size = new_dest_size.getResult()
             diff_size = new_dest_size - old_dest_size
             if diff_size >= destquota[0]:
-                log.err("Over quota: available %d, need %d" % (destquota[0], diff_size))
+                logger.err("Over quota: available %d, need %d" % (destquota[0], diff_size), id="Store Resource")
                 raise HTTPError(ErrorResponse(responsecode.INSUFFICIENT_STORAGE_SPACE, (dav_namespace, "quota-not-exceeded")))
             d = waitForDeferred(destination.quotaSizeAdjust(request, diff_size))
             yield d

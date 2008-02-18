@@ -15,7 +15,6 @@
 ##
 
 from twisted.internet import defer
-from twisted.python import log
 from twisted.python.failure import Failure
 from twisted.cred.error import LoginFailed, UnauthorizedLogin
 
@@ -26,6 +25,7 @@ from twisted.web2.auth.wrapper import UnauthorizedResponse
 
 from twistedcaldav.extensions import DAVFile
 from twistedcaldav.config import config
+from twistedcaldav.logger import logger
 
 class RootResource(DAVFile):
     """
@@ -43,9 +43,9 @@ class RootResource(DAVFile):
             if RootResource.CheckSACL:
                 self.useSacls = True
             else:
-                log.msg(("RootResource.CheckSACL is unset but "
+                logger.warn(("RootResource.CheckSACL is unset but "
                          "config.EnableSACLs is True, SACLs will not be "
-                         "turned on."))
+                         "turned on."), id=[self, "Startup", "Security",])
 
         self.contentFilters = []
 
@@ -63,7 +63,7 @@ class RootResource(DAVFile):
             # SACLs are authorization for the use of the service,
             # so unauthenticated access doesn't make any sense.
             if authzUser == davxml.Principal(davxml.Unauthenticated()):
-                log.msg("Unauthenticated users not enabled with the '%s' SACL" % (self.saclService,))
+                logger.warn("Unauthenticated users not enabled with the '%s' SACL" % (self.saclService,), id=["self", "Security",])
                 return Failure(HTTPError(UnauthorizedResponse(
                             request.credentialFactories,
                             request.remoteAddr)))
@@ -92,7 +92,7 @@ class RootResource(DAVFile):
                 username = principal.record.shortName
                 
                 if RootResource.CheckSACL(username, self.saclService) != 0:
-                    log.msg("User '%s' is not enabled with the '%s' SACL" % (username, self.saclService,))
+                    logger.warn("User '%s' is not enabled with the '%s' SACL" % (username, self.saclService,), id=[self, "Security",])
                     return Failure(HTTPError(403))
     
                 # Mark SACL's as having been checked so we can avoid doing it multiple times

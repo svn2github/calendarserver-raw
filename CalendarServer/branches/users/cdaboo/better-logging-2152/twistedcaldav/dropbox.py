@@ -30,7 +30,6 @@ import md5
 import time
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.http import HTTPError, ErrorResponse, StatusResponse
@@ -40,6 +39,7 @@ from twisted.web2.dav.util import davXMLFromStream, parentForURL
 from twistedcaldav import customxml
 from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
+from twistedcaldav.logger import logger
 
 class DropBoxHomeResource (DAVResource):
     """
@@ -209,7 +209,7 @@ class DropBoxCollectionResource (DAVResource):
         """
         
         if not self.fp.exists():
-            log.err("File not found: %s" % (self.fp.path,))
+            logger.err("File not found: %s" % (self.fp.path,), id=(self, "dropbox",))
             raise HTTPError(responsecode.NOT_FOUND)
 
         # Read request body
@@ -219,7 +219,7 @@ class DropBoxCollectionResource (DAVResource):
             doc = doc.getResult()
         except ValueError, e:
             error = "Must have valid XML request body for POST on a dropbox: %s" % (e,)
-            log.err(error)
+            logger.err(error, id=(self, "dropbox",))
             raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, error))
         
         # Determine whether we are subscribing or unsubscribing and handle that
@@ -231,12 +231,12 @@ class DropBoxCollectionResource (DAVResource):
                 action = self.unsubscribe
             else:
                 error = "XML request body for POST on a dropbox must contain a single <subscribe> or <unsubscribe> element"
-                log.err(error)
+                logger.err(error, id=(self, "dropbox",))
                 raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, error))
         else:
             # If we get here we got an invalid request
             error = "Must have valid XML request body for POST on a dropbox"
-            log.err(error)
+            logger.err(error, id=(self, "dropbox",))
             raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, error))
 
         d = waitForDeferred(action(request))
@@ -260,7 +260,7 @@ class DropBoxCollectionResource (DAVResource):
     
         # Error if attempt to subscribe more than once
         if authid in principals:
-            log.err("Cannot x_apple_subscribe to resource %s as principal %s is already subscribed" % (request.uri, repr(authid),))
+            logger.err("Cannot x_apple_subscribe to resource %s as principal %s is already subscribed" % (request.uri, repr(authid),), id=(self, "dropbox",))
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (calendarserver_namespace, "principal-must-not-be-subscribed"))
@@ -289,7 +289,7 @@ class DropBoxCollectionResource (DAVResource):
     
         # Error if attempt to subscribe more than once
         if authid not in principals:
-            log.err("Cannot x_apple_unsubscribe from resource %s as principal %s is not currently subscribed" % (request.uri, repr(authid),))
+            logger.err("Cannot x_apple_unsubscribe from resource %s as principal %s is not currently subscribed" % (request.uri, repr(authid),), id=(self, "dropbox",))
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (calendarserver_namespace, "principal-must-be-subscribed"))

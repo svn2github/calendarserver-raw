@@ -23,7 +23,6 @@ __all__ = ["http_COPY", "http_MOVE"]
 from urlparse import urlsplit
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.filter.location import addLocation
 from twisted.web2.dav import davxml
@@ -32,6 +31,7 @@ from twisted.web2.dav.util import parentForURL
 from twisted.web2.http import StatusResponse, HTTPError
 
 from twistedcaldav.caldavxml import caldav_namespace
+from twistedcaldav.logger import logger
 from twistedcaldav.method.put_common import storeCalendarObjectResource
 from twistedcaldav.resource import isCalendarCollectionResource
 
@@ -76,8 +76,8 @@ def http_COPY(self, request):
     # Check for existing destination resource
     overwrite = request.headers.getHeader("overwrite", True)
     if destination.exists() and not overwrite:
-        log.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
-                % (destination.fp.path,))
+        logger.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
+                % (destination.fp.path,), id=(self, "http",))
         raise HTTPError(StatusResponse(
             responsecode.PRECONDITION_FAILED,
             "Destination %s already exists." % (destination_uri,))
@@ -85,12 +85,12 @@ def http_COPY(self, request):
 
     # Checks for copying a calendar collection
     if self.isCalendarCollection():
-        log.err("Attempt to copy a calendar collection into another calendar collection %s" % destination)
+        logger.err("Attempt to copy a calendar collection into another calendar collection %s" % destination, id=(self, "http",))
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "calendar-collection-location-ok")))
 
     # We also do not allow regular collections in calendar collections
     if self.isCollection():
-        log.err("Attempt to copy a collection into a calendar collection")
+        logger.err("Attempt to copy a collection into a calendar collection", id=(self, "http",))
         raise HTTPError(StatusResponse(
             responsecode.FORBIDDEN,
             "Cannot create collection within special collection %s" % (destination,))
@@ -159,8 +159,8 @@ def http_MOVE(self, request):
     # Check for existing destination resource
     overwrite = request.headers.getHeader("overwrite", True)
     if destination.exists() and not overwrite:
-        log.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
-                % (destination.fp.path,))
+        logger.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
+                % (destination.fp.path,), id=(self, "http",))
         raise HTTPError(StatusResponse(
             responsecode.PRECONDITION_FAILED,
             "Destination %s already exists." % (destination_uri,)
@@ -169,12 +169,12 @@ def http_MOVE(self, request):
     if destinationcal:
         # Checks for copying a calendar collection
         if self.isCalendarCollection():
-            log.err("Attempt to move a calendar collection into another calendar collection %s" % destination)
+            logger.err("Attempt to move a calendar collection into another calendar collection %s" % destination, id=(self, "http",))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "calendar-collection-location-ok")))
     
         # We also do not allow regular collections in calendar collections
         if self.isCollection():
-            log.err("Attempt to move a collection into a calendar collection")
+            logger.err("Attempt to move a collection into a calendar collection", id=(self, "http",))
             raise HTTPError(StatusResponse(
                 responsecode.FORBIDDEN,
                 "Cannot create collection within special collection %s" % (destination,)
@@ -207,15 +207,15 @@ def checkForCalendarAction(self, request):
     if that is the case.
     @return: tuple::
         result:           True if special CalDAV processing required, False otherwise
-                          NB If there is any type of error with the request, return False
-                          and allow normal COPY/MOVE processing to return the error.
+            NB If there is any type of error with the request, return False
+            and allow normal COPY/MOVE processing to return the error.
         sourcecal:        True if source is in a calendar collection, False otherwise
         sourceparent:     The parent resource for the source
         destination_uri:  The URI of the destination resource
         destination:      CalDAVFile of destination if special proccesing required,
         None otherwise
         destinationcal:   True if the destination is in a calendar collection,
-                          False otherwise
+            False otherwise
         destinationparent:The parent resource for the destination
         
     """
@@ -226,7 +226,7 @@ def checkForCalendarAction(self, request):
     
     # Check the source path first
     if not self.fp.exists():
-        log.err("File not found: %s" % (self.fp.path,))
+        logger.err("File not found: %s" % (self.fp.path,), id=(self, "http",))
         raise HTTPError(StatusResponse(
             responsecode.NOT_FOUND,
             "Source resource %s not found." % (request.uri,)
@@ -247,7 +247,7 @@ def checkForCalendarAction(self, request):
 
     if not destination_uri:
         msg = "No destination header in %s request." % (request.method,)
-        log.err(msg)
+        logger.err(msg, id=(self, "http",))
         raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, msg))
     
     destination = waitForDeferred(request.locateResource(destination_uri))

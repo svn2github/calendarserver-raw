@@ -40,12 +40,12 @@ from vobject.icalendar import TimezoneComponent
 from vobject.icalendar import stringToDate, stringToDateTime, stringToDurations
 from vobject.icalendar import utc
 
-from twisted.python import log
 from twisted.web2.stream import IStream
 from twisted.web2.dav.util import allDataFromStream
 
 from twistedcaldav.dateops import compareDateTime, normalizeToUTC, timeRangesOverlap
 from twistedcaldav.instance import InstanceList
+from twistedcaldav.logger import logger
 
 iCalendarProductID = "-//CALENDARSERVER.ORG//NONSGML Version 1//EN"
 
@@ -891,8 +891,8 @@ class Component (object):
         for timezone in timezones:
             if timezone not in timezone_refs:
                 #raise ValueError(
-                log.msg(
-                    "Timezone %s is not referenced by any non-timezone component" % (timezone,)
+                logger.warn(
+                    "Timezone %s is not referenced by any non-timezone component" % (timezone,), id=(self, "iCalendar",)
                 )
 
     def transformAllFromNative(self):
