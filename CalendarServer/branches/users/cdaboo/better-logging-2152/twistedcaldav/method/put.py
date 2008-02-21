@@ -31,6 +31,8 @@ from twistedcaldav.logger import logger
 from twistedcaldav.method.put_common import storeCalendarObjectResource
 from twistedcaldav.resource import isPseudoCalendarCollectionResource
 
+log = logger.getInstance(classid="put", id=("http",))
+
 def http_PUT(self, request):
 
     parentURL = parentForURL(request.uri)
@@ -44,7 +46,7 @@ def http_PUT(self, request):
         # Content-type check
         content_type = request.headers.getHeader("content-type")
         if content_type is not None and (content_type.mediaType, content_type.mediaSubtype) != ("text", "calendar"):
-            logger.err("MIME type %s not allowed in calendar collection" % (content_type,), id=(self, "http",))
+            log.err("MIME type %s not allowed in calendar collection" % (content_type,))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
             
         # Read the calendar component from the stream
@@ -72,7 +74,7 @@ def http_PUT(self, request):
             return
 
         except ValueError, e:
-            logger.err("Error while handling (calendar) PUT: %s" % (e,), id=(self, "http",))
+            log.err("Error while handling (calendar) PUT: %s" % (e,))
             raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, str(e)))
 
     else:

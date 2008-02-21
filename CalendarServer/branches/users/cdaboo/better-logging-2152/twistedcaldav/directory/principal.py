@@ -105,6 +105,9 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     """
     Collection resource which provisions directory principals as its children.
     """
+    
+    log = logger.getInstance(classid="DirectoryPrincipalProvisioningResource", id=("Directory",))
+
     def __init__(self, path, url, directory):
         DirectoryProvisioningResource.__init__(self, path, url, directory)
 
@@ -191,7 +194,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     ##
 
     def createSimilarFile(self, path):
-        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
+        self.log.err("Attempt to create clone %r of resource %r" % (path, self))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
@@ -216,6 +219,9 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
     Collection resource which provisions directory principals of a
     specific type as its children, indexed by short name.
     """
+
+    log = logger.getInstance(classid="DirectoryPrincipalTypeProvisioningResource", id=("Directory",))
+
     def __init__(self, parent, recordType):
         """
         @param path: the path to the file which will back the resource.
@@ -243,7 +249,7 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
     ##
 
     def createSimilarFile(self, path):
-        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
+        self.log.err("Attempt to create clone %r of resource %r" % (path, self))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
@@ -268,6 +274,9 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
     Collection resource which provisions directory principals indexed
     by UID.
     """
+
+    log = logger.getInstance(classid="DirectoryPrincipalUIDProvisioningResource", id=("Directory",))
+
     # FIXME: Remove path argument
     def __init__(self, parent):
         """
@@ -295,7 +304,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
     ##
 
     def createSimilarFile(self, path):
-        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
+        self.log.err("Attempt to create clone %r of resource %r" % (path, self))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):
@@ -313,7 +322,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
         record = self.directory.recordWithGUID(primaryUID)
 
         if record is None:
-            logger.err("No principal found for UID: %s" % (name,), id=(self, "Directory",))
+            self.log.err("No principal found for UID: %s" % (name,))
             return None
 
         if record.enabledForCalendaring:
@@ -341,6 +350,9 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     """
     Directory principal resource.
     """
+
+    log = logger.getInstance(classid="DirectoryPrincipalResource", id=("Directory",))
+
     def __init__(self, path, parent, record):
         """
         @param path: them path to the file which will back this resource.
@@ -468,7 +480,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
                 if relative not in records:
                     found = self.parent.principalForRecord(relative)
                     if found is None:
-                        logger.err("No principal found for directory record: %r" % (relative,), id=(self, "Directory",))
+                        self.log.err("No principal found for directory record: %r" % (relative,))
                     else:
                         if proxy:
                             found = found.getChild("calendar-proxy-write")
@@ -511,7 +523,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     ##
 
     def createSimilarFile(self, path):
-        logger.err("Attempt to create clone %r of resource %r" % (path, self), id=(self, "Directory",))
+        self.log.err("Attempt to create clone %r of resource %r" % (path, self))
         raise HTTPError(responsecode.NOT_FOUND)
 
     def getChild(self, name):

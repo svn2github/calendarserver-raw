@@ -112,6 +112,8 @@ class RotatingFileAccessLoggingObserver(CommonAccessLoggingObserverExtensions):
     file is rotated after midnight each day.
     """
 
+    log = logger.getInstance(classid="RotatingFileAccessLoggingObserver", id=("Logging",))
+
     def __init__(self, logpath):
         self.logpath = logpath
 
@@ -212,10 +214,10 @@ class RotatingFileAccessLoggingObserver(CommonAccessLoggingObserverExtensions):
 
         newpath = "%s.%s" % (self.logpath, self.suffix(self.lastDate))
         if os.path.exists(newpath):
-            logger.err("Cannot rotate log file to %s because it already exists." % (newpath,), id="Logging")
+            self.log.err("Cannot rotate log file to %s because it already exists." % (newpath,))
             return
         self.logMessage("Log closed - rotating: [%s]." % (datetime.datetime.now().ctime(),), False)
-        logger.info("Rotating log file to: %s" % (newpath,), id="Logging")
+        self.log.info("Rotating log file to: %s" % (newpath,))
         self.f.close()
         os.rename(self.logpath, newpath)
         self._open()

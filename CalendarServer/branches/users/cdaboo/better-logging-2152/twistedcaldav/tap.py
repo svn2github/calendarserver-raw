@@ -337,6 +337,8 @@ class CalDAVServiceMaker(object):
 
     options = CalDAVOptions
 
+    log = logger.getInstance(classid="CalDAVServiceMaker", id=("Startup",))
+
     #
     # default resource classes
     #
@@ -354,8 +356,7 @@ class CalDAVServiceMaker(object):
 
         directoryClass = namedClass(config.DirectoryService['type'])
 
-        logger.info("Configuring directory service of type: %s"
-                % (config.DirectoryService['type'],), id="Startup")
+        self.log.info("Configuring directory service of type: %s" % (config.DirectoryService['type'],))
 
         baseDirectory = directoryClass(**config.DirectoryService['params'])
 
@@ -364,8 +365,7 @@ class CalDAVServiceMaker(object):
         sudoDirectory = None
 
         if config.SudoersFile and os.path.exists(config.SudoersFile):
-            logger.info("Configuring SudoDirectoryService with file: %s"
-                    % (config.SudoersFile,), id="Startup")
+            self.log.info("Configuring SudoDirectoryService with file: %s" % (config.SudoersFile,))
 
             sudoDirectory = SudoDirectoryService(config.SudoersFile)
             sudoDirectory.realmName = baseDirectory.realmName
@@ -373,8 +373,7 @@ class CalDAVServiceMaker(object):
             CalDAVResource.sudoDirectory = sudoDirectory
             directories.insert(0, sudoDirectory)
         else:
-            logger.info("Not using SudoDirectoryService; file doesn't exist: %s"
-                    % (config.SudoersFile,), id="Startup")
+            self.log.info("Not using SudoDirectoryService; file doesn't exist: %s" % (config.SudoersFile,))
 
         directory = AggregateDirectoryService(directories)
 
@@ -386,9 +385,9 @@ class CalDAVServiceMaker(object):
         # Setup Resource hierarchy
         #
 
-        logger.info("Setting up document root at: %s" % (config.DocumentRoot,), id="Startup")
+        self.log.info("Setting up document root at: %s" % (config.DocumentRoot,))
 
-        logger.info("Setting up principal collection: %r" % (self.principalResourceClass,), id="Startup")
+        self.log.info("Setting up principal collection: %r" % (self.principalResourceClass,))
 
         principalCollection = self.principalResourceClass(
             os.path.join(config.DocumentRoot, 'principals'),
@@ -396,7 +395,7 @@ class CalDAVServiceMaker(object):
             directory
         )
 
-        logger.info("Setting up calendar collection: %r" % (self.calendarResourceClass,), id="Startup")
+        self.log.info("Setting up calendar collection: %r" % (self.calendarResourceClass,))
 
         calendarCollection = self.calendarResourceClass(
             os.path.join(config.DocumentRoot, 'calendars'),
@@ -404,7 +403,7 @@ class CalDAVServiceMaker(object):
             '/calendars/'
         )
 
-        logger.info("Setting up root resource: %r" % (self.rootResourceClass,), id="Startup")
+        self.log.info("Setting up root resource: %r" % (self.rootResourceClass,))
 
         root = self.rootResourceClass(
             config.DocumentRoot,
@@ -416,7 +415,7 @@ class CalDAVServiceMaker(object):
 
         # Configure default ACLs on the root resource
 
-        logger.info("Setting up default ACEs on root resource", id="Startup")
+        self.log.info("Setting up default ACEs on root resource")
 
         rootACEs = [
             davxml.ACE(
@@ -425,10 +424,10 @@ class CalDAVServiceMaker(object):
             ),
         ]
 
-        logger.info("Setting up AdminPrincipals", id=["Startup", "Security",])
+        self.log.info("Setting up AdminPrincipals", id=("Security",))
 
         for principal in config.AdminPrincipals:
-            logger.info("Added %s as admin principal" % (principal,), id=["Startup", "Security",])
+            self.log.info("Added %s as admin principal" % (principal,), id=("Security",))
 
             rootACEs.append(
                 davxml.ACE(
@@ -439,14 +438,14 @@ class CalDAVServiceMaker(object):
                 )
             )
 
-        logger.info("Setting root ACL", id=["Startup", "Security",])
+        self.log.info("Setting root ACL", id=("Security",))
 
         root.setAccessControlList(davxml.ACL(*rootACEs))
 
         #
         # Configure ancillary data
         #
-        logger.info("Setting up Timezone Cache", id="Startup")
+        self.log.info("Setting up Timezone Cache")
         TimezoneCache().register()
 
         #
@@ -461,7 +460,7 @@ class CalDAVServiceMaker(object):
 
         realm = directory.realmName or ""
 
-        logger.info("Configuring authentication for realm: %s" % (realm,), id=["Startup", "Security",])
+        self.log.info("Configuring authentication for realm: %s" % (realm,), id=("Security",))
 
         for scheme, schemeConfig in config.Authentication.iteritems():
             scheme = scheme.lower()
@@ -469,11 +468,11 @@ class CalDAVServiceMaker(object):
             credFactory = None
 
             if schemeConfig['Enabled']:
-                logger.info("Setting up scheme: %s" % (scheme,), id=["Startup", "Security",])
+                self.log.info("Setting up scheme: %s" % (scheme,), id=("Security",))
 
                 if scheme == 'kerberos':
                     if not NegotiateCredentialFactory:
-                        logger.warn("Kerberos support not available", id=["Startup", "Security",])
+                        self.log.warn("Kerberos support not available", id=("Security",))
                         continue
 
                     try:
@@ -483,7 +482,7 @@ class CalDAVServiceMaker(object):
                         else:
                             credFactory = NegotiateCredentialFactory(principal=principal)
                     except ValueError:
-                        logger.warn("Could not start Kerberos", id=["Startup", "Security",])
+                        self.log.warn("Could not start Kerberos", id=("Security",))
                         continue
 
                 elif scheme == 'digest':
@@ -498,12 +497,12 @@ class CalDAVServiceMaker(object):
                     credFactory = BasicCredentialFactory(realm)
 
                 else:
-                    logger.err("Unknown scheme: %s" % (scheme,), id=["Startup", "Security",])
+                    self.log.err("Unknown scheme: %s" % (scheme,), id=("Security",))
 
             if credFactory:
                 credentialFactories.append(credFactory)
 
-        logger.info("Configuring authentication wrapper", id=["Startup", "Security",])
+        self.log.info("Configuring authentication wrapper", id=("Security",))
 
         authWrapper = auth.AuthenticationWrapper(
             root,
@@ -518,7 +517,7 @@ class CalDAVServiceMaker(object):
         # Configure the service
         #
 
-        logger.info("Setting up service", id="Startup")
+        self.log.info("Setting up service")
 
         if config.ProcessType == 'Slave':
             if config.MultiProcess['ProcessCount'] > 1 and config.MultiProcess['LoadBalancer']['Enabled']:
@@ -537,7 +536,7 @@ class CalDAVServiceMaker(object):
 
             logObserver = logging.RotatingFileAccessLoggingObserver(config.AccessLogFile)
 
-        logger.info("Configuring log observer: %s" % (logObserver,), id="Startup")
+        self.log.info("Configuring log observer: %s" % (logObserver,))
 
         service = CalDAVService(logObserver)
 
@@ -562,13 +561,13 @@ class CalDAVServiceMaker(object):
                 config.BindSSLPorts = [config.SSLPort]
 
             for port in config.BindHTTPPorts:
-                logger.info("Adding server at %s:%s" % (bindAddress, port), id="Startup")
+                self.log.info("Adding server at %s:%s" % (bindAddress, port))
 
                 httpService = internet.TCPServer(int(port), channel, interface=bindAddress)
                 httpService.setServiceParent(service)
 
             for port in config.BindSSLPorts:
-                logger.info("Adding SSL server at %s:%s" % (bindAddress, port), id="Startup")
+                self.log.info("Adding SSL server at %s:%s" % (bindAddress, port))
 
                 contextFactory = ChainingOpenSSLContextFactory(config.SSLPrivateKey, config.SSLCertificate, certificateChainFile=config.SSLAuthorityChain)
                 httpsService = internet.SSLServer(int(port), channel, contextFactory, interface=bindAddress)

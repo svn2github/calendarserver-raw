@@ -32,6 +32,8 @@ from twisted.web2.http import HTTPError, StatusResponse
 from twistedcaldav import caldavxml
 from twistedcaldav.logger import logger
 
+log = logger.getInstance(classid="mkcalendar", id=("http",))
+
 def http_MKCALENDAR(self, request):
     """
     Respond to a MKCALENDAR request.
@@ -50,16 +52,14 @@ def http_MKCALENDAR(self, request):
     x.getResult()
 
     if self.exists():
-        logger.err("Attempt to create collection where file exists: %s"
-                % (self.fp.path,), id=(self, "http",))
+        log.err("Attempt to create collection where file exists: %s" % (self.fp.path,))
         raise HTTPError(ErrorResponse(
             responsecode.FORBIDDEN,
             (davxml.dav_namespace, "resource-must-be-null"))
         )
 
     if not parent.isCollection():
-        logger.err("Attempt to create collection with non-collection parent: %s"
-                % (self.fp.path,), id=(self, "http",))
+        log.err("Attempt to create collection with non-collection parent: %s" % (self.fp.path,))
         raise HTTPError(ErrorResponse(
             responsecode.CONFLICT,
             (caldavxml.caldav_namespace, "calendar-collection-location-ok"))
@@ -77,7 +77,7 @@ def http_MKCALENDAR(self, request):
         yield result
         result = result.getResult()
     except ValueError, e:
-        logger.err("Error while handling MKCALENDAR: %s" % (e,), id=(self, "http",))
+        log.err("Error while handling MKCALENDAR: %s" % (e,))
         raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, str(e)))
 
     if doc is not None:
@@ -88,7 +88,7 @@ def http_MKCALENDAR(self, request):
 
             error = ("Non-%s element in MKCALENDAR request body: %s"
                      % (caldavxml.MakeCalendar.name, makecalendar))
-            logger.err(error, id=(self, "http",))
+            log.err(error)
             raise HTTPError(StatusResponse(responsecode.UNSUPPORTED_MEDIA_TYPE, error))
 
         errors = PropertyStatusResponseQueue("PROPPATCH", request.uri, responsecode.NO_CONTENT)

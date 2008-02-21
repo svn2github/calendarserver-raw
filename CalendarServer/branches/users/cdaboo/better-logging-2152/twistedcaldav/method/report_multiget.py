@@ -35,6 +35,8 @@ from twistedcaldav.method import report_common
 
 from urllib import unquote
 
+log = logger.getInstance(classid="report_multiget", id=("http",))
+
 max_number_of_multigets = 5000
 
 def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multiget):
@@ -53,7 +55,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
         yield parent
         parent = parent.getResult()
         if not parent.isPseudoCalendarCollection():
-            logger.err("calendar-multiget report is not allowed on a resource outside of a calendar collection %s" % (self,), id=("report_multiget", "http",))
+            log.err("calendar-multiget report is not allowed on a resource outside of a calendar collection %s" % (self,))
             raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Must be calendar resource"))
 
     responses = []
@@ -73,14 +75,14 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
         # Verify that any calendar-data element matches what we can handle
         result, message, _ignore = report_common.validPropertyListCalendarDataTypeVersion(propertyreq)
         if not result:
-            logger.err(message, id=("report_multiget", "http",))
+            log.err(message)
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
     else:
         raise AssertionError("We shouldn't be here")
 
     # Check size of results is within limit
     if len(resources) > max_number_of_multigets:
-        logger.err("Too many results in multiget report: %d" % len(resources), id=("report_multiget", "http",))
+        log.err("Too many results in multiget report: %d" % len(resources))
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "number-of-matches-within-limits")))
 
     """

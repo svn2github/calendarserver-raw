@@ -54,6 +54,8 @@ class KerberosCredentialFactoryBase(object):
 
     implements(ICredentialFactory)
 
+    log = logger.getInstance(classid="KerberosCredentialFactoryBase", id=("Security",))
+
     def __init__(self, principal=None, type=None, hostname=None):
         """
         
@@ -75,7 +77,7 @@ class KerberosCredentialFactoryBase(object):
             try:
                 principal = kerberos.getServerPrincipalDetails(type, hostname)
             except kerberos.KrbError, ex:
-                logger.err("getServerPrincipalDetails: %s" % (ex[0],), id=(self, "Security",))
+                self.log.err("getServerPrincipalDetails: %s" % (ex[0],))
                 raise ValueError('Authentication System Failure: %s' % (ex[0],))
 
         try:
@@ -85,12 +87,12 @@ class KerberosCredentialFactoryBase(object):
             service = splits[0].upper()
             realm = splits[1]
         except IndexError:
-            logger.err("Invalid Kerberos principal: %s" % (principal,), id=(self, "Security",))
+            self.log.err("Invalid Kerberos principal: %s" % (principal,))
             raise ValueError('Authentication System Failure: Invalid Kerberos principal: %s' % (principal,))
                 
         self.service = "%s@%s" % (servicetype, service,)
         self.realm = realm
-        logger.debug("Service: %s  Realm: %s" % (self.service, self.realm,), id=(self, "Security",))
+        self.log.debug("Service: %s  Realm: %s" % (self.service, self.realm,))
 
 class BasicKerberosCredentials(credentials.UsernamePassword):
     """
@@ -160,6 +162,8 @@ class BasicKerberosCredentialsChecker(object):
 
     credentialInterfaces = (IPrincipalCredentials,)
 
+    log = logger.getInstance(classid="BasicKerberosCredentialsChecker", id=("Security",))
+
     def requestAvatarId(self, credentials):
 
         # If there is no calendar principal URI then the calendar user is disabled.
@@ -170,7 +174,7 @@ class BasicKerberosCredentialsChecker(object):
             try:
                 kerberos.checkPassword(creds.username, creds.password, creds.service, creds.default_realm)
             except kerberos.BasicAuthError, ex:
-                logger.err("%s" % (ex[0],), id=(self, "Security",))
+                self.log.err("%s" % (ex[0],))
                 raise error.UnauthorizedLogin("Bad credentials for: %s (%s: %s)" % (pcreds.authnURI, ex[0], ex[1],))
             else:
                 return succeed((pcreds.authnURI, pcreds.authzURI,))
@@ -195,6 +199,8 @@ class NegotiateCredentialFactory(KerberosCredentialFactoryBase):
 
     scheme = 'negotiate'
 
+    log = logger.getInstance(classid="NegotiateCredentialFactory", id=("Security",))
+
     def __init__(self, principal=None, type=None, hostname=None):
         """
         
@@ -218,18 +224,18 @@ class NegotiateCredentialFactory(KerberosCredentialFactoryBase):
         try:
             _ignore_result, context = kerberos.authGSSServerInit(self.service);
         except kerberos.GSSError, ex:
-            logger.debug("authGSSServerInit: %s(%s)" % (ex[0][0], ex[1][0],), id=(self, "Security",))
+            self.log.debug("authGSSServerInit: %s(%s)" % (ex[0][0], ex[1][0],))
             raise error.LoginFailed('Authentication System Failure: %s(%s)' % (ex[0][0], ex[1][0],))
 
         # Do the GSSAPI step and get response and username
         try:
             kerberos.authGSSServerStep(context, base64data);
         except kerberos.GSSError, ex:
-            logger.debug("authGSSServerStep: %s(%s)" % (ex[0][0], ex[1][0],), id=(self, "Security",))
+            self.log.debug("authGSSServerStep: %s(%s)" % (ex[0][0], ex[1][0],))
             kerberos.authGSSServerClean(context)
             raise error.UnauthorizedLogin('Bad credentials: %s(%s)' % (ex[0][0], ex[1][0],))
         except kerberos.KrbError, ex:
-            logger.debug("authGSSServerStep: %s" % (ex[0],), id=(self, "Security",))
+            self.log.debug("authGSSServerStep: %s" % (ex[0],))
             kerberos.authGSSServerClean(context)
             raise error.UnauthorizedLogin('Bad credentials: %s' % (ex[0],))
 
@@ -246,7 +252,7 @@ class NegotiateCredentialFactory(KerberosCredentialFactoryBase):
         # We currently do not support cross-realm authentication, so we
         # must verify that the realm we got exactly matches the one we expect.
         if realmname != self.realm:
-            logger.err("authGSSServer Realms do not match: %s vs %s" % (realmname, self.realm,), id=(self, "Security",))
+            self.log.err("authGSSServer Realms do not match: %s vs %s" % (realmname, self.realm,))
             kerberos.authGSSServerClean(context)
             raise error.UnauthorizedLogin('Bad credentials: mismatched realm')
 
@@ -255,7 +261,7 @@ class NegotiateCredentialFactory(KerberosCredentialFactoryBase):
         try:
             kerberos.authGSSServerClean(context);
         except kerberos.GSSError, ex:
-            logger.debug("authGSSServerClean: %s" % (ex[0][0], ex[1][0],), id=(self, "Security",))
+            self.log.debug("authGSSServerClean: %s" % (ex[0][0], ex[1][0],))
             raise error.LoginFailed('Authentication System Failure %s(%s)' % (ex[0][0], ex[1][0],))
         
         # If we successfully decoded and verified the Kerberos credentials we need to add the Kerberos

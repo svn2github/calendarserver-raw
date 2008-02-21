@@ -71,6 +71,8 @@ class CalDAVFile (CalDAVResource, DAVFile):
     """
     CalDAV-accessible L{DAVFile} resource.
     """
+    log = logger.getInstance(classid=("CalDAVFile",))
+
     def __repr__(self):
         if self.isCalendarCollection():
             return "<%s (calendar collection): %s>" % (self.__class__.__name__, self.fp.path)
@@ -94,21 +96,21 @@ class CalDAVFile (CalDAVResource, DAVFile):
         #
 
         if self.fp.exists():
-            logger.err("Attempt to create collection where file exists: %s" % (self.fp.path,), id=(self, "http",))
+            self.log.err("Attempt to create collection where file exists: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.NOT_ALLOWED, "File exists"))
 
         if not os.path.isdir(os.path.dirname(self.fp.path)):
-            logger.err("Attempt to create collection with no parent: %s" % (self.fp.path,), id=(self, "http",))
+            self.log.err("Attempt to create collection with no parent: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.CONFLICT, "No parent collection"))
 
         #
         # Verify that no parent collection is a calendar also
         #
-        logger.info("Creating calendar collection %s" % (self,), id=(self, "http",))
+        self.log.info("Creating calendar collection %s" % (self,))
 
         def _defer(parent):
             if parent is not None:
-                logger.err("Cannot create a calendar collection within a calendar collection %s" % (parent,), id=(self, "http",))
+                self.log.err("Cannot create a calendar collection within a calendar collection %s" % (parent,))
                 raise HTTPError(ErrorResponse(
                     responsecode.FORBIDDEN,
                     (caldavxml.caldav_namespace, "calendar-collection-location-ok")
@@ -155,7 +157,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
             try:
                 rmdir(self.fp)
             except Exception, e:
-                logger.err("Unable to clean up after failed MKCOL (special resource type: %s): %s" % (e, resourceType,), id=(self, "http",))
+                self.log.err("Unable to clean up after failed MKCOL (special resource type: %s): %s" % (e, resourceType,))
             return f
 
         d = mkcollection(self.fp)
@@ -392,6 +394,9 @@ class CalDAVFile (CalDAVResource, DAVFile):
     _checkParents = deferredGenerator(_checkParents)
 
 class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
+
+    log = logger.getInstance(classid="AutoProvisioningFileMixIn", id=("Directory",))
+
     def provision(self):
         self.provisionFile()
         return super(AutoProvisioningFileMixIn, self).provision()
@@ -403,7 +408,7 @@ class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
         if fp.exists():
             return False
 
-        logger.info("Provisioning file: %s" % (self,), id=(self, "Directory",))
+        self.log.info("Provisioning file: %s" % (self,))
 
         if hasattr(self, "parent"):
             parent = self.parent
@@ -449,6 +454,8 @@ class CalendarHomeTypeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCale
     Resource which provisions calendar home collections of a specific
     record type as needed.
     """
+    log = logger.getInstance(classid="CalendarHomeTypeProvisioningFile", id=("Directory",))
+
     def __init__(self, path, parent, recordType):
         """
         @param path: the path to the file which will back the resource.
@@ -462,11 +469,11 @@ class CalendarHomeTypeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCale
         record = self.directory.recordWithShortName(self.recordType, name)
 
         if record is None:
-            logger.err("No directory record %r of type %r" % (name, self.recordType), id=(self, "Directory",))
+            self.log.err("No directory record %r of type %r" % (name, self.recordType))
             return None
 
         if not record.enabledForCalendaring:
-            logger.err("Directory record %r of type %r is not enabled for calendaring" % (name, self.recordType), id=(self, "Directory",))
+            self.log.err("Directory record %r of type %r is not enabled for calendaring" % (name, self.recordType))
             return None
 
         child = CalendarHomeFile(self.fp.child(name).path, self, record)

@@ -28,15 +28,57 @@
 		<key>Security</key>
 		<string>warning</string>
 
-		<!-- To track down auto-response issues enable this. -->
+		<!-- Directory provisioning. -->
+		<!--
+		<key>Directory</key>
+		<string>warning</string>
+		-->
+
+		<!-- HTTP method processing. -->
+		<!--
+		<key>http</key>
+		<string>warning</string>
+		-->
+
+		<!-- Writing/indexing calendar data. -->
+		<!--
+		<key>Store Resource</key>
+		<string>warning</string>
+		-->
+
+		<!-- Dropbox support. -->
+		<!--
+		<key>dropbox</key>
+		<string>warning</string>
+		-->
+
+		<!-- iCalendar parsing/handling. -->
+		<!--
+		<key>iCalendar</key>
+		<string>warning</string>
+		-->
+
+		<!-- iTIP auto-processing. -->
 		<!--
 		<key>iTIP</key>
 		<string>info</string>
 		-->
 
-		<!-- To track down iTIP messaging issues enable this. -->
+		<!-- To track down CalDAV scheduling issues enable this. -->
 		<!--
-		<key>CalDAV Outbox POST</key>
+		<key>Outbox</key>
+		<string>info</string>
+		-->
+
+		<!-- Log rotation etc. -->
+		<!--
+		<key>Logging</key>
+		<string>warning</string>
+		-->
+
+		<!-- To track down issues with the databases. -->
+		<!--
+		<key>SQL</key>
 		<string>info</string>
 		-->
 	</dict>
@@ -53,6 +95,10 @@
 	    <key>principals</key>
 	    <array></array>
 	</dict>
+
+	<!-- Whether class names should be displayed in the logs. -->
+	<key>Display Class Names</key>
+	<false/>
 
 </dict>
 </plist>

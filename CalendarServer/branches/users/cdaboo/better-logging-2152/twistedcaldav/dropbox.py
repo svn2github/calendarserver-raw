@@ -55,6 +55,8 @@ class DropBoxCollectionResource (DAVResource):
     """
     Drop box resource.
     """
+    log = logger.getInstance(classid="DropBoxCollectionResource", id=("dropbox",))
+
     def resourceType(self):
         return davxml.ResourceType.dropbox
 
@@ -209,7 +211,7 @@ class DropBoxCollectionResource (DAVResource):
         """
         
         if not self.fp.exists():
-            logger.err("File not found: %s" % (self.fp.path,), id=(self, "dropbox",))
+            self.log.err("File not found: %s" % (self.fp.path,))
             raise HTTPError(responsecode.NOT_FOUND)
 
         # Read request body
@@ -219,7 +221,7 @@ class DropBoxCollectionResource (DAVResource):
             doc = doc.getResult()
         except ValueError, e:
             error = "Must have valid XML request body for POST on a dropbox: %s" % (e,)
-            logger.err(error, id=(self, "dropbox",))
+            self.log.err(error)
             raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, error))
         
         # Determine whether we are subscribing or unsubscribing and handle that
@@ -231,12 +233,12 @@ class DropBoxCollectionResource (DAVResource):
                 action = self.unsubscribe
             else:
                 error = "XML request body for POST on a dropbox must contain a single <subscribe> or <unsubscribe> element"
-                logger.err(error, id=(self, "dropbox",))
+                self.log.err(error)
                 raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, error))
         else:
             # If we get here we got an invalid request
             error = "Must have valid XML request body for POST on a dropbox"
-            logger.err(error, id=(self, "dropbox",))
+            self.log.err(error)
             raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, error))
 
         d = waitForDeferred(action(request))
@@ -260,7 +262,7 @@ class DropBoxCollectionResource (DAVResource):
     
         # Error if attempt to subscribe more than once
         if authid in principals:
-            logger.err("Cannot x_apple_subscribe to resource %s as principal %s is already subscribed" % (request.uri, repr(authid),), id=(self, "dropbox",))
+            self.log.err("Cannot x_apple_subscribe to resource %s as principal %s is already subscribed" % (request.uri, repr(authid),))
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (calendarserver_namespace, "principal-must-not-be-subscribed"))
@@ -289,7 +291,7 @@ class DropBoxCollectionResource (DAVResource):
     
         # Error if attempt to subscribe more than once
         if authid not in principals:
-            logger.err("Cannot x_apple_unsubscribe from resource %s as principal %s is not currently subscribed" % (request.uri, repr(authid),), id=(self, "dropbox",))
+            self.log.err("Cannot x_apple_unsubscribe from resource %s as principal %s is not currently subscribed" % (request.uri, repr(authid),))
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (calendarserver_namespace, "principal-must-be-subscribed"))

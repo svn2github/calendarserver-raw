@@ -52,6 +52,8 @@ import datetime
 import md5
 import time
 
+log = logger.getInstance(classid="report_common", id=("http",))
+
 def applyToCalendarCollections(resource, request, request_uri, depth, apply, privileges):
     """
     Run an operation on all calendar collections, starting at the specified
@@ -271,7 +273,7 @@ def _namedPropertiesForResource(request, props, resource, calendar=None, isowner
     
                 status = statusForFailure(f, "getting property: %s" % (qname,))
                 if status != responsecode.NOT_FOUND:
-                    logger.err("Error reading property %r for resource %s: %s" % (qname, request.uri, f.value), id=("report_common", "http",))
+                    log.err("Error reading property %r for resource %s: %s" % (qname, request.uri, f.value))
                 if status not in properties_by_status: properties_by_status[status] = []
                 properties_by_status[status].append(propertyName(qname))
         else:
@@ -364,7 +366,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
         # between our initial index query and getting here. For now we will ignore this errror, but in
         # the longer term we need to simplement some form of locking, perhaps.
         if calendar is None:
-            logger.err("Calendar %s is missing from calendar collection %r" % (name, calresource), id=("report_common", "http",))
+            log.err("Calendar %s is missing from calendar collection %r" % (name, calresource))
             continue
         
         # Ignore ones of this UID

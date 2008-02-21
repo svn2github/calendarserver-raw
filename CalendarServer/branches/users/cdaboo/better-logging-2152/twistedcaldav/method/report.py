@@ -40,6 +40,8 @@ from twisted.web2.dav.util import davXMLFromStream
 from twistedcaldav import caldavxml
 from twistedcaldav.logger import logger
 
+log = logger.getInstance(classid="report", id=("http",))
+
 max_number_of_matches = 500
 
 class NumberOfMatchesWithinLimits(Exception):
@@ -50,7 +52,7 @@ def http_REPORT(self, request):
     Respond to a REPORT request. (RFC 3253, section 3.6)
     """
     if not self.fp.exists():
-        logger.err("File not found: %s" % (self.fp.path,), id=(self, "http",))
+        log.err("File not found: %s" % (self.fp.path,))
         raise HTTPError(responsecode.NOT_FOUND)
 
     #
@@ -61,7 +63,7 @@ def http_REPORT(self, request):
         yield doc
         doc = doc.getResult()
     except ValueError, e:
-        logger.err("Error while handling REPORT body: %s" % (e,), id=(self, "http",))
+        log.err("Error while handling REPORT body: %s" % (e,))
         raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, str(e)))
 
     if doc is None:
@@ -106,8 +108,10 @@ def http_REPORT(self, request):
         #
         # Requested report is not supported.
         #
-        logger.err("Unsupported REPORT {%s}%s for resource %s (no method %s)"
-                % (namespace, name, self, method_name), id=(self, "http",))
+        log.err(
+            "Unsupported REPORT {%s}%s for resource %s (no method %s)"
+            % (namespace, name, self, method_name)
+        )
 
         raise HTTPError(ErrorResponse(
             responsecode.FORBIDDEN,

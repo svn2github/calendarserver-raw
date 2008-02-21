@@ -27,6 +27,8 @@ from twistedcaldav.logger import logger
 
 from twistedcaldav.util import getNCPU
 
+log = logger.getInstance(classid="cluster", id=("Startup",))
+
 serviceTemplate = """
     <service name="%(name)s">
         %(listeningInterfaces)s
@@ -150,12 +152,15 @@ def makeService_Combined(self, options):
     if config.MultiProcess['ProcessCount'] == 0:
         try:
             config.MultiProcess['ProcessCount'] = getNCPU()
-            logger.info("%d processors found, configuring %d processes." % (
+            log.info(
+                "%d processors found, configuring %d processes." % (
                     config.MultiProcess['ProcessCount'],
-                    config.MultiProcess['ProcessCount']), id="Startup")
+                    config.MultiProcess['ProcessCount']
+                )
+            )
 
         except NotImplementedError, err:
-            logger.warn('Could not autodetect number of CPUs: %s' % (err,), id="Startup")
+            log.warn('Could not autodetect number of CPUs: %s' % (err,))
             config.MultiProcess['ProcessCount'] = 1
 
     if config.MultiProcess['ProcessCount'] > 1:
@@ -272,7 +277,7 @@ def makeService_Combined(self, options):
         os.write(fd, pdconfig)
         os.close(fd)
 
-        logger.info("Adding pydirector service with configuration: %s" % (fname,), id="Startup")
+        log.info("Adding pydirector service with configuration: %s" % (fname,))
 
         monitor.addProcess('pydir', [sys.executable,
                                      config.PythonDirector['pydir'],
@@ -293,7 +298,7 @@ def makeService_Master(self, options):
 
     parentEnv = {'PYTHONPATH': os.environ.get('PYTHONPATH', ''),}
 
-    logger.info("Adding pydirector service with configuration: %s" % (config.PythonDirector['ConfigFile'],), id="Startup")
+    log.info("Adding pydirector service with configuration: %s" % (config.PythonDirector['ConfigFile'],))
 
     service.addProcess('pydir', [sys.executable,
                                  config.PythonDirector['pydir'],

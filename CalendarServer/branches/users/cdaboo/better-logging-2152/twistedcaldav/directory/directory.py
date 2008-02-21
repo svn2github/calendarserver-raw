@@ -52,6 +52,8 @@ class DirectoryService(object):
     recordType_locations = "locations"
     recordType_resources = "resources"
     
+    log = logger.getInstance(classid="DirectoryService", id=("Directory",))
+
     def _generatedGUID(self):
         if not hasattr(self, "_guid"):
             realmName = self.realmName
@@ -59,10 +61,10 @@ class DirectoryService(object):
             assert self.baseGUID, "Class %s must provide a baseGUID attribute" % (self.__class__.__name__,)
 
             if realmName is None:
-                logger.warn("Directory service %s has no realm name or GUID; generated service GUID will not be unique." % (self,), id=(self, "Directory",))
+                self.log.warn("Directory service %s has no realm name or GUID; generated service GUID will not be unique." % (self,))
                 realmName = ""
             else:
-                logger.warn("Directory service %s has no GUID; generating service GUID from realm name." % (self,), id=(self, "Directory",))
+                self.log.warn("Directory service %s has no GUID; generating service GUID from realm name." % (self,))
 
             self._guid = uuidFromName(self.baseGUID, realmName)
 

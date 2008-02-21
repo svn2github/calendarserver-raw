@@ -33,6 +33,8 @@ class RootResource(DAVFile):
     as well as adding responseFilters.
     """
 
+    log = logger.getInstance(classid=("RootResource",))
+
     useSacls = False
     saclService = 'calendar'
 
@@ -43,9 +45,9 @@ class RootResource(DAVFile):
             if RootResource.CheckSACL:
                 self.useSacls = True
             else:
-                logger.warn(("RootResource.CheckSACL is unset but "
+                self.log.warn(("RootResource.CheckSACL is unset but "
                          "config.EnableSACLs is True, SACLs will not be "
-                         "turned on."), id=[self, "Startup", "Security",])
+                         "turned on."), id=("Startup", "Security",))
 
         self.contentFilters = []
 
@@ -63,7 +65,7 @@ class RootResource(DAVFile):
             # SACLs are authorization for the use of the service,
             # so unauthenticated access doesn't make any sense.
             if authzUser == davxml.Principal(davxml.Unauthenticated()):
-                logger.warn("Unauthenticated users not enabled with the '%s' SACL" % (self.saclService,), id=["self", "Security",])
+                self.log.warn("Unauthenticated users not enabled with the '%s' SACL" % (self.saclService,), id=("Security",))
                 return Failure(HTTPError(UnauthorizedResponse(
                             request.credentialFactories,
                             request.remoteAddr)))
@@ -92,7 +94,7 @@ class RootResource(DAVFile):
                 username = principal.record.shortName
                 
                 if RootResource.CheckSACL(username, self.saclService) != 0:
-                    logger.warn("User '%s' is not enabled with the '%s' SACL" % (username, self.saclService,), id=[self, "Security",])
+                    self.log.warn("User '%s' is not enabled with the '%s' SACL" % (username, self.saclService,), id=("Security",))
                     return Failure(HTTPError(403))
     
                 # Mark SACL's as having been checked so we can avoid doing it multiple times

@@ -65,6 +65,8 @@ class LoggerOptions(object):
         
         self.accounting = {}
         
+        self.displayClassNames = False
+        
     def read(self, fname=None):
         
         if not fname:
@@ -90,6 +92,8 @@ class LoggerOptions(object):
             self.systemLogLevels = newLogLevels
             
             self.accounting = options.get("Accounting", {"Enabled":False,})
+            
+            self.displayClassNames = options.get("Display Class Names", False,)
 
 class Logger(object):
     #
@@ -216,17 +220,47 @@ class Logger(object):
     def accounting(self):
         return self.options.accounting
 
+    class InstanceLogger(object):
+        
+        def __init__(self, classid, id):
+            self.classid = classid
+            self.id = id
+            
+        def info(self, message, **kwargs):
+            self._mergeIds(kwargs)
+            logger.info(message, **kwargs)
+
+        def warn(self, message, **kwargs):
+            self._mergeIds(kwargs)
+            logger.warn(message, **kwargs)
+
+        def err(self, message, **kwargs):
+            self._mergeIds(kwargs)
+            logger.err(message, **kwargs)
+
+        def debug(self, message, **kwargs):
+            self._mergeIds(kwargs)
+            logger.debug(message, **kwargs)
+
+        def _mergeIds(self, kwargs):
+            id = kwargs.get("id", ())
+            if type(id) not in (types.TupleType, types.ListType,):
+                id = (id,)
+            if logger.options.displayClassNames:
+                kwargs["id"] = (self.classid,) + self.id + id
+            else:
+                kwargs["id"] = self.id + id
+
+    @staticmethod
+    def getInstance(classid, id=()):
+        return Logger.InstanceLogger(classid, id)
+
 # Create the global instance of the logger
 logger = Logger()
 
 """
-Classes and functions for user accounting.
-
 Allows different sub-systems to log data on a per-user basis.
-
 Right now only iTIP logging is supported.
-
-See logger.py for more details.
 """
 
 class Accounting(object):

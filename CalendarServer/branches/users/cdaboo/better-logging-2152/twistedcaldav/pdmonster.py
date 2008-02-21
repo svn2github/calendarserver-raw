@@ -7,6 +7,9 @@ from twisted.web2.resource import WrapperResource
 from twistedcaldav.logger import logger
 
 class PDClientAddressWrapper(WrapperResource):
+
+    log = logger.getInstance(classid=("PDClientAddressWrapper",))
+
     def __init__(self, resource, socket, directory):
         super(PDClientAddressWrapper, self).__init__(resource)
 
@@ -31,10 +34,10 @@ class PDClientAddressWrapper(WrapperResource):
             result.trap(amp.RemoteAmpError)
             if result.value.errorCode != 'UNKNOWN_PORT':
                 return result
-            logger.err('Unknown Port: %s' % (request.remoteAddr,), id=self)
+            self.log.err('Unknown Port: %s' % (request.remoteAddr,))
 
         def _gotAddress(result):
-            logger.debug('result = %r' % (result,), id=self)
+            self.log.debug('result = %r' % (result,))
             request.remoteAddr = address.IPv4Address(
                 'TCP',
                 result['host'],
@@ -46,7 +49,7 @@ class PDClientAddressWrapper(WrapperResource):
                 return
 
             host, port = request.remoteAddr.host, request.remoteAddr.port
-            logger.debug("GetClientAddress(host=%r, port=%r)" % (host, port), id=self)
+            self.log.debug("GetClientAddress(host=%r, port=%r)" % (host, port))
             d = self.protocol.callRemoteString("GetClientAddress",
                                                   host=host,
                                                   port=str(port))

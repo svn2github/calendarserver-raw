@@ -33,13 +33,15 @@ from twistedcaldav import caldavxml
 from twistedcaldav.logger import logger
 from twistedcaldav.method import report_common
 
+log = logger.getInstance(classid="report_freebusy", id=("http",))
+
 def report_urn_ietf_params_xml_ns_caldav_free_busy_query(self, request, freebusy): #@UnusedVariable
     """
     Generate a free-busy REPORT.
     (CalDAV-access-09, section 7.8)
     """
     if not self.isCollection():
-        logger.err("freebusy report is only allowed on collection resources %s" % (self,), id=("report_freebusy", "http",))
+        log.err("freebusy report is only allowed on collection resources %s" % (self,))
         raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Not a calendar collection"))
 
     if freebusy.qname() != (caldavxml.caldav_namespace, "free-busy-query"):
@@ -73,7 +75,7 @@ def report_urn_ietf_params_xml_ns_caldav_free_busy_query(self, request, freebusy
         yield d
         d.getResult()
     except NumberOfMatchesWithinLimits:
-        logger.err("Too many matching components in free-busy report", id=("report_freebusy", "http",))
+        log.err("Too many matching components in free-busy report")
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "number-of-matches-within-limits")))
     
     # Now build a new calendar object with the free busy info we have

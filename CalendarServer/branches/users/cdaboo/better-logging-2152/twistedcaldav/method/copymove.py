@@ -35,6 +35,9 @@ from twistedcaldav.logger import logger
 from twistedcaldav.method.put_common import storeCalendarObjectResource
 from twistedcaldav.resource import isCalendarCollectionResource
 
+log = logger.getInstance(classid="copymove", id=("http",))
+
+
 def http_COPY(self, request):
     """
     Special handling of COPY request if parents are calendar collections.
@@ -76,8 +79,8 @@ def http_COPY(self, request):
     # Check for existing destination resource
     overwrite = request.headers.getHeader("overwrite", True)
     if destination.exists() and not overwrite:
-        logger.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
-                % (destination.fp.path,), id=(self, "http",))
+        log.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
+                % (destination.fp.path,))
         raise HTTPError(StatusResponse(
             responsecode.PRECONDITION_FAILED,
             "Destination %s already exists." % (destination_uri,))
@@ -85,12 +88,12 @@ def http_COPY(self, request):
 
     # Checks for copying a calendar collection
     if self.isCalendarCollection():
-        logger.err("Attempt to copy a calendar collection into another calendar collection %s" % destination, id=(self, "http",))
+        log.err("Attempt to copy a calendar collection into another calendar collection %s" % destination)
         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "calendar-collection-location-ok")))
 
     # We also do not allow regular collections in calendar collections
     if self.isCollection():
-        logger.err("Attempt to copy a collection into a calendar collection", id=(self, "http",))
+        log.err("Attempt to copy a collection into a calendar collection")
         raise HTTPError(StatusResponse(
             responsecode.FORBIDDEN,
             "Cannot create collection within special collection %s" % (destination,))
@@ -159,8 +162,8 @@ def http_MOVE(self, request):
     # Check for existing destination resource
     overwrite = request.headers.getHeader("overwrite", True)
     if destination.exists() and not overwrite:
-        logger.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
-                % (destination.fp.path,), id=(self, "http",))
+        log.err("Attempt to copy onto existing file without overwrite flag enabled: %s"
+                % (destination.fp.path,))
         raise HTTPError(StatusResponse(
             responsecode.PRECONDITION_FAILED,
             "Destination %s already exists." % (destination_uri,)
@@ -169,12 +172,12 @@ def http_MOVE(self, request):
     if destinationcal:
         # Checks for copying a calendar collection
         if self.isCalendarCollection():
-            logger.err("Attempt to move a calendar collection into another calendar collection %s" % destination, id=(self, "http",))
+            log.err("Attempt to move a calendar collection into another calendar collection %s" % destination)
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "calendar-collection-location-ok")))
     
         # We also do not allow regular collections in calendar collections
         if self.isCollection():
-            logger.err("Attempt to move a collection into a calendar collection", id=(self, "http",))
+            log.err("Attempt to move a collection into a calendar collection")
             raise HTTPError(StatusResponse(
                 responsecode.FORBIDDEN,
                 "Cannot create collection within special collection %s" % (destination,)
@@ -226,7 +229,7 @@ def checkForCalendarAction(self, request):
     
     # Check the source path first
     if not self.fp.exists():
-        logger.err("File not found: %s" % (self.fp.path,), id=(self, "http",))
+        log.err("File not found: %s" % (self.fp.path,))
         raise HTTPError(StatusResponse(
             responsecode.NOT_FOUND,
             "Source resource %s not found." % (request.uri,)
@@ -247,7 +250,7 @@ def checkForCalendarAction(self, request):
 
     if not destination_uri:
         msg = "No destination header in %s request." % (request.method,)
-        logger.err(msg, id=(self, "http",))
+        log.err(msg)
         raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, msg))
     
     destination = waitForDeferred(request.locateResource(destination_uri))

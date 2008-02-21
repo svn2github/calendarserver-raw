@@ -87,6 +87,8 @@ class AbstractCalendarIndex(AbstractSQLDatabase):
     regular calendar collections, one for schedule calendar collections.
     """
 
+    log = logger.getInstance(classid=("AbstractCalendarIndex",))
+
     def __init__(self, resource):
         """
         @param resource: the L{twistedcaldav.static.CalDAVFile} resource to
@@ -158,7 +160,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase):
             name_utf8 = name.encode("utf-8")
             if name is not None and self.resource.getChild(name_utf8) is None:
                 # Clean up
-                logger.err("Stale resource record found for child %s with UID %s in %s" % (name, uid, self.resource), id=self)
+                self.log.err("Stale resource record found for child %s with UID %s in %s" % (name, uid, self.resource))
                 self._delete_from_db(name, uid)
                 self._db_commit()
             else:
@@ -279,8 +281,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase):
             if self.resource.getChild(name.encode("utf-8")):
                 yield row
             else:
-                logger.err("Calendar resource %s is missing from %s. Removing from index."
-                        % (name, self.resource), id=self)
+                self.log.err("Calendar resource %s is missing from %s. Removing from index." % (name, self.resource))
                 self.deleteResource(name)
 
     def _db_version(self):
@@ -439,6 +440,8 @@ class Index (CalendarIndex):
     Calendar collection index - regular collection that enforces CalDAV UID uniqueness requirement.
     """
     
+    log = logger.getInstance(classid=("Index",))
+
     def __init__(self, resource):
         """
         @param resource: the L{twistedcaldav.static.CalDAVFile} resource to
@@ -470,7 +473,7 @@ class Index (CalendarIndex):
                 % (uid, self.resource)
             )
         except sqlite.Error, e:
-            logger.err("Unable to reserve UID: %s", (e,), id=self)
+            self.log.err("Unable to reserve UID: %s", (e,))
             self._db_rollback()
             raise
     
@@ -491,7 +494,7 @@ class Index (CalendarIndex):
             self._db_execute("delete from RESERVED where UID = :1", uid)
             self._db_commit()
         except sqlite.Error, e:
-            logger.err("Unable to unreserve UID: %s", (e,), id=self)
+            self.log.err("Unable to unreserve UID: %s", (e,))
             self._db_rollback()
             raise
     
@@ -513,7 +516,7 @@ class Index (CalendarIndex):
                     self._db_execute("delete from RESERVED where UID = :1", uid)
                     self._db_commit()
                 except sqlite.Error, e:
-                    logger.err("Unable to unreserve UID: %s", (e,), id=self)
+                    self.log.err("Unable to unreserve UID: %s", (e,))
                     self._db_rollback()
                     raise
                 return False
@@ -569,7 +572,7 @@ class Index (CalendarIndex):
             try:
                 stream = fp.child(name).open()
             except (IOError, OSError), e:
-                logger.err("Unable to open resource %s: %s" % (name, e), id=self)
+                self.log.err("Unable to open resource %s: %s" % (name, e))
                 continue
 
             try:
@@ -578,9 +581,9 @@ class Index (CalendarIndex):
                     calendar = Component.fromStream(stream)
                     calendar.validateForCalDAV()
                 except ValueError:
-                    logger.err("Non-calendar resource: %s" % (name,), id=self)
+                    self.log.err("Non-calendar resource: %s" % (name,))
                 else:
-                    logger.debug("Indexing resource: %s" % (name,), id=self)
+                    self.log.debug("Indexing resource: %s" % (name,))
                     self.addResource(name, calendar, True)
             finally:
                 stream.close()
@@ -592,6 +595,8 @@ class IndexSchedule (CalendarIndex):
     """
     Schedule collection index - does not require UID uniqueness.
     """
+    log = logger.getInstance(classid=("IndexSchedule",))
+
     def __init__(self, resource):
         """
         @param resource: the L{twistedcaldav.static.CalDAVFile} resource to
@@ -680,7 +685,7 @@ class IndexSchedule (CalendarIndex):
             try:
                 stream = fp.child(name).open()
             except (IOError, OSError), e:
-                logger.err("Unable to open resource %s: %s" % (name, e), id=self)
+                self.log.err("Unable to open resource %s: %s" % (name, e))
                 continue
 
             try:
@@ -690,9 +695,9 @@ class IndexSchedule (CalendarIndex):
                     calendar.validCalendarForCalDAV()
                     calendar.validateComponentsForCalDAV(True)
                 except ValueError:
-                    logger.err("Non-calendar resource: %s" % (name,), id=self)
+                    self.log.err("Non-calendar resource: %s" % (name,))
                 else:
-                    logger.debug("Indexing resource: %s" % (name,), id=self)
+                    self.log.debug("Indexing resource: %s" % (name,))
                     self.addResource(name, calendar)
             finally:
                 stream.close()

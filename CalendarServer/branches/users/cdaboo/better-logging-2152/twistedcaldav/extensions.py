@@ -55,6 +55,8 @@ class SudoSACLMixin(object):
     Mixin class to let DAVResource, and DAVFile subclasses below know
     about sudoer principals and how to find their AuthID
     """
+    log = logger.getInstance(classid="SudoSACLMixin", id=("Security",))
+
     def authenticate(self, request):
         # Bypass normal authentication if its already been done (by SACL check)
         if (hasattr(request, "authnUser") and
@@ -116,7 +118,7 @@ class SudoSACLMixin(object):
         if isSudoPrincipal(authid):
             if authz:
                 if isSudoPrincipal(authz):
-                    logger.err("Cannot proxy as another proxy: user '%s' as user '%s'" % (authid, authz), id=(self, "Security",))
+                    self.log.err("Cannot proxy as another proxy: user '%s' as user '%s'" % (authid, authz))
                     raise HTTPError(responsecode.FORBIDDEN)
                 else:
                     authzPrincipal = getPrincipalForType(
@@ -126,17 +128,17 @@ class SudoSACLMixin(object):
                         authzPrincipal = self.findPrincipalForAuthID(authz)
 
                     if authzPrincipal is not None:
-                        logger.info("Allow proxy: user '%s' as '%s'" % (authid, authz,), id=(self, "Security",))
+                        self.log.info("Allow proxy: user '%s' as '%s'" % (authid, authz,))
                         yield authzPrincipal
                         return
                     else:
-                        logger.err("Could not find authorization user id: '%s'" % (authz,), id=(self, "Security",))
+                        self.log.err("Could not find authorization user id: '%s'" % (authz,))
                         raise HTTPError(responsecode.FORBIDDEN)
             else:
-                logger.err("Cannot authenticate proxy user '%s' without X-Authorize-As header" % (authid, ), id=(self, "Security",))
+                self.log.err("Cannot authenticate proxy user '%s' without X-Authorize-As header" % (authid, ))
                 raise HTTPError(responsecode.BAD_REQUEST)
         elif authz:
-            logger.err("Cannot proxy: user '%s' as '%s'" % (authid, authz,), id=(self, "Security",))
+            self.log.err("Cannot proxy: user '%s' as '%s'" % (authid, authz,))
             raise HTTPError(responsecode.FORBIDDEN)
         else:
             # No proxy - do default behavior
@@ -346,6 +348,8 @@ class DAVFile (SudoSACLMixin, SuperDAVFile):
     """
     Extended L{twisted.web2.dav.static.DAVFile} implementation.
     """
+    log = logger.getInstance(classid=("DAVFile",))
+
     def readProperty(self, property, request):
         if type(property) is tuple:
             qname = property
@@ -518,12 +522,12 @@ class DAVFile (SudoSACLMixin, SuperDAVFile):
                         value = property.toxml()
                 except HTTPError, e:
                     if e.response.code == responsecode.NOT_FOUND:
-                        logger.err("Property {%s}%s was returned by listProperties() but does not exist for resource %s."
-                                % (qname[0], qname[1], self), id=(self, "http",))
+                        self.log.err("Property {%s}%s was returned by listProperties() but does not exist for resource %s."
+                                % (qname[0], qname[1], self))
                         continue
 
                     if e.response.code != responsecode.UNAUTHORIZED:
-                        logger.err("Unable to read property %s for dirlist: %s" % (qname, e), id=(self, "http",))
+                        self.log.err("Unable to read property %s for dirlist: %s" % (qname, e))
                         raise
 
                     name = "{%s}%s" % qname

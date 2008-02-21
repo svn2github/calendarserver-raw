@@ -161,6 +161,8 @@ class Component (object):
     X{iCalendar} component.
     """
 
+    log = logger.getInstance(classid="Component", id=("iCalendar",))
+
     # Private Event access levels.
     ACCESS_PROPERTY     = "X-CALENDARSERVER-ACCESS"
     ACCESS_PUBLIC       = "PUBLIC"
@@ -891,8 +893,8 @@ class Component (object):
         for timezone in timezones:
             if timezone not in timezone_refs:
                 #raise ValueError(
-                logger.warn(
-                    "Timezone %s is not referenced by any non-timezone component" % (timezone,), id=(self, "iCalendar",)
+                self.log.warn(
+                    "Timezone %s is not referenced by any non-timezone component" % (timezone,)
                 )
 
     def transformAllFromNative(self):

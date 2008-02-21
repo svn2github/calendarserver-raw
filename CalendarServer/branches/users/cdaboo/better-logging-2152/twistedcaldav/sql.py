@@ -38,6 +38,8 @@ class AbstractSQLDatabase(object):
     A generic SQL database.
     """
 
+    log = logger.getInstance(classid="AbstractSQLDatabase", id=("SQL",))
+
     def __init__(self, dbpath, autocommit=False):
         """
         
@@ -74,7 +76,7 @@ class AbstractSQLDatabase(object):
                 else:
                     self._db_connection = sqlite.connect(db_filename)
             except:
-                logger.err("Unable to open database: %s" % (db_filename,), id=self)
+                self.log.err("Unable to open database: %s" % (db_filename,))
                 raise
 
             #
@@ -105,11 +107,11 @@ class AbstractSQLDatabase(object):
 
                     if (version != self._db_version()) or (type != self._db_type()):
                         if version != self._db_version():
-                            logger.err("Database %s has different schema (v.%s vs. v.%s)"
-                                       % (db_filename, version, self._db_version()), id=self)
+                            self.log.err("Database %s has different schema (v.%s vs. v.%s)"
+                                       % (db_filename, version, self._db_version()))
                         if type != self._db_type():
-                            logger.err("Database %s has different type (%s vs. %s)"
-                                    % (db_filename, type, self._db_type()), id=self)
+                            self.log.err("Database %s has different type (%s vs. %s)"
+                                    % (db_filename, type, self._db_type()))
 
                         # Delete this index and start over
                         q.close()
@@ -140,7 +142,7 @@ class AbstractSQLDatabase(object):
         @param db_filename: the file name of the index database.
         @param q:           a database cursor to use.
         """
-        logger.info("Initializing database %s" % (db_filename,), id=self)
+        self.log.info("Initializing database %s" % (db_filename,))
 
         # We need an exclusive lock here as we are making a big change to the database and we don't
         # want other processes to get stomped on or stomp on us.
@@ -247,7 +249,7 @@ class AbstractSQLDatabase(object):
             try:
                 q.execute(sql, query_params)
             except:
-                logger.err("Exception while executing SQL: %r %r" % (sql, query_params), id=self)
+                self.log.err("Exception while executing SQL: %r %r" % (sql, query_params))
                 raise
             return q.fetchall()
         finally:
