@@ -23,7 +23,6 @@ See draft spec: http://ietf.webdav.org/caldav/draft-dusseault-caldav.txt
 from twisted.web2.static import File, loadMimeTypes
 
 __all__ = [
-    "accounting",
     "authkerb",
     "caldavxml",
     "customxml",

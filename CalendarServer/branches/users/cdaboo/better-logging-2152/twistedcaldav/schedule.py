@@ -36,8 +36,7 @@ from twisted.web2.dav.util import joinURL
 
 from twistedcaldav import caldavxml
 from twistedcaldav import itip
-from twistedcaldav.accounting import Accounting
-from twistedcaldav.logger import logger
+from twistedcaldav.logger import logger, Accounting
 from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.caldavxml import caldav_namespace, TimeRange
 from twistedcaldav.config import config

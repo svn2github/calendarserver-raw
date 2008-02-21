@@ -19,8 +19,7 @@ from twisted.trial import unittest
 from twistedcaldav.config import config, defaultConfig
 from twistedcaldav.directory.directory import DirectoryRecord
 from twistedcaldav.directory.directory import DirectoryService
-from twistedcaldav.accounting import Accounting
-from twistedcaldav.logger import logger
+from twistedcaldav.logger import logger, Accounting
 import os
 
 testConfig = """<?xml version="1.0" encoding="UTF-8"?>
