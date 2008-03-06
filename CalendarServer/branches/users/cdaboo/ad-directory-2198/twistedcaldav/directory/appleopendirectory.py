@@ -25,7 +25,6 @@ __all__ = [
 
 import itertools
 import sys
-import os
 
 import opendirectory
 import dsattributes
@@ -41,10 +40,7 @@ from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 from twistedcaldav.directory.directory import DirectoryError, UnknownRecordTypeError
 
-from plistlib import readPlistFromString, readPlist
-
-serverPreferences = '/Library/Preferences/com.apple.servermgr_info.plist'
-saclGroup = 'com.apple.access_calendar'
+from plistlib import readPlistFromString
 
 recordListCacheTimeout = 60 * 30 # 30 minutes
 
@@ -81,8 +77,6 @@ class OpenDirectoryService(DirectoryService):
         self._records = {}
         self._delayedCalls = set()
 
-        self.isWorkgroupServer = False
-
         if dosetup:
             if self.requireComputerRecord:
                 try:
@@ -91,64 +85,8 @@ class OpenDirectoryService(DirectoryService):
                     logging.err("Unable to locate virtual host record: %s" % (e,), system="OpenDirectoryService")
                     raise
 
-                if os.path.exists(serverPreferences):
-                    serverInfo = readPlist(serverPreferences)
-
-                    self.isWorkgroupServer = serverInfo.get('ServiceConfig', {}).get('IsWorkgroupServer', False)
-
-                    if self.isWorkgroupServer:
-                        logging.info("Enabling Workgroup Server compatibility mode", system="OpenDirectoryService")
-
             for recordType in self.recordTypes():
                 self.recordsForType(recordType)
-
-    def _expandGroupMembership(self, members, nestedGroups, processedGUIDs=None):
-
-        if processedGUIDs is None:
-            processedGUIDs = set()
-
-        if isinstance(members, str):
-            members = [members]
-
-        if isinstance(nestedGroups, str):
-            nestedGroups = [nestedGroups]
-
-        for memberGUID in members:
-            if memberGUID not in processedGUIDs:
-                processedGUIDs.add(memberGUID)
-                yield memberGUID
-
-        for groupGUID in nestedGroups:
-            if groupGUID in processedGUIDs:
-                continue
-
-            result = opendirectory.queryRecordsWithAttribute_list(
-                self.directory,
-                dsattributes.kDS1AttrGeneratedUID,
-                groupGUID,
-                dsattributes.eDSExact,
-                False,
-                dsattributes.kDSStdRecordTypeGroups,
-                [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups]
-            )
-
-            if not result:
-                logging.err(
-                    "Couldn't find group %s when trying to expand nested groups."
-                    % (groupGUID,), system="OpenDirectoryService"
-                )
-                continue
-
-            group = result[0][1]
-
-            processedGUIDs.add(groupGUID)
-
-            for GUID in self._expandGroupMembership(
-                group.get(dsattributes.kDSNAttrGroupMembers, []),
-                group.get(dsattributes.kDSNAttrNestedGroups, []),
-                processedGUIDs
-            ):
-                yield GUID
 
     def __cmp__(self, other):
         if not isinstance(other, DirectoryRecord):
@@ -645,43 +583,11 @@ class OpenDirectoryService(DirectoryService):
             raise UnknownRecordTypeError("Unknown Open Directory record type: %s" % (recordType))
 
         if self.requireComputerRecord:
-            if self.isWorkgroupServer and recordType == DirectoryService.recordType_users:
-                if shortName is None and guid is None:
-                    results = opendirectory.queryRecordsWithAttribute_list(
-                        self.directory,
-                        dsattributes.kDSNAttrRecordName,
-                        saclGroup,
-                        dsattributes.eDSExact,
-                        False,
-                        dsattributes.kDSStdRecordTypeGroups,
-                        [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups]
-                    )
-
-                    if len(results) == 1:
-                        members      = results[0][1].get(dsattributes.kDSNAttrGroupMembers, [])
-                        nestedGroups = results[0][1].get(dsattributes.kDSNAttrNestedGroups, [])
-                    else:
-                        members = []
-                        nestedGroups = []
-
-                    guidQueries = []
-
-                    for GUID in self._expandGroupMembership(members, nestedGroups):
-                        guidQueries.append(
-                            dsquery.match(dsattributes.kDS1AttrGeneratedUID, GUID, dsattributes.eDSExact)
-                        )
-
-                    if not guidQueries:
-                        logging.warn("No SACL enabled users found.", system="OpenDirectoryService")
-                        return ()
-
-                    query = dsquery.expression(dsquery.expression.OR, guidQueries)
-
             #
             # For users and groups, we'll load all entries, even if
             # they don't have a services locator for this server.
             #
-            elif (
+            if (
                 recordType != DirectoryService.recordType_users and
                 recordType != DirectoryService.recordType_groups
             ):
