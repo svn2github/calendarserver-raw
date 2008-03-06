@@ -483,13 +483,14 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
         childPath = self.fp.child(name)
         child = CalendarHomeFile(childPath.path, self, record)
         if not child.exists():
-            #
-            # Find out if the child exists at the old (pre-1.2)
-            # location (ie. in the types hierarchy instead of the GUID
-            # hierarchy).
-            #
+            self.provision()
+
             oldPath = self.parent.getChild(record.recordType).fp.child(record.shortName)
             if oldPath.exists():
+                #
+                # The child exists at the old (pre-1.2) location (ie. in the types
+                # hierarchy instead of the GUID hierarchy).  Move to new location.
+                #
                 log.msg("Moving calendar home from old location %r to new location %r." % (oldPath, childPath))
                 try:
                     oldPath.moveTo(childPath)
@@ -500,10 +501,12 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
                         "Unable to move calendar home."
                     ))
             else:
+                #
                 # NOTE: provisionDefaultCalendars() returns a deferred, which we are ignoring.
                 # The result being that the default calendars will be present at some point
                 # in the future, not necessarily right now, and we don't have a way to wait
                 # on that to finish.
+                #
                 child.provisionDefaultCalendars()
         return child
 
