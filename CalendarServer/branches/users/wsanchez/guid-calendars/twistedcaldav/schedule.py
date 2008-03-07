@@ -279,8 +279,14 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
     
         # Verify that the ORGANIZER's cu address maps to the request.uri
         organizer = calendar.getOrganizer()
-        if organizer is not None:
+        if organizer is None:
+            organizerPrincipal = None
+        else:
             organizerPrincipal = self.principalForCalendarUserAddress(organizer)
+
+        if organizerPrincipal is None:
+            logging.err("ORGANIZER in calendar data is not valid: %s" % (calendar,), system="CalDAV Outbox POST")
+            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "organizer-allowed")))
 
         # Prevent spoofing of ORGANIZER with specific METHODs
         if (
