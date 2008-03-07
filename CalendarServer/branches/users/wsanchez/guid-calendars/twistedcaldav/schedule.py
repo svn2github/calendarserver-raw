@@ -278,18 +278,15 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (calendarserver_namespace, "no-access-restrictions")))
     
         # Verify that the ORGANIZER's cu address maps to the request.uri
-        outboxURL = None
         organizer = calendar.getOrganizer()
         if organizer is not None:
             organizerPrincipal = self.principalForCalendarUserAddress(organizer)
-            if organizerPrincipal is not None:
-                outboxURL = organizerPrincipal.scheduleOutboxURL()
-        if outboxURL is None:
-            logging.err("ORGANIZER in calendar data is not valid: %s" % (calendar,), system="CalDAV Outbox POST")
-            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "organizer-allowed")))
 
         # Prevent spoofing of ORGANIZER with specific METHODs
-        if (calendar.propertyValue("METHOD") in ("PUBLISH", "REQUEST", "ADD", "CANCEL", "DECLINECOUNTER")) and (outboxURL != request.uri):
+        if (
+            calendar.propertyValue("METHOD") in ("PUBLISH", "REQUEST", "ADD", "CANCEL", "DECLINECOUNTER") and
+            organizerPrincipal.record != self.parent.record
+        ):
             logging.err("ORGANIZER in calendar data does not match owner of Outbox: %s" % (calendar,), system="CalDAV Outbox POST")
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "organizer-allowed")))
 
@@ -305,11 +302,8 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
             
             # Attendee's Outbox MUST be the request URI
-            attendeeOutboxURL = None
             attendeePrincipal = self.principalForCalendarUserAddress(attendees[0])
-            if attendeePrincipal is not None:
-                attendeeOutboxURL = attendeePrincipal.scheduleOutboxURL()
-            if attendeeOutboxURL is None or attendeeOutboxURL != request.uri:
+            if attendeePrincipal is None or attendeePrincipal.record != self.parent.record:
                 logging.err("ATTENDEE in calendar data does not match owner of Outbox: %s" % (calendar,), system="CalDAV Outbox POST")
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
 
