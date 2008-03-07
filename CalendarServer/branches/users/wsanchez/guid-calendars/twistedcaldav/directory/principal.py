@@ -60,6 +60,10 @@ class PermissionsMixIn (ReadOnlyResourceMixIn):
     def defaultAccessControlList(self):
         return authReadACL
 
+    def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
+        # Permissions here are fixed, and are not subject to inherritance rules, etc.
+        return succeed(self.defaultAccessControlList())
+
 class DirectoryProvisioningResource (
     AutoProvisioningFileMixIn,
     PermissionsMixIn,
