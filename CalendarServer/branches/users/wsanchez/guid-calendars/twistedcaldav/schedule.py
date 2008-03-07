@@ -341,10 +341,6 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
         # Prepare for multiple responses
         responses = ScheduleResponseQueue("POST", responsecode.OK)
     
-        # Extract the ORGANIZER property and UID value from the calendar data for use later
-        organizerProp = calendar.getOrganizerProperty()
-        uid = calendar.resourceUID()
-
         # Loop over each recipient and do appropriate action.
         autoresponses = []
         for recipient in recipients:
@@ -443,7 +439,14 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
                             matchtotal = matchtotal.getResult()
                     
                         # Build VFREEBUSY iTIP reply for this recipient
-                        fbresult = report_common.buildFreeBusyResult(fbinfo, timeRange, organizer=organizerProp, attendee=attendeeProp, uid=uid, method="REPLY")
+                        fbresult = report_common.buildFreeBusyResult(
+                            fbinfo,
+                            timeRange,
+                            organizer = calendar.getOrganizerProperty(),
+                            attendee = attendeeProp,
+                            uid = calendar.resourceUID(),
+                            method="REPLY"
+                        )
 
                         responses.add(recipient, responsecode.OK, reqstatus="2.0;Success", calendar=fbresult)
                         recipientsState["OK"] += 1
