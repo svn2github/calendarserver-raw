@@ -103,7 +103,19 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         d = self._checkPrivileges(None, homeResource, davxml.HRef("/principals/__uids__/" + oldUID + "/"), davxml.Write, True)
         d.addCallback(privs1)
         return d
-        
+
+    #
+    # This test fails because /calendars/users/cdaboo/ actually is a
+    # different resource (ie. the /calendars/__uids__/... URL would be
+    # different) when the GUID for cdaboo changes.
+    #
+    # The test needs to create a fixed resource with access granted to
+    # the old cdaboo; calendar homes no longer do this.
+    #
+    # Using the __uids__ URL won't work either because the old URL
+    # goes away with the old account.
+    #
+    test_guidchange.todo = "Test no longer works."
 
     def _checkPrivileges(self, resource, url, principal, privilege, allowed):
         request = SimpleRequest(self.site, "GET", "/")
