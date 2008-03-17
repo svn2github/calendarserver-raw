@@ -1,8 +1,8 @@
 Index: twisted/web2/dav/element/base.py
 ===================================================================
---- twisted/web2/dav/element/base.py	(revision 19773)
+--- twisted/web2/dav/element/base.py	(revision 22891)
 +++ twisted/web2/dav/element/base.py	(working copy)
-@@ -45,7 +45,7 @@
+@@ -46,7 +46,7 @@
  ]
  
  import string
@@ -11,7 +11,7 @@ Index: twisted/web2/dav/element/base.py
  import xml.dom.minidom
  
  import datetime
-@@ -90,6 +90,35 @@
+@@ -91,6 +91,35 @@
              raise NotImplementedError("WebDAVElement subclass %s is not implemented."
                                        % (self.__class__.__name__,))
  
@@ -47,7 +47,7 @@ Index: twisted/web2/dav/element/base.py
          #
          # Validate that children are of acceptable types
          #
-@@ -102,13 +131,10 @@
+@@ -103,13 +132,10 @@
          my_children = []
  
          for child in children:
@@ -63,36 +63,35 @@ Index: twisted/web2/dav/element/base.py
  
              for allowed, (min, max) in allowed_children.items():
                  if type(allowed) == type and isinstance(child, allowed):
-@@ -145,21 +171,20 @@
- 
+@@ -147,9 +173,7 @@
          if self.allowed_attributes:
              for name in attributes:
--                if name in self.allowed_attributes:
+                 if name in self.allowed_attributes:
 -                    my_attributes[name] = attributes[name]
 -                else:
 -                    log.msg("Attribute %s is unexpected and therefore ignored in %s element"
--                            % (name, self.sname()))
-+                if name not in self.allowed_attributes:
-+                    log.msg("Attribute %s is unexpected in %s element" % (name, self.sname()))
-+                my_attributes[name] = attributes[name]
-     
++                    log.msg("Attribute %s is unexpected in %s element"
+                             % (name, self.sname()))
+ 
              for name, required in self.allowed_attributes.items():
-                 if required and name not in my_attributes:
+@@ -157,11 +181,13 @@
                      raise ValueError("Attribute %s is required in %s element"
                                       % (name, self.sname()))
  
 -        elif not isinstance(self, WebDAVUnknownElement):
 -            if attributes:
 -                log.msg("Attributes %s are unexpected and therefore ignored in %s element"
-+        else:
-+            if not isinstance(self, WebDAVUnknownElement) and attributes:
-+                log.msg("Attributes %s are unexpected in %s element"
++        elif attributes:
++            if not isinstance(self, WebDAVUnknownElement):
++                log.msg("Attributes %s are unexpected and in %s element"
                          % (attributes.keys(), self.sname()))
-+            my_attributes.update(attributes)
  
++            my_attributes.update(attributes)
++
          self.attributes = my_attributes
  
-@@ -190,14 +215,93 @@
+     def __str__(self):
+@@ -191,14 +217,93 @@
          return child in self.children
  
      def writeXML(self, output):
@@ -190,7 +189,7 @@ Index: twisted/web2/dav/element/base.py
  
      def element(self, document):
          element = document.createElementNS(self.namespace, self.name)
-@@ -285,6 +389,9 @@
+@@ -286,6 +391,9 @@
  
          self.data = data
  
@@ -200,7 +199,7 @@ Index: twisted/web2/dav/element/base.py
      def __str__(self):
          return str(self.data)
  
-@@ -324,6 +431,22 @@
+@@ -325,6 +433,22 @@
              log.err("Invalid PCDATA: %r" % (self.data,))
              raise
  

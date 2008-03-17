@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/resource.py
 ===================================================================
---- twisted/web2/dav/resource.py	(revision 19773)
+--- twisted/web2/dav/resource.py	(revision 22891)
 +++ twisted/web2/dav/resource.py	(working copy)
 @@ -40,10 +40,18 @@
      "unauthenticatedPrincipal",

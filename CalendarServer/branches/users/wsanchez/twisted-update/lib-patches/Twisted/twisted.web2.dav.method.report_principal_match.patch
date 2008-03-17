@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/method/report_principal_match.py
 ===================================================================
---- twisted/web2/dav/method/report_principal_match.py	(revision 19773)
+--- twisted/web2/dav/method/report_principal_match.py	(revision 22891)
 +++ twisted/web2/dav/method/report_principal_match.py	(working copy)
 @@ -89,40 +89,61 @@
          responses = []

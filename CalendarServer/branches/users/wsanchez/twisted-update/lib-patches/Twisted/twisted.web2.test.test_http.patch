@@ -1,8 +1,8 @@
 Index: twisted/web2/test/test_http.py
 ===================================================================
---- twisted/web2/test/test_http.py	(revision 19773)
+--- twisted/web2/test/test_http.py	(revision 22891)
 +++ twisted/web2/test/test_http.py	(working copy)
-@@ -1017,6 +1017,8 @@
+@@ -1014,6 +1014,8 @@
          response = TestResponse()
          if self.uri == "/error":
              response.code=402

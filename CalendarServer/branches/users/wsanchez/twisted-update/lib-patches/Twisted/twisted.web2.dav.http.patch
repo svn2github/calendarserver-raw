@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/http.py
 ===================================================================
---- twisted/web2/dav/http.py	(revision 19773)
+--- twisted/web2/dav/http.py	(revision 22891)
 +++ twisted/web2/dav/http.py	(working copy)
 @@ -69,10 +69,9 @@
          """

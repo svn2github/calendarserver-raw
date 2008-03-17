@@ -1,0 +1,12 @@
+Index: twisted/plugin.py
+===================================================================
+--- twisted/plugin.py	(revision 22891)
++++ twisted/plugin.py	(working copy)
+@@ -241,6 +241,7 @@
+         for x
+         in sys.path
+         if
++        not x.startswith('/System') and
+         not os.path.exists(os.path.join(x, *package + ['__init__.py']))]
+ 
+ __all__ = ['getPlugins', 'pluginPackagePaths']

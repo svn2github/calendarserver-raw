@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/test/test_static.py
 ===================================================================
---- twisted/web2/dav/test/test_static.py	(revision 19773)
+--- twisted/web2/dav/test/test_static.py	(revision 22891)
 +++ twisted/web2/dav/test/test_static.py	(working copy)
 @@ -60,3 +60,5 @@
          d.addCallback(assertListing)
