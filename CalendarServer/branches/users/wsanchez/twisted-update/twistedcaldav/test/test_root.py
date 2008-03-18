@@ -51,9 +51,13 @@ class FakeCheckSACL(object):
         return 1
 
 class RootTests(TestCase):
-    def setUp(self):
-        self.docroot = self.mktemp()
+    def _getDocumentRoot(self):
+        if not hasattr(self, "_docroot"):
+            log.msg("Setting up docroot for %s" % (self.__class__,))
+            self._docroot = self.mktemp()
+        return self._docroot
 
+    def setUp(self):
         RootResource.CheckSACL = FakeCheckSACL(sacls={
                 'calendar': ['dreid']})
 
