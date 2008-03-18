@@ -58,24 +58,23 @@ class RootTests(TestCase):
         return self._docroot
 
     def setUp(self):
-        RootResource.CheckSACL = FakeCheckSACL(sacls={
-                'calendar': ['dreid']})
+        RootResource.CheckSACL = FakeCheckSACL(sacls={"calendar": ["dreid"]})
 
         directory = XMLDirectoryService(xmlFile)
 
         principals = DirectoryPrincipalProvisioningResource(
-            os.path.join(self.docroot, 'principals'),
-            '/principals/',
-            directory)
+            os.path.join(self.docroot, "principals"),
+            "/principals/",
+            directory
+        )
 
         # Otherwise the tests that never touch the root resource will 
         # fail on teardown.
         principals.provision()
 
-        root = RootResource(self.docroot, 
-                            principalCollections=[principals])
+        root = RootResource(self.docroot, principalCollections=[principals])
 
-        root.putChild('principals',
+        root.putChild("principals",
                       principals)
 
         portal = Portal(auth.DavRealm())
@@ -92,24 +91,20 @@ class RootTests(TestCase):
     def test_noSacls(self):
         """
         Test the behaviour of locateChild when SACLs are not enabled.
-        
-        should return a valid resource
+        Should return a valid resource.
         """
         self.root.resource.useSacls = False
 
-        request = SimpleRequest(self.site,
-                                "GET",
-                                "/principals/")
+        request = SimpleRequest(self.site, "GET", "/principals/")
 
-        resrc, segments = self.root.locateChild(request,
-                                         ['principals'])
+        resrc, segments = self.root.locateChild(request, ["principals"])
 
-        resrc, segments = resrc.locateChild(request, ['principals'])
+        resrc, segments = resrc.locateChild(request, ["principals"])
 
         self.failUnless(
-            isinstance(resrc,
-                       DirectoryPrincipalProvisioningResource),
-            "Did not get a DirectoryPrincipalProvisioningResource: %s" % (resrc,))
+            isinstance(resrc, DirectoryPrincipalProvisioningResource),
+            "Did not get a DirectoryPrincipalProvisioningResource: %s" % (resrc,)
+        )
 
         self.assertEquals(segments, [])
 
@@ -127,35 +122,34 @@ class RootTests(TestCase):
             "GET",
             "/principals/",
             headers=http_headers.Headers({
-                    'Authorization': ['basic', '%s' % (
-                            'dreid:dierd'.encode('base64'),)]}))
-        
-        resrc, segments = self.root.locateChild(request,
-                                         ['principals'])
+                "Authorization": ["basic", "%s" % ("dreid:dierd".encode("base64"),)]
+            })
+        )
 
-        def _Cb((resrc, segments)):
+        resrc, segments = self.root.locateChild(request, ["principals"])
+
+        def gotChild((resrc, segments)):
             self.failUnless(
-                isinstance(resrc,
-                           DirectoryPrincipalProvisioningResource),
-                "Did not get a DirectoryPrincipalProvisioningResource: %s" % (resrc,))
-
+                isinstance(resrc, DirectoryPrincipalProvisioningResource),
+                "Did not get a DirectoryPrincipalProvisioningResource: %s" % (resrc,)
+            )
             self.assertEquals(segments, [])
-
-            self.assertEquals(request.authzUser, 
-                              davxml.Principal(
-                    davxml.HRef('/principals/__uids__/5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1/')))
+            self.assertEquals(
+                request.authzUser, 
+                davxml.Principal(
+                    davxml.HRef("/principals/__uids__/5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1/")
+                )
+            )
             
-        d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
-        d.addCallback(_Cb)
-
+        d = defer.maybeDeferred(resrc.locateChild, request, ["principals"])
+        d.addCallback(gotChild)
         return d
 
     def test_notInSacls(self):
         """
         Test the behavior of locateChild when SACLs are enabled and the
-        user is not in the SACL group
-        
-        should return a 403 forbidden response
+        user is not in the SACL group.
+        Should return a 403 forbidden response.
         """
         self.root.resource.useSacls = True
 
@@ -164,50 +158,43 @@ class RootTests(TestCase):
             "GET",
             "/principals/",
             headers=http_headers.Headers({
-                    'Authorization': ['basic', '%s' % (
-                            'wsanchez:zehcnasw'.encode('base64'),)]}))
+                "Authorization": ["basic", "%s" % ("wsanchez:zehcnasw".encode("base64"),)]
+            })
+        )
         
-        resrc, segments = self.root.locateChild(request,
-                                         ['principals'])
+        resrc, segments = self.root.locateChild(request, ["principals"])
 
-        def _Eb(failure):
+        def onError(failure):
             failure.trap(HTTPError)
             self.assertEquals(failure.value.response.code, 403)
             
-        d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
-        d.addErrback(_Eb)
+        d = defer.maybeDeferred(resrc.locateChild, request, ["principals"])
+        d.addErrback(onError)
 
         return d
 
     def test_unauthenticated(self):
         """
         Test the behavior of locateChild when SACLs are enabled and the request
-        is unauthenticated
-        
-        should return a 401 UnauthorizedResponse
+        is unauthenticated.
+        Should return a 401 UnauthorizedResponse.
         """
 
         self.root.resource.useSacls = True
-        request = SimpleRequest(self.site,
-                                "GET",
-                                "/principals/")
+        request = SimpleRequest(self.site, "GET", "/principals/")
 
-        resrc, segments = self.root.locateChild(request,
-                                                ['principals'])
+        resrc, segments = self.root.locateChild(request, ["principals"])
 
-        def _Cb(result):
-            raise AssertionError(("RootResource.locateChild did not return "
-                                  "an error"))
+        def gotChild(child):
+            raise AssertionError("RootResource.locateChild did not return an error")
 
-        def _Eb(failure):
+        def onError(failure):
             failure.trap(HTTPError)
             self.assertEquals(failure.value.response.code, 401)
 
-        d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
-
-        d.addCallback(_Cb)
-        d.addErrback(_Eb)
-
+        d = defer.maybeDeferred(resrc.locateChild, request, ["principals"])
+        d.addCallback(gotChild)
+        d.addErrback(onError)
         return d
 
     def test_badCredentials(self):
@@ -224,19 +211,18 @@ class RootTests(TestCase):
             "GET",
             "/principals/",
             headers=http_headers.Headers({
-                    'Authorization': ['basic', '%s' % (
-                            'dreid:dreid'.encode('base64'),)]}))
+                "Authorization": ["basic", "%s" % ("dreid:dreid".encode("base64"),)]
+            })
+        )
         
-        resrc, segments = self.root.locateChild(request,
-                                         ['principals'])
+        resrc, segments = self.root.locateChild(request, ["principals"])
 
-        def _Eb(failure):
+        def onError(failure):
             failure.trap(HTTPError)
             self.assertEquals(failure.value.response.code, 401)
             
-        d = defer.maybeDeferred(resrc.locateChild, request, ['principals'])
-        d.addErrback(_Eb)
-
+        d = defer.maybeDeferred(resrc.locateChild, request, ["principals"])
+        d.addErrback(onError)
         return d
 
     def test_DELETE(self):
