@@ -31,22 +31,24 @@ usage ()
 
   if [ "${1--}" != "-" ]; then echo "$@"; echo; fi;
 
-  echo "Usage: ${program} [options]";
+  echo "Usage: ${program} [options] [-s seed]";
   echo "Options:";
   echo "        -h  Print this help and exit";
   echo "        -n  Do not use color";
-  echo "        -o  Do not run tests in random order.";
-  echo "        -u  Run until the tests fail.";
+  echo "        -o  Do not run tests in random order";
+  echo "        -u  Run until the tests fail";
+  echo "	-s  Specify random seed";
 
   if [ "${1-}" == "-" ]; then return 0; fi;
   exit 64;
 }
 
-while getopts "nhou" option; do
+while getopts "nhous:" option; do
   case "${option}" in
     '?') usage; ;;
     'h') usage -; exit 0; ;;
     'o')     random=""; ;;
+    's')     random="--random=${OPTARG}"; ;;
     'n')  no_colour="--reporter=bwverbose"; ;;
     'u') until_fail="--until-failure"; ;;
   esac;
