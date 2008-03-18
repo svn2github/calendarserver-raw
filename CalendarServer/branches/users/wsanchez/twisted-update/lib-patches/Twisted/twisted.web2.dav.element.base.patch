@@ -63,19 +63,24 @@ Index: twisted/web2/dav/element/base.py
  
              for allowed, (min, max) in allowed_children.items():
                  if type(allowed) == type and isinstance(child, allowed):
-@@ -147,9 +173,7 @@
+@@ -146,21 +172,21 @@
+ 
          if self.allowed_attributes:
              for name in attributes:
-                 if name in self.allowed_attributes:
+-                if name in self.allowed_attributes:
 -                    my_attributes[name] = attributes[name]
 -                else:
 -                    log.msg("Attribute %s is unexpected and therefore ignored in %s element"
-+                    log.msg("Attribute %s is unexpected in %s element"
-                             % (name, self.sname()))
+-                            % (name, self.sname()))
++                if name not in self.allowed_attributes:
++                    log.msg("Attribute %r is unexpected in %s element: %r"
++                            % (name, self.sname(), self.allowed_attributes))
++                my_attributes[name] = attributes[name]
  
              for name, required in self.allowed_attributes.items():
-@@ -157,11 +181,13 @@
-                     raise ValueError("Attribute %s is required in %s element"
+                 if required and name not in my_attributes:
+-                    raise ValueError("Attribute %s is required in %s element"
++                    raise ValueError("Attribute %r is required in %s element"
                                       % (name, self.sname()))
  
 -        elif not isinstance(self, WebDAVUnknownElement):
@@ -83,14 +88,12 @@ Index: twisted/web2/dav/element/base.py
 -                log.msg("Attributes %s are unexpected and therefore ignored in %s element"
 +        elif attributes:
 +            if not isinstance(self, WebDAVUnknownElement):
-+                log.msg("Attributes %s are unexpected and in %s element"
++                log.msg("Attributes %r are unexpected in %s element"
                          % (attributes.keys(), self.sname()))
- 
 +            my_attributes.update(attributes)
-+
+ 
          self.attributes = my_attributes
  
-     def __str__(self):
 @@ -191,14 +217,93 @@
          return child in self.children
  
@@ -222,3 +225,19 @@ Index: twisted/web2/dav/element/base.py
  class WebDAVOneShotElement (WebDAVElement):
      """
      Element with exactly one WebDAVEmptyElement child and no attributes.
+@@ -385,7 +509,6 @@
+ 
+     children = ()
+ 
+-
+     def __hash__(self):
+         """
+         Define a hash method, so that an empty element can serve as dictionary
+@@ -395,7 +518,6 @@
+         return hash((self.name, self.namespace))
+ 
+ 
+-
+ class WebDAVTextElement (WebDAVElement):
+     """
+     WebDAV element containing PCDATA.
