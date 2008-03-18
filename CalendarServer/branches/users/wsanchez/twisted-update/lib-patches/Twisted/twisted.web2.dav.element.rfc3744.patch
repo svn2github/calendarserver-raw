@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/element/rfc3744.py
 ===================================================================
---- twisted/web2/dav/element/rfc3744.py	(revision 22891)
+--- twisted/web2/dav/element/rfc3744.py	(revision 22939)
 +++ twisted/web2/dav/element/rfc3744.py	(working copy)
 @@ -131,8 +131,8 @@
          (dav_namespace, "self"           ): (0, 1),

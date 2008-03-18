@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/test/test_resource.py
 ===================================================================
---- twisted/web2/dav/test/test_resource.py	(revision 22891)
+--- twisted/web2/dav/test/test_resource.py	(revision 22939)
 +++ twisted/web2/dav/test/test_resource.py	(working copy)
 @@ -204,8 +204,7 @@
  

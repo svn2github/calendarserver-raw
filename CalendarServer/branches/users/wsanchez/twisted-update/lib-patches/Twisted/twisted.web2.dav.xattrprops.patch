@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/xattrprops.py
 ===================================================================
---- twisted/web2/dav/xattrprops.py	(revision 22891)
+--- twisted/web2/dav/xattrprops.py	(revision 22939)
 +++ twisted/web2/dav/xattrprops.py	(working copy)
 @@ -33,12 +33,18 @@
  

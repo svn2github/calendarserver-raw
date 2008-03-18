@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/element/parser.py
 ===================================================================
---- twisted/web2/dav/element/parser.py	(revision 22891)
+--- twisted/web2/dav/element/parser.py	(revision 22939)
 +++ twisted/web2/dav/element/parser.py	(working copy)
 @@ -37,7 +37,7 @@
      "WebDAVDocument",

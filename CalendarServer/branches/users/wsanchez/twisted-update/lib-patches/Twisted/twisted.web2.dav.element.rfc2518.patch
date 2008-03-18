@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/element/rfc2518.py
 ===================================================================
---- twisted/web2/dav/element/rfc2518.py	(revision 22891)
+--- twisted/web2/dav/element/rfc2518.py	(revision 22939)
 +++ twisted/web2/dav/element/rfc2518.py	(working copy)
 @@ -59,8 +59,8 @@
      """
