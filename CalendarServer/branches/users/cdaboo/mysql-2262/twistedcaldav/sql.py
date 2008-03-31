@@ -29,6 +29,8 @@ try:
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite
 
+import MySQLdb
+
 from twisted.python import log
 
 db_prefix = ".db."
@@ -38,7 +40,7 @@ class AbstractSQLDatabase(object):
     A generic SQL database.
     """
 
-    def __init__(self, dbpath, persistent, autocommit=False):
+    def __init__(self, dbpath, persistent, autocommit=False, driver="sqlite"):
         """
         
         @param dbpath: the path where the db file is stored.
@@ -48,10 +50,17 @@ class AbstractSQLDatabase(object):
         @type persistent: bool
         @param autocommit: C{True} if auto-commit mode is desired, C{False} otherwise
         @type autocommit: bool
+        @param driver: name of the database driver to use
+        @type driver: C{str}
         """
         self.dbpath = dbpath
         self.persistent = persistent
         self.autocommit = autocommit
+        
+        self.driver = driver
+        self.dbdriver = {"sqlite": sqlite, "mysql": MySQLdb}.get(self.driver, None)
+        if self.dbdriver is None:
+            raise ValueError("SQl driver type: %s is not supported." % (driver,))
 
     def _db_version(self):
         """
@@ -74,9 +83,9 @@ class AbstractSQLDatabase(object):
             db_filename = self.dbpath
             try:
                 if self.autocommit:
-                    self._db_connection = sqlite.connect(db_filename, isolation_level=None)
+                    self._db_connection = self.dbdriver.connect(db_filename, isolation_level=None)
                 else:
-                    self._db_connection = sqlite.connect(db_filename)
+                    self._db_connection = self.dbdriver.connect(db_filename)
             except:
                 log.err("Unable to open database: %s" % (db_filename,))
                 raise
@@ -220,7 +229,7 @@ class AbstractSQLDatabase(object):
         """
         
         if self.persistent:
-            self._db_connection = sqlite.connect(self.dbpath, isolation_level=None)
+            self._db_connection = self.dbdriver.connect(self.dbpath, isolation_level=None)
             q = self._db_connection.cursor()
             self._db_upgrade_data_tables(q, old_version)
             self._db_upgrade_schema(q)
