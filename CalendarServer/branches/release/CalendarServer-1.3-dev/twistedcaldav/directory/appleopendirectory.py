@@ -26,6 +26,7 @@ __all__ = [
 import itertools
 import sys
 import os
+from random import random
 
 import opendirectory
 import dsattributes
@@ -46,8 +47,6 @@ from plistlib import readPlistFromString, readPlist
 serverPreferences = '/Library/Preferences/com.apple.servermgr_info.plist'
 saclGroup = 'com.apple.access_calendar'
 
-recordListCacheTimeout = 60 * 30 # 30 minutes
-
 class OpenDirectoryService(DirectoryService):
     """
     Open Directory implementation of L{IDirectoryService}.
@@ -57,7 +56,7 @@ class OpenDirectoryService(DirectoryService):
     def __repr__(self):
         return "<%s %r: %r>" % (self.__class__.__name__, self.realmName, self.node)
 
-    def __init__(self, node="/Search", requireComputerRecord=True, dosetup=True):
+    def __init__(self, node="/Search", requireComputerRecord=True, dosetup=True, cacheTimeout=30):
         """
         @param node: an OpenDirectory node name to bind to.
         @param requireComputerRecord: C{True} if the directory schema is to be used to determine
@@ -78,6 +77,7 @@ class OpenDirectoryService(DirectoryService):
         self.requireComputerRecord = requireComputerRecord
         self.computerRecords = {}
         self.servicetags = set()
+        self.cacheTimeout = cacheTimeout
         self._records = {}
         self._delayedCalls = set()
 
@@ -609,11 +609,22 @@ class OpenDirectoryService(DirectoryService):
                 for item in removals:
                     self._delayedCalls.remove(item)
 
-            self._delayedCalls.add(callLater(recordListCacheTimeout, rot))
+            #
+            # Add jitter/fuzz factor to avoid stampede for large OD query
+            # Max out the jitter at 60 minutes
+            #
+            cacheTimeout = min(self.cacheTimeout, 60) * 60
+            cacheTimeout = (cacheTimeout * random()) - (cacheTimeout / 2)
+            cacheTimeout += self.cacheTimeout * 60
+            self._delayedCalls.add(callLater(cacheTimeout, rot))
 
             self._records[recordType] = storage
 
-            logging.debug("Added %d records to %s OD record cache" % (len(self._records[recordType]["guids"]), recordType), system="OpenDirectoryService")
+            logging.info(
+                "Added %d records to %s OD record cache; expires in %d seconds"
+                % (len(self._records[recordType]["guids"]), recordType, cacheTimeout),
+                system="OpenDirectoryService"
+            )
 
     def _queryDirectory(self, recordType, shortName=None, guid=None):
         attrs = [

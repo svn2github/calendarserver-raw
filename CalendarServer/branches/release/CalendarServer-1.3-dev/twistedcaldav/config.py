@@ -32,6 +32,7 @@ serviceDefaultParams = {
     "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
         "node": "/Search",
         "requireComputerRecord": True,
+        "cacheTimeout": 30,
     },
 }
 
