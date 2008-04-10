@@ -21,6 +21,7 @@ Unittests for CalDAV-aware resources found in twistedcaldav.resources
 from twisted.trial.unittest import TestCase
 from twistedcaldav.resource import CalDAVResource
 
+from twisted.internet.defer import succeed
 
 class StubLocatingRequest(object):
     """
@@ -31,7 +32,7 @@ class StubLocatingRequest(object):
         self.resources = resources or {}
 
     def locateResource(self, uri):
-        return self.resources.get(uri)
+        return succeed(self.resources.get(uri))
 
 
 
@@ -45,6 +46,7 @@ class StubParentResource(object):
     def changed(self, *args, **kwargs):
         self.changedArgs = args
         self.changedKwArgs = kwargs
+        return succeed(None)
 
 
 class ChangedNotificationTestCase(TestCase):
@@ -59,30 +61,33 @@ class ChangedNotificationTestCase(TestCase):
         self.myCalendar = CalDAVResource()
         self.myCalendarURI = '/calendars/users/dreid/calendar'
 
+
     def _test(self, changedArgs, changedKwargs,
               expectedArgs, expectedKwargs):
-        self.myCalendar.changed(*changedArgs, **changedKwargs)
+        def _ranTest(result):
+            self.assertEquals(self.calendarHome.changedArgs,
+                              expectedArgs)
+            self.assertEquals(self.calendarHome.changedKwArgs,
+                              expectedKwargs)
 
-        self.assertEquals(self.calendarHome.changedArgs,
-                          expectedArgs)
-        self.assertEquals(self.calendarHome.changedKwArgs,
-                          expectedKwargs)
-
+        d = self.myCalendar.changed(*changedArgs, **changedKwargs)
+        d.addCallback(_ranTest)
+        return d
 
     def test_notifiesParentResource(self):
-        self._test((self.request, self.myCalendarURI),
-                   {},
-                   (self.request, self.myCalendarURI),
-                   {'properties': False, 'data': False})
+        return self._test((self.request, self.myCalendarURI),
+                          {},
+                          (self.request, self.myCalendarURI),
+                          {'properties': False, 'data': False})
 
     def test_propertiesChanged(self):
-        self._test((self.request, self.myCalendarURI),
-                   {'properties': True},
-                   (self.request, self.myCalendarURI),
-                   {'properties': True, 'data': False})
+        return self._test((self.request, self.myCalendarURI),
+                          {'properties': True},
+                          (self.request, self.myCalendarURI),
+                          {'properties': True, 'data': False})
 
     def test_dataChanged(self):
-        self._test((self.request, self.myCalendarURI),
-                   {'data': True},
-                   (self.request, self.myCalendarURI),
-                   {'properties': False, 'data': True})
+        return self._test((self.request, self.myCalendarURI),
+                          {'data': True},
+                          (self.request, self.myCalendarURI),
+                          {'properties': False, 'data': True})

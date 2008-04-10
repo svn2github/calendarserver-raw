@@ -507,6 +507,9 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource):
         Locates the parent resource of the resource with the given URI.
         @param request: an L{IRequest} object for the request being processed.
         @param uri: the URI whose parent resource is desired.
+
+        @return: A L{Deferred} that fires with an L{IResource} provider that is
+            the parent of the current URL.
         """
         return request.locateResource(parentForURL(uri))
 
@@ -522,11 +525,18 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource):
         @param properties: A C{bool} indicating that properties on C{uri} have
             changed.
         @param data: A C{bool} indicating that data at C{uri} has changed.
+
+        @return: A L{Deferred} that fires with None.
         """
-        return self.locateParent(request, uri).changed(request,
-                                                       uri,
-                                                       properties=properties,
-                                                       data=data)
+        def _gotParentResource(resource):
+            return resource.changed(request,
+                                    uri,
+                                    properties=properties,
+                                    data=data)
+
+        d = self.locateParent(request, uri)
+        d.addCallback(_gotParentResource)
+        return d
 
 
 class CalendarPrincipalCollectionResource (DAVPrincipalCollectionResource, CalDAVResource):

@@ -288,6 +288,16 @@ class CalDAVFile (CalDAVResource, DAVFile):
         assert self.isCollection()
         self.writeDeadProperty(customxml.GETCTag(str(datetime.datetime.now())))
 
+    def changed(self, request, uri, properties=False, data=False):
+        if self.isCollection() and data:
+            self.updateCTag()
+
+        return super(CalDAVFile, self).changed(
+            request,
+            uri,
+            properties=properties,
+            data=data)
+
     ##
     # Quota
     ##
@@ -585,7 +595,7 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
 
         self.writeDeadProperty(
             CacheTokensProperty.fromString('%s:%s' % (propToken, dataToken)))
-
+        return succeed(None)
 
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
     def __init__(self, path, parent):

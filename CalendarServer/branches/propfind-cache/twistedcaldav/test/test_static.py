@@ -24,8 +24,12 @@ from twistedcaldav.test.test_resource import StubLocatingRequest
 from twistedcaldav.test.test_resource import StubParentResource
 
 from twistedcaldav.static import CalendarHomeFile
+from twistedcaldav.static import CalDAVFile
 from twistedcaldav.static import CacheTokensProperty
+from twistedcaldav.customxml import GETCTag
+
 from twisted.web2.http import HTTPError, StatusResponse
+
 
 class InMemoryPropertyStore(object):
     def __init__(self, resource):
@@ -57,6 +61,10 @@ def _newCacheTokenStub(self, property=False, data=False):
 
 
 class CalendarHomeChangedTests(TestCase):
+    """
+    Ensure that CalendarHomeFile's changed method updates the cache tokens when
+    called.
+    """
     def setUp(self):
         self.parent = StubParentResource()
         self.parent.principalCollections = (lambda: [])
@@ -80,34 +88,95 @@ class CalendarHomeChangedTests(TestCase):
 
 
     def test_doesntPropogateToParent(self):
-        self.myCalendarHome.changed(self.request, '/calendars/users/dreid')
-        self.assertEquals(self.parent.changedArgs, None)
-        self.assertEquals(self.parent.changedKwArgs, None)
+        def _checkChanged(result):
+            self.assertEquals(self.parent.changedArgs, None)
+            self.assertEquals(self.parent.changedKwArgs, None)
+            self.assertEquals(result, None)
 
+        d = self.myCalendarHome.changed(self.request, '/calendars/users/dreid')
+        d.addCallback(_checkChanged)
+        return d
 
     def _test(self, properties=False, data=False, expectedTokens=None):
-        self.myCalendarHome.changed(self.request, '/calendars/users/dreid',
+        def _checkChanged(result):
+            tokens = self.properties._properties[CacheTokensProperty.qname()]
+            self.assertEquals(tokens.children[0].data, expectedTokens)
+            self.assertEquals(result, None)
+
+        d = self.myCalendarHome.changed(self.request, '/calendars/users/dreid',
                                     properties=properties, data=data)
-
-        tokens = self.properties._properties[CacheTokensProperty.qname()]
-        self.assertEquals(tokens.children[0].data, expectedTokens)
-
+        d.addCallback(_checkChanged)
+        return d
 
     def test_changesPropertyToken(self):
-        self._test(properties=True, expectedTokens='propertyToken1:dataToken0')
+        return self._test(properties=True,
+                          expectedTokens='propertyToken1:dataToken0')
 
 
     def test_changesDataToken(self):
-        self._test(data=True, expectedTokens='propertyToken0:dataToken1')
+        return self._test(data=True, expectedTokens='propertyToken0:dataToken1')
 
 
     def test_changesBothTokens(self):
-        self._test(properties=True, data=True,
+        return self._test(properties=True, data=True,
                    expectedTokens='propertyToken1:dataToken1')
 
 
     def test_initializesNonExistantProperty(self):
         self.properties._properties = {}
         self.myCalendarHome._called = [0,0]
-        self._test(properties=False, data=False,
-                   expectedTokens='propertyToken0:dataToken0')
+        return self._test(properties=False, data=False,
+                          expectedTokens='propertyToken0:dataToken0')
+
+
+
+class CalDAVFileChangedTests(TestCase):
+    """
+    Ensure that CalDAVFile's changed method updates the ctag on collections
+    and delegates to the parent.
+    """
+    def setUp(self):
+        self.parent = StubParentResource()
+        self.parent.principalCollections = (lambda: [])
+        self.request = StubLocatingRequest({'/calendars/users/': self.parent})
+
+        self.myCalDAVFile = CalDAVFile(self.mktemp())
+        self.properties = InMemoryPropertyStore(self.myCalDAVFile)
+        self.myCalDAVFile._dead_properties = self.properties
+
+
+    def test_propogatesToParent(self):
+        def _checkParentChanged(result):
+            self.assertEquals(self.parent.changedArgs,
+                              (self.request, '/calendars/users/dreid'))
+            self.assertEquals(self.parent.changedKwArgs,
+                              {'properties': False, 'data': False})
+
+        d = self.myCalDAVFile.changed(self.request, '/calendars/users/dreid')
+        d.addCallback(_checkParentChanged)
+        return d
+
+
+    def test_updatesCTagOnCollection(self):
+        def _checkCTag(result):
+            ctag = self.properties._properties.get(GETCTag.qname())
+            self.failUnless(isinstance(ctag, GETCTag))
+
+        self.myCalDAVFile.isCollection = (lambda: True)
+        d = self.myCalDAVFile.changed(self.request, '/calendars/users/dreid',
+                                      data=True)
+        d.addCallback(_checkCTag)
+        return d
+
+
+    def test_doesNotUpdateCTagOnNonCollection(self):
+        self.myCalDAVFile.isCollection = (lambda: False)
+        d = self.myCalDAVFile.changed(self.request, '/calendars/users/dreid')
+        return d
+
+
+    def test_doesNotUpdateCTagOnPropertyChange(self):
+        self.myCalDAVFile.isCollection = (lambda: True)
+        d = self.myCalDAVFile.changed(self.request, '/calendars/users/dreid',
+                                      properties=True)
+        return d
