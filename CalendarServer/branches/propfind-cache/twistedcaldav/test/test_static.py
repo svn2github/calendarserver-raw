@@ -74,6 +74,7 @@ class CalendarHomeChangedTests(TestCase):
             _newCacheTokenStub,
             self.myCalendarHome,
             CalendarHomeFile)
+
         self.myCalendarHome._newCacheToken(property=True)
         self.myCalendarHome._newCacheToken(data=True)
 
