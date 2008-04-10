@@ -44,6 +44,7 @@ from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError, StatusResponse
 from twisted.web2.dav import davxml
+
 from twisted.web2.dav.fileop import mkcollection, rmdir
 from twisted.web2.dav.http import ErrorResponse
 from twisted.web2.dav.idav import IDAVResource
@@ -536,7 +537,7 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
             NotificationsCollectionFileClass = NotificationsCollectionFile
         else:
             NotificationsCollectionFileClass = None
-            
+
         cls = {
             "inbox"        : ScheduleInboxFile,
             "outbox"       : ScheduleOutboxFile,
@@ -561,6 +562,37 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
             return None
 
         return super(CalendarHomeFile, self).getChild(name)
+
+
+    def _newCacheToken(self, property=False, data=False):
+        import ctypes, ctypes.util
+        _uuid = ctypes.create_string_buffer(16)
+        libc = ctypes.CDLL(ctypes.util.find_library('c'))
+        libc.uuid_generate_time(_uuid)
+
+        uuid = "%032x" % (long("%02x"*16 % tuple(map(ord, _uuid.raw)), 16),)
+        return "%s-%s-%s-%s-%s" % (
+            uuid[:8], uuid[8:12], uuid[12:16], uuid[16:20], uuid[20:])
+
+
+    def changed(self, request, uri, properties=False, data=False):
+        try:
+            oldCacheTokens = self.readDeadProperty(CacheTokensProperty.qname())
+            propToken, dataToken = oldCacheTokens.children[0].data.split(':')
+
+            if properties is True:
+                propToken = self._newCacheToken(property=True)
+
+            if data is True:
+                dataToken = self._newCacheToken(data=True)
+
+        except HTTPError, e:
+            propToken, dataToken = (self._newCacheToken(property=True),
+                                    self._newCacheToken(data=True))
+
+        self.writeDeadProperty(
+            CacheTokensProperty.fromString('%s:%s' % (propToken, dataToken)))
+
 
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
     def __init__(self, path, parent):
@@ -818,6 +850,13 @@ def _calendarPrivilegeSet ():
     return davxml.SupportedPrivilegeSet(*top_supported_privileges)
 
 calendarPrivilegeSet = _calendarPrivilegeSet()
+
+
+class CacheTokensProperty(davxml.WebDAVTextElement):
+    namespace = davxml.twisted_private_namespace
+    name = "cacheTokens"
+
+davxml.registerElement(CacheTokensProperty)
 
 ##
 # Attach methods

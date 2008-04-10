@@ -49,7 +49,7 @@ class StubParentResource(object):
 
 class ChangedNotificationTestCase(TestCase):
     """
-    Test that CalDAVREsource's changed implementation propogates change
+    Test that CalDAVResource's changed implementation propogates change
     notifications to it's parent.
     """
     def setUp(self):
