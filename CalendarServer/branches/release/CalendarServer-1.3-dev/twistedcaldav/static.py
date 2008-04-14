@@ -840,4 +840,5 @@ twistedcaldav.method.copymove.CalDAVFile = CalDAVFile
 twistedcaldav.method.delete.CalDAVFile   = CalDAVFile
 twistedcaldav.method.get.CalDAVFile      = CalDAVFile
 twistedcaldav.method.mkcol.CalDAVFile    = CalDAVFile
+twistedcaldav.method.propfind.CalDAVFile = CalDAVFile
 twistedcaldav.method.put.CalDAVFile      = CalDAVFile
