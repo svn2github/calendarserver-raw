@@ -30,10 +30,18 @@ class StubLocatingRequest(object):
 
     def __init__(self, resources=None):
         self.resources = resources or {}
+        self.urls = {}
+        self._loadUrls()
 
-    def locateResource(self, uri):
-        return succeed(self.resources.get(uri))
+    def _loadUrls(self):
+        for k, v in self.resources.iteritems():
+            self.urls[v] = k
 
+    def locateResource(self, url):
+        return succeed(self.resources.get(url))
+
+    def urlForResource(self, resrc):
+        return self.urls.get(resrc)
 
 
 class StubParentResource(object):
@@ -56,10 +64,13 @@ class ChangedNotificationTestCase(TestCase):
     """
     def setUp(self):
         self.calendarHome = StubParentResource()
-        self.request = StubLocatingRequest({
-                '/calendars/users/dreid/': self.calendarHome})
         self.myCalendar = CalDAVResource()
         self.myCalendarURI = '/calendars/users/dreid/calendar'
+
+        self.request = StubLocatingRequest({
+                '/calendars/users/dreid/': self.calendarHome,
+                self.myCalendarURI: self.myCalendar
+                })
 
 
     def _test(self, changedArgs, changedKwargs,
@@ -91,3 +102,18 @@ class ChangedNotificationTestCase(TestCase):
                           {'data': True},
                           (self.request, self.myCalendarURI),
                           {'properties': False, 'data': True})
+
+    def test_changedOnRootResource(self):
+        self.request.resources = {'/': self.myCalendar}
+        self.request._loadUrls()
+        d = self.myCalendar.changed(self.request, '/', data=True)
+        return d
+
+    def test_deepChanged(self):
+        self.request.resources['/calendars/users/dreid/'] = CalDAVResource()
+        self.request.resources['/calendars/users/'] = CalDAVResource()
+        self.request.resources['/calendars/'] = CalDAVResource()
+        self.request.resources['/'] = CalDAVResource()
+        self.request._loadUrls()
+        d = self.myCalendar.changed(self.request, self.myCalendarURI, data=True)
+        return d

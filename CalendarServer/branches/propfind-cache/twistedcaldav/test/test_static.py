@@ -129,7 +129,6 @@ class CalendarHomeChangedTests(TestCase):
                           expectedTokens='propertyToken0:dataToken0')
 
 
-
 class CalDAVFileChangedTests(TestCase):
     """
     Ensure that CalDAVFile's changed method updates the ctag on collections
@@ -138,11 +137,15 @@ class CalDAVFileChangedTests(TestCase):
     def setUp(self):
         self.parent = StubParentResource()
         self.parent.principalCollections = (lambda: [])
-        self.request = StubLocatingRequest({'/calendars/users/': self.parent})
 
         self.myCalDAVFile = CalDAVFile(self.mktemp())
         self.properties = InMemoryPropertyStore(self.myCalDAVFile)
         self.myCalDAVFile._dead_properties = self.properties
+
+        self.request = StubLocatingRequest({
+                '/calendars/users/': self.parent,
+                '/calendars/users/dreid': self.myCalDAVFile
+                })
 
 
     def test_propogatesToParent(self):
@@ -170,13 +173,33 @@ class CalDAVFileChangedTests(TestCase):
 
 
     def test_doesNotUpdateCTagOnNonCollection(self):
+        def _checkCTag(result):
+            ctag = self.properties._properties.get(GETCTag.qname())
+            self.assertEquals(ctag, None)
+
         self.myCalDAVFile.isCollection = (lambda: False)
         d = self.myCalDAVFile.changed(self.request, '/calendars/users/dreid')
         return d
 
 
     def test_doesNotUpdateCTagOnPropertyChange(self):
+        def _checkCTag(result):
+            ctag = self.properties._properties.get(GETCTag.qname())
+            self.assertEquals(ctag, None)
+
         self.myCalDAVFile.isCollection = (lambda: True)
         d = self.myCalDAVFile.changed(self.request, '/calendars/users/dreid',
                                       properties=True)
+        return d
+
+
+    def test_createCalendarCollectionCallsChanged(self):
+        def _checkChangedOnParent(result):
+            self.assertEquals(self.parent.changedArgs,
+                              (self.request, '/calendars/users/dreid'))
+            self.assertEquals(self.parent.changedKwArgs,
+                              {'properties': False, 'data': True})
+
+        d = self.myCalDAVFile.createCalendarCollection(self.request)
+        d.addCallback(_checkChangedOnParent)
         return d

@@ -529,12 +529,12 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource):
         @return: A L{Deferred} that fires with None.
         """
         def _gotParentResource(resource):
-            return resource.changed(request,
-                                    uri,
-                                    properties=properties,
-                                    data=data)
-
-        d = self.locateParent(request, uri)
+            if resource is not None:
+                return resource.changed(request,
+                                        uri,
+                                        properties=properties,
+                                        data=data)
+        d = self.locateParent(request, request.urlForResource(self))
         d.addCallback(_gotParentResource)
         return d
 

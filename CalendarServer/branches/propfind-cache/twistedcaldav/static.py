@@ -120,13 +120,13 @@ class CalDAVFile (CalDAVResource, DAVFile):
                     (caldavxml.caldav_namespace, "calendar-collection-location-ok")
                 ))
 
-            return self.createCalendarCollection()
+            return self.createCalendarCollection(request)
 
         parent = self._checkParents(request, isPseudoCalendarCollectionResource)
         parent.addCallback(_defer)
         return parent
 
-    def createCalendarCollection(self):
+    def createCalendarCollection(self, request):
         #
         # Create the collection once we know it is safe to do so
         #
@@ -135,12 +135,14 @@ class CalDAVFile (CalDAVResource, DAVFile):
                 raise HTTPError(status)
 
             # Initialize CTag on the calendar collection
-            self.updateCTag()
+            d2 = self.changed(request,
+                              request.urlForResource(self),
+                              data=True)
 
             # Create the index so its ready when the first PUTs come in
-            self.index().create()
-
-            return status
+            d2.addCallback(lambda ign: self.index().create())
+            d2.addCallback(lambda ign: status)
+            return d2
 
         d = self.createSpecialCollection(davxml.ResourceType.calendar)
         d.addCallback(onCalendarCollection)
