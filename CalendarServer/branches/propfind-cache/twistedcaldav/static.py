@@ -37,7 +37,6 @@ __all__ = [
 import datetime
 import os
 import errno
-import uuid
 from urlparse import urlsplit
 
 from twisted.internet.defer import deferredGenerator, fail, succeed, waitForDeferred
@@ -45,7 +44,6 @@ from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError, StatusResponse
 from twisted.web2.dav import davxml
-
 from twisted.web2.dav.fileop import mkcollection, rmdir
 from twisted.web2.dav.http import ErrorResponse
 from twisted.web2.dav.idav import IDAVResource
@@ -119,30 +117,28 @@ class CalDAVFile (CalDAVResource, DAVFile):
                     responsecode.FORBIDDEN,
                     (caldavxml.caldav_namespace, "calendar-collection-location-ok")
                 ))
-
-            return self.createCalendarCollection(request)
-
+    
+            return self.createCalendarCollection()
+            
         parent = self._checkParents(request, isPseudoCalendarCollectionResource)
         parent.addCallback(_defer)
         return parent
 
-    def createCalendarCollection(self, request):
+    def createCalendarCollection(self):
         #
         # Create the collection once we know it is safe to do so
         #
         def onCalendarCollection(status):
             if status != responsecode.CREATED:
                 raise HTTPError(status)
-
+    
             # Initialize CTag on the calendar collection
-            d2 = self.changed(request,
-                              request.urlForResource(self),
-                              data=True)
-
+            self.updateCTag()
+            
             # Create the index so its ready when the first PUTs come in
-            d2.addCallback(lambda ign: self.index().create())
-            d2.addCallback(lambda ign: status)
-            return d2
+            self.index().create()
+            
+            return status
 
         d = self.createSpecialCollection(davxml.ResourceType.calendar)
         d.addCallback(onCalendarCollection)
@@ -155,10 +151,10 @@ class CalDAVFile (CalDAVResource, DAVFile):
         def onCollection(status):
             if status != responsecode.CREATED:
                 raise HTTPError(status)
-
+    
             self.writeDeadProperty(resourceType)
             return status
-
+        
         def onError(f):
             try:
                 rmdir(self.fp)
@@ -171,7 +167,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
             d.addCallback(onCollection)
         d.addErrback(onError)
         return d
-
+ 
     def iCalendarRolledup(self, request):
         if self.isPseudoCalendarCollection():
             # Generate a monolithic calendar
@@ -193,7 +189,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
                     child = IDAVResource(child)
                 except TypeError:
                     child = None
-
+    
                 if child is not None:
                     # Check privileges of child - skip if access denied
                     try:
@@ -207,7 +203,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
                     for component in subcalendar.subcomponents():
                         calendar.addComponent(component)
-
+                        
             yield calendar
             return
 
@@ -260,7 +256,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
             d = self.locateParent(request, request.urlForResource(self))
             d.addCallback(gotParent)
             return d
-
+        
         return super(CalDAVFile, self).supportedPrivileges(request)
 
     ##
@@ -290,16 +286,6 @@ class CalDAVFile (CalDAVResource, DAVFile):
         assert self.isCollection()
         self.writeDeadProperty(customxml.GETCTag(str(datetime.datetime.now())))
 
-    def changed(self, request, uri, properties=False, data=False):
-        if self.isCollection() and data:
-            self.updateCTag()
-
-        return super(CalDAVFile, self).changed(
-            request,
-            uri,
-            properties=properties,
-            data=data)
-
     ##
     # Quota
     ##
@@ -317,17 +303,17 @@ class CalDAVFile (CalDAVResource, DAVFile):
                 """
                 Recursively descend the directory tree rooted at top,
                 calling the callback function for each regular file
-
+                
                 @param top: L{FilePath} for the directory to walk.
                 """
-
+            
                 total = 0
                 for f in top.listdir():
-
+    
                     # Ignore the database
                     if f.startswith("."):
                         continue
-
+    
                     child = top.child(f)
                     if child.isdir():
                         # It's a directory, recurse into it
@@ -340,11 +326,11 @@ class CalDAVFile (CalDAVResource, DAVFile):
                     else:
                         # Unknown file type, print a message
                         pass
-
+            
                 yield total
-
+            
             walktree = deferredGenerator(walktree)
-
+    
             return walktree(self.fp)
         else:
             return succeed(self.fp.getsize())
@@ -368,20 +354,20 @@ class CalDAVFile (CalDAVResource, DAVFile):
         #
         # Parse the URI
         #
-
+    
         (scheme, host, path, query, fragment) = urlsplit(uri) #@UnusedVariable
-
+    
         # Request hostname and child uri hostname have to be the same.
         if host and host != request.headers.getHeader("host"):
             return False
-
+        
         # Child URI must start with request uri text.
         parent = request.uri
         if not parent.endswith("/"):
             parent += "/"
-
+            
         return path.startswith(parent) and (len(path) > len(parent)) and (not immediateChild or (path.find("/", len(parent)) == -1))
-
+    
     def _checkParents(self, request, test):
         """
         @param request: the request being processed.
@@ -406,7 +392,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
                 return
 
         yield None
-
+    
     _checkParents = deferredGenerator(_checkParents)
 
 class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
@@ -427,7 +413,7 @@ class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
             parent = self.parent
             if not parent.exists() and isinstance(parent, AutoProvisioningFileMixIn):
                 parent.provision()
-
+                
             assert parent.exists(), "Parent %s of %s does not exist" % (parent, self)
             assert parent.isCollection(), "Parent %s of %s is not a collection" % (parent, self)
 
@@ -448,7 +434,7 @@ class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
 
 class CalendarHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeProvisioningResource, DAVFile):
     """
-    Resource which provisions calendar home collections as needed.
+    Resource which provisions calendar home collections as needed.    
     """
     def __init__(self, path, directory, url):
         """
@@ -550,7 +536,7 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
             NotificationsCollectionFileClass = NotificationsCollectionFile
         else:
             NotificationsCollectionFileClass = None
-
+            
         cls = {
             "inbox"        : ScheduleInboxFile,
             "outbox"       : ScheduleOutboxFile,
@@ -575,29 +561,6 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
             return None
 
         return super(CalendarHomeFile, self).getChild(name)
-
-
-    def _newCacheToken(self, property=False, data=False):
-        return uuid.uuid4()
-
-    def changed(self, request, uri, properties=False, data=False):
-        try:
-            oldCacheTokens = self.readDeadProperty(CacheTokensProperty.qname())
-            propToken, dataToken = oldCacheTokens.children[0].data.split(':')
-
-            if properties is True:
-                propToken = self._newCacheToken(property=True)
-
-            if data is True:
-                dataToken = self._newCacheToken(data=True)
-
-        except HTTPError, e:
-            propToken, dataToken = (self._newCacheToken(property=True),
-                                    self._newCacheToken(data=True))
-
-        self.writeDeadProperty(
-            CacheTokensProperty.fromString('%s:%s' % (propToken, dataToken)))
-        return succeed(None)
 
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
     def __init__(self, path, parent):
@@ -758,9 +721,9 @@ class NotificationFile (NotificationResource, DAVFile):
         elements = []
         elements.append(customxml.TimeStamp.fromString(timestamp))
         elements.append(customxml.Changed(davxml.HRef.fromString(parentURL)))
-
+                          
         xml = customxml.Notification(*elements)
-
+        
         d = waitForDeferred(put_common_base.storeResource(request, data=xml.toxml(), destination=self, destination_uri=request.urlForResource(self)))
         yield d
         d.getResult()
@@ -855,13 +818,6 @@ def _calendarPrivilegeSet ():
     return davxml.SupportedPrivilegeSet(*top_supported_privileges)
 
 calendarPrivilegeSet = _calendarPrivilegeSet()
-
-
-class CacheTokensProperty(davxml.WebDAVTextElement):
-    namespace = davxml.twisted_private_namespace
-    name = "cacheTokens"
-
-davxml.registerElement(CacheTokensProperty)
 
 ##
 # Attach methods
