@@ -63,26 +63,40 @@ class PrincipalAction(object):
                 precord = {}
                 
                 pcal = self.calendarCollection.child(
-                    self.type
+                    "__uids__"
                     ).child(p.basename())
             
                 precord['principalName'] = p.basename()
                 
-                precord['calendarHome'] = pcal.path
-
-                precord.update(
-                    util.getQuotaStatsForPrincipal(
-                        self.config,
-                        pcal,
-                        self.quota))
-
-                precord.update(
-                    util.getCalendarDataCounts(pcal))
-
-                precord['diskUsage'] = util.getDiskUsage(self.config, pcal)
-                
-                precord['disabled'] = util.isPrincipalDisabled(p)
-                
+                if pcal.exists():
+                    precord['calendarHome'] = pcal.path
+    
+                    precord.update(
+                        util.getQuotaStatsForPrincipal(
+                            self.config,
+                            pcal,
+                            self.quota))
+    
+                    precord.update(
+                        util.getCalendarDataCounts(pcal))
+    
+                    precord['diskUsage'] = util.getDiskUsage(self.config, pcal)
+                    
+                    precord['disabled'] = util.isPrincipalDisabled(p)
+                else: 
+                    precord.update({ 
+                        'calendarHome':  "-", 
+                        'quotaRoot':     "-", 
+                        'quotaUsed':     "-", 
+                        'quotaAvail':    "-", 
+                        'quotaFree':     "-", 
+                        'calendarCount': "-", 
+                        'eventCount':    "-", 
+                        'todoCount':     "-", 
+                        'diskUsage':     "-", 
+                        'disabled':      "-", 
+                    }) 
+                     
                 yield precord
 
         report['records'] = _getRecords()
