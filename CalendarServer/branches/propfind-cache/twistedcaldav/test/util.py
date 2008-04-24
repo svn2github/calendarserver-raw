@@ -45,5 +45,5 @@ class StubCacheChangeNotifier(object):
     def dataChanged(self):
         self.dataChangedCount += 1
 
-    def propertyChanged(self):
+    def propertiesChanged(self):
         self.propertyChangedCount += 1

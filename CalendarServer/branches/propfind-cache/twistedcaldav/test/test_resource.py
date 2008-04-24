@@ -52,6 +52,7 @@ class CalDAVResourceTests(TestCase):
                           self.resource.writeDeadProperty, StubProperty())
         self.assertEquals(self.resource.cacheNotifier.propertyChangedCount, 0)
 
+
     def test_writeDeadPropertyDoesntFailWithoutACacheNotifier(self):
         del self.resource.cacheNotifier
         self.resource.writeDeadProperty(StubProperty())
