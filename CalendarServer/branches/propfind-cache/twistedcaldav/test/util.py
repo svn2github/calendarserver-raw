@@ -15,8 +15,35 @@
 ##
 
 import twisted.web2.dav.test.util
+from twisted.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.static import CalDAVFile
 
+
 class TestCase(twisted.web2.dav.test.util.TestCase):
     resource_class = CalDAVFile
+
+
+class InMemoryPropertyStore(object):
+    def __init__(self):
+        self._properties = {}
+
+    def get(self, qname):
+        data = self._properties.get(qname)
+        if data is None:
+            raise HTTPError(StatusResponse(404, "No such property"))
+        return data
+
+    def set(self, property):
+        self._properties[property.qname()] = property
+
+
+class StubCacheChangeNotifier(object):
+    dataChangedCount = 0
+    propertyChangedCount = 0
+
+    def dataChanged(self):
+        self.dataChangedCount += 1
+
+    def propertyChanged(self):
+        self.propertyChangedCount += 1

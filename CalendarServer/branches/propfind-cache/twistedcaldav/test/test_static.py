@@ -18,18 +18,11 @@ from twisted.trial.unittest import TestCase
 
 from twistedcaldav.static import CalendarHomeFile, CalDAVFile
 from twistedcaldav.cache import CacheChangeNotifier
-
+from twistedcaldav.test.util import StubCacheChangeNotifier
 
 class StubParentResource(object):
     def principalCollections(self):
         return set([])
-
-
-class StubCacheChangeNotifier(object):
-    dataChangedCount = 0
-
-    def dataChanged(self):
-        self.dataChangedCount += 1
 
 
 class CalendarHomeFileTests(TestCase):
@@ -38,9 +31,11 @@ class CalendarHomeFileTests(TestCase):
                                              StubParentResource(),
                                              object())
 
+
     def test_hasCacheNotifier(self):
         self.failUnless(isinstance(self.calendarHome.cacheNotifier,
                                    CacheChangeNotifier))
+
 
     def test_childrenHaveCacheNotifier(self):
         child = self.calendarHome.createSimilarFile('/fake/path')
@@ -59,3 +54,8 @@ class CalDAVFileTests(TestCase):
     def test_updateCTagNotifiesCache(self):
         self.caldavFile.updateCTag()
         self.assertEquals(self.caldavFile.cacheNotifier.dataChangedCount, 1)
+
+
+    def test_updateCTagDoesntFailWithoutACacheNotifier(self):
+        del self.caldavFile.cacheNotifier
+        self.caldavFile.updateCTag()

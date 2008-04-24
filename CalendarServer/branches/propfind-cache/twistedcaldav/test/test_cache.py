@@ -18,23 +18,9 @@ from new import instancemethod
 
 from twisted.trial.unittest import TestCase
 
-from twisted.web2.http import HTTPError, StatusResponse
-
 from twistedcaldav.cache import CacheChangeNotifier, CacheTokensProperty
 
-
-class InMemoryPropertyStore(object):
-    def __init__(self):
-        self._properties = {}
-
-    def get(self, qname):
-        data = self._properties.get(qname)
-        if data is None:
-            raise HTTPError(StatusResponse(404, "No such property"))
-        return data
-
-    def set(self, property):
-        self._properties[property.qname()] = property
+from twistedcaldav.test.util import InMemoryPropertyStore
 
 
 def _newCacheTokens(prefix):

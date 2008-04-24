@@ -214,13 +214,14 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource):
 
         return super(CalDAVResource, self).writeProperty(property, request)
 
-#     def writeDeadProperty(self, property):
-#         val = super(CalDAVResource, self).writeDeadProperty(property, request)
+    def writeDeadProperty(self, property):
+        val = super(CalDAVResource, self).writeDeadProperty(property)
 
-#         if hasattr(self, 'cacheNotifier'):
-#             self.cacheNotifier.propertyChanged()
+        if hasattr(self, 'cacheNotifier'):
+            self.cacheNotifier.propertyChanged()
 
-#         return val
+        return val
+
 
     ##
     # ACL
