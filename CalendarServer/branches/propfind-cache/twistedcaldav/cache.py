@@ -26,16 +26,9 @@ class CacheTokensProperty(davxml.WebDAVTextElement):
     name = "cacheTokens"
 
 
-class CacheChangeNotifier(object):
-    def __init__(self, propertyStore):
-        self._propertyStore = propertyStore
-        self._propToken = None
-        self._dataToken = None
-
-    def _newDataToken(self):
-        return uuid.uuid4()
-
-    _newPropertyToken = _newDataToken
+class CacheChangeLoaderMixin(object):
+    _propToken = None
+    _dataToken = None
 
     def _loadTokens(self):
         try:
@@ -45,6 +38,19 @@ class CacheChangeNotifier(object):
 
         except HTTPError, e:
             pass
+
+
+
+class CacheChangeNotifier(CacheChangeLoaderMixin):
+    def __init__(self, propertyStore):
+        self._propertyStore = propertyStore
+
+
+    def _newDataToken(self):
+        return uuid.uuid4()
+
+    _newPropertyToken = _newDataToken
+
 
     def _writeTokens(self):
         if self._propToken is None:
@@ -57,12 +63,42 @@ class CacheChangeNotifier(object):
                                                              self._dataToken))
         self._propertyStore.set(property)
 
+
     def propertiesChanged(self):
         self._loadTokens()
         self._propToken = self._newPropertyToken()
         self._writeTokens()
 
+
     def dataChanged(self):
         self._loadTokens()
         self._dataToken = self._newDataToken()
         self._writeTokens()
+
+
+
+class CacheChangeObserver(CacheChangeLoaderMixin):
+    def __init__(self, propertyStore):
+        self._propertyStore = propertyStore
+        self._oldPropToken = None
+        self._oldDataToken = None
+
+
+    def propertiesHaveChanged(self):
+        self._loadTokens()
+
+        if self._propToken != self._oldPropToken:
+            self._oldPropToken = self._propToken
+            return True
+
+        return False
+
+
+    def dataHasChanged(self):
+        self._loadTokens()
+
+        if self._dataToken != self._oldDataToken:
+            self._oldDataToken = self._dataToken
+            return True
+
+        return False

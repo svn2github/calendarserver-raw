@@ -18,7 +18,9 @@ from new import instancemethod
 
 from twisted.trial.unittest import TestCase
 
-from twistedcaldav.cache import CacheChangeNotifier, CacheTokensProperty
+from twistedcaldav.cache import CacheChangeNotifier
+from twistedcaldav.cache import CacheTokensProperty
+from twistedcaldav.cache import CacheChangeObserver
 
 from twistedcaldav.test.util import InMemoryPropertyStore
 
@@ -45,6 +47,7 @@ class CacheChangeNotifierTests(TestCase):
                                                 self.ccn,
                                                 CacheChangeNotifier)
 
+
     def test_unsetPropertiesAreProvisioned(self):
         self.ccn.propertiesChanged()
         tokens = self.props._properties[CacheTokensProperty.qname()
@@ -52,6 +55,7 @@ class CacheChangeNotifierTests(TestCase):
         self.assertEquals(
             tokens,
             'propToken0:dataToken0')
+
 
     def test_changedPropertiesChangesPropToken(self):
         self.ccn.propertiesChanged()
@@ -71,3 +75,75 @@ class CacheChangeNotifierTests(TestCase):
         self.assertEquals(
             tokens,
             'propToken0:dataToken1')
+
+
+
+class CacheChangeObserverTests(TestCase):
+    def setUp(self):
+        self.props = InMemoryPropertyStore()
+        self.props._properties[CacheTokensProperty.qname()
+                               ] = CacheTokensProperty.fromString(
+            'propToken0:dataToken0')
+        self.observer = CacheChangeObserver(self.props)
+
+
+    def test_propertiesHaveChangedNewObserver(self):
+        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+
+
+    def test_propertiesHaveChanged(self):
+        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+
+        self.props._properties[CacheTokensProperty.qname()
+                               ] = CacheTokensProperty.fromString(
+            'propToken1:dataToken0')
+
+        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+
+
+    def test_propertiesHaveNotChanged(self):
+        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+        self.assertEquals(self.observer.propertiesHaveChanged(), False)
+
+
+    def test_propertiesDoNotChangeData(self):
+        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+        self.assertEquals(self.observer.dataHasChanged(), True)
+
+        self.props._properties[CacheTokensProperty.qname()
+                               ] = CacheTokensProperty.fromString(
+            'propToken1:dataToken0')
+
+        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+        self.assertEquals(self.observer.dataHasChanged(), False)
+
+
+    def test_dataHasChanged(self):
+        self.assertEquals(self.observer.dataHasChanged(), True)
+
+        self.props._properties[CacheTokensProperty.qname()
+                               ] = CacheTokensProperty.fromString(
+            'propToken0:dataToken1')
+
+        self.assertEquals(self.observer.dataHasChanged(), True)
+
+
+    def test_dataHasChangedNewObserver(self):
+        self.assertEquals(self.observer.dataHasChanged(), True)
+
+
+    def test_dataHasNotChanged(self):
+        self.assertEquals(self.observer.dataHasChanged(), True)
+        self.assertEquals(self.observer.dataHasChanged(), False)
+
+
+    def test_dataDoesNotChangeProperties(self):
+        self.assertEquals(self.observer.dataHasChanged(), True)
+        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+
+        self.props._properties[CacheTokensProperty.qname()
+                               ] = CacheTokensProperty.fromString(
+            'propToken0:dataToken1')
+
+        self.assertEquals(self.observer.dataHasChanged(), True)
+        self.assertEquals(self.observer.propertiesHaveChanged(), False)
