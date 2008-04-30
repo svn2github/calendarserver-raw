@@ -86,19 +86,19 @@ class RootResource(DAVFile):
             # Figure out the "username" from the davxml.Principal object
             request.checkingSACL = True
             d = request.locateResource(authzUser.children[0].children[0].data)
-            
+
             def _checkedSACLCb(principal):
                 delattr(request, "checkingSACL")
                 username = principal.record.shortName
-                
+
                 if RootResource.CheckSACL(username, self.saclService) != 0:
                     log.msg("User '%s' is not enabled with the '%s' SACL" % (username, self.saclService,))
                     return Failure(HTTPError(403))
-    
+
                 # Mark SACL's as having been checked so we can avoid doing it multiple times
                 request.checkedSACL = True
                 return True
-            
+
             d.addCallback(_checkedSACLCb)
             return d
 

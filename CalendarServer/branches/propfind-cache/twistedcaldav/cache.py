@@ -15,11 +15,14 @@
 ##
 
 import uuid
+import time
+import os
 
+from twisted.python.filepath import FilePath
 
 from twisted.web2.dav import davxml
 from twisted.web2.http import HTTPError
-
+from twisted.web2.dav.xattrprops import xattrPropertyStore
 
 class CacheTokensProperty(davxml.WebDAVTextElement):
     namespace = davxml.twisted_private_namespace
@@ -102,3 +105,75 @@ class CacheChangeObserver(CacheChangeLoaderMixin):
             return True
 
         return False
+
+
+
+class PropfindCachingResource(object):
+    CACHE_TIMEOUT = 60*60 # 1 hour
+
+    propertyStoreFactory = xattrPropertyStore
+    observerFactory = CacheChangeObserver
+
+    def __init__(self, docroot, timeFunc=time.time):
+        self._docroot = docroot
+        self._responses = {}
+        self._observers = {}
+        self._timeFunc = timeFunc
+
+
+    def _tokenPathForURI(self, uri):
+        tokenPath = self._docroot
+
+        for childName in uri.split('/')[:4]:
+            tokenPath = tokenPath.child(childName)
+
+        return tokenPath
+
+
+    def _observerForURI(self, uri):
+        class FauxStaticResource(object):
+            def __init__(self, fp):
+                self.fp = fp
+
+        propertyStore = self.propertyStoreFactory(
+                FauxStaticResource(self._tokenPathForURI(uri)))
+
+        return self.observerFactory(propertyStore)
+
+
+    def _cacheResponse(self, response, request):
+        if getattr(request, 'cacheRequest', False):
+            if request.uri not in self._observers:
+                self._observers[request.uri] = self._observerForURI(request.uri)
+
+            self._responses[(request.method,
+                             request.uri,
+                             request.authnUser)] = (self._timeFunc(),
+                                                    response)
+
+        return response
+
+
+    def renderHTTP(self, request):
+        key = (request.method, request.uri, request.authnUser)
+
+        if key in self._responses:
+            cacheTime, cachedResponse = self._responses[key]
+            if cacheTime + CACHE_TIMEOUT <= self._timeFunc():
+                if (request.uri in self._observers and
+                    self._observers[request.uri]()):
+
+                    return cachedResponse
+
+        def _renderResource(resource, request):
+            request.addResponseFilter(self._cacheResponse)
+            return resource.renderHTTP(request)
+
+        request.notInCache = True
+        d = request.locateResource(request.uri)
+        d.addCallback(_renderResource, request)
+        return d
+
+
+    def locateChild(self, request, segments):
+        return self, []

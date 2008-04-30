@@ -18,9 +18,12 @@ from new import instancemethod
 
 from twisted.trial.unittest import TestCase
 
+from twisted.python.filepath import FilePath
+
 from twistedcaldav.cache import CacheChangeNotifier
 from twistedcaldav.cache import CacheTokensProperty
 from twistedcaldav.cache import CacheChangeObserver
+from twistedcaldav.cache import PropfindCachingResource
 
 from twistedcaldav.test.util import InMemoryPropertyStore
 
@@ -147,3 +150,22 @@ class CacheChangeObserverTests(TestCase):
 
         self.assertEquals(self.observer.dataHasChanged(), True)
         self.assertEquals(self.observer.propertiesHaveChanged(), False)
+
+
+
+class PropfindCachingResourceTests(TestCase):
+    # _tokenPathForURI tests
+    def test_tokenPathForURI(self):
+        pcr = PropfindCachingResource(FilePath('/root'))
+        paths = [
+            ('/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B/',
+             '/root/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B'),
+            ('/calendars/users/dreid/', '/root/calendars/users/dreid'),
+            ('/calendars/users/dreid/calendar', '/root/calendars/users/dreid')]
+
+        for inPath, outPath in paths:
+            self.assertEquals(pcr._tokenPathForURI(inPath).path, outPath)
+
+
+    def test_observerForURI(self):
+        pcr = PropfindCachingResource(FilePath('/root'))
