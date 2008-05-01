@@ -39,6 +39,33 @@ def _newCacheTokens(prefix):
     return _
 
 
+
+class StubCacheChangeObserver(CacheChangeObserver):
+    def __init__(self, ps):
+        self._ps = ps
+        self.fp = self._ps.resource.fp
+
+        self._oldPropToken = None
+        self._oldDataToken = None
+        self.curPropToken = None
+        self.curDataToken = None
+
+    def _loadTokens(self):
+        self._dataToken = self.curDataToken
+        self._propToken = self.curPropToken
+
+
+
+class StubRequest(object):
+    def __init__(self, method, uri, authnUser):
+        self.method = method
+        self.uri = uri
+        self.authnUser = authnUser
+
+        self.cacheRequest = False
+
+
+
 class CacheChangeNotifierTests(TestCase):
     def setUp(self):
         self.props = InMemoryPropertyStore()
@@ -154,9 +181,11 @@ class CacheChangeObserverTests(TestCase):
 
 
 class PropfindCachingResourceTests(TestCase):
-    # _tokenPathForURI tests
+    def setUp(self):
+        self.pcr = PropfindCachingResource(FilePath('/root'),
+                                                timeFunc=lambda:0)
+
     def test_tokenPathForURI(self):
-        pcr = PropfindCachingResource(FilePath('/root'))
         paths = [
             ('/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B/',
              '/root/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B'),
@@ -164,8 +193,54 @@ class PropfindCachingResourceTests(TestCase):
             ('/calendars/users/dreid/calendar', '/root/calendars/users/dreid')]
 
         for inPath, outPath in paths:
-            self.assertEquals(pcr._tokenPathForURI(inPath).path, outPath)
+            self.assertEquals(self.pcr._tokenPathForURI(inPath).path, outPath)
 
 
     def test_observerForURI(self):
-        pcr = PropfindCachingResource(FilePath('/root'))
+        self.pcr.observerFactory = StubCacheChangeObserver
+
+        paths = [
+            ('/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B/',
+             '/root/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B'),
+            ('/calendars/users/dreid/', '/root/calendars/users/dreid'),
+            ('/calendars/users/dreid/calendar', '/root/calendars/users/dreid')]
+
+        for inPath, outPath in paths:
+            self.assertEquals(self.pcr._observerForURI(inPath).fp.path,
+                              outPath)
+
+
+    def test_cacheResponseTaggedRequestTrue(self):
+        response = object()
+        request = StubRequest('GET', '/root/calendars/users/dreid', 'dreid')
+
+        request.cacheRequest = True
+
+        r = self.pcr._cacheResponse(request, response)
+        self.assertEquals(r, response)
+
+        self.assertEquals(self.pcr._responses,
+                          {('GET',
+                            '/root/calendars/users/dreid',
+                            'dreid'): (0, response)})
+
+
+    def test_cacheResponseTaggedRequestFalse(self):
+        response = object()
+        request = StubRequest('GET', '/root/calendars/users/dreid', 'dreid')
+
+        r = self.pcr._cacheResponse(request, response)
+        self.assertEquals(r, response)
+
+        self.assertEquals(self.pcr._responses, {})
+
+
+    def test_cacheResposneUntaggedRequest(self):
+        response = object()
+        request = StubRequest('GET', '/root/calendars/users/dreid', 'dreid')
+        del request.cacheRequest
+
+        r = self.pcr._cacheResponse(request, response)
+        self.assertEquals(r, response)
+
+        self.assertEquals(self.pcr._responses, {})

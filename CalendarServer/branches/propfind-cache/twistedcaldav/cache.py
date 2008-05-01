@@ -141,7 +141,7 @@ class PropfindCachingResource(object):
         return self.observerFactory(propertyStore)
 
 
-    def _cacheResponse(self, response, request):
+    def _cacheResponse(self, request, response):
         if getattr(request, 'cacheRequest', False):
             if request.uri not in self._observers:
                 self._observers[request.uri] = self._observerForURI(request.uri)
