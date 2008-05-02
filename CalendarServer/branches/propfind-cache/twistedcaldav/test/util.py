@@ -39,11 +39,7 @@ class InMemoryPropertyStore(object):
 
 
 class StubCacheChangeNotifier(object):
-    dataChangedCount = 0
-    propertyChangedCount = 0
+    changedCount = 0
 
-    def dataChanged(self):
-        self.dataChangedCount += 1
-
-    def propertiesChanged(self):
-        self.propertyChangedCount += 1
+    def changed(self):
+        self.changedCount += 1

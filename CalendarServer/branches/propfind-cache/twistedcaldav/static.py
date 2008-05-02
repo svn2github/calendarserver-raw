@@ -286,9 +286,6 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
     def updateCTag(self):
         assert self.isCollection()
-        if hasattr(self, 'cacheNotifier'):
-            self.cacheNotifier.dataChanged()
-
         self.writeDeadProperty(customxml.GETCTag(str(datetime.datetime.now())))
 
     ##

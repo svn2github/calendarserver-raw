@@ -218,7 +218,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource):
         val = super(CalDAVResource, self).writeDeadProperty(property)
 
         if hasattr(self, 'cacheNotifier'):
-            self.cacheNotifier.propertiesChanged()
+            self.cacheNotifier.changed()
 
         return val
 

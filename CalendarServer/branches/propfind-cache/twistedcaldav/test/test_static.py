@@ -47,13 +47,13 @@ class CalDAVFileTests(TestCase):
         self.caldavFile = CalDAVFile(self.mktemp())
         self.caldavFile.fp.createDirectory()
         self.caldavFile.cacheNotifier = StubCacheChangeNotifier()
-        self.assertEquals(self.caldavFile.cacheNotifier.dataChangedCount, 0)
+        self.assertEquals(self.caldavFile.cacheNotifier.changedCount, 0)
         self.caldavFile.isCollection = (lambda: True)
 
 
     def test_updateCTagNotifiesCache(self):
         self.caldavFile.updateCTag()
-        self.assertEquals(self.caldavFile.cacheNotifier.dataChangedCount, 1)
+        self.assertEquals(self.caldavFile.cacheNotifier.changedCount, 1)
 
 
     def test_updateCTagDoesntFailWithoutACacheNotifier(self):
