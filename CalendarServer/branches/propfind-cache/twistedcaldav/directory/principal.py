@@ -172,7 +172,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
                 principalResource = typeResource.getChild(segments[2])
                 if principalResource:
                     return principalResource
-            
+
         return None
 
     def principalForCalendarUserAddress(self, address):
@@ -378,7 +378,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
         return "(%s) %s" % (self.record.recordType, self.record.shortName)
 
     def provisionFile(self):
-        
+
         result = super(DirectoryPrincipalResource, self).provisionFile()
         if result:
             self.writeDeadProperty(RecordTypeProperty(self.record.recordType))
@@ -439,13 +439,13 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     def _calendar_user_proxy_index(self):
         """
         Return the SQL database for calendar user proxies.
-        
+
         @return: the L{CalendarUserProxyDatabase} for the principal collection.
         """
-        
+
         # Get the principal collection we are contained in
         pcollection = self.parent.parent
-        
+
         # The db is located in the principal collection root
         if not hasattr(pcollection, "calendar_user_proxy_db"):
             setattr(pcollection, "calendar_user_proxy_db", CalendarUserProxyDatabase(pcollection.fp.path))
@@ -510,7 +510,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
 
     def principalUID(self):
         return self.record.guid
-        
+
     ##
     # Static
     ##
@@ -587,7 +587,7 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def autoSchedule(self):
         return self.record.autoSchedule
-    
+
     def proxies(self):
         return self._getRelatives("proxies")
 
