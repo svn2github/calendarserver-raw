@@ -18,8 +18,12 @@ import uuid
 import time
 import os
 
-from twisted.python.filepath import FilePath
+from zope.interface import implements
 
+from twisted.python.filepath import FilePath
+from twisted.python import log
+
+from twisted.web2.iweb import IResource
 from twisted.web2.dav import davxml
 from twisted.web2.http import HTTPError
 from twisted.web2.dav.xattrprops import xattrPropertyStore
@@ -80,100 +84,99 @@ class CacheChangeNotifier(CacheChangeLoaderMixin):
 
 
 
-class CacheChangeObserver(CacheChangeLoaderMixin):
-    def __init__(self, propertyStore):
-        self._propertyStore = propertyStore
-        self._oldPropToken = None
-        self._oldDataToken = None
+class ResponseCache(object):
+    """
+    An object that caches responses to given requests.
 
+    @ivar CACHE_TIMEOUT: The number of seconds that a cache entry is valid,
+        (default 3600 seconds or 1 hour).
 
-    def propertiesHaveChanged(self):
-        self._loadTokens()
+    @ivar _docroot: An L{FilePath} that points to the document root.
+    @ivar _responses: A C{dict} with (request-method, request-uri,
+         principal-uri) keys and (principal-token, uri-token, cache-time,
+         response) values.
+    """
 
-        if self._propToken != self._oldPropToken:
-            self._oldPropToken = self._propToken
-            return True
+    CACHE_TIMEOUT = 60*60 #1hr
 
-        return False
-
-
-    def dataHasChanged(self):
-        self._loadTokens()
-
-        if self._dataToken != self._oldDataToken:
-            self._oldDataToken = self._dataToken
-            return True
-
-        return False
-
-
-
-class PropfindCachingResource(object):
-    CACHE_TIMEOUT = 60*60 # 1 hour
-
-    propertyStoreFactory = xattrPropertyStore
-    observerFactory = CacheChangeObserver
-
-    def __init__(self, docroot, timeFunc=time.time):
+    def __init__(self, docroot):
         self._docroot = docroot
         self._responses = {}
-        self._observers = {}
-        self._timeFunc = timeFunc
 
 
-    def _tokenPathForURI(self, uri):
-        tokenPath = self._docroot
+    def _tokenForURI(self, uri):
+        """
+        Get a property store for the given C{uri}.
 
-        for childName in uri.split('/')[:4]:
-            tokenPath = tokenPath.child(childName)
+        @param uri: The URI we'd like the token for.
+        @return: A C{str} representing the token for the URI.
+        """
 
-        return tokenPath
-
-
-    def _observerForURI(self, uri):
-        class FauxStaticResource(object):
+        class __FauxStaticResource(object):
             def __init__(self, fp):
                 self.fp = fp
 
-        propertyStore = self.propertyStoreFactory(
-                FauxStaticResource(self._tokenPathForURI(uri)))
 
-        return self.observerFactory(propertyStore)
+        fp = self._docroot
+        for childPath in uri.split('/')[:4]:
+            fp = fp.child(childPath)
+
+        props = self.propertyStoreFactory(__FauxStaticResource(fp))
+
+        try:
+            tokenElement = props.get(CacheTokensProperty.qname())
+            return tokenElement.children[0].data
+
+        except HTTPError, err:
+            pass
 
 
-    def _cacheResponse(self, request, response):
-        if getattr(request, 'cacheRequest', False):
-            if request.uri not in self._observers:
-                self._observers[request.uri] = self._observerForURI(request.uri)
+    def _time(self):
+        """
+        Return the current time in seconds since the epoch
+        """
+        return time.time()
 
-            self._responses[(request.method,
-                             request.uri,
-                             request.authnUser)] = (self._timeFunc(),
-                                                    response)
+
+    def getResponseForRequest(self, request):
+        """
+        Retrieve a cached response to the given C{request} otherwise return
+        C{None}
+
+        @param request: An L{IRequest} provider that will be used to locate
+            a cached L{IResponse}.
+
+        @return: An L{IResponse} or C{None} if the response has not been cached.
+        """
+        key = (request.method, request.uri, request.authnUser)
+        if key not in self._responses:
+            return None
+
+        principalToken, uriToken, cacheTime, response = self._responses[key]
+
+        if self._tokenForURI(request.authnUser) != principalToken:
+            return None
+
+        elif self._tokenForURI(request.uri) != uriToken:
+            return None
+
+        elif self._time() >= cacheTime + self.CACHE_TIMEOUT:
+            return None
 
         return response
 
 
-    def renderHTTP(self, request):
+    def cacheResponseForRequest(self, request, response):
+        """
+        Cache the given C{response} for the given C{request}.
+
+        @param request: An L{IRequest} provider that will be keyed to the
+            given C{response}.
+
+        @param response: An L{IResponse} provider that will be returned on
+            subsequent checks for the given L{IRequest}
+        """
         key = (request.method, request.uri, request.authnUser)
-
-        if key in self._responses:
-            cacheTime, cachedResponse = self._responses[key]
-            if cacheTime + CACHE_TIMEOUT <= self._timeFunc():
-                if (request.uri in self._observers and
-                    self._observers[request.uri]()):
-
-                    return cachedResponse
-
-        def _renderResource(resource, request):
-            request.addResponseFilter(self._cacheResponse)
-            return resource.renderHTTP(request)
-
-        request.notInCache = True
-        d = request.locateResource(request.uri)
-        d.addCallback(_renderResource, request)
-        return d
-
-
-    def locateChild(self, request, segments):
-        return self, []
+        self._responses[key] = (self._tokenForURI(request.authnUser),
+                                self._tokenForURI(request.uri),
+                                self._time(), response)

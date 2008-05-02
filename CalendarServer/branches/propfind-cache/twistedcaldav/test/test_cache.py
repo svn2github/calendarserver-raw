@@ -22,8 +22,7 @@ from twisted.python.filepath import FilePath
 
 from twistedcaldav.cache import CacheChangeNotifier
 from twistedcaldav.cache import CacheTokensProperty
-from twistedcaldav.cache import CacheChangeObserver
-from twistedcaldav.cache import PropfindCachingResource
+from twistedcaldav.cache import ResponseCache
 
 from twistedcaldav.test.util import InMemoryPropertyStore
 
@@ -37,22 +36,6 @@ def _newCacheTokens(prefix):
         return token
 
     return _
-
-
-
-class StubCacheChangeObserver(CacheChangeObserver):
-    def __init__(self, ps):
-        self._ps = ps
-        self.fp = self._ps.resource.fp
-
-        self._oldPropToken = None
-        self._oldDataToken = None
-        self.curPropToken = None
-        self.curDataToken = None
-
-    def _loadTokens(self):
-        self._dataToken = self.curDataToken
-        self._propToken = self.curPropToken
 
 
 
@@ -108,139 +91,108 @@ class CacheChangeNotifierTests(TestCase):
 
 
 
-class CacheChangeObserverTests(TestCase):
+class ResponseCacheTests(TestCase):
     def setUp(self):
-        self.props = InMemoryPropertyStore()
-        self.props._properties[CacheTokensProperty.qname()
-                               ] = CacheTokensProperty.fromString(
-            'propToken0:dataToken0')
-        self.observer = CacheChangeObserver(self.props)
+        self.tokens = {
+                '/calendars/users/cdaboo/': 'uriToken0',
+                '/principals/users/cdaboo/': 'principalToken0',
+                '/principals/users/dreid/': 'principalTokenX'}
+
+        self.rc = ResponseCache(None)
+        self.rc._tokenForURI = self.tokens.get
+
+        self.rc._time = (lambda:0)
+
+        self.expected_response = object()
+
+        self.rc._responses[(
+                'PROPFIND',
+                '/calendars/users/cdaboo/',
+                '/principals/users/cdaboo/')] = (
+            'principalToken0', 'uriToken0', 0, self.expected_response)
 
 
-    def test_propertiesHaveChangedNewObserver(self):
-        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+    def test_getResponseForRequestNotInCache(self):
+        response = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/calendars/users/dreid/',
+                '/principals/users/dreid/'))
+
+        self.assertEquals(response, None)
 
 
-    def test_propertiesHaveChanged(self):
-        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+    def test_getResponseForRequestInCache(self):
+        response = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/calendars/users/cdaboo/',
+                '/principals/users/cdaboo/'))
 
-        self.props._properties[CacheTokensProperty.qname()
-                               ] = CacheTokensProperty.fromString(
-            'propToken1:dataToken0')
-
-        self.assertEquals(self.observer.propertiesHaveChanged(), True)
-
-
-    def test_propertiesHaveNotChanged(self):
-        self.assertEquals(self.observer.propertiesHaveChanged(), True)
-        self.assertEquals(self.observer.propertiesHaveChanged(), False)
+        self.assertEquals(self.expected_response, response)
 
 
-    def test_propertiesDoNotChangeData(self):
-        self.assertEquals(self.observer.propertiesHaveChanged(), True)
-        self.assertEquals(self.observer.dataHasChanged(), True)
+    def test_getResponseForRequestPrincipalTokenChanged(self):
+        self.tokens['/principals/users/cdaboo/'] = 'principalToken1'
 
-        self.props._properties[CacheTokensProperty.qname()
-                               ] = CacheTokensProperty.fromString(
-            'propToken1:dataToken0')
+        response = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/calendars/users/cdaboo/',
+                '/principals/users/cdaboo/'))
 
-        self.assertEquals(self.observer.propertiesHaveChanged(), True)
-        self.assertEquals(self.observer.dataHasChanged(), False)
-
-
-    def test_dataHasChanged(self):
-        self.assertEquals(self.observer.dataHasChanged(), True)
-
-        self.props._properties[CacheTokensProperty.qname()
-                               ] = CacheTokensProperty.fromString(
-            'propToken0:dataToken1')
-
-        self.assertEquals(self.observer.dataHasChanged(), True)
+        self.assertEquals(response, None)
 
 
-    def test_dataHasChangedNewObserver(self):
-        self.assertEquals(self.observer.dataHasChanged(), True)
+    def test_getResponseForRequestUriTokenChanged(self):
+        self.tokens['/calendars/users/cdaboo/'] = 'uriToken1'
+
+        response = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/calendars/users/cdaboo/',
+                '/principals/users/cdaboo/'))
+
+        self.assertEquals(response, None)
 
 
-    def test_dataHasNotChanged(self):
-        self.assertEquals(self.observer.dataHasChanged(), True)
-        self.assertEquals(self.observer.dataHasChanged(), False)
+    def test_getResponseForRequestCacheTimeoutLapsed(self):
+        self.rc._time = (lambda: 50000)
+
+        response = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/calendars/users/cdaboo/',
+                '/principals/users/cdaboo/'))
+
+        self.assertEquals(response, None)
 
 
-    def test_dataDoesNotChangeProperties(self):
-        self.assertEquals(self.observer.dataHasChanged(), True)
-        self.assertEquals(self.observer.propertiesHaveChanged(), True)
+    def test_cacheResponseForRequest(self):
+        expected_response = object()
+        self.rc.cacheResponseForRequest(StubRequest('PROPFIND',
+                                                    '/principals/users/dreid/',
+                                                    '/principals/users/dreid/'),
+                                        expected_response)
 
-        self.props._properties[CacheTokensProperty.qname()
-                               ] = CacheTokensProperty.fromString(
-            'propToken0:dataToken1')
+        response = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/principals/users/dreid/',
+                '/principals/users/dreid/'))
 
-        self.assertEquals(self.observer.dataHasChanged(), True)
-        self.assertEquals(self.observer.propertiesHaveChanged(), False)
-
-
-
-class PropfindCachingResourceTests(TestCase):
-    def setUp(self):
-        self.pcr = PropfindCachingResource(FilePath('/root'),
-                                                timeFunc=lambda:0)
-
-    def test_tokenPathForURI(self):
-        paths = [
-            ('/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B/',
-             '/root/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B'),
-            ('/calendars/users/dreid/', '/root/calendars/users/dreid'),
-            ('/calendars/users/dreid/calendar', '/root/calendars/users/dreid')]
-
-        for inPath, outPath in paths:
-            self.assertEquals(self.pcr._tokenPathForURI(inPath).path, outPath)
+        self.assertEquals(response, expected_response)
 
 
-    def test_observerForURI(self):
-        self.pcr.observerFactory = StubCacheChangeObserver
+    def test__tokenForURI(self):
+        docroot = FilePath(self.mktemp())
+        principal = docroot.child('principals').child('users').child('wsanchez')
 
-        paths = [
-            ('/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B/',
-             '/root/principals/__uids__/557C330A-06E2-403B-BC24-CE3A253CDB5B'),
-            ('/calendars/users/dreid/', '/root/calendars/users/dreid'),
-            ('/calendars/users/dreid/calendar', '/root/calendars/users/dreid')]
+        expected_token = "wsanchezToken0"
 
-        for inPath, outPath in paths:
-            self.assertEquals(self.pcr._observerForURI(inPath).fp.path,
-                              outPath)
+        props = InMemoryPropertyStore()
+        props._properties[CacheTokensProperty.qname()
+                          ] = CacheTokensProperty.fromString(expected_token)
 
+        stores = {principal.path: props}
 
-    def test_cacheResponseTaggedRequestTrue(self):
-        response = object()
-        request = StubRequest('GET', '/root/calendars/users/dreid', 'dreid')
+        rc = ResponseCache(docroot)
 
-        request.cacheRequest = True
+        rc.propertyStoreFactory = (lambda rsrc: stores[rsrc.fp.path])
 
-        r = self.pcr._cacheResponse(request, response)
-        self.assertEquals(r, response)
-
-        self.assertEquals(self.pcr._responses,
-                          {('GET',
-                            '/root/calendars/users/dreid',
-                            'dreid'): (0, response)})
-
-
-    def test_cacheResponseTaggedRequestFalse(self):
-        response = object()
-        request = StubRequest('GET', '/root/calendars/users/dreid', 'dreid')
-
-        r = self.pcr._cacheResponse(request, response)
-        self.assertEquals(r, response)
-
-        self.assertEquals(self.pcr._responses, {})
-
-
-    def test_cacheResposneUntaggedRequest(self):
-        response = object()
-        request = StubRequest('GET', '/root/calendars/users/dreid', 'dreid')
-        del request.cacheRequest
-
-        r = self.pcr._cacheResponse(request, response)
-        self.assertEquals(r, response)
-
-        self.assertEquals(self.pcr._responses, {})
+        token = rc._tokenForURI('/principals/users/wsanchez')
+        self.assertEquals(token, expected_token)
