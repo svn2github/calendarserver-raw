@@ -61,33 +61,19 @@ class CacheChangeNotifierTests(TestCase):
                                                 CacheChangeNotifier)
 
 
-    def test_unsetPropertiesAreProvisioned(self):
-        self.ccn.propertiesChanged()
-        tokens = self.props._properties[CacheTokensProperty.qname()
+    def test_cacheTokenPropertyIsProvisioned(self):
+        self.ccn.changed()
+        token = self.props._properties[CacheTokensProperty.qname()
                                         ].children[0].data
-        self.assertEquals(
-            tokens,
-            'propToken0:dataToken0')
+        self.assertEquals(tokens, 'token0')
 
 
-    def test_changedPropertiesChangesPropToken(self):
+    def test_changedChangesToken(self):
         self.ccn.propertiesChanged()
         self.ccn.propertiesChanged()
         tokens = self.props._properties[CacheTokensProperty.qname()
                                         ].children[0].data
-        self.assertEquals(
-            tokens,
-            'propToken1:dataToken0')
-
-
-    def test_changedDataChangesDataToken(self):
-        self.ccn.dataChanged()
-        self.ccn.dataChanged()
-        tokens = self.props._properties[CacheTokensProperty.qname()
-                                        ].children[0].data
-        self.assertEquals(
-            tokens,
-            'propToken0:dataToken1')
+        self.assertEquals(token, 'token1')
 
 
 
