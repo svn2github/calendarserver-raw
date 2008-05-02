@@ -27,15 +27,12 @@ from twistedcaldav.cache import ResponseCache
 from twistedcaldav.test.util import InMemoryPropertyStore
 
 
-def _newCacheTokens(prefix):
-    def _(self):
-        called = getattr(self, '_%scalled' % (prefix,), 0)
+def _newCacheToken(self):
+    called = getattr(self, '_called', 0)
 
-        token = '%sToken%d' % (prefix, called)
-        setattr(self, '_%scalled' % (prefix,), called + 1)
-        return token
-
-    return _
+    token = 'token%d' % (called,)
+    setattr(self, '_called', called + 1)
+    return token
 
 
 
@@ -53,25 +50,22 @@ class CacheChangeNotifierTests(TestCase):
     def setUp(self):
         self.props = InMemoryPropertyStore()
         self.ccn = CacheChangeNotifier(self.props)
-        self.ccn._newPropertyToken = instancemethod(_newCacheTokens('prop'),
-                                                    self.ccn,
-                                                    CacheChangeNotifier)
-        self.ccn._newDataToken = instancemethod(_newCacheTokens('data'),
-                                                self.ccn,
-                                                CacheChangeNotifier)
+        self.ccn._newCacheToken = instancemethod(_newCacheToken,
+                                                 self.ccn,
+                                                 CacheChangeNotifier)
 
 
     def test_cacheTokenPropertyIsProvisioned(self):
         self.ccn.changed()
         token = self.props._properties[CacheTokensProperty.qname()
                                         ].children[0].data
-        self.assertEquals(tokens, 'token0')
+        self.assertEquals(token, 'token0')
 
 
     def test_changedChangesToken(self):
-        self.ccn.propertiesChanged()
-        self.ccn.propertiesChanged()
-        tokens = self.props._properties[CacheTokensProperty.qname()
+        self.ccn.changed()
+        self.ccn.changed()
+        token = self.props._properties[CacheTokensProperty.qname()
                                         ].children[0].data
         self.assertEquals(token, 'token1')
 

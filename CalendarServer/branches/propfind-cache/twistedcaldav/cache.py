@@ -33,54 +33,21 @@ class CacheTokensProperty(davxml.WebDAVTextElement):
     name = "cacheTokens"
 
 
-class CacheChangeLoaderMixin(object):
-    _propToken = None
-    _dataToken = None
 
-    def _loadTokens(self):
-        try:
-            tokens = self._propertyStore.get(CacheTokensProperty.qname())
-            self._propToken, self._dataToken = (
-                tokens.children[0].data.split(':'))
-
-        except HTTPError, e:
-            pass
-
-
-
-class CacheChangeNotifier(CacheChangeLoaderMixin):
+class CacheChangeNotifier(object):
     def __init__(self, propertyStore):
         self._propertyStore = propertyStore
+        self._token = None
 
 
-    def _newDataToken(self):
+    def _newCacheToken(self):
         return uuid.uuid4()
 
-    _newPropertyToken = _newDataToken
 
-
-    def _writeTokens(self):
-        if self._propToken is None:
-            self._propToken = self._newPropertyToken()
-
-        if self._dataToken is None:
-            self._dataToken = self._newDataToken()
-
-        property = CacheTokensProperty.fromString('%s:%s' % (self._propToken,
-                                                             self._dataToken))
+    def changed(self):
+        property = CacheTokensProperty.fromString(self._newCacheToken())
         self._propertyStore.set(property)
 
-
-    def propertiesChanged(self):
-        self._loadTokens()
-        self._propToken = self._newPropertyToken()
-        self._writeTokens()
-
-
-    def dataChanged(self):
-        self._loadTokens()
-        self._dataToken = self._newDataToken()
-        self._writeTokens()
 
 
 
