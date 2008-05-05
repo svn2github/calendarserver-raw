@@ -169,10 +169,10 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
                 self.members = members
 
 
-        proxy = self._getRecordByShortName(directoryService.recordType_users,
+        user = self._getRecordByShortName(directoryService.recordType_users,
                                            "cdaboo")
 
-        proxy_group = proxy.getChild("calendar-proxy-write")
+        proxy_group = user.getChild("calendar-proxy-write")
 
         memberdb = StubMemberDB()
 
@@ -190,3 +190,29 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
             set([str(p) for p in memberdb.members]),
             set(["5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1",
                  "8B4288F6-CC82-491D-8EF9-642EF4F3E7D0"]))
+
+
+    def test_setGroupMemberSetNotifiesPrincipalCaches(self):
+        class StubCacheNotifier(object):
+            changedCount = 0
+            def changed(self):
+                self.changedCount += 1
+
+        user = self._getRecordByShortName(directoryService.recordType_users,
+                                          "cdaboo")
+
+        proxy_group = user.getChild("calendar-proxy-write")
+
+        proxyMember = self._getRecordByShortName(
+            directoryService.recordType_users,
+            "dreid")
+
+        proxyMember.cacheNotifier = StubCacheNotifier()
+
+        self.assertEquals(proxyMember.cacheNotifier.changedCount, 0)
+
+        proxy_group.setGroupMemberSet(davxml.GroupMemberSet(
+                davxml.HRef.fromString(
+                    "/XMLDirectoryService/__uids__/%s" % (proxyMember.uid,))))
+
+        self.assertEquals(proxyMember.cacheNotifier.changedCount, 1)
