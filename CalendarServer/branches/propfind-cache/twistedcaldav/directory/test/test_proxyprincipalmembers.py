@@ -23,6 +23,7 @@ from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.directory.test.test_xmlfile import xmlFile
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
+from twistedcaldav.directory.principal import DirectoryPrincipalResource
 
 import twistedcaldav.test.util
 
@@ -203,16 +204,21 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
 
         proxy_group = user.getChild("calendar-proxy-write")
 
-        proxyMember = self._getRecordByShortName(
-            directoryService.recordType_users,
-            "dreid")
+        notifier = StubCacheNotifier()
 
-        proxyMember.cacheNotifier = StubCacheNotifier()
+        oldCacheNotifier = DirectoryPrincipalResource.cacheNotifierFactory
 
-        self.assertEquals(proxyMember.cacheNotifier.changedCount, 0)
+        try:
+            DirectoryPrincipalResource.cacheNotifierFactory = (lambda _1, _2: notifier)
 
-        proxy_group.setGroupMemberSet(davxml.GroupMemberSet(
-                davxml.HRef.fromString(
-                    "/XMLDirectoryService/__uids__/%s" % (proxyMember.uid,))))
+            self.assertEquals(notifier.changedCount, 0)
 
-        self.assertEquals(proxyMember.cacheNotifier.changedCount, 1)
+            proxy_group.setGroupMemberSet(
+                davxml.GroupMemberSet(
+                    davxml.HRef.fromString(
+                        "/XMLDirectoryService/__uids__/5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1/")),
+                None)
+
+            self.assertEquals(notifier.changedCount, 1)
+        finally:
+            DirectoryPrincipalResource.cacheNotifierFactory = oldCacheNotifier

@@ -178,6 +178,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, AutoProvisionin
                     "Attempt to use a non-existent principal %s as a group member of %s." % (uri, self.principalURL(),)
                 ))
             principals.append(principal)
+            principal.cacheNotifier.changed()
 
         # Map the principals to UIDs.
         uids = [p.principalUID() for p in principals]

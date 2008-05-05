@@ -347,6 +347,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     """
     Directory principal resource.
     """
+    cacheNotifierFactory = CacheChangeNotifier
+
     def __init__(self, path, parent, record):
         """
         @param path: them path to the file which will back this resource.
@@ -355,7 +357,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
         """
         super(DirectoryPrincipalResource, self).__init__(path)
 
-        self.cacheNotifier = CacheChangeNotifier(self.deadProperties())
+        self.cacheNotifier = self.cacheNotifierFactory(
+            self.deadProperties())
 
         if self.isCollection():
             slash = "/"
