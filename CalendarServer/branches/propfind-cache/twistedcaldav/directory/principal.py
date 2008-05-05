@@ -41,6 +41,8 @@ from twisted.web2.dav.element.base import twisted_private_namespace
 from twisted.web2.dav.util import joinURL
 
 from twistedcaldav.config import config
+from twistedcaldav.cache import CacheChangeNotifier
+
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyPrincipalResource
 from twistedcaldav.directory.directory import DirectoryService
@@ -352,6 +354,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
         @param record: the L{IDirectoryRecord} that this resource represents.
         """
         super(DirectoryPrincipalResource, self).__init__(path)
+
+        self.cacheNotifier = CacheChangeNotifier(self.deadProperties())
 
         if self.isCollection():
             slash = "/"

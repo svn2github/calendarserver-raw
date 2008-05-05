@@ -40,6 +40,8 @@ from twistedcaldav.directory.principal import DirectoryPrincipalTypeProvisioning
 from twistedcaldav.directory.principal import DirectoryPrincipalResource
 from twistedcaldav.directory.principal import DirectoryCalendarPrincipalResource
 
+from twistedcaldav.cache import CacheChangeNotifier
+
 import twistedcaldav.test.util
 
 directoryServices = (
@@ -225,6 +227,15 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
     ##
     # DirectoryPrincipalResource
     ##
+
+    def test_cacheNotifier(self):
+        """
+        Each DirectoryPrincipalResource should have a cacheNotifier attribute
+        that is an instance of CacheChangeNotifier
+        """
+        for provisioningResource, recordType, recordResource, record in self._allRecords():
+            self.failUnless(isinstance(recordResource.cacheNotifier,
+                                       CacheChangeNotifier))
 
     def test_displayName(self):
         """
