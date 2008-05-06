@@ -50,7 +50,7 @@ from twisted.web2.dav.idav import IDAVResource
 from twisted.web2.dav.method import put_common as put_common_base
 from twisted.web2.dav.resource import AccessDeniedError
 from twisted.web2.dav.resource import davPrivilegeSet
-from twisted.web2.dav.util import parentForURL, bindMethods
+from twisted.web2.dav.util import parentForURL, bindMethods, allDataFromStream
 
 from twistedcaldav import caldavxml
 from twistedcaldav import customxml
@@ -567,6 +567,17 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
 
         return super(CalendarHomeFile, self).getChild(name)
 
+    def http_PROPFIND(self, request):
+        def _cacheResponse(response):
+            print "Caching response: %r" % (response,)
+            responseCache = request.site.resource.resource.resource.resource.responseCache
+            responseCache.cacheResponseForRequest(request, response)
+            return response
+
+        d = super(CalendarHomeFile, self).http_PROPFIND(request)
+        d.addBoth(_cacheResponse)
+        return d
+
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
     def __init__(self, path, parent):
         super(ScheduleFile, self).__init__(path, principalCollections=parent.principalCollections())
@@ -599,6 +610,7 @@ class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
             responsecode.FORBIDDEN,
             (caldav_namespace, "calendar-collection-location-ok")
         )
+
 
     ##
     # ACL

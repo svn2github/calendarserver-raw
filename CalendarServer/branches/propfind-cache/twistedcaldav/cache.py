@@ -65,6 +65,7 @@ class ResponseCache(object):
     """
 
     CACHE_TIMEOUT = 60*60 #1hr
+    propertyStoreFactory = xattrPropertyStore
 
     def __init__(self, docroot):
         self._docroot = docroot
@@ -98,6 +99,10 @@ class ResponseCache(object):
             pass
 
 
+    def _principalURI(self, principal):
+        return str(principal.children[0])
+
+
     def _time(self):
         """
         Return the current time in seconds since the epoch
@@ -115,13 +120,17 @@ class ResponseCache(object):
 
         @return: An L{IResponse} or C{None} if the response has not been cached.
         """
-        key = (request.method, request.uri, request.authnUser)
+        principalURI = self._principalURI(request.authnUser)
+
+        key = (request.method,
+               request.uri,
+               principalURI)
         if key not in self._responses:
             return None
 
         principalToken, uriToken, cacheTime, response = self._responses[key]
 
-        if self._tokenForURI(request.authnUser) != principalToken:
+        if self._tokenForURI(principalURI) != principalToken:
             return None
 
         elif self._tokenForURI(request.uri) != uriToken:
@@ -143,7 +152,25 @@ class ResponseCache(object):
         @param response: An L{IResponse} provider that will be returned on
             subsequent checks for the given L{IRequest}
         """
-        key = (request.method, request.uri, request.authnUser)
-        self._responses[key] = (self._tokenForURI(request.authnUser),
+        principalURI = self._principalURI(request.authnUser)
+
+        key = (request.method,
+               request.uri,
+               principalURI)
+
+        self._responses[key] = (self._tokenForURI(principalURI),
                                 self._tokenForURI(request.uri),
                                 self._time(), response)
+
+
+class _CachedResponseResource(object):
+    implements(IResource)
+
+    def __init__(self, response):
+        self._response = response
+
+    def renderHTTP(self, request):
+        return self._response
+
+    def locateChild(self, request, segments):
+        return self, []

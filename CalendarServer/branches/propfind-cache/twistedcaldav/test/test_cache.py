@@ -20,6 +20,8 @@ from twisted.trial.unittest import TestCase
 
 from twisted.python.filepath import FilePath
 
+from twisted.web2.dav import davxml
+
 from twistedcaldav.cache import CacheChangeNotifier
 from twistedcaldav.cache import CacheTokensProperty
 from twistedcaldav.cache import ResponseCache
@@ -40,7 +42,7 @@ class StubRequest(object):
     def __init__(self, method, uri, authnUser):
         self.method = method
         self.uri = uri
-        self.authnUser = authnUser
+        self.authnUser = davxml.Principal(davxml.HRef.fromString(authnUser))
 
         self.cacheRequest = False
 

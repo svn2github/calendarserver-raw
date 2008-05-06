@@ -357,8 +357,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
         """
         super(DirectoryPrincipalResource, self).__init__(path)
 
-        self.cacheNotifier = self.cacheNotifierFactory(
-            self.deadProperties())
+        self.cacheNotifier = self.cacheNotifierFactory(self.deadProperties())
 
         if self.isCollection():
             slash = "/"
