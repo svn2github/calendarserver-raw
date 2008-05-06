@@ -534,6 +534,22 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     def listChildren(self):
         return ()
 
+    def http_PROPFIND(self, request):
+        def _cacheResponse(response):
+            print "Caching response: %r" % (response,)
+            responseCache = request.site.resource.resource.resource.resource.responseCache
+            d1 = responseCache.cacheResponseForRequest(request, response)
+            d1.addCallback(
+                lambda ign: responseCache.getResponseForRequest(request))
+            return d1
+
+        d = super(DirectoryPrincipalResource, self).http_PROPFIND(request)
+        d.addCallback(_cacheResponse)
+        return d
+
+
+
+
 class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPrincipalResource):
     """
     Directory calendar principal resource.

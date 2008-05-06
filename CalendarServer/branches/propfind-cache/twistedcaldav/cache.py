@@ -25,7 +25,10 @@ from twisted.python import log
 
 from twisted.web2.iweb import IResource
 from twisted.web2.dav import davxml
-from twisted.web2.http import HTTPError
+from twisted.web2.dav.util import allDataFromStream
+from twisted.web2.http import HTTPError, Response
+from twisted.web2.stream import MemoryStream
+
 from twisted.web2.dav.xattrprops import xattrPropertyStore
 
 class CacheTokensProperty(davxml.WebDAVTextElement):
@@ -125,6 +128,7 @@ class ResponseCache(object):
         key = (request.method,
                request.uri,
                principalURI)
+
         if key not in self._responses:
             return None
 
@@ -139,7 +143,9 @@ class ResponseCache(object):
         elif self._time() >= cacheTime + self.CACHE_TIMEOUT:
             return None
 
-        return response
+        return Response(response[0],
+                        headers=response[1],
+                        stream=MemoryStream(response[2]))
 
 
     def cacheResponseForRequest(self, request, response):
@@ -151,16 +157,27 @@ class ResponseCache(object):
 
         @param response: An L{IResponse} provider that will be returned on
             subsequent checks for the given L{IRequest}
+
+        @return: A deferred that fires when the response has been added
+            to the cache.
         """
-        principalURI = self._principalURI(request.authnUser)
+        def _cacheResponse(body):
+            principalURI = self._principalURI(request.authnUser)
 
-        key = (request.method,
-               request.uri,
-               principalURI)
+            key = (request.method,
+                   request.uri,
+                   principalURI)
 
-        self._responses[key] = (self._tokenForURI(principalURI),
-                                self._tokenForURI(request.uri),
-                                self._time(), response)
+            self._responses[key] = (self._tokenForURI(principalURI),
+                                    self._tokenForURI(request.uri),
+                                    self._time(), (response.code,
+                                                   response.headers,
+                                                   body))
+
+        d = allDataFromStream(response.stream)
+        d.addCallback(_cacheResponse)
+        return d
+
 
 
 class _CachedResponseResource(object):

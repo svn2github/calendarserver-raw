@@ -136,7 +136,7 @@ class RootResource(DAVFile):
         def _getCachedResource(_ign, request):
             response = self.responseCache.getResponseForRequest(request)
             assert response is not None
-            print "Serving from cache %r." % (response,)
+            print "Serving from cache %r, %r." % (request, response)
             return _CachedResponseResource(response), []
 
         def _resourceNotInCacheEb(failure):

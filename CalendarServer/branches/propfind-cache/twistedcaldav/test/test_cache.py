@@ -21,6 +21,9 @@ from twisted.trial.unittest import TestCase
 from twisted.python.filepath import FilePath
 
 from twisted.web2.dav import davxml
+from twisted.web2.dav.util import allDataFromStream
+from twisted.web2.stream import MemoryStream
+from twisted.web2.http_headers import Headers
 
 from twistedcaldav.cache import CacheChangeNotifier
 from twistedcaldav.cache import CacheTokensProperty
@@ -45,6 +48,15 @@ class StubRequest(object):
         self.authnUser = davxml.Principal(davxml.HRef.fromString(authnUser))
 
         self.cacheRequest = False
+
+
+class StubResponse(object):
+    def __init__(self, code, headers, body):
+        self.code = code
+        self.headers = Headers(headers)
+        self.body = body
+
+        self.stream = MemoryStream(body)
 
 
 
@@ -85,13 +97,22 @@ class ResponseCacheTests(TestCase):
 
         self.rc._time = (lambda:0)
 
-        self.expected_response = object()
+        self.expected_response = (200, Headers({}), "Foo")
 
         self.rc._responses[(
                 'PROPFIND',
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/')] = (
             'principalToken0', 'uriToken0', 0, self.expected_response)
+
+
+    def assertResponse(self, response, expected):
+        self.assertEquals(response.code, expected[0])
+        self.assertEquals(response.headers, expected[1])
+
+        d = allDataFromStream(response.stream)
+        d.addCallback(self.assertEquals, expected[2])
+        return d
 
 
     def test_getResponseForRequestNotInCache(self):
@@ -109,7 +130,7 @@ class ResponseCacheTests(TestCase):
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/'))
 
-        self.assertEquals(self.expected_response, response)
+        self.assertResponse(response, self.expected_response)
 
 
     def test_getResponseForRequestPrincipalTokenChanged(self):
@@ -146,18 +167,29 @@ class ResponseCacheTests(TestCase):
 
 
     def test_cacheResponseForRequest(self):
-        expected_response = object()
-        self.rc.cacheResponseForRequest(StubRequest('PROPFIND',
-                                                    '/principals/users/dreid/',
-                                                    '/principals/users/dreid/'),
-                                        expected_response)
+        expected_response = StubResponse(200, {}, "Foobar")
 
-        response = self.rc.getResponseForRequest(StubRequest(
-                'PROPFIND',
-                '/principals/users/dreid/',
-                '/principals/users/dreid/'))
+        def _assertResponse(ign):
+            response = self.rc.getResponseForRequest(StubRequest(
+                    'PROPFIND',
+                    '/principals/users/dreid/',
+                    '/principals/users/dreid/'))
 
-        self.assertEquals(response, expected_response)
+
+            return self.assertResponse(response,
+                                       (expected_response.code,
+                                        expected_response.headers,
+                                        expected_response.body))
+
+
+        d = self.rc.cacheResponseForRequest(
+            StubRequest('PROPFIND',
+                        '/principals/users/dreid/',
+                        '/principals/users/dreid/'),
+            expected_response)
+
+        d.addCallback(_assertResponse)
+        return d
 
 
     def test__tokenForURI(self):

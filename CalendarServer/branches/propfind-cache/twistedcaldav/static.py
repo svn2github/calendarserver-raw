@@ -571,11 +571,13 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
         def _cacheResponse(response):
             print "Caching response: %r" % (response,)
             responseCache = request.site.resource.resource.resource.resource.responseCache
-            responseCache.cacheResponseForRequest(request, response)
-            return response
+            d1 = responseCache.cacheResponseForRequest(request, response)
+            d1.addCallback(
+                lambda ign: responseCache.getResponseForRequest(request))
+            return d1
 
         d = super(CalendarHomeFile, self).http_PROPFIND(request)
-        d.addBoth(_cacheResponse)
+        d.addCallback(_cacheResponse)
         return d
 
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
