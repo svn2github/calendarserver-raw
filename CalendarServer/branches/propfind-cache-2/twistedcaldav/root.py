@@ -134,15 +134,23 @@ class RootResource(DAVFile):
             return d
 
         def _getCachedResource(_ign, request):
-            response = self.responseCache.getResponseForRequest(request)
-            assert response is not None
+            d = self.responseCache.getResponseForRequest(request)
+            d.addCallback(_serveResponse)
+            return d
+
+        def _serveResponse(response):
+            if response is None:
+                request.notInCache = True
+                raise KeyError("Not found in cache.")
+
             print "Serving from cache %r, %r." % (request, response)
             return _CachedResponseResource(response), []
 
         def _resourceNotInCacheEb(failure):
             return super(RootResource, self).locateChild(request,segments)
 
-        if request.method == 'PROPFIND':
+        if request.method == 'PROPFIND' and not getattr(
+            request, 'notInCache', False):
             d = defer.maybeDeferred(self.authenticate, request)
             d.addCallbacks(_authCb, _authEb)
             d.addCallback(_getCachedResource, request)

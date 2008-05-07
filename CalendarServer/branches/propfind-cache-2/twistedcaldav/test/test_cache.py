@@ -42,12 +42,17 @@ def _newCacheToken(self):
 
 
 class StubRequest(object):
-    def __init__(self, method, uri, authnUser):
+    def __init__(self, method, uri, authnUser, depth=1, body=None):
         self.method = method
         self.uri = uri
         self.authnUser = davxml.Principal(davxml.HRef.fromString(authnUser))
+        self.headers = Headers({'depth': depth})
 
-        self.cacheRequest = False
+        if body is None:
+            body = "foobar"
+
+        self.body = body
+        self.stream = MemoryStream(body)
 
 
 class StubResponse(object):
@@ -55,7 +60,6 @@ class StubResponse(object):
         self.code = code
         self.headers = Headers(headers)
         self.body = body
-
         self.stream = MemoryStream(body)
 
 
@@ -102,7 +106,10 @@ class ResponseCacheTests(TestCase):
         self.rc._responses[(
                 'PROPFIND',
                 '/calendars/users/cdaboo/',
-                '/principals/users/cdaboo/')] = (
+                '/principals/users/cdaboo/',
+                1,
+                'foobar',
+                )] = (
             'principalToken0', 'uriToken0', 0, self.expected_response)
 
 
@@ -116,71 +123,97 @@ class ResponseCacheTests(TestCase):
 
 
     def test_getResponseForRequestNotInCache(self):
-        response = self.rc.getResponseForRequest(StubRequest(
+        d = self.rc.getResponseForRequest(StubRequest(
                 'PROPFIND',
                 '/calendars/users/dreid/',
                 '/principals/users/dreid/'))
 
-        self.assertEquals(response, None)
-
+        d.addCallback(self.assertEquals, None)
+        return d
 
     def test_getResponseForRequestInCache(self):
-        response = self.rc.getResponseForRequest(StubRequest(
+        d = self.rc.getResponseForRequest(StubRequest(
                 'PROPFIND',
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/'))
 
-        self.assertResponse(response, self.expected_response)
+        d.addCallback(self.assertResponse, self.expected_response)
+        return d
 
 
     def test_getResponseForRequestPrincipalTokenChanged(self):
         self.tokens['/principals/users/cdaboo/'] = 'principalToken1'
 
-        response = self.rc.getResponseForRequest(StubRequest(
+        d = self.rc.getResponseForRequest(StubRequest(
                 'PROPFIND',
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/'))
 
-        self.assertEquals(response, None)
+        d.addCallback(self.assertEquals, None)
+        return d
 
 
     def test_getResponseForRequestUriTokenChanged(self):
         self.tokens['/calendars/users/cdaboo/'] = 'uriToken1'
 
-        response = self.rc.getResponseForRequest(StubRequest(
+        d = self.rc.getResponseForRequest(StubRequest(
                 'PROPFIND',
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/'))
 
-        self.assertEquals(response, None)
+        d.addCallback(self.assertEquals, None)
+        return d
 
 
     def test_getResponseForRequestCacheTimeoutLapsed(self):
         self.rc._time = (lambda: 50000)
 
-        response = self.rc.getResponseForRequest(StubRequest(
+        d = self.rc.getResponseForRequest(StubRequest(
                 'PROPFIND',
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/'))
 
-        self.assertEquals(response, None)
+        d.addCallback(self.assertEquals, None)
+        return d
+
+
+    def test_getResponseForDepthZero(self):
+        d = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/calendars/users/cdaboo/',
+                '/principals/users/cdaboo/',
+                depth=0))
+
+        d.addCallback(self.assertEquals, None)
+        return d
+
+
+    def test_getResponseForBody(self):
+        d = self.rc.getResponseForRequest(StubRequest(
+                'PROPFIND',
+                '/calendars/users/cdaboo/',
+                '/principals/users/cdaboo',
+                body='bazbax'))
+
+        d.addCallback(self.assertEquals, None)
+        return d
 
 
     def test_cacheResponseForRequest(self):
         expected_response = StubResponse(200, {}, "Foobar")
 
         def _assertResponse(ign):
-            response = self.rc.getResponseForRequest(StubRequest(
+            d1 = self.rc.getResponseForRequest(StubRequest(
                     'PROPFIND',
                     '/principals/users/dreid/',
                     '/principals/users/dreid/'))
 
 
-            return self.assertResponse(response,
-                                       (expected_response.code,
-                                        expected_response.headers,
-                                        expected_response.body))
-
+            d1.addCallback(self.assertResponse,
+                           (expected_response.code,
+                            expected_response.headers,
+                            expected_response.body))
+            return d1
 
         d = self.rc.cacheResponseForRequest(
             StubRequest('PROPFIND',

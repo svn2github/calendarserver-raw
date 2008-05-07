@@ -125,29 +125,47 @@ class ResponseCache(object):
 
         @return: An L{IResponse} or C{None} if the response has not been cached.
         """
-        principalURI = self._principalURI(request.authnUser)
+        def _returnRequest(requestBody):
 
-        key = (request.method,
-               request.uri,
-               principalURI)
+            if requestBody is not None:
+                request.stream = MemoryStream(requestBody)
+                request.stream.doStartReading = None
 
-        if key not in self._responses:
-            return None
+            principalURI = self._principalURI(request.authnUser)
 
-        principalToken, uriToken, cacheTime, response = self._responses[key]
+            key = (request.method,
+                   request.uri,
+                   principalURI,
+                   request.headers.getHeader('depth'),
+                   hash(requestBody))
 
-        if self._tokenForURI(principalURI) != principalToken:
-            return None
+            print "Looking in cache for:"
+            import pprint; pprint.pprint(key)
 
-        elif self._tokenForURI(request.uri) != uriToken:
-            return None
+            request.cacheKey = key
 
-        elif self._time() >= cacheTime + self.CACHE_TIMEOUT:
-            return None
+            if key not in self._responses:
+                pprint.pprint(self._responses.keys())
+                return None
 
-        return Response(response[0],
-                        headers=response[1],
-                        stream=MemoryStream(response[2]))
+            principalToken, uriToken, cacheTime, response = self._responses[key]
+
+            if self._tokenForURI(principalURI) != principalToken:
+                return None
+
+            elif self._tokenForURI(request.uri) != uriToken:
+                return None
+
+            elif self._time() >= cacheTime + self.CACHE_TIMEOUT:
+                return None
+
+            return Response(response[0],
+                            headers=response[1],
+                            stream=MemoryStream(response[2]))
+
+        d = allDataFromStream(request.stream)
+        d.addCallback(_returnRequest)
+        return d
 
 
     def cacheResponseForRequest(self, request, response):
@@ -163,20 +181,41 @@ class ResponseCache(object):
         @return: A deferred that fires when the response has been added
             to the cache.
         """
-        def _cacheResponse(body):
+        def _getRequestBody(responseBody):
+            d1 = allDataFromStream(request.stream)
+            d1.addCallback(lambda requestBody: (requestBody, responseBody))
+            return d1
+
+        def _cacheResponse((requestBody, responseBody)):
+            if requestBody is not None:
+                request.stream = MemoryStream(requestBody)
+                request.stream.doStartReading = None
+
             principalURI = self._principalURI(request.authnUser)
 
-            key = (request.method,
-                   request.uri,
-                   principalURI)
+            if hasattr(request, 'cacheKey'):
+                key = request.cacheKey
+            else:
+                key = (request.method,
+                       request.uri,
+                       principalURI,
+                       request.headers.getHeader('depth'),
+                       hash(requestBody))
 
             self._responses[key] = (self._tokenForURI(principalURI),
                                     self._tokenForURI(request.uri),
                                     self._time(), (response.code,
                                                    response.headers,
-                                                   body))
+                                                   responseBody))
+
+            print self._responses.keys()
+
+            response.stream = MemoryStream(responseBody)
+            return response
+
 
         d = allDataFromStream(response.stream)
+        d.addCallback(_getRequestBody)
         d.addCallback(_cacheResponse)
         return d
 
@@ -198,13 +237,10 @@ class _CachedResponseResource(object):
 class PropfindCacheMixin(object):
     def http_PROPFIND(self, request):
         def _cacheResponse(responseCache, response):
-            d2 = responseCache.cacheResponseForRequest(request, response)
-            d2.addCallback(
-                lambda ign: responseCache.getResponseForRequest(request))
-            return d2
+            return responseCache.cacheResponseForRequest(request, response)
 
         def _getResponseCache(response):
-            print "Caching response: %r" % (response,)
+            print "Caching response: %r, %r" % (request.stream, response)
             d1 = request.locateResource("/")
             d1.addCallback(lambda resource: resource.responseCache)
             d1.addCallback(_cacheResponse, response)
