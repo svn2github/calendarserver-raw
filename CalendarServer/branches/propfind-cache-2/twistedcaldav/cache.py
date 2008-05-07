@@ -70,9 +70,11 @@ class ResponseCache(object):
     CACHE_TIMEOUT = 60*60 #1hr
     propertyStoreFactory = xattrPropertyStore
 
-    def __init__(self, docroot):
+    def __init__(self, docroot, cacheTimeout=None):
         self._docroot = docroot
         self._responses = {}
+        if cacheTimeout:
+            self.CACHE_TIMEOUT = cacheTimeout
 
 
     def _tokenForURI(self, uri):
@@ -191,3 +193,23 @@ class _CachedResponseResource(object):
 
     def locateChild(self, request, segments):
         return self, []
+
+
+class PropfindCacheMixin(object):
+    def http_PROPFIND(self, request):
+        def _cacheResponse(responseCache, response):
+            d2 = responseCache.cacheResponseForRequest(request, response)
+            d2.addCallback(
+                lambda ign: responseCache.getResponseForRequest(request))
+            return d2
+
+        def _getResponseCache(response):
+            print "Caching response: %r" % (response,)
+            d1 = request.locateResource("/")
+            d1.addCallback(lambda resource: resource.responseCache)
+            d1.addCallback(_cacheResponse, response)
+            return d1
+
+        d = super(PropfindCacheMixin, self).http_PROPFIND(request)
+        d.addCallback(_getResponseCache)
+        return d

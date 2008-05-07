@@ -71,7 +71,7 @@ from twistedcaldav.directory.calendar import DirectoryCalendarHomeUIDProvisionin
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeResource
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
 
-from twistedcaldav.cache import CacheChangeNotifier
+from twistedcaldav.cache import CacheChangeNotifier, PropfindCacheMixin
 
 class CalDAVFile (CalDAVResource, DAVFile):
     """
@@ -522,7 +522,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
 
-class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource, CalDAVFile):
+class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, DirectoryCalendarHomeResource, CalDAVFile):
     """
     Calendar home collection resource.
     """
@@ -571,18 +571,6 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeResource
 
         return super(CalendarHomeFile, self).getChild(name)
 
-    def http_PROPFIND(self, request):
-        def _cacheResponse(response):
-            print "Caching response: %r" % (response,)
-            responseCache = request.site.resource.resource.resource.resource.responseCache
-            d1 = responseCache.cacheResponseForRequest(request, response)
-            d1.addCallback(
-                lambda ign: responseCache.getResponseForRequest(request))
-            return d1
-
-        d = super(CalendarHomeFile, self).http_PROPFIND(request)
-        d.addCallback(_cacheResponse)
-        return d
 
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
     def __init__(self, path, parent):

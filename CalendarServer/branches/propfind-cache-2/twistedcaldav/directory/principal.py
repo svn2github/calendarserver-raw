@@ -41,7 +41,7 @@ from twisted.web2.dav.element.base import twisted_private_namespace
 from twisted.web2.dav.util import joinURL
 
 from twistedcaldav.config import config
-from twistedcaldav.cache import CacheChangeNotifier
+from twistedcaldav.cache import CacheChangeNotifier, PropfindCacheMixin
 
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyPrincipalResource
@@ -343,7 +343,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
     def principalCollections(self):
         return self.parent.principalCollections()
 
-class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, DAVPrincipalResource, DAVFile):
+class DirectoryPrincipalResource (PropfindCacheMixin, AutoProvisioningFileMixIn, PermissionsMixIn, DAVPrincipalResource, DAVFile):
     """
     Directory principal resource.
     """
@@ -532,19 +532,6 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
 
     def listChildren(self):
         return ()
-
-    def http_PROPFIND(self, request):
-        def _cacheResponse(response):
-            print "Caching response: %r" % (response,)
-            responseCache = request.site.resource.resource.resource.resource.responseCache
-            d1 = responseCache.cacheResponseForRequest(request, response)
-            d1.addCallback(
-                lambda ign: responseCache.getResponseForRequest(request))
-            return d1
-
-        d = super(DirectoryPrincipalResource, self).http_PROPFIND(request)
-        d.addCallback(_cacheResponse)
-        return d
 
 
 
