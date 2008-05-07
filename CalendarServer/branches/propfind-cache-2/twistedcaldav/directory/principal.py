@@ -41,6 +41,8 @@ from twisted.web2.dav.element.base import twisted_private_namespace
 from twisted.web2.dav.util import joinURL
 
 from twistedcaldav.config import config
+from twistedcaldav.cache import CacheChangeNotifier
+
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyPrincipalResource
 from twistedcaldav.directory.directory import DirectoryService
@@ -172,7 +174,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
                 principalResource = typeResource.getChild(segments[2])
                 if principalResource:
                     return principalResource
-            
+
         return None
 
     def principalForCalendarUserAddress(self, address):
@@ -345,6 +347,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     """
     Directory principal resource.
     """
+    cacheNotifierFactory = CacheChangeNotifier
+
     def __init__(self, path, parent, record):
         """
         @param path: them path to the file which will back this resource.
@@ -352,6 +356,8 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
         @param record: the L{IDirectoryRecord} that this resource represents.
         """
         super(DirectoryPrincipalResource, self).__init__(path)
+
+        self.cacheNotifier = self.cacheNotifierFactory(self.deadProperties())
 
         if self.isCollection():
             slash = "/"
@@ -378,7 +384,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
         return "(%s) %s" % (self.record.recordType, self.record.shortName)
 
     def provisionFile(self):
-        
+
         result = super(DirectoryPrincipalResource, self).provisionFile()
         if result:
             self.writeDeadProperty(RecordTypeProperty(self.record.recordType))
@@ -438,13 +444,13 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
     def _calendar_user_proxy_index(self):
         """
         Return the SQL database for calendar user proxies.
-        
+
         @return: the L{CalendarUserProxyDatabase} for the principal collection.
         """
-        
+
         # Get the principal collection we are contained in
         pcollection = self.parent.parent
-        
+
         # The db is located in the principal collection root
         if not hasattr(pcollection, "calendar_user_proxy_db"):
             setattr(pcollection, "calendar_user_proxy_db", CalendarUserProxyDatabase(pcollection.fp.path))
@@ -509,7 +515,7 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
 
     def principalUID(self):
         return self.record.guid
-        
+
     ##
     # Static
     ##
@@ -526,6 +532,22 @@ class DirectoryPrincipalResource (AutoProvisioningFileMixIn, PermissionsMixIn, D
 
     def listChildren(self):
         return ()
+
+    def http_PROPFIND(self, request):
+        def _cacheResponse(response):
+            print "Caching response: %r" % (response,)
+            responseCache = request.site.resource.resource.resource.resource.responseCache
+            d1 = responseCache.cacheResponseForRequest(request, response)
+            d1.addCallback(
+                lambda ign: responseCache.getResponseForRequest(request))
+            return d1
+
+        d = super(DirectoryPrincipalResource, self).http_PROPFIND(request)
+        d.addCallback(_cacheResponse)
+        return d
+
+
+
 
 class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPrincipalResource):
     """
@@ -586,7 +608,7 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def autoSchedule(self):
         return self.record.autoSchedule
-    
+
     def proxies(self):
         return self._getRelatives("proxies")
 

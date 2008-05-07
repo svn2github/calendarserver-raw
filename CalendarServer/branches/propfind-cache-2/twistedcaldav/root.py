@@ -26,6 +26,7 @@ from twisted.web2.auth.wrapper import UnauthorizedResponse
 
 from twistedcaldav.extensions import DAVFile
 from twistedcaldav.config import config
+from twistedcaldav.cache import ResponseCache, _CachedResponseResource
 
 class RootResource(DAVFile):
     """
@@ -48,6 +49,8 @@ class RootResource(DAVFile):
                          "turned on."))
 
         self.contentFilters = []
+
+        self.responseCache = ResponseCache(self.fp)
 
         if config.ResponseCompression:
             from twisted.web2.filter import gzip
@@ -86,19 +89,19 @@ class RootResource(DAVFile):
             # Figure out the "username" from the davxml.Principal object
             request.checkingSACL = True
             d = request.locateResource(authzUser.children[0].children[0].data)
-            
+
             def _checkedSACLCb(principal):
                 delattr(request, "checkingSACL")
                 username = principal.record.shortName
-                
+
                 if RootResource.CheckSACL(username, self.saclService) != 0:
                     log.msg("User '%s' is not enabled with the '%s' SACL" % (username, self.saclService,))
                     return Failure(HTTPError(403))
-    
+
                 # Mark SACL's as having been checked so we can avoid doing it multiple times
                 request.checkedSACL = True
                 return True
-            
+
             d.addCallback(_checkedSACLCb)
             return d
 
@@ -108,6 +111,18 @@ class RootResource(DAVFile):
         return d
 
     def locateChild(self, request, segments):
+        def _authCb((authnUser, authzUser)):
+            request.authnUser = authnUser
+            request.authzUser = authzUser
+
+        def _authEb(failure):
+            # Make sure we propogate UnauthorizedLogin errors.
+            failure.trap(UnauthorizedLogin, LoginFailed)
+
+            return Failure(HTTPError(UnauthorizedResponse(
+                        request.credentialFactories,
+                        request.remoteAddr)))
+
         for filter in self.contentFilters:
             request.addResponseFilter(filter[0], atEnd=filter[1])
 
@@ -116,6 +131,22 @@ class RootResource(DAVFile):
             d.addCallback(lambda _: super(RootResource, self
                                           ).locateChild(request, segments))
 
+            return d
+
+        def _getCachedResource(_ign, request):
+            response = self.responseCache.getResponseForRequest(request)
+            assert response is not None
+            print "Serving from cache %r, %r." % (request, response)
+            return _CachedResponseResource(response), []
+
+        def _resourceNotInCacheEb(failure):
+            return super(RootResource, self).locateChild(request,segments)
+
+        if request.method == 'PROPFIND':
+            d = defer.maybeDeferred(self.authenticate, request)
+            d.addCallbacks(_authCb, _authEb)
+            d.addCallback(_getCachedResource, request)
+            d.addErrback(_resourceNotInCacheEb)
             return d
 
         return super(RootResource, self).locateChild(request, segments)
