@@ -22,8 +22,9 @@ CalDAV calendar-query report
 
 __all__ = ["report_urn_ietf_params_xml_ns_caldav_calendar_query"]
 
+import urllib
+
 from twisted.internet.defer import deferredGenerator, succeed, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.element.base import dav_namespace
@@ -35,8 +36,9 @@ from twisted.web2.http import HTTPError, StatusResponse
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.customxml import TwistedCalendarAccessProperty
 from twistedcaldav.method import report_common
+from twistedcaldav.log import Logger
 
-import urllib
+log = Logger()
 
 max_number_of_results = 1000
 

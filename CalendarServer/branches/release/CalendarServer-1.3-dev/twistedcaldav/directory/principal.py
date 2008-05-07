@@ -33,7 +33,6 @@ from cgi import escape
 from urllib import unquote
 from urlparse import urlparse
 
-from twisted.python import log
 from twisted.python.failure import Failure
 from twisted.internet.defer import succeed
 from twisted.web2 import responsecode
@@ -50,6 +49,9 @@ from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVFile, DAVPrincipa
 from twistedcaldav.resource import CalendarPrincipalCollectionResource, CalendarPrincipalResource
 from twistedcaldav.static import AutoProvisioningFileMixIn
 from twistedcaldav.directory.idirectory import IDirectoryService
+from twistedcaldav.log import Logger
+
+log = Logger()
 
 # Use __underbars__ convention to avoid conflicts with directory resource types.
 uidsResourceName = "__uids__"

@@ -25,7 +25,6 @@ __all__ = ["http_COPY", "http_MOVE"]
 from urlparse import urlsplit
 
 from twisted.internet.defer import deferredGenerator, waitForDeferred
-from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.filter.location import addLocation
 from twisted.web2.dav import davxml
@@ -36,6 +35,9 @@ from twisted.web2.http import StatusResponse, HTTPError
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.method.put_common import storeCalendarObjectResource
 from twistedcaldav.resource import isCalendarCollectionResource
+from twistedcaldav.log import Logger
+
+log = Logger()
 
 def http_COPY(self, request):
     """

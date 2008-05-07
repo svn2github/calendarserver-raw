@@ -46,10 +46,13 @@ from twisted.web2.dav.fileop import delete
 from twisted.web2.dav.resource import AccessDeniedError
 
 from twistedcaldav import caldavxml
+from twistedcaldav.log import Logger
 from twistedcaldav.ical import Property, iCalendarProductID
 from twistedcaldav.method import report_common
 from twistedcaldav.method.put_common import storeCalendarObjectResource
 from twistedcaldav.resource import isCalendarCollectionResource
+
+log = Logger()
 
 __version__ = "0.0"
 
@@ -111,7 +114,7 @@ def processRequest(request, principal, inbox, calendar, child):
     @param child: the L{CalDAVFile} for the iTIP message resource already saved to the Inbox.
     """
     
-    logging.info("[ITIP]: Auto-processing iTIP REQUEST for: %s" % (str(principal),))
+    log.info("Auto-processing iTIP REQUEST for: %s" % (str(principal),))
     processed = "ignored"
 
     # First determine whether this is a full or partial update. A full update is one containing the master
@@ -158,22 +161,22 @@ def processRequest(request, principal, inbox, calendar, child):
                         newchild = waitForDeferred(writeResource(request, calURL, updatecal, calmatch, calendar))
                         yield newchild
                         newchild = newchild.getResult()
-                        logging.info("[ITIP]: replaced calendar component %s with new iTIP message in %s." % (calmatch, calURL))
+                        log.info("Replaced calendar component %s with new iTIP message in %s." % (calmatch, calURL))
                     else:
                         newchild = waitForDeferred(writeResource(request, calURL, updatecal, None, calendar))
                         yield newchild
                         newchild.getResult()
-                        logging.info("[ITIP]: added new calendar component in %s." % (calURL,))
+                        log.info("Added new calendar component in %s." % (calURL,))
                 else:
                     if calmatch:
                         d = waitForDeferred(deleteResource(updatecal, calmatch))
                         yield d
                         d.getResult()
-                        logging.info("[ITIP]: deleted calendar component %s in %s as update was not accepted." % (calmatch, calURL))
+                        log.info("Deleted calendar component %s in %s as update was not accepted." % (calmatch, calURL))
                         
                 # Send a reply if needed. 
                 if doreply:
-                    logging.info("[ITIP]: sending iTIP REPLY %s" % (("declined","accepted")[accepted],))
+                    log.info("Sending iTIP REPLY %s" % (("declined","accepted")[accepted],))
                     newchild = waitForDeferred(writeReply(request, principal, replycal, inbox))
                     yield newchild
                     newchild = newchild.getResult()
@@ -231,17 +234,17 @@ def processRequest(request, principal, inbox, calendar, child):
                     newchild = waitForDeferred(writeResource(request, calURL, updatecal, calmatch, cal))
                     yield newchild
                     newchild = newchild.getResult()
-                    logging.info("[ITIP]: merged calendar component %s with new iTIP message in %s." % (calmatch, calURL))
+                    log.info("Merged calendar component %s with new iTIP message in %s." % (calmatch, calURL))
                 else:
                     if accepted:
                         newchild = waitForDeferred(writeResource(request, calURL, updatecal, None, calendar))
                         yield newchild
                         newchild.getResult()
-                        logging.info("[ITIP]: added new calendar component in %s." % (calURL,))
+                        log.info("Added new calendar component in %s." % (calURL,))
                         
                 # Do reply if needed. 
                 if doreply:
-                    logging.info("[ITIP]: sending iTIP REPLY %s" % (("declined","accepted")[accepted],))
+                    log.info("Sending iTIP REPLY %s" % (("declined","accepted")[accepted],))
                     newchild = waitForDeferred(writeReply(request, principal, replycal, inbox))
                     yield newchild
                     newchild = newchild.getResult()
@@ -257,11 +260,14 @@ def processRequest(request, principal, inbox, calendar, child):
         d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
         yield d
         d.getResult()
-        logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it has been %s." %
-            (child.fp.basename(),
-             {"processed":"processed",
-              "older":    "ignored: older",
-              "ignored":  "ignored: no match"}[processed],))
+        log.info("Deleted new iTIP message %s in Inbox because it has been %s." % (
+                   child.fp.basename(),
+                   {
+                     "processed": "processed",
+                     "older"    : "ignored: older",
+                     "ignored"  : "ignored: no match"
+                   }[processed]
+                ))
     except:
         log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
         raise iTipException
@@ -281,7 +287,7 @@ def processAdd(request, principal, inbox, calendar, child):
     @param calendar: the L{Component} for the iTIP message we are processing.
     @param child: the L{CalDAVFile} for the iTIP message resource already saved to the Inbox.
     """
-    logging.info("[ITIP]: Auto-processing iTIP ADD for: %s" % (str(principal),))
+    log.info("Auto-processing iTIP ADD for: %s" % (str(principal),))
 
     raise NotImplementedError
 
@@ -322,7 +328,7 @@ def processCancel(request, principal, inbox, calendar, child):
     @param child: the L{CalDAVFile} for the iTIP message resource already saved to the Inbox.
     """
     
-    logging.info("[ITIP]: Auto-processing iTIP CANCEL for: %s" % (str(principal),))
+    log.info("Auto-processing iTIP CANCEL for: %s" % (str(principal),))
     processed = "ignored"
 
     # Get all component info for this iTIP message
@@ -366,7 +372,7 @@ def processCancel(request, principal, inbox, calendar, child):
                     d = waitForDeferred(deleteResource(updatecal, calmatch,))
                     yield d
                     d.getResult()
-                    logging.info("[ITIP]: delete calendar component %s in %s as it was cancelled." % (calmatch, calURL))
+                    log.info("Delete calendar component %s in %s as it was cancelled." % (calmatch, calURL))
                 except:
                     log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
                     raise iTipException
@@ -429,13 +435,13 @@ def processCancel(request, principal, inbox, calendar, child):
                     d = waitForDeferred(deleteResource(updatecal, calmatch))
                     yield d
                     d.getResult()
-                    logging.info("[ITIP]: deleted calendar component %s after cancellations from iTIP message in %s." % (calmatch, calURL))
+                    log.info("Deleted calendar component %s after cancellations from iTIP message in %s." % (calmatch, calURL))
                 else:
                     # Update the existing calendar object
                     newchild = waitForDeferred(writeResource(request, calURL, updatecal, calmatch, existing_calendar))
                     yield newchild
                     newchild = newchild.getResult()
-                    logging.info("[ITIP]: updated calendar component %s with cancellations from iTIP message in %s." % (calmatch, calURL))
+                    log.info("Updated calendar component %s with cancellations from iTIP message in %s." % (calmatch, calURL))
                 processed = "processed"
             else:
                 processed = "older"
@@ -448,11 +454,14 @@ def processCancel(request, principal, inbox, calendar, child):
         d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
         yield d
         d.getResult()
-        logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it has been %s." %
-            (child.fp.basename(),
-             {"processed":"processed",
-              "older":    "ignored: older",
-              "ignored":  "ignored: no match"}[processed],))
+        log.info("Deleted new iTIP message %s in Inbox because it has been %s." % (
+                  child.fp.basename(),
+                  {
+                    "processed": "processed",
+                    "older"    : "ignored: older",
+                    "ignored"  : "ignored: no match"
+                  }[processed]
+                ))
     except:
         log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
         raise iTipException
@@ -519,7 +528,7 @@ def checkForReply(request, principal, calendar):
                     break
             except NumberOfMatchesWithinLimits:
                 accepted = False
-                logging.info("[ITIP]: exceeded number of matches whilst trying to find free-time.")
+                log.info("Exceeded number of matches whilst trying to find free-time.")
                 break
             
         if not accepted:
@@ -610,7 +619,7 @@ def writeReply(request, principal, replycal, ainbox):
         yield d
         d.getResult()
     except AccessDeniedError:
-        logging.info("[ITIP]: could not send reply as %s does not have CALDAV:schedule permission on %s Inbox." % (principal.principalURL(), organizer))
+        log.info("Could not send reply as %s does not have CALDAV:schedule permission on %s Inbox." % (principal.principalURL(), organizer))
         yield None
         return
     
@@ -751,7 +760,7 @@ def processOthersInInbox(info, newinfo, inbox, child):
                 d = waitForDeferred(deleteResource(inbox, i[0]))
                 yield d
                 d.getResult()
-                logging.info("[ITIP]: deleted iTIP message %s in Inbox that was older than the new one." % (i[0],))
+                log.info("Deleted iTIP message %s in Inbox that was older than the new one." % (i[0],))
             except:
                 log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
                 raise iTipException
@@ -765,7 +774,7 @@ def processOthersInInbox(info, newinfo, inbox, child):
             d = waitForDeferred(deleteResource(inbox, child.fp.basename()))
             yield d
             d.getResult()
-            logging.info("[ITIP]: deleted new iTIP message %s in Inbox because it was older than existing ones." % (child.fp.basename(),))
+            log.info("Deleted new iTIP message %s in Inbox because it was older than existing ones." % (child.fp.basename(),))
         except:
             log.err("Error while auto-processing iTIP: %s" % (failure.Failure(),))
             raise iTipException
@@ -797,7 +806,7 @@ def findCalendarMatch(request, principal, calendar):
             continue
         calmatch = matchComponentInCalendar(updatecal, calendar)
         if calmatch:
-            logging.info("[ITIP]: found calendar component %s matching new iTIP message in %s." % (calmatch, calURL))
+            log.info("Found calendar component %s matching new iTIP message in %s." % (calmatch, calURL))
             break
     
     if calmatch is None and len(fbset):

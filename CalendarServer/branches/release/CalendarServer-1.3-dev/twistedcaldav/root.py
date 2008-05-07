@@ -17,7 +17,6 @@
 ##
 
 from twisted.internet import defer
-from twisted.python import log
 from twisted.python.failure import Failure
 from twisted.cred.error import LoginFailed, UnauthorizedLogin
 
@@ -28,6 +27,9 @@ from twisted.web2.auth.wrapper import UnauthorizedResponse
 
 from twistedcaldav.extensions import DAVFile
 from twistedcaldav.config import config
+from twistedcaldav.log import Logger
+
+log = Logger()
 
 class RootResource(DAVFile):
     """
