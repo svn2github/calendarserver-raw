@@ -139,13 +139,13 @@ class ResponseCache(object):
                    request.headers.getHeader('depth'),
                    hash(requestBody))
 
-            print "Looking in cache for:"
-            import pprint; pprint.pprint(key)
+#             print "Looking in cache for:"
+#             import pprint; pprint.pprint(key)
 
             request.cacheKey = key
 
             if key not in self._responses:
-                pprint.pprint(self._responses.keys())
+#                 pprint.pprint(self._responses.keys())
                 return None
 
             principalToken, uriToken, cacheTime, response = self._responses[key]
@@ -208,7 +208,7 @@ class ResponseCache(object):
                                                    response.headers,
                                                    responseBody))
 
-            print self._responses.keys()
+#             print self._responses.keys()
 
             response.stream = MemoryStream(responseBody)
             return response
