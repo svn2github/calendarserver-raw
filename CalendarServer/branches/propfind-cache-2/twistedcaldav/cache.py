@@ -159,6 +159,8 @@ class ResponseCache(object):
             elif self._time() >= cacheTime + self.CACHE_TIMEOUT:
                 return None
 
+            response[1].removeHeader('date')
+
             return Response(response[0],
                             headers=response[1],
                             stream=MemoryStream(response[2]))
