@@ -53,7 +53,7 @@ class CacheChangeNotifier(LoggingMixIn):
 
     def changed(self):
         self.log_debug("Changing Cache Token for %r" % (
-                self._propertyStore.resource.fp))
+                self._propertyStore))
         property = CacheTokensProperty.fromString(self._newCacheToken())
         self._propertyStore.set(property)
 
@@ -151,6 +151,8 @@ class ResponseCache(LoggingMixIn):
 
             if key not in self._responses:
                 self.log_debug("Not in cache: %r" % (key,))
+                self.log_debug("  Cache Keys: %r" % (
+                        self._responses.keys(),))
                 return None
 
             principalToken, uriToken, cacheTime, response = self._responses[key]

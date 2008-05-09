@@ -108,7 +108,7 @@ class ResponseCacheTests(TestCase):
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/',
                 1,
-                'foobar',
+                hash('foobar'),
                 )] = (
             'principalToken0', 'uriToken0', 0, self.expected_response)
 
