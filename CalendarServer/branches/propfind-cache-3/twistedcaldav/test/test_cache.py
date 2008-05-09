@@ -165,18 +165,6 @@ class ResponseCacheTests(TestCase):
         return d
 
 
-    def test_getResponseForRequestCacheTimeoutLapsed(self):
-        self.rc._time = (lambda: 50000)
-
-        d = self.rc.getResponseForRequest(StubRequest(
-                'PROPFIND',
-                '/calendars/users/cdaboo/',
-                '/principals/users/cdaboo/'))
-
-        d.addCallback(self.assertEquals, None)
-        return d
-
-
     def test_getResponseForDepthZero(self):
         d = self.rc.getResponseForRequest(StubRequest(
                 'PROPFIND',
@@ -243,3 +231,24 @@ class ResponseCacheTests(TestCase):
 
         token = rc._tokenForURI('/principals/users/wsanchez')
         self.assertEquals(token, expected_token)
+
+
+    def test_cacheSizeExceeded(self):
+        self.rc.CACHE_SIZE = 1
+        def _assertResponse(ign):
+            d1 = self.rc.getResponseForRequest(StubRequest(
+                    'PROPFIND',
+                    '/calendars/users/cdaboo/',
+                    '/principals/users/cdaboo/'))
+
+            d1.addCallback(self.assertEquals, None)
+            return d1
+
+        d = self.rc.cacheResponseForRequest(
+            StubRequest('PROPFIND',
+                        '/principals/users/dreid/',
+                        '/principals/users/dreid/'),
+            StubResponse(200, {}, "Foobar"))
+
+        d.addCallback(_assertResponse)
+        return d

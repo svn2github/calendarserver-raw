@@ -73,14 +73,17 @@ class ResponseCache(LoggingMixIn):
          response) values.
     """
 
-    CACHE_TIMEOUT = 60*60 #1hr
+    CACHE_SIZE = 1000
     propertyStoreFactory = xattrPropertyStore
 
-    def __init__(self, docroot, cacheTimeout=None):
+    def __init__(self, docroot, cacheSize=None):
         self._docroot = docroot
         self._responses = {}
-        if cacheTimeout:
-            self.CACHE_TIMEOUT = cacheTimeout
+
+        if cacheSize is not None:
+            self.CACHE_SIZE = cacheSize
+
+        self._accessTimes = None
 
 
     def _tokenForURI(self, uri):
@@ -155,7 +158,7 @@ class ResponseCache(LoggingMixIn):
                         self._responses.keys(),))
                 return None
 
-            principalToken, uriToken, cacheTime, response = self._responses[key]
+            principalToken, uriToken, accessTime, response = self._responses[key]
 
             if self._tokenForURI(principalURI) != principalToken:
                 self.log_debug("Principal token changed: %r" % (
@@ -167,14 +170,16 @@ class ResponseCache(LoggingMixIn):
                         key,))
                 return None
 
-            elif self._time() >= cacheTime + self.CACHE_TIMEOUT:
-                return None
-
             response[1].removeHeader('date')
 
             responseObj = Response(response[0],
                                    headers=response[1],
                                    stream=MemoryStream(response[2]))
+
+            self._responses[key] = (principalToken,
+                                    uriToken,
+                                    self._time(),
+                                    response)
 
             self.log_debug("Found in cache: %r = %r" % (key,
                                                         responseObj))
@@ -223,11 +228,29 @@ class ResponseCache(LoggingMixIn):
             self.log_debug("Adding to cache: %r = %r" % (key,
                                                          response))
 
+            if len(self._responses) >= self.CACHE_SIZE:
+                leastRecentlyUsedTime = None
+                leastRecentlyUsedKey = None
+
+                for cacheKey, cacheEntry in self._responses.iteritems():
+                    if leastRecentlyUsedTime is None:
+                        leastRecentlyUsedTime = cacheEntry[2]
+                        leastRecentlyUsedKey = cacheKey
+                        continue
+
+                    if leastRecentlyUsedTime < cacheEntry[2]:
+                        leastRecentlyUsedTime = cacheEntry[2]
+                        leastRecentlyUsedKey = cacheKey
+
+                del self._responses[leastRecentlyUsedKey]
+
+
             self._responses[key] = (self._tokenForURI(principalURI),
                                     self._tokenForURI(request.uri),
-                                    self._time(), (response.code,
-                                                   response.headers,
-                                                   responseBody))
+                                    self._time(),
+                                    (response.code,
+                                     response.headers,
+                                     responseBody))
 
             self.log_debug("Cache Stats: # keys = %r" % (len(self._responses),))
 

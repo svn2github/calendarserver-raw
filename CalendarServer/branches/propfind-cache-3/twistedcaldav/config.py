@@ -192,7 +192,7 @@ defaultConfig = {
     "MaxRequests": 600,
 
     # Configure the number of seconds that Propfinds should be cached for.
-    "ResponseCacheTimeout": 60*60, # 1 Hour.
+    "ResponseCacheSize": 1000
 }
 
 class Config (object):
