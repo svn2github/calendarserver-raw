@@ -184,6 +184,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, AutoProvisionin
         uids = [p.principalUID() for p in principals]
 
         self._index().setGroupMembers(self.uid, uids)
+        self.parent.cacheNotifier.changed()
         return succeed(True)
 
     ##
