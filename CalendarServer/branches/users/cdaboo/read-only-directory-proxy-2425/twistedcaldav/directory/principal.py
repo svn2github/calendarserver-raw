@@ -474,7 +474,7 @@ class DirectoryPrincipalResource (PropfindCacheMixin, AutoProvisioningFileMixIn,
     def principalURL(self):
         return self._url
 
-    def _getRelatives(self, method, record=None, relatives=None, records=None, proxy=False):
+    def _getRelatives(self, method, record=None, relatives=None, records=None, proxy=None):
         if record is None:
             record = self.record
         if relatives is None:
@@ -492,7 +492,10 @@ class DirectoryPrincipalResource (PropfindCacheMixin, AutoProvisioningFileMixIn,
                         log.err("No principal found for directory record: %r" % (relative,))
                     else:
                         if proxy:
-                            found = found.getChild("calendar-proxy-write")
+                            if proxy == "read-write":
+                                found = found.getChild("calendar-proxy-write")
+                            else:
+                                found = found.getChild("calendar-proxy-read")
                         relatives.add(found)
 
                     self._getRelatives(method, relative, relatives, records)
@@ -507,7 +510,8 @@ class DirectoryPrincipalResource (PropfindCacheMixin, AutoProvisioningFileMixIn,
 
         if config.EnableProxyPrincipals:
             # Get any directory specified proxies
-            groups.update(self._getRelatives("proxyFor", proxy=True))
+            groups.update(self._getRelatives("proxyFor", proxy='read-write'))
+            groups.update(self._getRelatives("readOnlyProxyFor", proxy='read-only'))
 
             # Get proxy group UIDs and map to principal resources
             proxies = []
@@ -609,6 +613,9 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def proxies(self):
         return self._getRelatives("proxies")
+
+    def readOnlyProxies(self):
+        return self._getRelatives("readOnlyProxies")
 
     def hasEditableProxyMembership(self):
         return self.record.hasEditableProxyMembership()
