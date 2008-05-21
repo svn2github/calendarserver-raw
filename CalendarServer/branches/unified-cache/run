@@ -47,7 +47,7 @@ usage ()
 
   if [ "${1--}" != "-" ]; then echo "$@"; echo; fi;
 
-  echo "Usage: ${program} [-hvsfpndkr] [-K key] [-iI dst] [-t type] [-S statsfile]";
+  echo "Usage: ${program} [-hvsfpndkr] [-K key] [-iI dst] [-t type] [-S statsdirectory]";
   echo "Options:";
   echo "	-h  Print this help and exit";
   echo "	-v  Be verbose";
@@ -62,7 +62,7 @@ usage ()
   echo "        -i  Perform a system install into dst; implies -s";
   echo "        -I  Perform a home install into dst; implies -s";
   echo "        -t  Select the server process type (Master, Slave or Combined)";
-  echo "        -S  Write a pstats object to the given file when the server is stopped.";
+  echo "        -S  Write a pstats object for each process to the given directory when the server is stopped.";
 
   if [ "${1-}" == "-" ]; then return 0; fi;
   exit 64;
@@ -518,6 +518,44 @@ if ! py_have_module ctypes; then
 fi;
 
 #
+# libevent
+#
+libevent="${top}/libevent-1.4.4-stable"
+
+www_get "libevent" "${libevent}" http://www.monkey.org/~provos/libevent-1.4.4-stable.tar.gz
+
+if ! "${disable_setup}" && (
+  "${force_setup}" || [ ! -d "${libevent}/_root" ]
+); then
+  echo "";
+  echo "Building libevent...";
+  cd "${libevent}";
+  ./configure --prefix="${libevent}/_root";
+  make;
+  make install;
+fi;
+
+export DYLD_LIBRARY_PATH="${libevent}/_root/lib"
+
+#
+# memcached
+#
+memcached="${top}/memcached-1.2.5"
+
+www_get "memcached" "${memcached}" http://www.danga.com/memcached/dist/memcached-1.2.5.tar.gz;
+
+if ! "${disable_setup}" && (
+  "${force_setup}" || [ ! -d "${memcached}/_root" ]
+); then
+  echo "";
+  echo "Building memcached...";
+  cd "${memcached}";
+  ./configure --prefix="${memcached}/_root" --with-libevent="${libevent}/_root";
+  make;
+  make install;
+fi;
+
+#
 # Twisted
 #
 
@@ -536,7 +574,7 @@ svn_get "Twisted" "${twisted}" "${svn_uri}" 19773;
 # PYTHONPATH, not a build directory.
 
 py_install "Twisted" "${twisted}";
- 
+
 export PYTHONPATH="${PYTHONPATH}:${twisted}";
 
 # twisted.web2 doesn't get installed by default
@@ -603,7 +641,7 @@ fi;
 
 if ! py_have_module pydirector; then
   pydirector="${top}/pydirector-1.0.0";
-    
+
   www_get "PyDirector" "${pydirector}" http://easynews.dl.sourceforge.net/sourceforge/pythondirector/pydirector-1.0.0.tar.gz;
   put_setuptools "${pydirector}";
   py_build "PyDirector" "${pydirector}" false;

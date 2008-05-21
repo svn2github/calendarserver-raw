@@ -102,6 +102,10 @@ class TwistdSlaveProcess(object):
              '-o', 'MultiProcess/ProcessCount=%d' % (
                     config.MultiProcess['ProcessCount'],)])
 
+        if config.Memcached["ServerEnabled"]:
+            args.extend(
+                ['-o', 'Memcached/ClientEnabled=True'])
+
         if self.ports:
             args.extend([
                     '-o',
@@ -286,6 +290,22 @@ def makeService_Combined(self, options):
                                      config.PythonDirector['pydir'],
                                      fname],
                            env=parentEnv)
+
+
+    if config.Memcached["ServerEnabled"]:
+        memcachedArgv = [
+                config.Memcached["memcached"],
+                '-p', str(config.Memcached["Port"]),
+                '-l', config.Memcached["BindAddress"]]
+
+        if config.Memcached["MaxMemory"] is not None:
+            memcachedArgv.extend([
+                    '-m', str(config.Memcached["MaxMemory"])])
+
+        memcachedArgv.extend(config.Memcached["Options"])
+
+        monitor.addProcess('memcached', memcachedArgv, env=parentEnv)
+
 
     logger = AMPLoggingFactory(
         RotatingFileAccessLoggingObserver(config.AccessLogFile))

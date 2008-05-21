@@ -201,8 +201,18 @@ defaultConfig = {
     },
 
     "ThreadPoolSize": 10,
-    
+
     "ListenBacklog": 50,
+
+    "Memcached": {
+        "ClientEnabled": False,
+        "ServerEnabled": False,
+        "BindAddress": "127.0.0.1",
+        "Port": 11211,
+        "memcached": "/usr/share/caldavd/bin/memcached",
+        "MaxMemory": None, # Megabytes
+        "Options": [],
+    },
 }
 
 class Config (object):
