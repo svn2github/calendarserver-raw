@@ -1,0 +1,129 @@
+Index: twisted/web2/dav/xattrprops.py
+===================================================================
+--- twisted/web2/dav/xattrprops.py	(revision 19773)
++++ twisted/web2/dav/xattrprops.py	(working copy)
+@@ -33,12 +33,19 @@
+ 
+ import urllib
+ import sys
++import zlib
++from time import sleep
++from random import random
++from errno import EAGAIN
++from zlib import compress, decompress
++from cPickle import dumps as pickle, loads as unpickle, PicklingError, UnpicklingError
+ 
+ import xattr
+ 
+ if getattr(xattr, 'xattr', None) is None:
+     raise ImportError("wrong xattr package imported")
+ 
++from twisted.python import log
+ from twisted.web2 import responsecode
+ from twisted.web2.http import HTTPError, StatusResponse
+ from twisted.web2.dav import davxml
+@@ -66,16 +73,8 @@
+         deadPropertyXattrPrefix = "user."
+ 
+     def _encode(clazz, name):
+-        #
+-        # FIXME: The xattr API in Mac OS 10.4.2 breaks if you have "/" in an
+-        # attribute name (radar://4202440). We'll quote the strings to get rid
+-        # of "/" characters for now.
+-        #
+-        result = list("{%s}%s" % name)
+-        for i in range(len(result)):
+-            c = result[i]
+-            if c in "%/": result[i] = "%%%02X" % (ord(c),)
+-        r = clazz.deadPropertyXattrPrefix + ''.join(result)
++        result = urllib.quote("{%s}%s" % name, safe='{}:')
++        r = clazz.deadPropertyXattrPrefix + result
+         return r
+ 
+     def _decode(clazz, name):
+@@ -97,20 +96,81 @@
+ 
+     def get(self, qname):
+         try:
+-            value = self.attrs[self._encode(qname)]
++            data = self.attrs[self._encode(qname)]
+         except KeyError:
+             raise HTTPError(StatusResponse(
+                 responsecode.NOT_FOUND,
+                 "No such property: {%s}%s" % qname
+             ))
+ 
+-        doc = davxml.WebDAVDocument.fromString(value)
++        #
++        # Serialize XML data to an xattr.  The storage format has
++        # changed over time:
++        #
++        #  1- Started with XML
++        #  2- Started compressing the XML due to limits on xattr size
++        #  3- Switched to pickle which is faster, still compressing
++        #
++        # We only write the current format, but we also read the old
++        # ones for compatibility.
++        #
++        legacy = False
+ 
+-        return doc.root_element
++        try:
++            data = decompress(data)
++        except zlib.error:
++            legacy = True
+ 
++        try:
++            result = unpickle(data)
++        except UnpicklingError:
++            legacy = True
++
++            try:
++                doc = davxml.WebDAVDocument.fromString(data)
++                result = doc.root_element
++            except ValueError:
++                msg = ("Invalid property value stored on server: {%s}%s %s"
++                       % (qname[0], qname[1], data))
++                log.err(msg)
++                raise HTTPError(StatusResponse(responsecode.INTERNAL_SERVER_ERROR, msg))
++
++        if legacy:
++            # Try to upgrade the property to the current format
++            try:
++                log.msg("Upgrading property %r on resource %r"
++                        % (qname, self.resource.fp.path))
++                self.set(result)
++            except Exception, e:
++                #
++                # Hrm, that failed.  No need to re-raise here, since
++                # we can do what we were asked to do, but let's
++                # complain about it.
++                #
++                log.err("Error while upgrading property %r on resource %r: %s"
++                        % (qname, self.resource.fp.path, e))
++
++        return result
++
+     def set(self, property):
+-        self.attrs[self._encode(property.qname())] = property.toxml()
++        for n in range(20):
++            try:
++                data = compress(pickle(property))
++            except PicklingError, e:
++                log.err("Unable to pickle property %r: %s" % (property, e))
+ 
++                # Can't pickle this for some reason; fall back to XML serialization
++                data = compress(property.toxml())
++            try:
++                self.attrs[self._encode(property.qname())] = data
++            except IOError, error:
++                if error.errno != EAGAIN:
++                    raise
++                sleep(random() / 10) # OMG Brutal Hax
++            else:
++                break
++    
++
+         # Update the resource because we've modified it
+         self.resource.fp.restat()
+ 
