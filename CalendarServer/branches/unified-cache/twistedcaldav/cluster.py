@@ -300,7 +300,7 @@ def makeService_Combined(self, options):
                 '-p', str(config.Memcached["Port"]),
                 '-l', config.Memcached["BindAddress"]]
 
-        if config.Memcached["MaxMemory"] is not None:
+        if config.Memcached["MaxMemory"] is not 0:
             memcachedArgv.extend([
                     '-m', str(config.Memcached["MaxMemory"])])
 
