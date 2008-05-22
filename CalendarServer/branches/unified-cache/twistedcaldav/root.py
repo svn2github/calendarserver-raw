@@ -52,7 +52,15 @@ class RootResource(DAVFile):
 
         self.contentFilters = []
 
-        self.responseCache = ResponseCache(self.fp, config.ResponseCacheSize)
+        if config.Memcached['ClientEnabled']:
+            self.responseCache = MemcacheResponseCache(
+                self.fp,
+                config.Memcached['BindAddresses'],
+                config.Memcached['Port'])
+
+        else:
+            self.responseCache = ResponseCache(self.fp,
+                                               config.ResponseCacheSize)
 
         if config.ResponseCompression:
             from twisted.web2.filter import gzip

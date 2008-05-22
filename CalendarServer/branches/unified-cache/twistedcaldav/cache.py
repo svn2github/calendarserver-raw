@@ -17,11 +17,14 @@
 import uuid
 import time
 import os
+import hashlib
+import cPickle
 
 from zope.interface import implements
 
 from twisted.python.filepath import FilePath
-from twisted.python import log
+
+from twisted.internet.defer import succeed, fail
 
 from twisted.web2.iweb import IResource
 from twisted.web2.dav import davxml
@@ -59,30 +62,44 @@ class CacheChangeNotifier(LoggingMixIn):
         self._propertyStore.set(property)
 
 
-
-
-class ResponseCache(LoggingMixIn):
+class BaseResponseCache(LoggingMixIn):
     """
-    An object that caches responses to given requests.
-
-    @ivar CACHE_TIMEOUT: The number of seconds that a cache entry is valid,
-        (default 3600 seconds or 1 hour).
-
-    @ivar _docroot: An L{FilePath} that points to the document root.
-    @ivar _responses: A C{dict} with (request-method, request-uri,
-         principal-uri) keys and (principal-token, uri-token, cache-time,
-         response) values.
+    A base class which provides some common operations
     """
+    def _principalURI(self, principal):
+        return str(principal.children[0])
 
-    CACHE_SIZE = 1000
-    propertyStoreFactory = xattrPropertyStore
 
-    def __init__(self, docroot, cacheSize=None):
-        self._docroot = docroot
-        self._responses = {}
+    def _requestKey(self, request):
+        if hasattr(request, 'cacheKey'):
+            return succeed(request.cacheKey)
 
-        if cacheSize is not None:
-            self.CACHE_SIZE = cacheSize
+        def _getKey(requestBody):
+            if requestBody is not None:
+                request.stream = MemoryStream(requestBody)
+                request.stream.doStartReading = None
+
+            request.cacheKey = (request.method,
+                                self._principalURI(request.authnUser),
+                                request.uri,
+                                request.headers.getHeader('depth'),
+                                hash(requestBody))
+
+            return request.cacheKey
+
+        d = allDataFromStream(request.stream)
+        d.addCallback(_getKey)
+        return d
+
+
+    def _getTokensInThread(self, principalURI, requestURI):
+        def _getTokens():
+            pToken = self._tokenForURI(principalURI)
+            uToken = self._tokenForURI(requestURI)
+
+            return (pToken, uToken)
+
+        return deferToThread(_getTokens)
 
 
     def _tokenForURI(self, uri):
@@ -112,8 +129,35 @@ class ResponseCache(LoggingMixIn):
             pass
 
 
-    def _principalURI(self, principal):
-        return str(principal.children[0])
+    def _getResponseBody(self, key, response):
+        d1 = allDataFromStream(response.stream)
+        d1.addCallback(lambda responseBody: (key, responseBody))
+        return d1
+
+
+
+class ResponseCache(BaseResponseCache):
+    """
+    An object that caches responses to given requests.
+
+    @ivar CACHE_TIMEOUT: The number of seconds that a cache entry is valid,
+        (default 3600 seconds or 1 hour).
+
+    @ivar _docroot: An L{FilePath} that points to the document root.
+    @ivar _responses: A C{dict} with (request-method, request-uri,
+         principal-uri) keys and (principal-token, uri-token, cache-time,
+         response) values.
+    """
+
+    CACHE_SIZE = 1000
+    propertyStoreFactory = xattrPropertyStore
+
+    def __init__(self, docroot, cacheSize=None):
+        self._docroot = docroot
+        self._responses = {}
+
+        if cacheSize is not None:
+            self.CACHE_SIZE = cacheSize
 
 
     def _time(self):
@@ -133,12 +177,7 @@ class ResponseCache(LoggingMixIn):
 
         @return: An L{IResponse} or C{None} if the response has not been cached.
         """
-        def _getTokens(pURI, rURI):
-            pToken = self._tokenForURI(pURI)
-            uToken = self._tokenForURI(rURI)
-
-            return (pToken, uToken)
-
+        principalURI = self._principalURI(request.authnUser)
 
         def _checkTokens((newPrincipalToken, newURIToken), key):
             (principalToken,
@@ -179,37 +218,20 @@ class ResponseCache(LoggingMixIn):
             return responseObj
 
 
-        def _returnRequest(requestBody):
-
-            if requestBody is not None:
-                request.stream = MemoryStream(requestBody)
-                request.stream.doStartReading = None
-
-            principalURI = self._principalURI(request.authnUser)
-
-            key = (request.method,
-                   request.uri,
-                   principalURI,
-                   request.headers.getHeader('depth'),
-                   hash(requestBody))
-
+        def _checkKeyInCache(key):
             self.log_debug("Checking cache for: %r" % (key,))
-
-            request.cacheKey = key
 
             if key not in self._responses:
                 self.log_debug("Not in cache: %r" % (key,))
                 return None
 
-            d1 = deferToThread(_getTokens,
-                               principalURI,
-                               request.uri)
+            d1 = self._getTokensInThread(principalURI, request.uri)
             d1.addCallback(_checkTokens, key)
 
             return d1
 
-        d = allDataFromStream(request.stream)
-        d.addCallback(_returnRequest)
+        d = self._requestKey(request)
+        d.addCallback(_checkKeyInCache)
         return d
 
 
@@ -226,26 +248,8 @@ class ResponseCache(LoggingMixIn):
         @return: A deferred that fires when the response has been added
             to the cache.
         """
-        def _getRequestBody(responseBody):
-            d1 = allDataFromStream(request.stream)
-            d1.addCallback(lambda requestBody: (requestBody, responseBody))
-            return d1
-
-        def _cacheResponse((requestBody, responseBody)):
-            if requestBody is not None:
-                request.stream = MemoryStream(requestBody)
-                request.stream.doStartReading = None
-
+        def _cacheResponse((key, responseBody)):
             principalURI = self._principalURI(request.authnUser)
-
-            if hasattr(request, 'cacheKey'):
-                key = request.cacheKey
-            else:
-                key = (request.method,
-                       request.uri,
-                       principalURI,
-                       request.headers.getHeader('depth'),
-                       hash(requestBody))
 
             self.log_debug("Adding to cache: %r = %r" % (key,
                                                          response))
@@ -282,9 +286,100 @@ class ResponseCache(LoggingMixIn):
             response.stream = MemoryStream(responseBody)
             return response
 
+        d = self._requestKey(request)
+        d.addCallback(self._getResponseBody, response)
+        d.addCallback(_cacheResponse)
+        return d
 
-        d = allDataFromStream(response.stream)
-        d.addCallback(_getRequestBody)
+
+
+class MemcacheResponseCache(BaseResponseCache):
+    def __init__(self, docroot, host, port, reactor):
+        self._docroot = docroot
+        self._host = host
+        self._port = port
+        if reactor is None:
+            from twisted.internet import reactor
+
+        self._reactor = reactor
+
+        self._memcacheProtocol = None
+
+
+    def _getMemcacheProtocol(self):
+        if self._memcacheProtocol is not None:
+            return succeed(self._memcacheProtocol)
+
+    def getResponseForRequest(self, request):
+        def _checkTokens(curTokens, expectedTokens, (code, headers, body)):
+            if curTokens != expectedTokens:
+                return None
+
+            return Response(code, headers=headers,
+                            stream=MemoryStream(body))
+
+        def _unpickleResponse((flags, value), key):
+            if value is None:
+                self.log_debug("Not in cache: %r" % (key,))
+                return None
+
+            self.log_debug("Found in cache: %r = %r" % (key, value))
+
+            (principalToken, uriToken,
+             resp) = cPickle.loads(value)
+
+            d2 = self._getTokensInThread(self._principalURI(request.authnUser),
+                                         request.uri)
+
+            d2.addCallback(_checkTokens, (principalToken, uriToken), resp)
+
+            return d2
+
+        def _getCache(proto, key):
+            self.log_debug("Checking cache for: %r" % (key,))
+            d1 = proto.get(key)
+            return d1.addCallback(_unpickleResponse, key)
+
+        def _getProtocol(key):
+            request.cacheKey = key = hashlib.md5(':'.join(
+                    [str(t) for t in key])).hexdigest()
+
+            return self._getMemcacheProtocol().addCallback(_getCache, key)
+
+        d = self._requestKey(request)
+        d.addCallback(_getProtocol)
+        return d
+
+
+    def cacheResponseForRequest(self, request, response):
+        def _setCacheEntry(proto, key, cacheEntry):
+            self.log_debug("Adding to cache: %r = %r" % (key, cacheEntry))
+            return proto.set(key, cacheEntry).addCallback(
+                lambda _: response)
+
+        def _cacheResponse((key, responseBody)):
+            key = hashlib.md5(':'.join([str(t) for t in key])).hexdigest()
+
+            principalURI = self._principalURI(request.authnUser)
+
+            response.headers.removeHeader('date')
+            response.stream = MemoryStream(responseBody)
+
+            cacheEntry = cPickle.dumps(
+                (self._tokenForURI(principalURI),
+                 self._tokenForURI(request.uri),
+                 (response.code,
+                  response.headers,
+                  responseBody)))
+
+            d1 = self._getMemcacheProtocol()
+            d1.addCallback(_setCacheEntry, key, cacheEntry)
+
+            return d1
+
+
+        d = self._requestKey(request)
+        d.addCallback(self._getResponseBody, response)
         d.addCallback(_cacheResponse)
         return d
 
@@ -301,6 +396,7 @@ class _CachedResponseResource(object):
 
     def locateChild(self, request, segments):
         return self, []
+
 
 
 class PropfindCacheMixin(object):

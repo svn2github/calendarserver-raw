@@ -15,8 +15,12 @@
 ##
 
 from new import instancemethod
+import hashlib
+import cPickle
 
 from twisted.trial.unittest import TestCase
+from twisted.internet.defer import succeed, fail
+from twisted.python.failure import Failure
 
 from twisted.python.filepath import FilePath
 
@@ -28,6 +32,7 @@ from twisted.web2.http_headers import Headers
 from twistedcaldav.cache import CacheChangeNotifier
 from twistedcaldav.cache import CacheTokensProperty
 from twistedcaldav.cache import ResponseCache
+from twistedcaldav.cache import MemcacheResponseCache
 
 from twistedcaldav.test.util import InMemoryPropertyStore
 
@@ -42,7 +47,7 @@ def _newCacheToken(self):
 
 
 class StubRequest(object):
-    def __init__(self, method, uri, authnUser, depth=1, body=None):
+    def __init__(self, method, uri, authnUser, depth='1', body=None):
         self.method = method
         self.uri = uri
         self.authnUser = davxml.Principal(davxml.HRef.fromString(authnUser))
@@ -62,6 +67,28 @@ class StubResponse(object):
         self.headers = Headers(headers)
         self.body = body
         self.stream = MemoryStream(body)
+
+
+
+class InMemoryMemcacheProtocol(object):
+    def __init__(self):
+        self._cache = {}
+
+
+    def get(self, key):
+        if key not in self._cache:
+            return succeed((0, None))
+
+        return succeed(self._cache[key])
+
+
+    def set(self, key, value, flags=0, expireTime=0):
+        try:
+            self._cache[key] = (flags, value)
+            return succeed(True)
+
+        except Exception, err:
+            return fail(Failure())
 
 
 
@@ -90,37 +117,11 @@ class CacheChangeNotifierTests(TestCase):
 
 
 
-class ResponseCacheTests(TestCase):
-    def setUp(self):
-        self.tokens = {
-                '/calendars/users/cdaboo/': 'uriToken0',
-                '/principals/users/cdaboo/': 'principalToken0',
-                '/principals/users/dreid/': 'principalTokenX'}
-
-        self.rc = ResponseCache(None)
-        self.rc._tokenForURI = self.tokens.get
-
-        self.rc._time = (lambda:0)
-
-        self.expected_response = (200, Headers({}), "Foo")
-
-        expected_key = (
-                'PROPFIND',
-                '/calendars/users/cdaboo/',
-                '/principals/users/cdaboo/',
-                1,
-                hash('foobar'),
-                )
-
-        self.rc._responses[expected_key] = (
-            'principalToken0', 'uriToken0', 0, self.expected_response)
-
-        self.rc._accessList = [expected_key]
-
-
+class BaseCacheTestMixin(object):
     def assertResponse(self, response, expected):
         self.assertEquals(response.code, expected[0])
-        self.assertEquals(response.headers, expected[1])
+        self.assertEquals(set(response.headers.getAllRawHeaders()),
+                          set(expected[1].getAllRawHeaders()))
 
         d = allDataFromStream(response.stream)
         d.addCallback(self.assertEquals, expected[2])
@@ -176,7 +177,7 @@ class ResponseCacheTests(TestCase):
                 'PROPFIND',
                 '/calendars/users/cdaboo/',
                 '/principals/users/cdaboo/',
-                depth=0))
+                depth='0'))
 
         d.addCallback(self.assertEquals, None)
         return d
@@ -217,6 +218,37 @@ class ResponseCacheTests(TestCase):
 
         d.addCallback(_assertResponse)
         return d
+
+
+
+class ResponseCacheTests(BaseCacheTestMixin, TestCase):
+    def setUp(self):
+        self.tokens = {
+                '/calendars/users/cdaboo/': 'uriToken0',
+                '/principals/users/cdaboo/': 'principalToken0',
+                '/principals/users/dreid/': 'principalTokenX'}
+
+        self.rc = ResponseCache(None)
+        self.rc._tokenForURI = self.tokens.get
+
+        self.rc._time = (lambda:0)
+
+        self.expected_response = (200, Headers({}), "Foo")
+
+        expected_key = (
+                'PROPFIND',
+                '/principals/users/cdaboo/',
+                '/calendars/users/cdaboo/',
+                '1',
+                hash('foobar'),
+                )
+
+        self.rc._responses[expected_key] = (
+            'principalToken0', 'uriToken0', '0', self.expected_response)
+
+        self.rc._accessList = [expected_key]
+
+
 
 
     def test__tokenForURI(self):
@@ -260,37 +292,65 @@ class ResponseCacheTests(TestCase):
         return d
 
 
-    def test_cacheExpirationBenchmark(self):
-        self.rc.CACHE_SIZE = 70000
-        import time
+#     def test_cacheExpirationBenchmark(self):
+#         self.rc.CACHE_SIZE = 70000
+#         import time
 
-        self.rc._responses = {}
-        self.rc._accessList = []
+#         self.rc._responses = {}
+#         self.rc._accessList = []
 
-        for x in xrange(0, self.rc.CACHE_SIZE):
-            req = StubRequest('PROPFIND',
-                              '/principals/users/user%d' % (x,),
-                              '/principals/users/user%d' % (x,))
-            self.rc._responses[req] = (
-                'pTokenUser%d' % (x,), 'rTokenUser%d' % (x,), 0,
-                (200, {}, 'foobar'))
+#         for x in xrange(0, self.rc.CACHE_SIZE):
+#             req = StubRequest('PROPFIND',
+#                               '/principals/users/user%d' % (x,),
+#                               '/principals/users/user%d' % (x,))
+#             self.rc._responses[req] = (
+#                 'pTokenUser%d' % (x,), 'rTokenUser%d' % (x,), 0,
+#                 (200, {}, 'foobar'))
 
-            self.rc._accessList.append(req)
+#             self.rc._accessList.append(req)
 
-        def assertTime(result, startTime):
-            duration = time.time() - startTime
+#         def assertTime(result, startTime):
+#             duration = time.time() - startTime
 
-            self.failUnless(
-                duration < 0.01,
-                "Took to long to add to the cache: %r" % (duration,))
+#             self.failUnless(
+#                 duration < 0.01,
+#                 "Took to long to add to the cache: %r" % (duration,))
 
-        startTime = time.time()
+#         startTime = time.time()
 
-        d = self.rc.cacheResponseForRequest(
-            StubRequest('PROPFIND',
-                        '/principals/users/dreid/',
-                        '/principals/users/dreid/'),
-            StubResponse(200, {}, 'Foobar'))
+#         d = self.rc.cacheResponseForRequest(
+#             StubRequest('PROPFIND',
+#                         '/principals/users/dreid/',
+#                         '/principals/users/dreid/'),
+#             StubResponse(200, {}, 'Foobar'))
 
-        d.addCallback(assertTime, startTime)
-        return d
+#         d.addCallback(assertTime, startTime)
+#         return d
+
+
+class MemcacheResponseCacheTests(BaseCacheTestMixin, TestCase):
+    def setUp(self):
+        memcacheStub = InMemoryMemcacheProtocol()
+        self.rc = MemcacheResponseCache(None, None, None, None)
+        self.tokens = {}
+
+        self.tokens['/calendars/users/cdaboo/'] = 'uriToken0'
+        self.tokens['/principals/users/cdaboo/'] = 'principalToken0'
+        self.tokens['/principals/users/dreid/'] = 'principalTokenX'
+
+        self.rc._tokenForURI = self.tokens.get
+
+        self.expected_response = (200, Headers({}), "Foo")
+
+        expected_key = hashlib.md5(':'.join([str(t) for t in (
+                'PROPFIND',
+                '/principals/users/cdaboo/',
+                '/calendars/users/cdaboo/',
+                '1',
+                hash('foobar'),
+                )])).hexdigest()
+
+        memcacheStub._cache[expected_key] = (0, cPickle.dumps((
+            'principalToken0', 'uriToken0', self.expected_response)))
+
+        self.rc._memcacheProtocol = memcacheStub

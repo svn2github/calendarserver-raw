@@ -293,6 +293,8 @@ def makeService_Combined(self, options):
 
 
     if config.Memcached["ServerEnabled"]:
+        log.msg("Adding memcached service")
+
         memcachedArgv = [
                 config.Memcached["memcached"],
                 '-p', str(config.Memcached["Port"]),
