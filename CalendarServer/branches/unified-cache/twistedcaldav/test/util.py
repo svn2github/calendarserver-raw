@@ -28,7 +28,11 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
 
 class InMemoryPropertyStore(object):
     def __init__(self):
+        class __FauxResource(object):
+            fp = ':memory:'
+
         self._properties = {}
+        self.resource = __FauxResource()
 
     def get(self, qname):
         data = self._properties.get(qname)

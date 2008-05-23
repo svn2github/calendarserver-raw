@@ -65,7 +65,7 @@ class XattrCacheChangeNotifier(LoggingMixIn):
         return: A L{Deferred} that fires when the token has been changed.
         """
         self.log_debug("Changing Cache Token for %r" % (
-                self._propertyStore))
+                self._propertyStore.resource.fp))
         property = CacheTokensProperty.fromString(self._newCacheToken())
         self._propertyStore.set(property)
         return succeed(True)
