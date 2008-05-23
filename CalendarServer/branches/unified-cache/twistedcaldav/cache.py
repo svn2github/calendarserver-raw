@@ -25,6 +25,7 @@ from zope.interface import implements
 from twisted.python.filepath import FilePath
 
 from twisted.internet.defer import succeed, fail
+from twisted.internet.protocol import ClientCreator
 
 from twisted.web2.iweb import IResource
 from twisted.web2.dav import davxml
@@ -37,6 +38,7 @@ from twisted.web2.dav.xattrprops import xattrPropertyStore
 from twisted.internet.threads import deferToThread
 
 from twistedcaldav.log import LoggingMixIn
+from twistedcaldav.memcache import MemCacheProtocol
 
 
 class CacheTokensProperty(davxml.WebDAVTextElement):
@@ -66,6 +68,8 @@ class BaseResponseCache(LoggingMixIn):
     """
     A base class which provides some common operations
     """
+    propertyStoreFactory = xattrPropertyStore
+
     def _principalURI(self, principal):
         return str(principal.children[0])
 
@@ -150,7 +154,6 @@ class ResponseCache(BaseResponseCache):
     """
 
     CACHE_SIZE = 1000
-    propertyStoreFactory = xattrPropertyStore
 
     def __init__(self, docroot, cacheSize=None):
         self._docroot = docroot
@@ -294,7 +297,7 @@ class ResponseCache(BaseResponseCache):
 
 
 class MemcacheResponseCache(BaseResponseCache):
-    def __init__(self, docroot, host, port, reactor):
+    def __init__(self, docroot, host, port, reactor=None):
         self._docroot = docroot
         self._host = host
         self._port = port
@@ -309,6 +312,16 @@ class MemcacheResponseCache(BaseResponseCache):
     def _getMemcacheProtocol(self):
         if self._memcacheProtocol is not None:
             return succeed(self._memcacheProtocol)
+
+        d = ClientCreator(self._reactor, MemCacheProtocol).connectTCP(
+            self._host,
+            self._port)
+
+        def _cacheProtocol(proto):
+            self._memcacheProtocol = proto
+            return proto
+
+        return d.addCallback(_cacheProtocol)
 
     def getResponseForRequest(self, request):
         def _checkTokens(curTokens, expectedTokens, (code, headers, body)):

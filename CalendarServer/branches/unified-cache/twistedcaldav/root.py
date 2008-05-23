@@ -25,7 +25,7 @@ from twisted.web2.auth.wrapper import UnauthorizedResponse
 
 from twistedcaldav.extensions import DAVFile
 from twistedcaldav.config import config
-from twistedcaldav.cache import ResponseCache, _CachedResponseResource
+from twistedcaldav.cache import ResponseCache, _CachedResponseResource, MemcacheResponseCache
 from twistedcaldav.log import Logger
 
 log = Logger()
@@ -55,7 +55,7 @@ class RootResource(DAVFile):
         if config.Memcached['ClientEnabled']:
             self.responseCache = MemcacheResponseCache(
                 self.fp,
-                config.Memcached['BindAddresses'],
+                config.Memcached['BindAddress'],
                 config.Memcached['Port'])
 
         else:
