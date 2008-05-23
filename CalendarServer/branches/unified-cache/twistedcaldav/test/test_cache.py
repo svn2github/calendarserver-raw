@@ -33,6 +33,7 @@ from twistedcaldav.cache import XattrCacheChangeNotifier
 from twistedcaldav.cache import CacheTokensProperty
 from twistedcaldav.cache import ResponseCache
 from twistedcaldav.cache import MemcacheResponseCache
+from twistedcaldav.cache import MemcacheChangeNotifier
 
 from twistedcaldav.test.util import InMemoryPropertyStore
 
@@ -118,6 +119,35 @@ class XattrCacheChangeNotifierTests(TestCase):
         d.addCallback(lambda _: self.ccn.changed())
         d.addCallback(lambda _: self.assertToken('token1'))
         return d
+
+
+class MemCacheChangeNotifierTests(TestCase):
+    def setUp(self):
+        self.memcache = InMemoryMemcacheProtocol()
+        self.ccn = MemcacheChangeNotifier(InMemoryPropertyStore())
+        self.ccn._memcacheProtocol = self.memcache
+        self.ccn._newCacheToken = instancemethod(_newCacheToken,
+                                                 self.ccn,
+                                                 MemcacheChangeNotifier)
+
+
+    def assertToken(self, expectedToken):
+        token = self.memcache._cache['cacheToken::memory:'][1]
+        self.assertEquals(token, expectedToken)
+
+
+    def test_cacheTokenPropertyIsProvisioned(self):
+        d = self.ccn.changed()
+        d.addCallback(lambda _: self.assertToken('token0'))
+        return d
+
+
+    def test_changedChangesToken(self):
+        d = self.ccn.changed()
+        d.addCallback(lambda _: self.ccn.changed())
+        d.addCallback(lambda _: self.assertToken('token1'))
+        return d
+
 
 
 class BaseCacheTestMixin(object):
@@ -335,13 +365,17 @@ class MemcacheResponseCacheTests(BaseCacheTestMixin, TestCase):
     def setUp(self):
         memcacheStub = InMemoryMemcacheProtocol()
         self.rc = MemcacheResponseCache(None, None, None, None)
+        self.rc.logger.setLevel('debug')
         self.tokens = {}
 
         self.tokens['/calendars/users/cdaboo/'] = 'uriToken0'
         self.tokens['/principals/users/cdaboo/'] = 'principalToken0'
         self.tokens['/principals/users/dreid/'] = 'principalTokenX'
 
-        self.rc._tokenForURI = self.tokens.get
+        def _getToken(uri):
+            return succeed(self.tokens.get(uri))
+
+        self.rc._tokenForURI = _getToken
 
         self.expected_response = (200, Headers({}), "Foo")
 

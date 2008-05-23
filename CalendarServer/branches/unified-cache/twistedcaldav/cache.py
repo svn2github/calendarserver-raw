@@ -40,7 +40,7 @@ from twisted.internet.threads import deferToThread
 
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.memcache import MemCacheProtocol
-
+from twistedcaldav.config import config
 
 class CacheTokensProperty(davxml.WebDAVTextElement):
     namespace = davxml.twisted_private_namespace
@@ -69,6 +69,55 @@ class XattrCacheChangeNotifier(LoggingMixIn):
         property = CacheTokensProperty.fromString(self._newCacheToken())
         self._propertyStore.set(property)
         return succeed(True)
+
+
+
+class MemcacheChangeNotifier(LoggingMixIn):
+    def __init__(self, propertyStore):
+        self._path = propertyStore.resource.fp.path
+        self._host = config.Memcached['BindAddress']
+        self._port = config.Memcached['Port']
+
+        from twisted.internet import reactor
+        self._reactor = reactor
+
+        self._memcacheProtocol =  None
+
+
+    def _newCacheToken(self):
+        return uuid.uuid4()
+
+
+    def _getMemcacheProtocol(self):
+        if self._memcacheProtocol is not None:
+            return succeed(self._memcacheProtocol)
+
+        d = ClientCreator(self._reactor, MemCacheProtocol).connectTCP(
+            self._host,
+            self._port)
+
+        def _cacheProtocol(proto):
+            self._memcacheProtocol = proto
+            return proto
+
+        return d.addCallback(_cacheProtocol)
+
+
+    def changed(self):
+        """
+        Change the cache token for a resource
+
+        return: A L{Deferred} that fires when the token has been changed.
+        """
+        def _updateCacheToken(proto):
+            return proto.set('cacheToken:%s' % (self._path,),
+                             self._newCacheToken())
+
+        self.log_debug("Changing Cache Token for %r" % (self._path,))
+        d = self._getMemcacheProtocol()
+        d.addCallback(_updateCacheToken)
+        return d
+
 
 
 class BaseResponseCache(LoggingMixIn):
@@ -318,6 +367,37 @@ class MemcacheResponseCache(BaseResponseCache):
         self._memcacheProtocol = None
 
 
+    def _tokenForURI(self, uri):
+        """
+        Get a property store for the given C{uri}.
+
+        @param uri: The URI we'd like the token for.
+        @return: A C{str} representing the token for the URI.
+        """
+
+        class __FauxStaticResource(object):
+            def __init__(self, fp):
+                self.fp = fp
+
+
+        fp = self._docroot
+        for childPath in uri.split('/')[:4]:
+            fp = fp.child(childPath)
+
+        return self._getMemcacheProtocol().get('cacheToken:%s' % (fp.path,))
+
+
+    def _getTokens(self, principalURI, requestURI):
+        def _getSecondToken(pToken):
+            d1 = self._tokenForURI(requestURI)
+            d1.addCallback(lambda uToken: (pToken, uToken))
+            return d1
+
+        d = self._tokenForURI(principalURI)
+        d.addCallback(_getSecondToken)
+        return d
+
+
     def _getMemcacheProtocol(self):
         if self._memcacheProtocol is not None:
             return succeed(self._memcacheProtocol)
@@ -382,7 +462,7 @@ class MemcacheResponseCache(BaseResponseCache):
             (principalToken, uriToken,
              resp) = cPickle.loads(value)
 
-            d2 = self._getTokensInThread(self._principalURI(request.authnUser),
+            d2 = self._getTokens(self._principalURI(request.authnUser),
                                          request.uri)
 
             d2.addCallback(_checkTokens, (principalToken, uriToken), resp)
@@ -408,22 +488,26 @@ class MemcacheResponseCache(BaseResponseCache):
             return proto.set(key, cacheEntry).addCallback(
                 lambda _: response)
 
+        def _makeCacheEntry((pToken, uToken), (key, responseBody)):
+            cacheEntry = cPickle.dumps(
+                (pToken,
+                 uToken,
+                 (response.code,
+                  dict(list(response.headers.getAllRawHeaders())),
+                  responseBody)))
+
+            d2 = self._getMemcacheProtocol()
+            d2.addCallback(_setCacheEntry, key, cacheEntry)
+            return d2
+
         def _cacheResponse((key, responseBody)):
             principalURI = self._principalURI(request.authnUser)
 
             response.headers.removeHeader('date')
             response.stream = MemoryStream(responseBody)
 
-            cacheEntry = cPickle.dumps(
-                (self._tokenForURI(principalURI),
-                 self._tokenForURI(request.uri),
-                 (response.code,
-                  dict(list(response.headers.getAllRawHeaders())),
-                  responseBody)))
-
-            d1 = self._getMemcacheProtocol()
-            d1.addCallback(_setCacheEntry, key, cacheEntry)
-
+            d1 = self._getTokens(principalURI, request.uri)
+            d1.addCallback(_makeCacheEntry, (key, responseBody))
             return d1
 
         if hasattr(request, 'cacheKey'):
