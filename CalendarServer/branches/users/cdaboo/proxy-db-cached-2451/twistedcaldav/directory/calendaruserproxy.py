@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+import itertools
 
 """
 Implements a calendar user proxy principal.
@@ -317,9 +318,15 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
     dbFilename = db_prefix + "calendaruserproxy"
     dbFormatVersion = "4"
 
+    dbUseCache = True
+
     def __init__(self, path):
         path = os.path.join(path, CalendarUserProxyDatabase.dbFilename)
         super(CalendarUserProxyDatabase, self).__init__(path, True)
+        
+        if self.dbUseCache:
+            self._cacheMembers = {}
+            self._cacheMemberships = {}
 
     def setGroupMembers(self, principalUID, members):
         """
@@ -333,6 +340,25 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
         self._delete_from_db(principalUID)
         self._add_to_db(principalUID, members)
         self._db_commit()
+        
+        # Update cache if present
+        if self.dbUseCache:
+            try:
+                current_members = set(self._cacheMembers.setdefault(principalUID, []))
+                update_members = set(members)
+                
+                remove_members = current_members.difference(update_members)
+                add_members = update_members.difference(current_members)
+                for member in itertools.chain(remove_members, add_members,):
+                    try:
+                        del self._cacheMemberships[member]
+                    except KeyError:
+                        pass
+                
+                del self._cacheMembers[principalUID]
+
+            except KeyError:
+                pass
 
     def removeGroup(self, principalUID):
         """
@@ -340,26 +366,60 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
 
         @param principalUID: the UID of the group principal to remove.
         """
+
         self._delete_from_db(principalUID)
         self._db_commit()
+        
+        # Update cache if present
+        if self.dbUseCache:
+            try:
+                members = self._cacheMembers[principalUID]
+                for member in members:
+                    try:
+                        del self._cacheMemberships[member]
+                    except KeyError:
+                        pass
+                del self._cacheMembers[principalUID]
+            except KeyError:
+                pass
 
     def getMembers(self, principalUID):
         """
         Return the list of group member UIDs for the specified principal.
         """
-        members = set()
-        for row in self._db_execute("select MEMBER from GROUPS where GROUPNAME = :1", principalUID):
-            members.add(row[0])
-        return members
+
+        def _members():
+            members = set()
+            for row in self._db_execute("select MEMBER from GROUPS where GROUPNAME = :1", principalUID):
+                members.add(row[0])
+            return members
+
+        # Pull from cache if present
+        if self.dbUseCache:
+            if not self._cacheMembers.has_key(principalUID):
+                self._cacheMembers[principalUID] = _members()
+            return self._cacheMembers[principalUID]
+        else:
+            return _members()
 
     def getMemberships(self, principalUID):
         """
         Return the list of group principal UIDs the specified principal is a member of.
         """
-        members = set()
-        for row in self._db_execute("select GROUPNAME from GROUPS where MEMBER = :1", principalUID):
-            members.add(row[0])
-        return members
+
+        def _members():
+            members = set()
+            for row in self._db_execute("select GROUPNAME from GROUPS where MEMBER = :1", principalUID):
+                members.add(row[0])
+            return members
+
+        # Pull from cache if present
+        if self.dbUseCache:
+            if not self._cacheMemberships.has_key(principalUID):
+                self._cacheMemberships[principalUID] = _members()
+            return self._cacheMemberships[principalUID]
+        else:
+            return _members()
 
     def _add_to_db(self, principalUID, members):
         """

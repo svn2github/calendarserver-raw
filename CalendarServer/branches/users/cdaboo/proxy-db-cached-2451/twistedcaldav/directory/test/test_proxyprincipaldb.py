@@ -67,9 +67,6 @@ class ProxyPrincipalDB (twistedcaldav.test.util.TestCase):
             return "51"
             
     def test_normalDB(self):
-        """
-        DirectoryPrincipalResource.groupMembers()
-        """
     
         # Get the DB
         db_path = self.mktemp()
@@ -80,9 +77,6 @@ class ProxyPrincipalDB (twistedcaldav.test.util.TestCase):
         self.assertEqual(db.getMemberships("B"), set(("A",)))
 
     def test_DBIndexed(self):
-        """
-        DirectoryPrincipalResource.groupMembers()
-        """
     
         # Get the DB
         db_path = self.mktemp()
@@ -91,9 +85,6 @@ class ProxyPrincipalDB (twistedcaldav.test.util.TestCase):
         self.assertEqual(set([row[1] for row in db._db_execute("PRAGMA index_list(GROUPS)")]), set(("GROUPNAMES", "MEMBERS")))
 
     def test_OldDB(self):
-        """
-        DirectoryPrincipalResource.groupMembers()
-        """
     
         # Get the DB
         db_path = self.mktemp()
@@ -102,9 +93,6 @@ class ProxyPrincipalDB (twistedcaldav.test.util.TestCase):
         self.assertEqual(set([row[1] for row in db._db_execute("PRAGMA index_list(GROUPS)")]), set())
 
     def test_DBUpgrade(self):
-        """
-        DirectoryPrincipalResource.groupMembers()
-        """
     
         # Get the DB
         db_path = self.mktemp()
@@ -125,9 +113,6 @@ class ProxyPrincipalDB (twistedcaldav.test.util.TestCase):
         db = None
 
     def test_DBUpgradeNewer(self):
-        """
-        DirectoryPrincipalResource.groupMembers()
-        """
     
         # Get the DB
         db_path = self.mktemp()
@@ -148,9 +133,6 @@ class ProxyPrincipalDB (twistedcaldav.test.util.TestCase):
         db = None
 
     def test_DBNoUpgradeNewer(self):
-        """
-        DirectoryPrincipalResource.groupMembers()
-        """
     
         # Get the DB
         db_path = self.mktemp()
@@ -170,4 +152,50 @@ class ProxyPrincipalDB (twistedcaldav.test.util.TestCase):
         db._db_close()
         db = None
 
+    def test_cachingDBInsert(self):
+    
+        # Get the DB
+        db_path = self.mktemp()
+        os.mkdir(db_path)
+        db = CalendarUserProxyDatabase(db_path)
+        
+        # Do one insert and check the result
+        db.setGroupMembers("A", ("B", "C", "D",))
+        self.assertEqual(db.getMembers("A"), set(("B", "C", "D",)))
+        self.assertEqual(db.getMemberships("B"), set(("A",)))
+        self.assertEqual(db.getMemberships("C"), set(("A",)))
+        self.assertEqual(db.getMemberships("D"), set(("A",)))
+        self.assertEqual(db.getMemberships("E"), set(()))
+        
+        # Change and check the result
+        db.setGroupMembers("A", ("B", "C", "E",))
+        self.assertEqual(db.getMembers("A"), set(("B", "C", "E",)))
+        self.assertEqual(db.getMemberships("B"), set(("A",)))
+        self.assertEqual(db.getMemberships("C"), set(("A",)))
+        self.assertEqual(db.getMemberships("D"), set())
+        self.assertEqual(db.getMemberships("E"), set(("A",)))
+
+    def test_cachingDBRemove(self):
+    
+        # Get the DB
+        db_path = self.mktemp()
+        os.mkdir(db_path)
+        db = CalendarUserProxyDatabase(db_path)
+        
+        # Do one insert and check the result
+        db.setGroupMembers("A", ("B", "C", "D",))
+        db.setGroupMembers("X", ("B", "C",))
+        self.assertEqual(db.getMembers("A"), set(("B", "C", "D",)))
+        self.assertEqual(db.getMembers("X"), set(("B", "C",)))
+        self.assertEqual(db.getMemberships("B"), set(("A", "X",)))
+        self.assertEqual(db.getMemberships("C"), set(("A", "X",)))
+        self.assertEqual(db.getMemberships("D"), set(("A",)))
+        
+        # Remove and check the result
+        db.removeGroup("A")
+        self.assertEqual(db.getMembers("A"), set())
+        db.setGroupMembers("X", ("B", "C",))
+        self.assertEqual(db.getMemberships("B"), set("X",))
+        self.assertEqual(db.getMemberships("C"), set("X",))
+        self.assertEqual(db.getMemberships("D"), set())
         
