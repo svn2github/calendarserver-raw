@@ -156,6 +156,7 @@ class RootResource(DAVFile):
             return _CachedResponseResource(response), []
 
         def _resourceNotInCacheEb(failure):
+            failure.trap(KeyError)
             return super(RootResource, self).locateChild(request,segments)
 
         if request.method == 'PROPFIND' and not getattr(

@@ -350,7 +350,13 @@ class MemcacheResponseCacheTests(BaseCacheTestMixin, TestCase):
                 hash('foobar'),
                 )])).hexdigest()
 
-        memcacheStub._cache[expected_key] = (0, cPickle.dumps((
-            'principalToken0', 'uriToken0', self.expected_response)))
+        memcacheStub._cache[expected_key] = (
+            0, #flags
+            cPickle.dumps((
+            'principalToken0',
+            'uriToken0',
+            (self.expected_response[0],
+             dict(list(self.expected_response[1].getAllRawHeaders())),
+             self.expected_response[2]))))
 
         self.rc._memcacheProtocol = memcacheStub

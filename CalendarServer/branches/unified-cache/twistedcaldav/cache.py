@@ -31,6 +31,7 @@ from twisted.web2.iweb import IResource
 from twisted.web2.dav import davxml
 from twisted.web2.dav.util import allDataFromStream
 from twisted.web2.http import HTTPError, Response
+from twisted.web2.http_headers import Headers
 from twisted.web2.stream import MemoryStream
 
 from twisted.web2.dav.xattrprops import xattrPropertyStore
@@ -75,9 +76,6 @@ class BaseResponseCache(LoggingMixIn):
 
 
     def _requestKey(self, request):
-        if hasattr(request, 'cacheKey'):
-            return succeed(request.cacheKey)
-
         def _getKey(requestBody):
             if requestBody is not None:
                 request.stream = MemoryStream(requestBody)
@@ -289,7 +287,12 @@ class ResponseCache(BaseResponseCache):
             response.stream = MemoryStream(responseBody)
             return response
 
-        d = self._requestKey(request)
+        if hasattr(request, 'cacheKey'):
+            request.cacheKey
+            d = succeed(request.cacheKey)
+        else:
+            d = self._requestKey(request)
+
         d.addCallback(self._getResponseBody, response)
         d.addCallback(_cacheResponse)
         return d
@@ -323,13 +326,45 @@ class MemcacheResponseCache(BaseResponseCache):
 
         return d.addCallback(_cacheProtocol)
 
+
+    def _hashedRequestKey(self, request):
+        def _hashKey(key):
+            oldkey = key
+            request.cacheKey = key = hashlib.md5(
+                ':'.join([str(t) for t in key])).hexdigest()
+            self.log_debug("hashing key for get: %r to %r" % (oldkey, key))
+            return request.cacheKey
+
+        d = self._requestKey(request)
+        d.addCallback(_hashKey)
+        return d
+
+
     def getResponseForRequest(self, request):
         def _checkTokens(curTokens, expectedTokens, (code, headers, body)):
-            if curTokens != expectedTokens:
+            if curTokens[0] != expectedTokens[0]:
+                self.log_debug(
+                    "Principal token doesn't match for %r: %r != %r" % (
+                        request.cacheKey,
+                        curTokens[0],
+                        expectedTokens[0]))
                 return None
 
-            return Response(code, headers=headers,
-                            stream=MemoryStream(body))
+            if curTokens[1] != expectedTokens[1]:
+                self.log_debug(
+                    "URI token doesn't match for %r: %r != %r" % (
+                        request.cacheKey,
+                        curTokens[1],
+                        expectedTokens[1]))
+                return None
+
+            r = Response(code,
+                         stream=MemoryStream(body))
+
+            for key, value in headers.iteritems():
+                r.headers.setRawHeaders(key, value)
+
+            return r
 
         def _unpickleResponse((flags, value), key):
             if value is None:
@@ -354,12 +389,9 @@ class MemcacheResponseCache(BaseResponseCache):
             return d1.addCallback(_unpickleResponse, key)
 
         def _getProtocol(key):
-            request.cacheKey = key = hashlib.md5(':'.join(
-                    [str(t) for t in key])).hexdigest()
-
             return self._getMemcacheProtocol().addCallback(_getCache, key)
 
-        d = self._requestKey(request)
+        d = self._hashedRequestKey(request)
         d.addCallback(_getProtocol)
         return d
 
@@ -371,8 +403,6 @@ class MemcacheResponseCache(BaseResponseCache):
                 lambda _: response)
 
         def _cacheResponse((key, responseBody)):
-            key = hashlib.md5(':'.join([str(t) for t in key])).hexdigest()
-
             principalURI = self._principalURI(request.authnUser)
 
             response.headers.removeHeader('date')
@@ -382,7 +412,7 @@ class MemcacheResponseCache(BaseResponseCache):
                 (self._tokenForURI(principalURI),
                  self._tokenForURI(request.uri),
                  (response.code,
-                  response.headers,
+                  dict(list(response.headers.getAllRawHeaders())),
                   responseBody)))
 
             d1 = self._getMemcacheProtocol()
@@ -390,8 +420,11 @@ class MemcacheResponseCache(BaseResponseCache):
 
             return d1
 
+        if hasattr(request, 'cacheKey'):
+            d = succeed(request.cacheKey)
+        else:
+            d = self._hashedRequestKey(request)
 
-        d = self._requestKey(request)
         d.addCallback(self._getResponseBody, response)
         d.addCallback(_cacheResponse)
         return d
