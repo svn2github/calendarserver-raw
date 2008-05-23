@@ -17,6 +17,8 @@
 import twisted.web2.dav.test.util
 from twisted.web2.http import HTTPError, StatusResponse
 
+from twisted.internet.defer import succeed
+
 from twistedcaldav.static import CalDAVFile
 
 
@@ -43,3 +45,4 @@ class StubCacheChangeNotifier(object):
 
     def changed(self):
         self.changedCount += 1
+        return succeed(True)

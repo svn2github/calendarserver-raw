@@ -29,7 +29,7 @@ from twisted.web2.dav.util import allDataFromStream
 from twisted.web2.stream import MemoryStream
 from twisted.web2.http_headers import Headers
 
-from twistedcaldav.cache import CacheChangeNotifier
+from twistedcaldav.cache import XattrCacheChangeNotifier
 from twistedcaldav.cache import CacheTokensProperty
 from twistedcaldav.cache import ResponseCache
 from twistedcaldav.cache import MemcacheResponseCache
@@ -92,29 +92,32 @@ class InMemoryMemcacheProtocol(object):
 
 
 
-class CacheChangeNotifierTests(TestCase):
+class XattrCacheChangeNotifierTests(TestCase):
     def setUp(self):
         self.props = InMemoryPropertyStore()
-        self.ccn = CacheChangeNotifier(self.props)
+        self.ccn = XattrCacheChangeNotifier(self.props)
         self.ccn._newCacheToken = instancemethod(_newCacheToken,
                                                  self.ccn,
-                                                 CacheChangeNotifier)
+                                                 XattrCacheChangeNotifier)
+
+
+    def assertToken(self, expectedToken):
+        token = self.props._properties[CacheTokensProperty.qname()
+                                        ].children[0].data
+        self.assertEquals(token, expectedToken)
 
 
     def test_cacheTokenPropertyIsProvisioned(self):
-        self.ccn.changed()
-        token = self.props._properties[CacheTokensProperty.qname()
-                                        ].children[0].data
-        self.assertEquals(token, 'token0')
+        d = self.ccn.changed()
+        d.addCallback(lambda _: self.assertToken('token0'))
+        return d
 
 
     def test_changedChangesToken(self):
-        self.ccn.changed()
-        self.ccn.changed()
-        token = self.props._properties[CacheTokensProperty.qname()
-                                        ].children[0].data
-        self.assertEquals(token, 'token1')
-
+        d = self.ccn.changed()
+        d.addCallback(lambda _: self.ccn.changed())
+        d.addCallback(lambda _: self.assertToken('token1'))
+        return d
 
 
 class BaseCacheTestMixin(object):

@@ -48,7 +48,7 @@ class CacheTokensProperty(davxml.WebDAVTextElement):
 
 
 
-class CacheChangeNotifier(LoggingMixIn):
+class XattrCacheChangeNotifier(LoggingMixIn):
     def __init__(self, propertyStore):
         self._propertyStore = propertyStore
         self._token = None
@@ -59,10 +59,16 @@ class CacheChangeNotifier(LoggingMixIn):
 
 
     def changed(self):
+        """
+        Change the cache token for a resource.
+
+        return: A L{Deferred} that fires when the token has been changed.
+        """
         self.log_debug("Changing Cache Token for %r" % (
                 self._propertyStore))
         property = CacheTokensProperty.fromString(self._newCacheToken())
         self._propertyStore.set(property)
+        return succeed(True)
 
 
 class BaseResponseCache(LoggingMixIn):
