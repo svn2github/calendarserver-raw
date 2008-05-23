@@ -55,7 +55,7 @@ class XattrCacheChangeNotifier(LoggingMixIn):
 
 
     def _newCacheToken(self):
-        return uuid.uuid4()
+        return str(uuid.uuid4())
 
 
     def changed(self):
@@ -85,7 +85,7 @@ class MemcacheChangeNotifier(LoggingMixIn):
 
 
     def _newCacheToken(self):
-        return uuid.uuid4()
+        return str(uuid.uuid4())
 
 
     def _getMemcacheProtocol(self):
@@ -384,7 +384,8 @@ class MemcacheResponseCache(BaseResponseCache):
         for childPath in uri.split('/')[:4]:
             fp = fp.child(childPath)
 
-        return self._getMemcacheProtocol().get('cacheToken:%s' % (fp.path,))
+        return self._getMemcacheProtocol().addCallback(
+            lambda p: p.get('cacheToken:%s' % (fp.path,)))
 
 
     def _getTokens(self, principalURI, requestURI):

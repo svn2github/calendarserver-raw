@@ -534,7 +534,7 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
     """
     Calendar home collection resource.
     """
-    changeNotifierFactory = XattrCacheChangeNotifier
+    cacheNotifierFactory = XattrCacheChangeNotifier
 
     def __init__(self, path, parent, record):
         """
@@ -542,7 +542,7 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
         """
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
-        self.cacheNotifier = self.changeNotifierFactory(self.deadProperties())
+        self.cacheNotifier = self.cacheNotifierFactory(self.deadProperties())
 
     def provisionChild(self, name):
         if config.EnableDropBox:
