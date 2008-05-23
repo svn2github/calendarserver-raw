@@ -134,12 +134,12 @@ class CalDAVFile (CalDAVResource, DAVFile):
                 raise HTTPError(status)
 
             # Initialize CTag on the calendar collection
-            self.updateCTag()
+            d1 = self.updateCTag()
 
             # Create the index so its ready when the first PUTs come in
-            self.index().create()
-
-            return status
+            d1.addCallback(lambda _: self.index().create())
+            d1.addCallback(lambda _: status)
+            return d1
 
         d = self.createSpecialCollection(davxml.ResourceType.calendar)
         d.addCallback(onCalendarCollection)
