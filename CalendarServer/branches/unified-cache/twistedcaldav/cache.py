@@ -73,6 +73,8 @@ class XattrCacheChangeNotifier(LoggingMixIn):
 
 
 class MemcacheChangeNotifier(LoggingMixIn):
+    _memcacheProtocol = None
+
     def __init__(self, propertyStore):
         self._path = propertyStore.resource.fp.path
         self._host = config.Memcached['BindAddress']
@@ -81,15 +83,13 @@ class MemcacheChangeNotifier(LoggingMixIn):
         from twisted.internet import reactor
         self._reactor = reactor
 
-        self._memcacheProtocol =  None
-
 
     def _newCacheToken(self):
         return str(uuid.uuid4())
 
 
     def _getMemcacheProtocol(self):
-        if self._memcacheProtocol is not None:
+        if MemcacheChangeNotifier._memcacheProtocol is not None:
             return succeed(self._memcacheProtocol)
 
         d = ClientCreator(self._reactor, MemCacheProtocol).connectTCP(
@@ -97,7 +97,7 @@ class MemcacheChangeNotifier(LoggingMixIn):
             self._port)
 
         def _cacheProtocol(proto):
-            self._memcacheProtocol = proto
+            MemcacheChangeNotifier._memcacheProtocol = proto
             return proto
 
         return d.addCallback(_cacheProtocol)
