@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-import itertools
 
 """
 Implements a calendar user proxy principal.
@@ -24,6 +23,8 @@ __all__ = [
 ]
 
 from twisted.internet.defer import succeed
+from twisted.internet.defer import deferredGenerator
+from twisted.internet.defer import waitForDeferred
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.element.base import dav_namespace
@@ -38,6 +39,7 @@ from twistedcaldav.sql import AbstractSQLDatabase
 from twistedcaldav.sql import db_prefix
 from twistedcaldav.static import AutoProvisioningFileMixIn
 
+import itertools
 import os
 
 class PermissionsMixIn (ReadOnlyWritePropertiesResourceMixIn):
@@ -192,45 +194,53 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, AutoProvisionin
     # HTTP
     ##
 
+    @deferredGenerator
     def renderDirectoryBody(self, request):
         # FIXME: Too much code duplication here from principal.py
         from twistedcaldav.directory.principal import format_list, format_principals, format_link
 
-        def gotSuper(output):
-            return "".join((
-                """<div class="directory-listing">"""
-                """<h1>Principal Details</h1>"""
-                """<pre><blockquote>"""
-                """Directory Information\n"""
-                """---------------------\n"""
-                """Directory GUID: %s\n"""         % (self.parent.record.service.guid,),
-                """Realm: %s\n"""                  % (self.parent.record.service.realmName,),
-                """\n"""
-                """Parent Principal Information\n"""
-                """---------------------\n"""
-                """GUID: %s\n"""                   % (self.parent.record.guid,),
-                """Record type: %s\n"""            % (self.parent.record.recordType,),
-                """Short name: %s\n"""             % (self.parent.record.shortName,),
-                """Full name: %s\n"""              % (self.parent.record.fullName,),
-                """Principal UID: %s\n"""          % (self.parent.principalUID(),),
-                """Principal URL: %s\n"""          % (format_link(self.parent.principalURL()),),
-                """\n"""
-                """Proxy Principal Information\n"""
-                """---------------------\n"""
-               #"""GUID: %s\n"""                   % (self.guid,),
-                """Principal UID: %s\n"""          % (self.principalUID(),),
-                """Principal URL: %s\n"""          % (format_link(self.principalURL()),),
-                """\nAlternate URIs:\n"""          , format_list(format_link(u) for u in self.alternateURIs()),
-                """\nGroup members (%s):\n""" % ({False:"Locked", True:"Editable"}[self.hasEditableMembership()])
-                                                   , format_principals(self.groupMembers()),
-                """\nGroup memberships:\n"""       , format_principals(self.groupMemberships()),
-                """</pre></blockquote></div>""",
-                output
-            ))
-
-        d = super(CalendarUserProxyPrincipalResource, self).renderDirectoryBody(request)
-        d.addCallback(gotSuper)
-        return d
+        d = waitForDeferred(super(CalendarUserProxyPrincipalResource, self).renderDirectoryBody(request))
+        yield d
+        output = d.getResult()
+        
+        d = waitForDeferred(self.groupMembers())
+        yield d
+        members = d.getResult()
+        
+        d = waitForDeferred(self.groupMemberships())
+        yield d
+        memberships = d.getResult() 
+        
+        yield "".join((
+            """<div class="directory-listing">"""
+            """<h1>Principal Details</h1>"""
+            """<pre><blockquote>"""
+            """Directory Information\n"""
+            """---------------------\n"""
+            """Directory GUID: %s\n"""         % (self.parent.record.service.guid,),
+            """Realm: %s\n"""                  % (self.parent.record.service.realmName,),
+            """\n"""
+            """Parent Principal Information\n"""
+            """---------------------\n"""
+            """GUID: %s\n"""                   % (self.parent.record.guid,),
+            """Record type: %s\n"""            % (self.parent.record.recordType,),
+            """Short name: %s\n"""             % (self.parent.record.shortName,),
+            """Full name: %s\n"""              % (self.parent.record.fullName,),
+            """Principal UID: %s\n"""          % (self.parent.principalUID(),),
+            """Principal URL: %s\n"""          % (format_link(self.parent.principalURL()),),
+            """\n"""
+            """Proxy Principal Information\n"""
+            """---------------------\n"""
+           #"""GUID: %s\n"""                   % (self.guid,),
+            """Principal UID: %s\n"""          % (self.principalUID(),),
+            """Principal URL: %s\n"""          % (format_link(self.principalURL()),),
+            """\nAlternate URIs:\n"""          , format_list(format_link(u) for u in self.alternateURIs()),
+            """\nGroup members (%s):\n""" % ({False:"Locked", True:"Editable"}[self.hasEditableMembership()])
+                                               , format_principals(members),
+            """\nGroup memberships:\n"""       , format_principals(memberships),
+            """</pre></blockquote></div>""",
+            output
+        ))
 
     ##
     # DAV
@@ -256,6 +266,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, AutoProvisionin
     def principalCollections(self):
         return self.parent.principalCollections()
 
+    @deferredGenerator
     def _expandMemberUIDs(self, uid=None, relatives=None, uids=None):
         if uid is None:
             uid = self.principalUID()
@@ -269,35 +280,48 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, AutoProvisionin
             uids.add(uid)
             principal = self.parent.parent.principalForUID(uid)
             if isinstance(principal, CalendarUserProxyPrincipalResource):
-                for member in self._directGroupMembers():
+                d = waitForDeferred(self._directGroupMembers())
+                yield d
+                members = d.getResult()
+                for member in members:
                     if member.principalUID() not in uids:
                         relatives.add(member)
-                        self._expandMemberUIDs(member.principalUID(), relatives, uids)
+                        d = waitForDeferred(self._expandMemberUIDs(member.principalUID(), relatives, uids))
+                        yield d
+                        d.getResult()
             elif isinstance(principal, DirectoryPrincipalResource):
-                relatives.update(principal.groupMembers())
+                d = waitForDeferred(principal.groupMembers())
+                yield d
+                members = d.getResult()
+                relatives.update(members)
 
-        return relatives
+        yield relatives
 
+    @deferredGenerator
     def _directGroupMembers(self):
         if self.hasEditableMembership():
             # Get member UIDs from database and map to principal resources
-            members = self._index().getMembers(self.uid)
-            return [p for p in [self.pcollection.principalForUID(uid) for uid in members] if p]
+            d = waitForDeferred(self._index().getMembers(self.uid))
+            yield d
+            members = d.getResult()
+            yield [p for p in [self.pcollection.principalForUID(uid) for uid in members] if p]
         else:
             # Fixed proxies are only for read-write - the read-only list is empty
             if self.proxyType == "calendar-proxy-write":
-                return self.parent.proxies()
+                yield self.parent.proxies()
             else:
-                return ()
-
+                yield ()
 
     def groupMembers(self):
         return self._expandMemberUIDs()
 
+    @deferredGenerator
     def groupMemberships(self):
         # Get membership UIDs and map to principal resources
-        memberships = self._index().getMemberships(self.uid)
-        return [p for p in [self.pcollection.principalForUID(uid) for uid in memberships] if p]
+        d = waitForDeferred(self._index().getMemberships(self.uid))
+        yield d
+        memberships = d.getResult()
+        yield [p for p in [self.pcollection.principalForUID(uid) for uid in memberships] if p]
 
     def hasEditableMembership(self):
         return self.parent.hasEditableProxyMembership()
@@ -386,6 +410,8 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
     def getMembers(self, principalUID):
         """
         Return the list of group member UIDs for the specified principal.
+        
+        @return: a deferred returning a C{set} of members.
         """
 
         def _members():
@@ -398,13 +424,15 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
         if self.dbUseCache:
             if not self._cacheMembers.has_key(principalUID):
                 self._cacheMembers[principalUID] = _members()
-            return self._cacheMembers[principalUID]
+            return succeed(self._cacheMembers[principalUID])
         else:
-            return _members()
+            return succeed(_members())
 
     def getMemberships(self, principalUID):
         """
         Return the list of group principal UIDs the specified principal is a member of.
+        
+        @return: a deferred returning a C{set} of memberships.
         """
 
         def _members():
@@ -417,9 +445,9 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
         if self.dbUseCache:
             if not self._cacheMemberships.has_key(principalUID):
                 self._cacheMemberships[principalUID] = _members()
-            return self._cacheMemberships[principalUID]
+            return succeed(self._cacheMemberships[principalUID])
         else:
-            return _members()
+            return succeed(_members())
 
     def _add_to_db(self, principalUID, members):
         """
