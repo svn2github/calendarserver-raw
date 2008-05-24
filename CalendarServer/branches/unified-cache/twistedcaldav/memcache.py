@@ -162,7 +162,7 @@ class MemCacheProtocol(LineReceiver, TimeoutMixin):
         Override sendLine to add a timeout to response.
         """
         if not self._current:
-           self.setTimeout(self.persistentTimeOut)
+            self.setTimeout(self.persistentTimeOut)
         LineReceiver.sendLine(self, line)
 
 
