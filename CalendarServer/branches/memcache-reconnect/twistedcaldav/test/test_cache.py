@@ -88,8 +88,10 @@ class StubURLResource(object):
 class MemCacheChangeNotifierTests(TestCase):
     def setUp(self):
         self.memcache = InMemoryMemcacheProtocol()
-        self.ccn = MemcacheChangeNotifier(StubURLResource(':memory:'))
-        MemcacheChangeNotifier._memcacheProtocol = self.memcache
+        self.ccn = MemcacheChangeNotifier(
+            StubURLResource(':memory:'),
+            cachePool=self.memcache)
+
         self.ccn._newCacheToken = instancemethod(_newCacheToken,
                                                  self.ccn,
                                                  MemcacheChangeNotifier)
@@ -297,7 +299,7 @@ class MemcacheResponseCacheTests(BaseCacheTestMixin, TestCase):
         super(MemcacheResponseCacheTests, self).setUp()
 
         memcacheStub = InMemoryMemcacheProtocol()
-        self.rc = MemcacheResponseCache(None, None, None, None)
+        self.rc = MemcacheResponseCache(None, cachePool=memcacheStub)
         self.rc.logger.setLevel('debug')
         self.tokens = {}
 
@@ -328,7 +330,3 @@ class MemcacheResponseCacheTests(BaseCacheTestMixin, TestCase):
             (self.expected_response[0],
              dict(list(self.expected_response[1].getAllRawHeaders())),
              self.expected_response[2]))))
-
-        self.rc._memcacheProtocol = memcacheStub
-
-

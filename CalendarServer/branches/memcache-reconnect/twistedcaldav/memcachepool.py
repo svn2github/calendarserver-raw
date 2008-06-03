@@ -18,6 +18,7 @@ from twisted.python.failure import Failure
 from twisted.internet.defer import Deferred, fail
 from twisted.internet.protocol import ReconnectingClientFactory
 
+from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.memcache import MemCacheProtocol, NoSuchCommand
 
 
@@ -42,7 +43,7 @@ class PooledMemCacheProtocol(MemCacheProtocol):
 
 
 
-class MemCacheClientFactory(ReconnectingClientFactory):
+class MemCacheClientFactory(ReconnectingClientFactory, LoggingMixIn):
     """
     A client factory for MemCache that reconnects and notifies a pool of it's
     state.
@@ -65,6 +66,7 @@ class MemCacheClientFactory(ReconnectingClientFactory):
         """
         Notify the connectionPool that we've lost our connection.
         """
+        self.log_error("MemCache connection lost: %s" % (reason,))
         if self._protocolInstance is not None:
             self.connectionPool.clientBusy(self._protocolInstance)
 
@@ -78,6 +80,7 @@ class MemCacheClientFactory(ReconnectingClientFactory):
         """
         Notify the connectionPool that we're unable to connect
         """
+        self.log_error("MemCache connection failed: %s" % (reason,))
         if self._protocolInstance is not None:
             self.connectionPool.clientBusy(self._protocolInstance)
 
@@ -101,7 +104,7 @@ class MemCacheClientFactory(ReconnectingClientFactory):
 
 
 
-class MemCachePool(object):
+class MemCachePool(LoggingMixIn):
     """
     A connection pool for MemCacheProtocol instances.
 
@@ -146,6 +149,10 @@ class MemCachePool(object):
 
         @return: A L{Deferred} that fires with the L{IProtocol} instance.
         """
+        self.log_debug("Initating new client connection to: %r" % (
+                self._serverAddress,))
+        self._logClientStats()
+
         factory = self.clientFactory()
 
         factory.connectionPool = self
@@ -220,6 +227,12 @@ gs: Any positional arguments that should be passed to
         return d
 
 
+    def _logClientStats(self):
+        self.log_debug("Clients #free: %d, #busy: %d" % (
+                len(self._freeClients),
+                len(self._busyClients)))
+
+
     def clientGone(self, client):
         """
         Notify that the given client is to be removed from the pool completely.
@@ -232,6 +245,9 @@ gs: Any positional arguments that should be passed to
         elif client in self._freeClients:
             self._freeClients.remove(client)
 
+        self.log_debug("Removed client: %r" % (client,))
+        self._logClientStats()
+
 
     def clientBusy(self, client):
         """
@@ -243,6 +259,9 @@ gs: Any positional arguments that should be passed to
             self._freeClients.remove(client)
 
         self._busyClients.add(client)
+
+        self.log_debug("Busied client: %r" % (client,))
+        self._logClientStats()
 
 
     def clientFree(self, client):
@@ -263,6 +282,9 @@ gs: Any positional arguments that should be passed to
 
             _ign_d.addCallback(d.callback)
 
+        self.log_debug("Freed client: %r" % (client,))
+        self._logClientStats()
+
 
     def suggestMaxClients(self, maxClients):
         """
@@ -272,3 +294,49 @@ gs: Any positional arguments that should be passed to
             should keep open.
         """
         self._maxClients = maxClients
+
+
+    def get(self, *args, **kwargs):
+        return self.performRequest('get', *args, **kwargs)
+
+
+    def set(self, *args, **kwargs):
+        return self.performRequest('set', *args, **kwargs)
+
+
+    def delete(self, *args, **kwargs):
+        return self.performRequest('delete', *args, **kwargs)
+
+
+    def add(self, *args, **kwargs):
+        return self.performRequest('add', *args, **kwargs)
+
+
+
+class CachePoolUserMixIn(object):
+    """
+    A mixin that returns a saved cache pool or fetches the default cache pool.
+
+    @ivar _cachePool: A saved cachePool.
+    """
+    _cachePool = None
+
+    def getCachePool(self):
+        if self._cachePool is None:
+            return defaultCachePool()
+
+        return self._cachePool
+
+
+
+_memCachePool = None
+
+def installPool(serverAddress, maxClients=5, reactor=None):
+    global _memCachePool
+    _memCachePool = MemCachePool(serverAddress,
+                                   maxClients=5,
+                                   reactor=None)
+
+
+def defaultCachePool():
+    return _memCachePool
