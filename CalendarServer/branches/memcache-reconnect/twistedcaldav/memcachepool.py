@@ -14,10 +14,11 @@
 # limitations under the License.
 ##
 
-from twisted.internet.defer import Deferred
+from twisted.python.failure import Failure
+from twisted.internet.defer import Deferred, fail
 from twisted.internet.protocol import ReconnectingClientFactory
 
-from twistedcaldav.memcache import MemCacheProtocol
+from twistedcaldav.memcache import MemCacheProtocol, NoSuchCommand
 
 
 class PooledMemCacheProtocol(MemCacheProtocol):
@@ -26,17 +27,14 @@ class PooledMemCacheProtocol(MemCacheProtocol):
     to accept requests.
 
     @ivar factory: A L{MemCacheClientFactory} instance.
-    @ivar connectionPool: A managing connection pool that we notify of events.
     """
     factory = None
-    connectionPool = None
 
     def connectionMade(self):
         """
-        Notify our connectionPool that we're ready to accept connections.
+        Notify our factory that we're ready to accept connections.
         """
         MemCacheProtocol.connectionMade(self)
-        self.connectionPool.clientFree(self)
 
         if self.factory.deferred is not None:
             self.factory.deferred.callback(self)
@@ -94,8 +92,10 @@ class MemCacheClientFactory(ReconnectingClientFactory):
         Attach the C{self.connectionPool} to the protocol so it can tell it,
         when we've connected.
         """
+        if self._protocolInstance is not None:
+            self.connectionPool.clientGone(self._protocolInstance)
+
         self._protocolInstance = self.protocol()
-        self._protocolInstance.connectionPool = self.connectionPool
         self._protocolInstance.factory = self
         return self._protocolInstance
 
@@ -137,6 +137,7 @@ class MemCachePool(object):
 
         self._busyClients = set([])
         self._freeClients = set([])
+        self._commands = []
 
 
     def _newClientConnection(self):
@@ -155,6 +156,38 @@ class MemCachePool(object):
         return factory.deferred
 
 
+    def _performRequestOnClient(self, client, command, *args, **kwargs):
+        """
+        Perform the given request on the given client.
+
+        @param client: A L{PooledMemCacheProtocol} that will be used to perform
+            the given request.
+
+        @param command: A C{str} representing an attribute of
+            L{MemCacheProtocol}.
+        @parma ar        self.assertEquals(self.reactor.calls, [])
+gs: Any positional arguments that should be passed to
+            C{command}.
+        @param kwargs: Any keyword arguments that should be passed to
+            C{command}.
+
+        @return: A L{Deferred} that fires with the result of the given command.
+        """
+        def _freeClientAfterRequest(result):
+            self.clientFree(client)
+            return result
+
+        method = getattr(client, command, None)
+        if method is not None:
+            d = method(*args, **kwargs)
+        else:
+            d = fail(Failure(NoSuchCommand()))
+
+        d.addCallback(_freeClientAfterRequest)
+
+        return d
+
+
     def performRequest(self, command, *args, **kwargs):
         """
         Select an available client and perform the given request on it.
@@ -168,8 +201,37 @@ class MemCachePool(object):
 
         @return: A L{Deferred} that fires with the result of the given command.
         """
-        d = self._newClientConnection()
+        if len(self._freeClients) > 0:
+            client = self._freeClients.pop()
+            self.clientBusy(client)
+
+            d = self._performRequestOnClient(
+                client, command, *args, **kwargs)
+
+        elif len(self._busyClients) >= self._maxClients:
+            d = Deferred()
+            self._commands.append((d, command, args, kwargs))
+
+        else:
+            d = self._newClientConnection()
+            d.addCallback(self._performRequestOnClient,
+                          command, *args, **kwargs)
+
         return d
+
+
+    def clientGone(self, client):
+        """
+        Notify that the given client is to be removed from the pool completely.
+
+        @param client: An instance of L{PooledMemCacheProtocol}.
+        """
+        if client in self._busyClients:
+            self._busyClients.remove(client)
+
+        elif client in self._freeClients:
+            self._freeClients.remove(client)
+
 
     def clientBusy(self, client):
         """
@@ -193,3 +255,20 @@ class MemCachePool(object):
             self._busyClients.remove(client)
 
         self._freeClients.add(client)
+
+        if len(self._commands) > 0:
+            d, command, args, kwargs = self._commands.pop(0)
+            _ign_d = self.performRequest(
+                command, *args, **kwargs)
+
+            _ign_d.addCallback(d.callback)
+
+
+    def suggestMaxClients(self, maxClients):
+        """
+        Suggest the maximum number of concurrently connected clients.
+
+        @param maxClients: A C{int} indicating how many client connections we
+            should keep open.
+        """
+        self._maxClients = maxClients

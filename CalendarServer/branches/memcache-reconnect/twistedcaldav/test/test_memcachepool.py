@@ -21,6 +21,7 @@ from twisted.trial.unittest import TestCase
 from twisted.internet.interfaces import IConnector, IReactorTCP
 from twisted.internet.address import IPv4Address
 
+from twistedcaldav.test.util import InMemoryMemcacheProtocol
 from twistedcaldav.memcachepool import PooledMemCacheProtocol
 from twistedcaldav.memcachepool import MemCacheClientFactory
 from twistedcaldav.memcachepool import MemCachePool
@@ -35,8 +36,8 @@ class StubConnectionPool(object):
     of (status, client) tuples where status is C{'free'} or C{'busy'}
 
     @ivar calls: A C{list} of C{tuple}s of the form C{(status, client)} where
-        status is C{'free'} or C{'busy'} and client is the protocol instance
-        that made the call.
+        status is C{'free'}, C{'busy'} or C{'gone'} and client is the protocol
+        instance that made the call.
     """
     def __init__(self):
         self.calls = []
@@ -54,6 +55,13 @@ class StubConnectionPool(object):
         Record a C{'busy'} call for C{client}.
         """
         self.calls.append(('busy', client))
+
+
+    def clientGone(self, client):
+        """
+        Record a C{'gone'} call for C{client}
+        """
+        self.calls.append(('gone', client))
 
 
 
@@ -98,21 +106,6 @@ class PooledMemCacheProtocolTests(TestCase):
     """
     Tests for the L{PooledMemCacheProtocol}
     """
-    def test_connectionMadeNotifiesPool(self):
-        """
-        Test that L{PooledMemCacheProtocol.connectionMade} notifies the
-        connectionPool that it is free.
-        """
-        p = PooledMemCacheProtocol()
-        p.factory = MemCacheClientFactory()
-        p.connectionPool = StubConnectionPool()
-        p.connectionMade()
-
-        self.assertEquals(p.connectionPool.calls, [('free', p)])
-
-        return p.factory.deferred
-
-
     def test_connectionMadeFiresDeferred(self):
         """
         Test that L{PooledMemCacheProtocol.connectionMade} fires the factory's
@@ -150,15 +143,6 @@ class MemCacheClientFactoryTests(TestCase):
         self.protocol = self.factory.buildProtocol(None)
 
 
-    def test_buildProtocolGivesProtocolConnectionPool(self):
-        """
-        Test that L{MemCacheClientFactory.buildProtocol} gives it's
-        protocol instance it's connectionPool.
-        """
-        self.assertEquals(self.factory.connectionPool,
-                          self.protocol.connectionPool)
-
-
     def test_clientConnectionFailedNotifiesPool(self):
         """
         Test that L{MemCacheClientFactory.clientConnectionFailed} notifies
@@ -177,6 +161,19 @@ class MemCacheClientFactoryTests(TestCase):
         self.factory.clientConnectionLost(StubConnector(), None)
         self.assertEquals(self.factory.connectionPool.calls,
                           [('busy', self.protocol)])
+
+
+    def test_buildProtocolRemovesExistingClient(self):
+        """
+        Test that L{MemCacheClientFactory.buildProtocol} notifies
+        the connectionPool when an old protocol instance is going away.
+
+        This will happen when we get reconnected.  We'll remove the old protocol
+        and add a new one.
+        """
+        protocol = self.factory.buildProtocol(None)
+        self.assertEquals(self.factory.connectionPool.calls,
+                          [('gone', self.protocol)])
 
 
     def tearDown(self):
@@ -251,11 +248,127 @@ class MemCachePoolTests(TestCase):
         self.assertEquals(self.pool._freeClients, set([]))
 
 
+    def test_clientGoneRemovesFreeClient(self):
+        """
+        Test that a client in the free set gets removed when
+        L{MemCachePool.clientGone} is called.
+        """
+        p = MemCacheClientFactory().buildProtocol(None)
+        self.pool.clientFree(p)
+        self.assertEquals(self.pool._freeClients, set([p]))
+        self.assertEquals(self.pool._busyClients, set([]))
+
+        self.pool.clientGone(p)
+        self.assertEquals(self.pool._freeClients, set([]))
+
+
+    def test_clientGoneRemovesBusyClient(self):
+        """
+        Test that a client in the busy set gets removed when
+        L{MemCachePool.clientGone} is called.
+        """
+        p = MemCacheClientFactory().buildProtocol(None)
+        self.pool.clientBusy(p)
+        self.assertEquals(self.pool._busyClients, set([p]))
+        self.assertEquals(self.pool._freeClients, set([]))
+
+        self.pool.clientGone(p)
+        self.assertEquals(self.pool._busyClients, set([]))
+
+
     def test_performRequestCreatesConnection(self):
         """
         Test that L{MemCachePool.performRequest} on a fresh instance causes
         a new connection to be created.
         """
+        def _checkResult(result):
+            self.assertEquals(result, (0, 'bar'))
+
+
+        p = InMemoryMemcacheProtocol()
+        p.set('foo', 'bar')
+
+        d = self.pool.performRequest('get', 'foo')
+        d.addCallback(_checkResult)
+
+        args, kwargs = self.reactor.calls.pop()
+
+        self.assertEquals(args[:2], (MC_ADDRESS.host, MC_ADDRESS.port))
+        self.failUnless(isinstance(args[2], MemCacheClientFactory))
+        self.assertEquals(kwargs, {})
+
+        args[2].deferred.callback(p)
+
+        return d
+
+
+    def test_performRequestUsesFreeConnection(self):
+        """
+        Test that L{MemCachePool.performRequest} doesn't create a new connection
+        to be created if there is a free connection.
+        """
+        def _checkResult(result):
+            self.assertEquals(result, (0, 'bar'))
+            self.assertEquals(self.reactor.calls, [])
+
+        p = InMemoryMemcacheProtocol()
+        p.set('foo', 'bar')
+
+        self.pool.clientFree(p)
+
+        d = self.pool.performRequest('get', 'foo')
+        d.addCallback(_checkResult)
+
+        return d
+
+
+    def test_performRequestMaxBusyQueuesRequest(self):
+        """
+        Test that L{MemCachePool.performRequest} queues the request if
+        all clients are busy.
+        """
+        def _checkResult(result):
+            self.assertEquals(result, (0, 'bar'))
+            self.assertEquals(self.reactor.calls, [])
+
+        p = InMemoryMemcacheProtocol()
+        p.set('foo', 'bar')
+
+        p1 = InMemoryMemcacheProtocol()
+        p1.set('foo', 'baz')
+
+        self.pool.suggestMaxClients(2)
+
+        self.pool.clientBusy(p)
+        self.pool.clientBusy(p1)
+
+        d = self.pool.performRequest('get', 'foo')
+        d.addCallback(_checkResult)
+
+        self.pool.clientFree(p)
+
+        return d
+
+
+    def test_performRequestCreatesConnectionsUntilMaxBusy(self):
+        """
+        Test that L{MemCachePool.performRequest} will create new connections
+        until it reaches the maximum number of busy clients.
+        """
+        def _checkResult(result):
+            self.assertEquals(result, (0, 'baz'))
+
+        self.pool.suggestMaxClients(2)
+
+        p = InMemoryMemcacheProtocol()
+        p.set('foo', 'bar')
+
+        p1 = InMemoryMemcacheProtocol()
+        p1.set('foo', 'baz')
+
+
+        self.pool.clientBusy(p)
+
         d = self.pool.performRequest('get', 'foo')
 
         args, kwargs = self.reactor.calls.pop()
@@ -264,8 +377,6 @@ class MemCachePoolTests(TestCase):
         self.failUnless(isinstance(args[2], MemCacheClientFactory))
         self.assertEquals(kwargs, {})
 
-        factory = args[2]
-        protocol = factory.buildProtocol(None)
-        protocol.connectionMade()
+        args[2].deferred.callback(p1)
 
         return d

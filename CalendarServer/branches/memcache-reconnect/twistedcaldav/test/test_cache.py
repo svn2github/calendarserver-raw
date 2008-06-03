@@ -32,7 +32,7 @@ from twisted.web2.http_headers import Headers
 from twistedcaldav.cache import MemcacheResponseCache
 from twistedcaldav.cache import MemcacheChangeNotifier
 
-from twistedcaldav.test.util import InMemoryPropertyStore
+from twistedcaldav.test.util import InMemoryMemcacheProtocol
 
 
 def _newCacheToken(self):
@@ -72,28 +72,6 @@ class StubResponse(object):
         self.headers = Headers(headers)
         self.body = body
         self.stream = MemoryStream(body)
-
-
-
-class InMemoryMemcacheProtocol(object):
-    def __init__(self):
-        self._cache = {}
-
-
-    def get(self, key):
-        if key not in self._cache:
-            return succeed((0, None))
-
-        return succeed(self._cache[key])
-
-
-    def set(self, key, value, flags=0, expireTime=0):
-        try:
-            self._cache[key] = (flags, value)
-            return succeed(True)
-
-        except Exception, err:
-            return fail(Failure())
 
 
 
