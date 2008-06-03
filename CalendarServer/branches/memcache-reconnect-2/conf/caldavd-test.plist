@@ -253,6 +253,8 @@ limitations under the License.
 
   <key>LogLevels</key>
   <dict>
+    <key>twistedcaldav.memcachepool</key>
+    <string>debug</string>
   </dict>
 
   <!-- Accounting -->
@@ -396,6 +398,8 @@ limitations under the License.
     <true/>
     <key>ClientEnabled</key>
     <true/>
+    <key>MaxClients</key>
+    <integer>5</integer>
     <key>memcached</key>
     <string>../memcached-1.2.5/_root/bin/memcached</string>
     <key>Options</key>
