@@ -119,6 +119,8 @@ class MemCachePool(LoggingMixIn):
 
     @ivar _busyClients: A C{set} that contains all currently busy clients.
     @ivar _freeClients: A C{set} that contains all currently free clients.
+    @ivar _pendingConnects: A C{int} indicating how many connections are in
+        progress.
     """
     clientFactory = MemCacheClientFactory
 
@@ -140,6 +142,7 @@ class MemCachePool(LoggingMixIn):
 
         self._busyClients = set([])
         self._freeClients = set([])
+        self._pendingConnects = 0
         self._commands = []
 
 
@@ -153,6 +156,13 @@ class MemCachePool(LoggingMixIn):
                 self._serverAddress,))
         self._logClientStats()
 
+        self._pendingConnects += 1
+
+        def _connected(client):
+            self._pendingConnects -= 1
+
+            return client
+
         factory = self.clientFactory()
 
         factory.connectionPool = self
@@ -160,7 +170,10 @@ class MemCachePool(LoggingMixIn):
         self._reactor.connectTCP(self._serverAddress.host,
                                  self._serverAddress.port,
                                  factory)
-        return factory.deferred
+        d = factory.deferred
+
+        d.addCallback(_connected)
+        return d
 
 
     def _performRequestOnClient(self, client, command, *args, **kwargs):
@@ -184,6 +197,7 @@ gs: Any positional arguments that should be passed to
             self.clientFree(client)
             return result
 
+        self.clientBusy(client)
         method = getattr(client, command, None)
         if method is not None:
             d = method(*args, **kwargs)
@@ -210,14 +224,16 @@ gs: Any positional arguments that should be passed to
         """
         if len(self._freeClients) > 0:
             client = self._freeClients.pop()
-            self.clientBusy(client)
 
             d = self._performRequestOnClient(
                 client, command, *args, **kwargs)
 
-        elif len(self._busyClients) >= self._maxClients:
+        elif len(self._busyClients) + self._pendingConnects >= self._maxClients:
             d = Deferred()
             self._commands.append((d, command, args, kwargs))
+            self.log_debug("Command queued: %s, %r, %r" % (
+                    command, args, kwargs))
+            self._logClientStats()
 
         else:
             d = self._newClientConnection()
@@ -228,9 +244,12 @@ gs: Any positional arguments that should be passed to
 
 
     def _logClientStats(self):
-        self.log_debug("Clients #free: %d, #busy: %d" % (
+        self.log_debug("Clients #free: %d, #busy: %d, "
+                       "#pending: %d, #queued: %d" % (
                 len(self._freeClients),
-                len(self._busyClients)))
+                len(self._busyClients),
+                self._pendingConnects,
+                len(self._commands)))
 
 
     def clientGone(self, client):
@@ -277,6 +296,11 @@ gs: Any positional arguments that should be passed to
 
         if len(self._commands) > 0:
             d, command, args, kwargs = self._commands.pop(0)
+
+            self.log_debug("Performing Queued Command: %s, %r, %r" % (
+                    command, args, kwargs))
+            self._logClientStats()
+
             _ign_d = self.performRequest(
                 command, *args, **kwargs)
 
