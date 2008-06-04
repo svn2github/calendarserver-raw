@@ -380,3 +380,27 @@ class MemCachePoolTests(TestCase):
         args[2].deferred.callback(p1)
 
         return d
+
+
+    def test_pendingConnectionsCountAgainstMaxClients(self):
+        """
+        Test that L{MemCachePool.performRequest} will not initiate a new
+        connection if there are pending connections that count towards max
+        clients.
+        """
+        self.pool.suggestMaxClients(1)
+
+        d = self.pool.performRequest('get', 'foo')
+
+        args, kwargs = self.reactor.calls.pop()
+
+        self.assertEquals(args[:2], (MC_ADDRESS.host, MC_ADDRESS.port))
+        self.failUnless(isinstance(args[2], MemCacheClientFactory))
+        self.assertEquals(kwargs, {})
+
+        d1 = self.pool.performRequest('get', 'bar')
+        self.assertEquals(self.reactor.calls, [])
+
+        args[2].deferred.callback(InMemoryMemcacheProtocol())
+
+        return d
