@@ -466,6 +466,7 @@ class MemcachedUIDReserver(CachePoolUserMixIn, LoggingMixIn):
         self.log_debug("Reserving UID %r @ %r" % (
                 uid,
                 self.index.resource.fp.path))
+
         def _handleFalse(result):
             if result is False:
                 raise ReservationError(
@@ -485,6 +486,7 @@ class MemcachedUIDReserver(CachePoolUserMixIn, LoggingMixIn):
         self.log_debug("Unreserving UID %r @ %r" % (
                 uid,
                 self.index.resource.fp.path))
+
         def _handleFalse(result):
             if result is False:
                 raise ReservationError(
@@ -723,7 +725,7 @@ class IndexSchedule (CalendarIndex):
         """
 
         # iTIP does not require unique UIDs
-        pass
+        return succeed(None)
 
     def unreserveUID(self, uid): #@UnusedVariable
         """
@@ -733,7 +735,7 @@ class IndexSchedule (CalendarIndex):
         """
 
         # iTIP does not require unique UIDs
-        pass
+        return succeed(None)
 
     def isReservedUID(self, uid): #@UnusedVariable
         """
@@ -743,7 +745,7 @@ class IndexSchedule (CalendarIndex):
         """
 
         # iTIP does not require unique UIDs
-        return False
+        return succeed(False)
 
     def isAllowedUID(self, uid, *names): #@UnusedVariable
         """
