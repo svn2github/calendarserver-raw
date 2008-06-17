@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twisted.web2.dav.fileop import copy
 
 """
 PUT/COPY/MOVE common behavior.
@@ -515,13 +516,17 @@ def storeCalendarObjectResource(
 
         # Do put or copy based on whether source exists
         if source is not None:
-            response = maybeDeferred(copyWithXAttrs, source.fp, destination.fp, destination_uri)
+            response = maybeDeferred(copy, source.fp, destination.fp, destination_uri, "0")
         else:
             md5 = MD5StreamWrapper(MemoryStream(calendardata))
             response = maybeDeferred(putWithXAttrs, md5, destination.fp)
         response = waitForDeferred(response)
         yield response
         response = response.getResult()
+
+        # Copy dead properties first, before adding overridden values
+        if source is not None:
+            destination.deadProperties().copy(source.deadProperties())
 
         # Update the MD5 value on the resource
         if source is not None:
@@ -597,6 +602,9 @@ def storeCalendarObjectResource(
             delete(source_uri, source.fp, "0")
             rollback.source_deleted = True
             log.debug("Source removed %s" % (source.fp.path,))
+
+            # Explicitly delete properties - no one else does it
+            source.deadProperties().deleteAll()
 
         def doSourceIndexRecover():
             """

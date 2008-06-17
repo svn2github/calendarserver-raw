@@ -31,6 +31,7 @@ from twistedcaldav.cache import DisabledCache
 from twistedcaldav.log import Logger
 from twistedcaldav.static import CalendarHomeFile
 from twistedcaldav.directory.principal import DirectoryPrincipalResource
+from twistedcaldav.sqlprops import sqlPropertyStore
 
 log = Logger()
 
@@ -70,7 +71,8 @@ class RootResource(DAVFile):
 
     def deadProperties(self):
         if not hasattr(self, '_dead_properties'):
-            self._dead_properties = CachingXattrPropertyStore(self)
+            self._dead_properties = sqlPropertyStore(self)
+            #self._dead_properties = CachingXattrPropertyStore(self)
 
         return self._dead_properties
 

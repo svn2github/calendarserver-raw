@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twistedcaldav.sqlprops import sqlPropertyStore
 
 """
 CalDAV-aware static resources.
@@ -87,7 +88,8 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
     def deadProperties(self):
         if not hasattr(self, "_dead_properties"):
-            self._dead_properties = CachingXattrPropertyStore(self)
+            self._dead_properties = sqlPropertyStore(self)
+            #self._dead_properties = CachingXattrPropertyStore(self)
 
         return self._dead_properties
 

@@ -49,10 +49,11 @@ from twisted.web2.dav.resource import DAVPrincipalResource as SuperDAVPrincipalR
 from twisted.web2.dav.util import joinURL
 from twisted.web2.dav.xattrprops import xattrPropertyStore
 
-from twistedcaldav.log import Logger, LoggingMixIn
-from twistedcaldav.util import submodule, Alternator, printTracebacks
-from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.directory.directory import DirectoryService
+from twistedcaldav.directory.sudo import SudoDirectoryService
+from twistedcaldav.log import Logger, LoggingMixIn
+from twistedcaldav.sqlprops import sqlPropertyStore
+from twistedcaldav.util import submodule, Alternator, printTracebacks
 
 log = Logger()
 
@@ -448,6 +449,12 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
     """
     Extended L{twisted.web2.dav.static.DAVFile} implementation.
     """
+
+    def deadProperties(self):
+        if not hasattr(self, "_dead_properties"):
+            self._dead_properties = sqlPropertyStore(self)
+        return self._dead_properties
+
     def readProperty(self, property, request):
         if type(property) is tuple:
             qname = property
