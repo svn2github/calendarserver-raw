@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-from twistedcaldav.sqlprops import sqlPropertyStore
 
 """
 CalDAV-aware static resources.
@@ -70,6 +69,7 @@ from twistedcaldav.directory.calendar import DirectoryCalendarHomeUIDProvisionin
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeResource
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
 from twistedcaldav.log import Logger
+from twistedcaldav.sqlprops import sqlPropertyStore
 from twistedcaldav.timezoneservice import TimezoneServiceResource
 
 from twistedcaldav.cache import DisabledCacheNotifier, PropfindCacheMixin

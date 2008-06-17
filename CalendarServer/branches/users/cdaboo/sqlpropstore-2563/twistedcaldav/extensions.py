@@ -453,6 +453,7 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
     def deadProperties(self):
         if not hasattr(self, "_dead_properties"):
             self._dead_properties = sqlPropertyStore(self)
+            #self._dead_properties = CachingXattrPropertyStore(self)
         return self._dead_properties
 
     def readProperty(self, property, request):
