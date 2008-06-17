@@ -61,6 +61,7 @@ from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.index import Index, IndexSchedule
 from twistedcaldav.resource import CalDAVResource, isCalendarCollectionResource, isPseudoCalendarCollectionResource
 from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
+from twistedcaldav.sqlprops import sqlPropertyStore, SQLPropertiesDatabase
 from twistedcaldav.dropbox import DropBoxHomeResource, DropBoxCollectionResource
 from twistedcaldav.directory.calendar import uidsResourceName
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
@@ -87,7 +88,8 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
     def deadProperties(self):
         if not hasattr(self, "_dead_properties"):
-            self._dead_properties = CachingXattrPropertyStore(self)
+            self._dead_properties = sqlPropertyStore(self)
+            #self._dead_properties = CachingXattrPropertyStore(self)
 
         return self._dead_properties
 
@@ -162,6 +164,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
             if status != responsecode.CREATED:
                 raise HTTPError(status)
 
+            self.create()
             self.writeDeadProperty(resourceType)
             return status
 
@@ -439,6 +442,8 @@ class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
         else:
             fp.open("w").close()
             fp.restat(False)
+
+        self.create()
 
         return True
 

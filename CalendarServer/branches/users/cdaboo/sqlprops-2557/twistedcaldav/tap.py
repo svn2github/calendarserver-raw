@@ -521,13 +521,15 @@ class CalDAVServiceMaker(object):
         root.putChild('principals', principalCollection)
         root.putChild('calendars', calendarCollection)
 
-		# Timezone service is optional
+        # Timezone service is optional
         if config.EnableTimezoneService:
             timezoneService = self.timezoneServiceResourceClass(
                 os.path.join(config.DocumentRoot, "timezones"),
                 root
             )
             root.putChild('timezones', timezoneService)
+
+        root.create()
 
         # Configure default ACLs on the root resource
 

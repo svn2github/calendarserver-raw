@@ -14,6 +14,7 @@
 # limitations under the License.
 ##
 
+
 """
 Extensions to web2.dav
 """
@@ -31,28 +32,37 @@ __all__ = [
 import cPickle as pickle
 import urllib
 import cgi
+import os
 import time
 
-from twisted.internet.defer import succeed, deferredGenerator, waitForDeferred
+from twisted.internet import reactor
+from twisted.internet.defer import Deferred
 from twisted.internet.defer import maybeDeferred
+from twisted.internet.defer import succeed, deferredGenerator, waitForDeferred
 from twisted.web2 import responsecode
-from twisted.web2.http import HTTPError, Response, RedirectResponse
-from twisted.web2.http_headers import MimeType
-from twisted.web2.stream import FileStream
-from twisted.web2.static import MetaDataMixin
 from twisted.web2.dav import davxml
 from twisted.web2.dav.davxml import dav_namespace
 from twisted.web2.dav.http import StatusResponse
-from twisted.web2.dav.static import DAVFile as SuperDAVFile
-from twisted.web2.dav.resource import DAVResource as SuperDAVResource
+from twisted.web2.dav.resource import AccessDeniedError
 from twisted.web2.dav.resource import DAVPrincipalResource as SuperDAVPrincipalResource
+from twisted.web2.dav.resource import DAVResource as SuperDAVResource
+from twisted.web2.dav.resource import TwistedACLInheritable
+from twisted.web2.dav.resource import TwistedResourceClass
+from twisted.web2.dav.static import DAVFile as SuperDAVFile
 from twisted.web2.dav.util import joinURL
+from twisted.web2.dav.util import parentForURL
 from twisted.web2.dav.xattrprops import xattrPropertyStore
+from twisted.web2.http import HTTPError, Response, RedirectResponse
+from twisted.web2.http_headers import MimeType
+from twisted.web2.http_headers import generateContentType
+from twisted.web2.static import MetaDataMixin
+from twisted.web2.stream import FileStream
 
 from twistedcaldav.log import Logger, LoggingMixIn
 from twistedcaldav.util import submodule
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.directory.directory import DirectoryService
+from twistedcaldav.sqlprops import sqlPropertyStore
 
 log = Logger()
 
@@ -202,8 +212,462 @@ def updateCacheTokenOnCallback(f):
 
     return fun
 
+class DAVPropertyHandlerMixin(object):
 
-class DAVResource (SudoSACLMixin, SuperDAVResource, LoggingMixIn):
+    def create(self):
+        self.updateProperties()
+
+    def update(self):
+        self.updateProperties()
+
+    def updateProperties(self):
+        """
+        Push "live" properties into the dead property store".
+        """
+        
+        props_to_set = []
+        # resourcetype
+        if self.isCollection():
+            props_to_set.append(davxml.ResourceType.collection)
+        else:
+            props_to_set.append(davxml.ResourceType.empty)
+            
+        # getetag
+        etag = self.etag()
+        if etag is not None:
+            props_to_set.append(davxml.GETETag(etag.generate()))
+
+        # getcontenttype
+        mimeType = self.contentType()
+        if mimeType is not None:
+            mimeType.params = None # WebDAV getcontenttype property does not include parameters
+            props_to_set.append(davxml.GETContentType(generateContentType(mimeType)))
+
+        # getcontentlength
+        length = self.contentLength()
+        if length is None:
+            # TODO: really we should "render" the resource and 
+            # determine its size from that but for now we just 
+            # return an empty element.
+            props_to_set.append(davxml.GETContentLength(""))
+        else:
+            props_to_set.append(davxml.GETContentLength(str(length)))
+
+        # getlastmodified
+        lastModified = self.lastModified()
+        if lastModified is not None:
+            props_to_set.append(davxml.GETLastModified.fromDate(lastModified))
+
+        # creationdate
+        creationDate = self.creationDate()
+        if creationDate is not None:
+            props_to_set.append(davxml.CreationDate.fromDate(creationDate))
+
+        # displayname
+        displayName = self.displayName()
+        if displayName is not None:
+            props_to_set.append(davxml.DisplayName(displayName))
+
+        # acl
+        props_to_set.append(self.defaultAccessControlList())
+        #from twistedcaldav.static import calendarPrivilegeSet
+        #props_to_set.append(calendarPrivilegeSet)
+        
+        # resource class
+        props_to_set.append(TwistedResourceClass(self.__class__.__name__))
+
+        # Now write out all properties in one go
+        self.deadProperties().setSeveral(props_to_set)
+
+    def isClassProperty(self, property):
+        if isinstance(property, tuple):
+            qname = property
+        else:
+            qname = property.qname()
+            
+        return qname in ((dav_namespace, "supported-privilege-set"),)
+
+    def computeClassProperty(self, classname, property):
+        from twistedcaldav.static import calendarPrivilegeSet
+
+        if isinstance(property, tuple):
+            namespace, name = property
+        else:
+            namespace, name = property.qname()
+        
+        if namespace == dav_namespace:
+            if name == "supported-privilege-set":
+                return calendarPrivilegeSet
+
+class DAVFastACLMixin(object):
+
+    def findChildNames(self, request, callbackAllowed, callbackForbidden=None, privileges=None, inherited_aces=None):
+
+        # Get aces for children
+        acls = self.deadProperties().getSeveralResources((
+            davxml.ACL.qname(),
+            TwistedResourceClass.qname(),
+            davxml.GETETag.qname(),
+        ))
+        aclmap = {}
+        for name, props in acls.iteritems():
+            acl = props.get(davxml.ACL.qname(), None)
+            privyset = self.computeClassProperty(props.get(TwistedResourceClass.qname(), None), (dav_namespace, "supported-privilege-set"))
+            aclmap.setdefault((acl, privyset), []).append(name)
+            
+        # Now determine whether each ace satisfies privileges
+        for (acl, privyset), names in aclmap.iteritems():
+            checked = waitForDeferred(self.checkACLPrivilege(request, acl, privyset, privileges, inherited_aces))
+            yield checked
+            checked = checked.getResult()
+            if checked:
+                for name in names:
+                    callbackAllowed(name)
+            elif callbackForbidden:
+                for name in names:
+                    callbackForbidden(name)
+
+        yield None
+
+    findChildNames = deferredGenerator(findChildNames)
+
+    def checkACLPrivilege(self, request, acl, privyset, privileges, inherited_aces):
+        
+        principal = self.currentPrincipal(request)
+
+        # Other principals types don't make sense as actors.
+        assert (
+            principal.children[0].name in ("unauthenticated", "href"),
+            "Principal is not an actor: %r" % (principal,)
+        )
+
+        acl = self.fullAccessControlList(acl, inherited_aces)
+
+        pending = list(privileges)
+        denied = []
+
+        for ace in acl.children:
+            for privilege in tuple(pending):
+                if not self.matchPrivilege(davxml.Privilege(privilege), ace.privileges, privyset):
+                    continue
+
+                match = waitForDeferred(self.matchPrincipal(principal, ace.principal, request))
+                yield match
+                match = match.getResult()
+
+                if match:
+                    if ace.invert:
+                        continue
+                else:
+                    if not ace.invert:
+                        continue
+
+                pending.remove(privilege)
+
+                if not ace.allow:
+                    denied.append(privilege)
+
+        yield len(denied) + len(pending) == 0
+
+    checkACLPrivilege = deferredGenerator(checkACLPrivilege)
+
+    def fullAccessControlList(self, acl, inherited_aces):
+        """
+        See L{IDAVResource.accessControlList}.
+
+        This implementation looks up the ACL in the private property
+        C{(L{twisted_private_namespace}, "acl")}.
+        If no ACL has been stored for this resource, it returns the value
+        returned by C{defaultAccessControlList}.
+        If access is disabled it will return C{None}.
+        """
+        #
+        # Inheritance is problematic. Here is what we do:
+        #
+        # 1. A private element <Twisted:inheritable> is defined for use inside
+        #    of a <DAV:ace>. This private element is removed when the ACE is
+        #    exposed via WebDAV.
+        #
+        # 2. When checking ACLs with inheritance resolution, the server must
+        #    examine all parent resources of the current one looking for any
+        #    <Twisted:inheritable> elements.
+        #
+        # If those are defined, the relevant ace is applied to the ACL on the
+        # current resource.
+        #
+
+        # Dynamically update privileges for those ace's that are inherited.
+        if acl:
+            aces = list(acl.children)
+        else:
+            aces = []
+
+        aces.extend(inherited_aces)
+
+        acl = davxml.ACL(*aces)
+
+        return acl
+    
+    def findChildrenBatch(self, depth, request, callback, privileges=None, inherited_aces=None):
+        """
+        See L{IDAVResource.findChildren}.
+
+        This implementation works for C{depth} values of C{"0"}, C{"1"}, 
+        and C{"infinity"}.  As long as C{self.listChildren} is implemented
+        """
+        assert depth in ("0", "1", "infinity"), "Invalid depth: %s" % (depth,)
+
+        if depth == "0" or not self.isCollection():
+            return succeed(None)
+
+        # Get aces for children
+        aclprops = self.deadProperties().getSeveralResources((
+            davxml.ACL.qname(),
+        ))
+        acls = {}
+        for name, props in acls.iteritems():
+            acls[name] = props.get(davxml.ACL.qname(), None)
+            
+        completionDeferred = Deferred()
+        basepath = request.urlForResource(self)
+        children = list(self.listChildren())
+
+        def checkPrivilegesError(failure):
+            failure.trap(AccessDeniedError)
+            reactor.callLater(0, getChild)
+
+        def checkPrivileges(child):
+            if child is None:
+                return None
+
+            if privileges is None:
+                return child
+   
+            cname = os.path.basename(request.urlForResource(self))
+            d = child.checkPrivilegesBatch(request, privileges, inherited_aces=inherited_aces, acl=acls.get(cname, None))
+            d.addCallback(lambda _: child)
+            return d
+
+        def gotChild(child, childpath):
+            if child is None:
+                callback(None, childpath + "/")
+            else:
+                if child.isCollection():
+                    callback(child, childpath + "/")
+                    if depth == "infinity":
+                        d = child.findChildren(depth, request, callback, privileges)
+                        d.addCallback(lambda x: reactor.callLater(0, getChild))
+                        return d
+                else:
+                    callback(child, childpath)
+
+            reactor.callLater(0, getChild)
+
+        def getChild():
+            try:
+                childname = children.pop()
+            except IndexError:
+                completionDeferred.callback(None)
+            else:
+                childpath = joinURL(basepath, childname)
+                d = request.locateChildResource(self, childname)
+                d.addCallback(checkPrivileges)
+                d.addCallbacks(gotChild, checkPrivilegesError, (childpath,))
+                d.addErrback(completionDeferred.errback)
+
+        getChild()
+
+        return completionDeferred
+
+    def checkPrivilegesBatch(self, request, privileges, recurse=False, principal=None, inherited_aces=None, acl=None):
+        """
+        Check whether the given principal has the given privileges.
+        (RFC 3744, section 5.5)
+        @param request: the request being processed.
+        @param privileges: an iterable of L{davxml.WebDAVElement} elements
+            denoting access control privileges.
+        @param recurse: C{True} if a recursive check on all child
+            resources of this resource should be performed as well,
+            C{False} otherwise.
+        @param principal: the L{davxml.Principal} to check privileges
+            for.  If C{None}, it is deduced from C{request} by calling
+            L{currentPrincipal}.
+        @param inherited_aces: a list of L{davxml.ACE}s corresponding to the precomputed
+            inheritable aces from the parent resource hierarchy.
+        @return: a L{Deferred} that callbacks with C{None} or errbacks with an
+            L{AccessDeniedError}
+        """
+        if principal is None:
+            principal = self.currentPrincipal(request)
+
+        supportedPrivs = waitForDeferred(self.supportedPrivileges(request))
+        yield supportedPrivs
+        supportedPrivs = supportedPrivs.getResult()
+
+        # Other principals types don't make sense as actors.
+        assert (
+            principal.children[0].name in ("unauthenticated", "href"),
+            "Principal is not an actor: %r" % (principal,)
+        )
+
+        errors = []
+
+        resources = [(self, None)]
+
+        if recurse:
+            x = self.findChildren("infinity", request, lambda x, y: resources.append((x,y)))
+            x = waitForDeferred(x)
+            yield x
+            x.getResult()
+
+        for resource, uri in resources:
+            acl = waitForDeferred(resource.accessControlListBatch(request, inherited_aces=inherited_aces, acl=acl))
+            yield acl
+            acl = acl.getResult()
+
+            # Check for disabled
+            if acl is None:
+                errors.append((uri, list(privileges)))
+                continue
+
+            pending = list(privileges)
+            denied = []
+
+            for ace in acl.children:
+                for privilege in tuple(pending):
+                    if not self.matchPrivilege(davxml.Privilege(privilege), ace.privileges, supportedPrivs):
+                        continue
+
+                    match = waitForDeferred(self.matchPrincipal(principal, ace.principal, request))
+                    yield match
+                    match = match.getResult()
+
+                    if match:
+                        if ace.invert:
+                            continue
+                    else:
+                        if not ace.invert:
+                            continue
+
+                    pending.remove(privilege)
+
+                    if not ace.allow:
+                        denied.append(privilege)
+
+            denied += pending # If no matching ACE, then denied
+
+            if denied: 
+                errors.append((uri, denied))
+
+        if errors:
+            raise AccessDeniedError(errors,)
+        
+        yield None
+
+    checkPrivilegesBatch = deferredGenerator(checkPrivilegesBatch)
+
+    def accessControlListBatch(self, request, inheritance=True, expanding=False, inherited_aces=None, acl=None):
+        """
+        See L{IDAVResource.accessControlList}.
+
+        This implementation looks up the ACL in the private property
+        C{(L{twisted_private_namespace}, "acl")}.
+        If no ACL has been stored for this resource, it returns the value
+        returned by C{defaultAccessControlList}.
+        If access is disabled it will return C{None}.
+        """
+        #
+        # Inheritance is problematic. Here is what we do:
+        #
+        # 1. A private element <Twisted:inheritable> is defined for use inside
+        #    of a <DAV:ace>. This private element is removed when the ACE is
+        #    exposed via WebDAV.
+        #
+        # 2. When checking ACLs with inheritance resolution, the server must
+        #    examine all parent resources of the current one looking for any
+        #    <Twisted:inheritable> elements.
+        #
+        # If those are defined, the relevant ace is applied to the ACL on the
+        # current resource.
+        #
+        myURL = None
+
+        def getMyURL():
+            url = request.urlForResource(self)
+
+            assert url is not None, "urlForResource(self) returned None for resource %s" % (self,)
+
+            return url
+
+        if acl is None:
+            # Produce a sensible default for an empty ACL.
+            if myURL is None:
+                myURL = getMyURL()
+
+            if myURL == "/":
+                # If we get to the root without any ACLs, then use the default.
+                acl = self.defaultRootAccessControlList()
+            else:
+                acl = self.defaultAccessControlList()
+
+        # Dynamically update privileges for those ace's that are inherited.
+        if inheritance:
+            aces = list(acl.children)
+
+            if myURL is None:
+                myURL = getMyURL()
+
+            if inherited_aces is None:
+                if myURL != "/":
+                    parentURL = parentForURL(myURL)
+    
+                    parent = waitForDeferred(request.locateResource(parentURL))
+                    yield parent
+                    parent = parent.getResult()
+    
+                    if parent:
+                        parent_acl = waitForDeferred(
+                            parent.accessControlList(request, inheritance=True, expanding=True)
+                        )
+                        yield parent_acl
+                        parent_acl = parent_acl.getResult()
+    
+                        # Check disabled
+                        if parent_acl is None:
+                            yield None
+                            return
+    
+                        for ace in parent_acl.children:
+                            if ace.inherited:
+                                aces.append(ace)
+                            elif TwistedACLInheritable() in ace.children:
+                                # Adjust ACE for inherit on this resource
+                                children = list(ace.children)
+                                children.remove(TwistedACLInheritable())
+                                children.append(davxml.Inherited(davxml.HRef(parentURL)))
+                                aces.append(davxml.ACE(*children))
+            else:
+                aces.extend(inherited_aces)
+
+            # Always filter out any remaining private properties when we are
+            # returning the ACL for the final resource after doing parent
+            # inheritance.
+            if not expanding:
+                aces = [
+                    davxml.ACE(*[
+                        c for c in ace.children
+                        if c != TwistedACLInheritable()
+                    ])
+                    for ace in aces
+                ]
+
+            acl = davxml.ACL(*aces)
+
+        yield acl
+
+    accessControlListBatch = deferredGenerator(accessControlListBatch)
+
+class DAVResource (SudoSACLMixin, DAVPropertyHandlerMixin, DAVFastACLMixin, SuperDAVResource, LoggingMixIn):
     """
     Extended L{twisted.web2.dav.resource.DAVResource} implementation.
     """
@@ -419,7 +883,7 @@ class DAVResource (SudoSACLMixin, SuperDAVResource, LoggingMixIn):
             
         yield match
 
-class DAVPrincipalResource (SuperDAVPrincipalResource, LoggingMixIn):
+class DAVPrincipalResource (DAVPropertyHandlerMixin, DAVFastACLMixin, SuperDAVPrincipalResource, LoggingMixIn):
     """
     Extended L{twisted.web2.dav.static.DAVFile} implementation.
     """
@@ -444,10 +908,15 @@ class DAVPrincipalResource (SuperDAVPrincipalResource, LoggingMixIn):
             return davxml.ResourceType(davxml.Principal())
 
 
-class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
+class DAVFile (SudoSACLMixin, DAVPropertyHandlerMixin, DAVFastACLMixin, SuperDAVFile, LoggingMixIn):
     """
     Extended L{twisted.web2.dav.static.DAVFile} implementation.
     """
+    def deadProperties(self):
+        if not hasattr(self, "_dead_properties"):
+            self._dead_properties = sqlPropertyStore(self)
+        return self._dead_properties
+
     def readProperty(self, property, request):
         if type(property) is tuple:
             qname = property
@@ -460,7 +929,7 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
         return super(DAVFile, self).readProperty(property, request)
 
     def resourceType(self):
-        # Allow live property to be overriden by dead property
+        # Allow live property to be overridden by dead property
         if self.deadProperties().contains((dav_namespace, "resourcetype")):
             return self.deadProperties().get((dav_namespace, "resourcetype"))
         if self.isCollection():

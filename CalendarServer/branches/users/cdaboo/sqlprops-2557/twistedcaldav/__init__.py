@@ -41,12 +41,14 @@ __all__ = [
     "itip",
     "log",
     "memcache",
+    "memcachepool",
     "memcacher",
     "principalindex",
     "resource",
     "root",
     "schedule",
     "sql",
+    "sqlprops",
     "static",
 ]
 
