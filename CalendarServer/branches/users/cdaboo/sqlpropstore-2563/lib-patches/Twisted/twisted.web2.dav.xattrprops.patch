@@ -11,7 +11,7 @@ Index: twisted/web2/dav/xattrprops.py
 +from random import random
 +from errno import EAGAIN
 +from zlib import compress, decompress
-+from cPickle import loads as unpickle, PicklingError, UnpicklingError
++from cPickle import loads as unpickle, UnpicklingError
  
  import xattr
  
@@ -22,10 +22,11 @@ Index: twisted/web2/dav/xattrprops.py
  from twisted.web2 import responsecode
  from twisted.web2.http import HTTPError, StatusResponse
  from twisted.web2.dav import davxml
-@@ -66,16 +73,8 @@
+@@ -65,21 +72,13 @@
+     if sys.platform == "linux2":
          deadPropertyXattrPrefix = "user."
  
-     def _encode(clazz, name):
+-    def _encode(clazz, name):
 -        #
 -        # FIXME: The xattr API in Mac OS 10.4.2 breaks if you have "/" in an
 -        # attribute name (radar://4202440). We'll quote the strings to get rid
@@ -36,11 +37,18 @@ Index: twisted/web2/dav/xattrprops.py
 -            c = result[i]
 -            if c in "%/": result[i] = "%%%02X" % (ord(c),)
 -        r = clazz.deadPropertyXattrPrefix + ''.join(result)
++    def _encode(cls, name):
 +        result = urllib.quote("{%s}%s" % name, safe='{}:')
-+        r = clazz.deadPropertyXattrPrefix + result
++        r = cls.deadPropertyXattrPrefix + result
          return r
  
-     def _decode(clazz, name):
+-    def _decode(clazz, name):
+-        name = urllib.unquote(name[len(clazz.deadPropertyXattrPrefix):])
++    def _decode(cls, name):
++        name = urllib.unquote(name[len(cls.deadPropertyXattrPrefix):])
+ 
+         index = name.find("}")
+     
 @@ -97,19 +96,74 @@
  
      def get(self, qname):
@@ -131,11 +139,15 @@ Index: twisted/web2/dav/xattrprops.py
      def contains(self, qname):
          try:
              return self._encode(qname) in self.attrs
-@@ -133,3 +191,7 @@
-         prefix_len = len(prefix)
+@@ -129,7 +187,8 @@
+             return False
  
-         return [ self._decode(name) for name in self.attrs if name.startswith(prefix) ]
-+
+     def list(self):
+-        prefix     = self.deadPropertyXattrPrefix
+-        prefix_len = len(prefix)
++        return [ self._decode(name) for name in self.attrs if name.startswith(self.deadPropertyXattrPrefix) ]
+ 
+-        return [ self._decode(name) for name in self.attrs if name.startswith(prefix) ]
 +    def copy(self, props):
 +        for item in props.list():
 +            self.set(props.get(item))
