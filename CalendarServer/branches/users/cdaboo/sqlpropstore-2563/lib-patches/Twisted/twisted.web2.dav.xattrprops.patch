@@ -139,7 +139,7 @@ Index: twisted/web2/dav/xattrprops.py
      def contains(self, qname):
          try:
              return self._encode(qname) in self.attrs
-@@ -129,7 +187,8 @@
+@@ -129,7 +187,12 @@
              return False
  
      def list(self):
@@ -151,3 +151,7 @@ Index: twisted/web2/dav/xattrprops.py
 +    def copy(self, props):
 +        for item in props.list():
 +            self.set(props.get(item))
++
++    def move(self, props):
++        # xattrs move with the underlying file
++        pass

@@ -53,7 +53,7 @@ Index: twisted/web2/dav/method/copymove.py
          yield destparent
          destparent = destparent.getResult()
  
-@@ -144,10 +155,30 @@
+@@ -144,10 +155,29 @@
          log.err(msg)
          raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, msg))
  
@@ -69,8 +69,7 @@ Index: twisted/web2/dav/method/copymove.py
 +        result = x.getResult()
  
 +        # Explicitly move properties - no one else does it
-+        destination.deadProperties().copy(self.deadProperties())
-+        self.deadProperties().deleteAll()
++        destination.deadProperties().move(self.deadProperties())
 +
 +        yield result
 +    else:
