@@ -28,7 +28,7 @@ from twisted.web2.iweb import IResponse
 from twisted.web2.stream import MemoryStream
 from twisted.web2.test.test_server import SimpleRequest
 
-from twistedcaldav import caldavxml, customxml
+from twistedcaldav import caldavxml
 from twistedcaldav.root import RootResource
 from twistedcaldav.sqlprops import sqlPropertyStore, SQLPropertiesDatabase
 from twistedcaldav.static import CalDAVFile
@@ -74,54 +74,6 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         self.assertTrue(index.get(prop.qname()) == prop,
                         msg="Could not get property %s %s." % (description, prop,))
     
-    def _testPropertyList(self, proplist):
-        self.assertTrue(len(proplist) == len(SQLProps.props),
-                        msg="Number of properties returned %s not equal to number queried %s." % (len(proplist), len(SQLProps.props),))
-        for prop in SQLProps.props:
-            for k, v in proplist.iteritems():
-                if prop == v:
-                    del proplist[k]
-                    break
-        self.assertTrue(len(proplist) == 0,
-                        msg="Incorrect properties returned %s." % proplist)
-
-    def _testResourcePropertyList(self, num_resources, resourcedict):
-        self.assertTrue(len(resourcedict) == num_resources,
-                        msg="Number of resources returned %s not equal to number queried %s." % (len(resourcedict), num_resources,))
-        for i in xrange(num_resources):
-            fname = "file%04s.ics" % (i,)
-            self.assertTrue(resourcedict.has_key(fname),
-                            msg="Resource %s not returned in query results" % (fname,))
-            self._testPropertyList(resourcedict[fname])
-
-    def _setupMultipleResources(self, number):
-        self.collection_name, self.collection_uri = self.mkdtemp("sql")
-        for i in xrange(number):
-            rsrc = CalDAVFile(os.path.join(self.collection_name, "file%04s.ics" % (i,)))
-            index = sqlPropertyStore(rsrc, False)
-            index.setSeveral(SQLProps.props)
-        return index
-
-    def _setupMultipleDifferentResources(self, number):
-        self.collection_name, self.collection_uri = self.mkdtemp("sql")
-        for i in xrange(number):
-            rsrc = CalDAVFile(os.path.join(self.collection_name, "file%04s.ics" % (i,)))
-            index = sqlPropertyStore(rsrc, False)
-            props = (
-                davxml.DisplayName.fromString("My Name %s" % (i,)),
-                davxml.ACL(
-                    davxml.ACE(
-                        davxml.Principal(davxml.HRef.fromString("/principals/users/user%s" % (i + 30,))),
-                        davxml.Grant(davxml.Privilege(davxml.Read())),
-                        davxml.Protected(),
-                    ),
-                ),
-                caldavxml.CalendarDescription.fromString("My Calendar %s" % (i + 50,)),
-                customxml.TwistedScheduleAutoRespond(),
-            )
-            index.setSeveral(props)
-        return index
-
     def test_db_init_directory(self):
         self.collection_name, self.collection_uri = self.mkdtemp("sql")
         rsrc = CalDAVFile(self.collection_name)
