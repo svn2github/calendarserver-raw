@@ -14,7 +14,12 @@
 # limitations under the License.
 ##
 
-from twisted.internet import defer
+__all__ = [
+    "RootACLMixIn",
+    "RootResource",
+]
+
+from twisted.internet.defer import maybeDeferred, succeed
 from twisted.python.failure import Failure
 from twisted.cred.error import LoginFailed, UnauthorizedLogin
 
@@ -34,7 +39,17 @@ from twistedcaldav.directory.principal import DirectoryPrincipalResource
 
 log = Logger()
 
-class RootResource(DAVFile):
+
+class RootACLMixIn (object):
+    def defaultAccessControlList(self):
+        return config.rootACL
+
+    def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
+        # Permissions here are fixed, and are not subject to inherritance rules, etc.
+        return succeed(self.defaultAccessControlList())
+
+
+class RootResource (RootACLMixIn, DAVFile):
     """
     A special root resource that contains support checking SACLs
     as well as adding responseFilters.
@@ -123,7 +138,7 @@ class RootResource(DAVFile):
             d.addCallback(_checkedSACLCb)
             return d
 
-        d = defer.maybeDeferred(self.authenticate, request)
+        d = maybeDeferred(self.authenticate, request)
         d.addCallbacks(_authCb, _authEb)
         d.addCallback(_checkSACLCb)
         return d
@@ -174,7 +189,7 @@ class RootResource(DAVFile):
 
         if request.method == 'PROPFIND' and not getattr(
             request, 'notInCache', False):
-            d = defer.maybeDeferred(self.authenticate, request)
+            d = maybeDeferred(self.authenticate, request)
             d.addCallbacks(_authCb, _authEb)
             d.addCallback(_getCachedResource, request)
             d.addErrback(_resourceNotInCacheEb)
