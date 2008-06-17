@@ -45,7 +45,7 @@ class sqlPropertyStore (object):
     A dead property store that uses an SQLite database back end.
     """
  
-    def __init__(self, resource):
+    def __init__(self, resource, use_cache=True):
         self.resource = resource
         if os.path.exists(os.path.dirname(resource.fp.path)):
             from twistedcaldav.root import RootResource
@@ -55,9 +55,9 @@ class sqlPropertyStore (object):
             else:
                 self.rname = os.path.basename(resource.fp.path)
                 indexpath = os.path.dirname(resource.fp.path)
-            self.index = SQLPropertiesDatabase(indexpath)
+            self.index = SQLPropertiesDatabase(indexpath, use_cache)
             if resource.isCollection():
-                self.childindex = SQLPropertiesDatabase(resource.fp.path)
+                self.childindex = SQLPropertiesDatabase(resource.fp.path, use_cache)
             else:
                 self.childindex = None
         else:
@@ -129,7 +129,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.removeAll(self.rname)
+            self.index.removeAllProperties(self.rname)
             self.index.setSeveralPropertyValues(self.rname, [(p.qname(), p, p.hidden) for p in properties])
 
     def delete(self, qname):
@@ -184,8 +184,7 @@ class sqlPropertyStore (object):
         """
         
         oldprops = props._getAll(hidden=True)
-        self._setAll(oldprops)
-        self.cache = {}
+        self._setAll(oldprops.itervalues())
 
 class SQLPropertiesDatabase(AbstractSQLDatabase):
     """
@@ -217,10 +216,11 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     
         return (name[1:index], name[index+1:])
 
-    def __init__(self, path):
+    def __init__(self, path, use_cache=True):
         path = os.path.join(path, SQLPropertiesDatabase.dbFilename)
         super(SQLPropertiesDatabase, self).__init__(path, True, utf8=True)
         
+        self.use_cache = use_cache
         self.cache = {}
 
     def getOnePropertyValue(self, rname, pname):
@@ -232,10 +232,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @return: an object representing the property.
         """
         
-        # Check cache first
-        if not self.cache.has_key((rname, pname)):
-            # Get the property
-            log.debug("getPropertyValue: %s \"%s\" \"%s\"" % (self.dbpath, rname, pname))
+        def _getOneFromDB():
             members = []
             for row in self._db_execute("select PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encode(pname)):
                 members.append(row[0])
@@ -246,10 +243,17 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
                 value = cPickle.loads(members[0])
             else:
                 raise ValueError("Multiple properties of the same name \"%s\" stored for resource \"%s\"" % (pname, rname,))
+            return value
 
-            self.cache[(rname, pname)] = value
-        
-        return self.cache[(rname, pname)]
+        # Check cache first
+        if self.use_cache:
+            if not self.cache.has_key((rname, pname)):
+                # Get the property
+                log.debug("getPropertyValue: %s \"%s\" \"%s\"" % (self.dbpath, rname, pname))
+                self.cache[(rname, pname)] = _getOneFromDB()
+            return self.cache[(rname, pname)]
+        else:
+            return _getOneFromDB()
 
     def getAllPropertyValues(self, rname, hidden):
         """
@@ -284,7 +288,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue), pvalue.toxml(), hidden)
         self._db_commit()
         
-        self.cache[(rname, pname)] = pvalue 
+        if self.use_cache:
+            self.cache[(rname, pname)] = pvalue 
 
     def setSeveralPropertyValues(self, rname, properties):
         """
@@ -311,10 +316,11 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         self._delete_from_db(rname, self._encode(pname))
         self._db_commit()
         
-        try:
-            del self.cache[(rname, pname)]
-        except KeyError:
-            pass
+        if self.use_cache:
+            try:
+                del self.cache[(rname, pname)]
+            except KeyError:
+                pass
 
     def removeAllProperties(self, rname):
         """
@@ -325,6 +331,12 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
         self._delete_all_from_db(rname)
         self._db_commit()
+        
+        if self.use_cache:
+            for key in list(self.cache.iterkeys()):
+                key_rname, _ignore_pname = key
+                if key_rname == rname:
+                    del self.cache[key]
 
     def listProperties(self, rname):
         """
