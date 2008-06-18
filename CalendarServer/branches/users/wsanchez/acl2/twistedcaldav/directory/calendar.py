@@ -330,7 +330,10 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
             # DAV:read access for authenticated users.
             davxml.ACE(
                 davxml.Principal(davxml.Authenticated()),
-                davxml.Grant(davxml.Privilege(davxml.Read())),
+                davxml.Grant(
+                    davxml.Privilege(davxml.Read()),
+                    davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
+                ),
             ),
             # Inheritable DAV:all access for the resource's associated principal.
             davxml.ACE(
@@ -345,7 +348,13 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
                 davxml.Grant(davxml.Privilege(caldavxml.ReadFreeBusy())),
                 TwistedACLInheritable(),
             ),
-        ) + config.AdminACEs
+        )
+
+        # Give read access to config.ReadPrincipals
+        aces += config.ReadACEs
+
+        # Give all access to config.AdminPrincipals
+        aces += config.AdminACEs
         
         if config.EnableProxyPrincipals:
             aces += (

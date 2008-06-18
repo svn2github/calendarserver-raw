@@ -87,6 +87,7 @@ defaultConfig = {
     # Special principals
     #
     "AdminPrincipals": [],                       # Principals with "DAV:all" access (relative URLs)
+    "ReadPrincipals": [],                        # Principals with "DAV:read" access (relative URLs)
     "SudoersFile": "/etc/caldavd/sudoers.plist", # Principals that can pose as other principals
     "EnableProxyPrincipals": True,               # Create "proxy access" principals
 
@@ -294,6 +295,19 @@ class Config (object):
                 TwistedACLInheritable(),
             )
             for principal in config.AdminPrincipals
+        )
+
+        self.ReadACEs = tuple(
+            davxml.ACE(
+                davxml.Principal(davxml.HRef(principal)),
+                davxml.Grant(
+                    davxml.Privilege(davxml.Read()),
+                    davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
+                ),
+                davxml.Protected(),
+                TwistedACLInheritable(),
+            )
+            for principal in config.ReadPrincipals
         )
 
         self.RootResourceACL = davxml.ACL(
