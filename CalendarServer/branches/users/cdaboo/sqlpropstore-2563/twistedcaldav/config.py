@@ -227,6 +227,11 @@ class Config (object):
         self.setDefaults(defaults)
         self._data = copy.deepcopy(self._defaults)
         self._configFile = None
+        
+        from twistedcaldav.sqlprops import sqlPropertyStore
+        self.PropertyStoreClass = sqlPropertyStore
+        #from twistedcaldav.extensions import CachingXattrPropertyStore
+        #self.PropertyStoreClass = CachingXattrPropertyStore
 
     def __str__(self):
         return str(self._data)

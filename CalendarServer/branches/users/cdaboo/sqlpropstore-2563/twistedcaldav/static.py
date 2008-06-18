@@ -55,7 +55,6 @@ from twistedcaldav import customxml
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile
-from twistedcaldav.extensions import CachingXattrPropertyStore
 from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.index import Index, IndexSchedule
@@ -69,7 +68,6 @@ from twistedcaldav.directory.calendar import DirectoryCalendarHomeUIDProvisionin
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeResource
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
 from twistedcaldav.log import Logger
-from twistedcaldav.sqlprops import sqlPropertyStore
 from twistedcaldav.timezoneservice import TimezoneServiceResource
 
 from twistedcaldav.cache import DisabledCacheNotifier, PropfindCacheMixin
@@ -88,8 +86,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
     def deadProperties(self):
         if not hasattr(self, "_dead_properties"):
-            self._dead_properties = sqlPropertyStore(self)
-            #self._dead_properties = CachingXattrPropertyStore(self)
+            self._dead_properties = config.PropertyStoreClass(self)
 
         return self._dead_properties
 
