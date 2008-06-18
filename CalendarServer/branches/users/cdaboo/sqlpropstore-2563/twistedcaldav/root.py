@@ -32,6 +32,7 @@ from twistedcaldav.log import Logger
 from twistedcaldav.static import CalendarHomeFile
 from twistedcaldav.directory.principal import DirectoryPrincipalResource
 from twistedcaldav.sqlprops import sqlPropertyStore
+from twistedcaldav.static import CalDAVFile
 
 log = Logger()
 
@@ -183,6 +184,12 @@ class RootResource(DAVFile):
             return d
 
         return super(RootResource, self).locateChild(request, segments)
+
+    def createSimilarFile(self, path):
+        if path == self.fp.path:
+            return self
+        else:
+            return CalDAVFile(path, principalCollections=self.principalCollections())
 
     def http_COPY       (self, request): return responsecode.FORBIDDEN
     def http_MOVE       (self, request): return responsecode.FORBIDDEN
