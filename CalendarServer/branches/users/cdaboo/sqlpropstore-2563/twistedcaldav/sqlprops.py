@@ -376,7 +376,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
         members = set()
         if self.use_cache and self.cache.has_key(rname):
-            members.update(self.cache[rname].iterkeys())
+            members.update([k for k, v in self.cache[rname].iteritems() if v is not None])
         else:
             for row in self._db_execute("select PROPERTYNAME from PROPERTIES where RESOURCENAME = :1", rname):
                 members.add(self._decodePropertyName(row[0]))
