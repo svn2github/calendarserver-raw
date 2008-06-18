@@ -133,7 +133,7 @@ dist = setup(
                          "twistedcaldav.query", 
                          "twistedcaldav.admin",
                          "twistedcaldav.py", 
-                         "twisted"
+                         "twisted",
                        ],
     package_data     = {
                          "twisted": ["plugins/caldav.py"],
@@ -142,6 +142,7 @@ dist = setup(
     scripts          = [ "bin/caldavd", "bin/caladmin" ],
     data_files       = [ ("caldavd", ["conf/caldavd.plist"]) ],
     ext_modules      = extensions,
+    py_modules       = ["kqreactor"],
 )
 
 if "install" in dist.commands:
