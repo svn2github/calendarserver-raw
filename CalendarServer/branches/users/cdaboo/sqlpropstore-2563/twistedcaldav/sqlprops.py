@@ -26,10 +26,10 @@ DAV Property store using an sqlite database.
 
 __all__ = ["sqlPropertyStore"]
 
-import cPickle
 import os
 
 from twisted.web2 import responsecode
+from twisted.web2.dav import davxml
 from twisted.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.log import Logger
@@ -74,7 +74,7 @@ class sqlPropertyStore (object):
                 "No such property: {%s}%s" % qname
             ))
             
-        value = self.index.getOnePropertyValue(self.rname, qname)
+        value = self.index.getOnePropertyForResource(self.rname, qname)
         if not value:
             raise HTTPError(StatusResponse(
                 responsecode.NOT_FOUND,
@@ -96,7 +96,7 @@ class sqlPropertyStore (object):
                 "No properties"
             ))
             
-        return self.index.getAllPropertyValues(self.rname, hidden)
+        return self.index.getAllPropertiesForResource(self.rname, hidden)
 
     def set(self, property):
         """
@@ -106,7 +106,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setOnePropertyValue(self.rname, property.qname(), property, property.hidden)
+            self.index.setOnePropertyForResource(self.rname, property)
 
     def _setSeveral(self, properties):
         """
@@ -116,7 +116,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setSeveralPropertyValues(self.rname, [(p.qname(), p, p.hidden) for p in properties])
+            self.index.setSeveralPropertiesForResource(self.rname, properties)
 
     def _setAll(self, properties):
         """
@@ -126,8 +126,8 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.removeAllProperties(self.rname)
-            self.index.setSeveralPropertyValues(self.rname, [(p.qname(), p, p.hidden) for p in properties])
+            self.index.removeAllPropertiesForResource(self.rname)
+            self.index.setSeveralPropertiesForResource(self.rname, properties)
 
     def delete(self, qname):
         """
@@ -139,7 +139,7 @@ class sqlPropertyStore (object):
         """
         
         if self.index:
-            self.index.removeProperty(self.rname, qname)
+            self.index.removeOnePropertyForResource(self.rname, qname)
 
     def deleteAll(self):
         """
@@ -149,11 +149,11 @@ class sqlPropertyStore (object):
         """
         
         if self.index:
-            self.index.removeAllProperties(self.rname)
+            self.index.removeAllPropertiesForResource(self.rname)
 
     def contains(self, qname):
         if self.index:
-            value = self.index.getOnePropertyValue(self.rname, qname)
+            value = self.index.getOnePropertyForResource(self.rname, qname)
             return value is not None
         else:
             return False
@@ -167,7 +167,7 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            return self.index.listProperties(self.rname)
+            return self.index.listPropertiesForResource(self.rname)
         else:
             return ()
 
@@ -205,7 +205,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     
     Properties Database:
     
-    ROW: RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT, PROPERTYVALUE
+    ROW: RESOURCENAME, PROPERTYNAME, PROPERTYXML
     
     """
     
@@ -214,17 +214,40 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     dbFormatVersion = "1"
 
     @classmethod
-    def _encode(cls, name):
+    def _encodePropertyName(cls, name):
         return "{%s}%s" % name
 
     @classmethod
-    def _decode(cls, name):
+    def _decodePropertyName(cls, name):
         index = name.find("}")
     
         if (index is -1 or not len(name) > index or not name[0] == "{"):
             raise ValueError("Invalid encoded name: %r" % (name,))
     
         return (name[1:index], name[index+1:])
+
+    @classmethod
+    def _decodePropertyValue(cls, pname, pxml):
+        """
+        @param pname: name of the property
+        @type pname: str
+        @param pxml: a property encoded as XML
+        @type pxml: str
+        @return: the davxml Element of the property, or C{None} if pxml is empty or C{None}
+        """
+        
+        result = None
+        if pxml:
+            try:
+                doc = davxml.WebDAVDocument.fromString(pxml)
+                result = doc.root_element
+            except ValueError:
+                msg = ("Invalid property value stored on server: {%s}%s %s"
+                       % (pname[0], pname[1], pxml))
+                log.err(msg)
+                raise HTTPError(StatusResponse(responsecode.INTERNAL_SERVER_ERROR, msg))
+
+        return result
 
     def __init__(self, path, use_cache=True):
         path = os.path.join(path, SQLPropertiesDatabase.dbFilename)
@@ -233,7 +256,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         self.use_cache = use_cache
         self.cache = {}
 
-    def getOnePropertyValue(self, rname, pname):
+    def getOnePropertyForResource(self, rname, pname):
         """
         Get a property.
     
@@ -247,18 +270,19 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             # Make sure we have a cache entry
             if not self.cache.has_key(rname):
                 self.cache[rname] = {}
-                for row in self._db_execute("select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1", rname):
-                    self.cache[rname][self._decode(row[0])] = cPickle.loads(row[1])
+                for row in self._db_execute("select PROPERTYNAME, PROPERTYXML from PROPERTIES where RESOURCENAME = :1", rname):
+                    sqlpname = self._decodePropertyName(row[0])
+                    sqlpvalue = self._decodePropertyValue(sqlpname, row[1])
+                    self.cache[rname][sqlpname] = sqlpvalue
             
             # Get the property and do negative caching if not present
             return self.cache[rname].setdefault(pname, None)
         else:
-            property = self._db_value_for_sql("select PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encode(pname))
-            if property:
-                property = cPickle.loads(property)
-            return property
+            pxml = self._db_value_for_sql("select PROPERTYXML from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encodePropertyName(pname))
+            pvalue = self._decodePropertyValue(pname, pxml)
+            return pvalue
 
-    def getAllPropertyValues(self, rname, hidden):
+    def getAllPropertiesForResource(self, rname, hidden):
         """
         Get specified property values from specific resource.
     
@@ -268,15 +292,17 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         """
         
         properties = {}
-        statement = "select PROPERTYNAME, PROPERTYOBJECT from PROPERTIES where RESOURCENAME = :1"
+        statement = "select PROPERTYNAME, PROPERTYXML from PROPERTIES where RESOURCENAME = :1"
         if not hidden:
             statement += " and HIDDEN = 'F'"
         for row in self._db_execute(statement, rname):
-            properties[self._decode(row[0])] = cPickle.loads(row[1])
+            pname = self._decodePropertyName(row[0])
+            pvalue = self._decodePropertyValue(pname, row[1])
+            properties[pname] = pvalue
 
         return properties
 
-    def setOnePropertyValue(self, rname, pname, pvalue, hidden):
+    def setOnePropertyForResource(self, rname, property):
         """
         Add a property.
     
@@ -286,15 +312,14 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @param hidden: C{True} for a hidden property, C{False} otherwise.
         """
         
-        # Remove what is there, then add it back.
-        self._delete_from_db(rname, self._encode(pname))
-        self._add_to_db(rname, self._encode(pname), cPickle.dumps(pvalue), pvalue.toxml(), hidden)
+        pname = property.qname()
+        self._add_to_db(rname, self._encodePropertyName(pname), property.toxml(), property.hidden)
         self._db_commit()
         
         if self.use_cache and self.cache.has_key(rname):
-            self.cache[rname][pname] = pvalue 
+            self.cache[rname][pname] = property 
 
-    def setSeveralPropertyValues(self, rname, properties):
+    def setSeveralPropertiesForResource(self, rname, properties):
         """
         Add a set of properties.
     
@@ -303,16 +328,15 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         """
         
         # Remove what is there, then add it back.
-        for p in properties:
-            self._delete_from_db(rname, self._encode(p[0]))
-            self._add_to_db(rname, self._encode(p[0]), cPickle.dumps(p[1]), p[1].toxml(), p[2])
+        for property in properties:
+            self._add_to_db(rname, self._encodePropertyName(property.qname()), property.toxml(), property.hidden)
         self._db_commit()
 
         if self.use_cache and self.cache.has_key(rname):
-            for p in properties:
-                self.cache[rname][p[0]] = p[1]
+            for property in properties:
+                self.cache[rname][property.qname()] = property
 
-    def removeProperty(self, rname, pname):
+    def removeOnePropertyForResource(self, rname, pname):
         """
         Remove a property.
     
@@ -320,13 +344,13 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @param pname: a C{str} containing the name of the property to remove.
         """
 
-        self._delete_from_db(rname, self._encode(pname))
+        self._delete_from_db(rname, self._encodePropertyName(pname))
         self._db_commit()
         
         if self.use_cache and self.cache.has_key(rname):
             self.cache[rname][pname] = None
 
-    def removeAllProperties(self, rname):
+    def removeAllPropertiesForResource(self, rname):
         """
         Remove all properties for resource.
     
@@ -342,7 +366,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             except KeyError:
                 pass
 
-    def listProperties(self, rname):
+    def listPropertiesForResource(self, rname):
         """
         List all properties in resource.
     
@@ -355,24 +379,24 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             members.update(self.cache[rname].iterkeys())
         else:
             for row in self._db_execute("select PROPERTYNAME from PROPERTIES where RESOURCENAME = :1", rname):
-                members.add(self._decode(row[0]))
+                members.add(self._decodePropertyName(row[0]))
         return members
 
-    def _add_to_db(self, rname, pname, pobject, pvalue, hidden):
+    def _add_to_db(self, rname, pname, pxml, hidden):
         """
         Add a property.
     
         @param rname: a C{str} containing the resource name.
         @param pname: a C{str} containing the name of the property to set.
-        @param pobject: a C{str} containing the pickled representation of the property object.
-        @param pvalue: a C{str} containing the text of the property value to set.
+        @param pxml: a C{str} containing the XML representation of the property object.
+        @param hidden: a C{bool} indicating whether the property is hidden.
         """
         
         self._db_execute(
             """
-            insert into PROPERTIES (RESOURCENAME, PROPERTYNAME, PROPERTYOBJECT, PROPERTYVALUE, HIDDEN)
-            values (:1, :2, :3, :4, :5)
-            """, rname, pname, pobject, pvalue, "T" if hidden else "F"
+            insert or replace into PROPERTIES (RESOURCENAME, PROPERTYNAME, PROPERTYXML, HIDDEN)
+            values (:1, :2, :3, :4)
+            """, rname, pname, pxml, "T" if hidden else "F"
         )
        
     def _delete_from_db(self, rname, pname):
@@ -381,7 +405,6 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     
         @param rname: a C{str} containing the resource name.
         @param pname: a C{str} containing the name of the property to get.
-        @return: a C{str} containing the property value.
         """
 
         self._db_execute("delete from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, pname)
@@ -392,7 +415,6 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     
         @param rname: a C{str} containing the resource name.
         @param pname: a C{str} containing the name of the property to get.
-        @return: a C{str} containing the property value.
         """
 
         self._db_execute("delete from PROPERTIES where RESOURCENAME = :1", rname)
@@ -411,31 +433,31 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
     def _db_init_data_tables(self, q):
         """
-        Initialise the underlying database tables.
+        Initialize the underlying database tables.
         @param q:           a database cursor to use.
         """
 
         #
         # PROPERTIES table
         #
+        # (RESOURCENAME, PROPERTYNAME) is unique and we default to replacing whatever is
+        # already present for those pairs. Using UNIQUE on those creates an index for us.
+        #
         q.execute(
             """
             create table PROPERTIES (
                 RESOURCENAME   text,
                 PROPERTYNAME   text,
-                PROPERTYOBJECT text,
-                PROPERTYVALUE  text,
-                HIDDEN         text(1)
+                PROPERTYXML    text,
+                HIDDEN         text(1),
+                UNIQUE         (RESOURCENAME, PROPERTYNAME) ON CONFLICT REPLACE
             )
             """
         )
+        
+        # When deleting a resource as a whole we search on the RESOURCENAME so index that column.
         q.execute(
             """
             create index RESOURCE on PROPERTIES (RESOURCENAME)
-            """
-        )
-        q.execute(
-            """
-            create index RESOURCEandPROPERTY on PROPERTIES (RESOURCENAME, PROPERTYNAME)
             """
         )
