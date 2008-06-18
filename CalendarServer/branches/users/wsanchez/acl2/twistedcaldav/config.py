@@ -279,24 +279,29 @@ class Config (object):
 
             return davxml.ACE(
                 davxml.Principal(reader),
-                davxml.Grant(davxml.Privilege(davxml.Read())),
+                davxml.Grant(
+                    davxml.Privilege(davxml.Read()),
+                    davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
+                ),
                 davxml.Protected(),
             )
+
+        self.AdminACEs = tuple(
+            davxml.ACE(
+                davxml.Principal(davxml.HRef(principal)),
+                davxml.Grant(davxml.Privilege(davxml.All())),
+                davxml.Protected(),
+                TwistedACLInheritable(),
+            )
+            for principal in config.AdminPrincipals
+        )
 
         self.RootResourceACL = davxml.ACL(
             # Read-only for anon or authenticated, depending on config
             readOnlyACE(self.EnableAnonymousReadRoot),
 
             # Add inheritable all access for admins
-            *[
-                davxml.ACE(
-                    davxml.Principal(davxml.HRef(principal)),
-                    davxml.Grant(davxml.Privilege(davxml.All())),
-                    davxml.Protected(),
-                    TwistedACLInheritable(),
-                )
-                for principal in config.AdminPrincipals
-            ]
+            *self.AdminACEs
         )
 
         log.debug("Root ACL: %s" % (self.RootResourceACL.toxml(),))
@@ -305,7 +310,7 @@ class Config (object):
             # Read-only for anon or authenticated, depending on config
             readOnlyACE(self.EnableAnonymousReadNav),
 
-            # Add inheritable read and read-acl access for admins
+            # Add read and read-acl access for admins
             *[
                 davxml.ACE(
                     davxml.Principal(davxml.HRef(principal)),
@@ -315,7 +320,6 @@ class Config (object):
                         davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
                     ),
                     davxml.Protected(),
-                    TwistedACLInheritable(),
                 )
                 for principal in config.AdminPrincipals
             ]

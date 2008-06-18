@@ -345,7 +345,7 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
                 davxml.Grant(davxml.Privilege(caldavxml.ReadFreeBusy())),
                 TwistedACLInheritable(),
             ),
-        )
+        ) + config.AdminACEs
         
         if config.EnableProxyPrincipals:
             aces += (
@@ -366,6 +366,10 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
             )
 
         return davxml.ACL(*aces)
+
+    def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
+        # Permissions here are fixed, and are not subject to inherritance rules, etc.
+        return succeed(self.defaultAccessControlList())
 
     def principalCollections(self):
         return self.parent.principalCollections()

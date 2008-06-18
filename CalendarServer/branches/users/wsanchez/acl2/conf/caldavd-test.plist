@@ -187,6 +187,12 @@ limitations under the License.
     <string>/principals/__uids__/admin/</string>
   </array>
 
+  <!-- Principals with "DAV:read" access (relative URLs) -->
+  <key>ReadPrincipals</key>
+  <array>
+    <!-- <string>/principals/users/apprentice/</string> -->
+  </array>
+
   <!-- Principals that can pose as other principals -->
   <key>SudoersFile</key>
   <string>conf/sudoers.plist</string>
