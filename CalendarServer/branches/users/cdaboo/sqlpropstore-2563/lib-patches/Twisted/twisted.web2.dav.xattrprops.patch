@@ -49,8 +49,13 @@ Index: twisted/web2/dav/xattrprops.py
  
          index = name.find("}")
      
-@@ -97,19 +96,74 @@
+@@ -95,21 +94,79 @@
+         self.resource = resource
+         self.attrs = xattr.xattr(self.resource.fp.path)
  
++    def cacheAllChildProperties(self):
++        pass
++
      def get(self, qname):
          try:
 -            value = self.attrs[self._encode(qname)]
@@ -128,7 +133,7 @@ Index: twisted/web2/dav/xattrprops.py
  
          # Update the resource because we've modified it
          self.resource.fp.restat()
-@@ -122,6 +176,10 @@
+@@ -122,6 +179,10 @@
              # non-existing property is not an error.
              pass
  
@@ -139,7 +144,7 @@ Index: twisted/web2/dav/xattrprops.py
      def contains(self, qname):
          try:
              return self._encode(qname) in self.attrs
-@@ -129,7 +187,12 @@
+@@ -129,7 +190,12 @@
              return False
  
      def list(self):

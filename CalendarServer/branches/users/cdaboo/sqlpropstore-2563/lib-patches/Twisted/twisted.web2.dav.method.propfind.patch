@@ -2,7 +2,27 @@ Index: twisted/web2/dav/method/propfind.py
 ===================================================================
 --- twisted/web2/dav/method/propfind.py	(revision 19773)
 +++ twisted/web2/dav/method/propfind.py	(working copy)
-@@ -200,7 +200,7 @@
+@@ -100,6 +100,10 @@
+     request_uri = request.uri
+     depth = request.headers.getHeader("depth", "infinity")
+ 
++    # For depth one cache all the child resource properties in one go if possible
++    if depth == "1":
++        self.deadProperties().cacheAllChildProperties()
++
+     xml_responses = []
+ 
+     # FIXME: take advantage of the new generative properties of findChildren
+@@ -108,7 +112,7 @@
+     if self.isCollection() and not my_url.endswith("/"):
+         my_url += "/"
+ 
+-    # Do some optimisation of access control calculation by determining any inherited ACLs outside of
++    # Do some optimization of access control calculation by determining any inherited ACLs outside of
+     # the child resource loop and supply those to the checkPrivileges on each child.
+     filtered_aces = waitForDeferred(self.inheritedACEsforChildren(request))
+     yield filtered_aces
+@@ -200,7 +204,7 @@
  
  def propertyName(name):
      property_namespace, property_name = name

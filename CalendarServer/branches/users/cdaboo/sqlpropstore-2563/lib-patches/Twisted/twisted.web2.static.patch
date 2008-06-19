@@ -15,3 +15,11 @@ Index: twisted/web2/static.py
          # Remove the dots from the path to split
          self.defaultType = defaultType
          self.ignoredExts = list(ignoredExts)
+@@ -304,6 +308,7 @@
+         @param child: the child to register
+         """
+         self.putChildren[name] = child
++        child.parent_resource = self
+ 
+     def getChild(self, name):
+         """

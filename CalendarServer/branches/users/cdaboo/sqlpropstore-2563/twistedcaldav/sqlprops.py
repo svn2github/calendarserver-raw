@@ -19,6 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 ##
+from uuid import uuid4
 
 """
 DAV Property store using an sqlite database.
@@ -45,22 +46,33 @@ class sqlPropertyStore (object):
     def __init__(self, resource, use_cache=True):
         self.resource = resource
         if os.path.exists(os.path.dirname(resource.fp.path)):
-            from twistedcaldav.root import RootResource
-            if resource.isCollection() and isinstance(resource, RootResource):
-                self.rname = ""
-                indexpath = resource.fp.path
-            else:
-                self.rname = os.path.basename(resource.fp.path)
-                indexpath = os.path.dirname(resource.fp.path)
-            self.index = SQLPropertiesDatabase(indexpath, use_cache)
             if resource.isCollection():
                 self.childindex = SQLPropertiesDatabase(resource.fp.path, use_cache)
             else:
                 self.childindex = None
+
+            from twistedcaldav.root import RootResource
+            if resource.isCollection() and isinstance(resource, RootResource):
+                self.rname = ""
+                self.index = self.childindex
+            else:
+                self.rname = os.path.basename(resource.fp.path)
+                if hasattr(self.resource, "parent_resource"):
+                    self.index = self.resource.parent_resource.deadProperties().childindex
+                else:
+                    self.index = SQLPropertiesDatabase(os.path.dirname(resource.fp.path), use_cache)
         else:
             log.err("No sqlPropertyStore file for %s" % (os.path.dirname(resource.fp.path),))
             self.index = None
             self.childindex = None
+
+    def cacheAllChildProperties(self):
+        """
+        Cache all properties for all child resources
+        """
+        
+        if self.childindex:
+            self.childindex.cacheAllChildProperties()
 
     def get(self, qname):
         """
@@ -68,20 +80,21 @@ class sqlPropertyStore (object):
         
         @param qname: C{tuple} of property namespace and name.
         """
-        if not self.index:
+
+        if self.index:
+            value = self.index.getOnePropertyForResource(self.rname, qname)
+            if not value:
+                raise HTTPError(StatusResponse(
+                    responsecode.NOT_FOUND,
+                    "No such property: {%s}%s" % qname
+                ))
+                
+            return value
+        else:
             raise HTTPError(StatusResponse(
                 responsecode.NOT_FOUND,
                 "No such property: {%s}%s" % qname
             ))
-            
-        value = self.index.getOnePropertyForResource(self.rname, qname)
-        if not value:
-            raise HTTPError(StatusResponse(
-                responsecode.NOT_FOUND,
-                "No such property: {%s}%s" % qname
-            ))
-            
-        return value
 
     def _getAll(self, hidden=False):
         """
@@ -90,13 +103,14 @@ class sqlPropertyStore (object):
         @param hidden: C{True} to return hidden properties, C{False} otherwise.
         @return: a C{dict} containing property name/value.
         """
-        if not self.index:
+
+        if self.index:
+            return self.index.getAllPropertiesForResource(self.rname, hidden)
+        else:
             raise HTTPError(StatusResponse(
                 responsecode.NOT_FOUND,
-                "No properties"
+                "No such property"
             ))
-            
-        return self.index.getAllPropertiesForResource(self.rname, hidden)
 
     def set(self, property):
         """
@@ -107,6 +121,11 @@ class sqlPropertyStore (object):
 
         if self.index:
             self.index.setOnePropertyForResource(self.rname, property)
+        else:
+            raise HTTPError(StatusResponse(
+                responsecode.INTERNAL_SERVER_ERROR,
+                "Property store does not exist"
+            ))
 
     def _setSeveral(self, properties):
         """
@@ -117,6 +136,11 @@ class sqlPropertyStore (object):
 
         if self.index:
             self.index.setSeveralPropertiesForResource(self.rname, properties)
+        else:
+            raise HTTPError(StatusResponse(
+                responsecode.INTERNAL_SERVER_ERROR,
+                "Property store does not exist"
+            ))
 
     def _setAll(self, properties):
         """
@@ -125,9 +149,8 @@ class sqlPropertyStore (object):
         @param properties: C{list} of properties to write
         """
 
-        if self.index:
-            self.index.removeAllPropertiesForResource(self.rname)
-            self.index.setSeveralPropertiesForResource(self.rname, properties)
+        self.index.removeAllPropertiesForResource(self.rname)
+        self.index.setSeveralPropertiesForResource(self.rname, properties)
 
     def delete(self, qname):
         """
@@ -140,6 +163,11 @@ class sqlPropertyStore (object):
         
         if self.index:
             self.index.removeOnePropertyForResource(self.rname, qname)
+        else:
+            raise HTTPError(StatusResponse(
+                responsecode.INTERNAL_SERVER_ERROR,
+                "Property store does not exist"
+            ))
 
     def deleteAll(self):
         """
@@ -150,11 +178,16 @@ class sqlPropertyStore (object):
         
         if self.index:
             self.index.removeAllPropertiesForResource(self.rname)
+        else:
+            raise HTTPError(StatusResponse(
+                responsecode.INTERNAL_SERVER_ERROR,
+                "Property store does not exist"
+            ))
 
     def contains(self, qname):
+
         if self.index:
-            value = self.index.getOnePropertyForResource(self.rname, qname)
-            return value is not None
+            return self.index.getOnePropertyForResource(self.rname, qname) is not None
         else:
             return False
 
@@ -169,7 +202,10 @@ class sqlPropertyStore (object):
         if self.index:
             return self.index.listPropertiesForResource(self.rname)
         else:
-            return ()
+            raise HTTPError(StatusResponse(
+                responsecode.INTERNAL_SERVER_ERROR,
+                "Property store does not exist"
+            ))
 
     def copy(self, props):
         """
@@ -255,6 +291,18 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         
         self.use_cache = use_cache
         self.cache = {}
+        self.instance = uuid4()
+
+    def cacheAllChildProperties(self):
+        
+        self.cache = {}
+
+        log.debug("[%s]: Caching all child properties" % (self.instance,))
+        for row in self._db_execute("select RESOURCENAME, PROPERTYNAME, PROPERTYXML from PROPERTIES"):
+            rname = row[0]
+            pname = self._decodePropertyName(row[1])
+            pvalue = self._decodePropertyValue(pname, row[2])
+            self.cache.setdefault(rname, {})[pname] = pvalue
 
     def getOnePropertyForResource(self, rname, pname):
         """
@@ -269,6 +317,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         if self.use_cache:
             # Make sure we have a cache entry
             if not self.cache.has_key(rname):
+                log.debug("[%s]: Caching properties for %s, triggered by {%s}%s" % (self.instance, rname, pname[0], pname[1],))
                 self.cache[rname] = {}
                 for row in self._db_execute("select PROPERTYNAME, PROPERTYXML from PROPERTIES where RESOURCENAME = :1", rname):
                     sqlpname = self._decodePropertyName(row[0])
@@ -278,6 +327,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             # Get the property and do negative caching if not present
             return self.cache[rname].setdefault(pname, None)
         else:
+            log.debug("[%s] Getting property {%s}%s for %s" % (self.instance, pname[0], pname[1], rname,))
             pxml = self._db_value_for_sql("select PROPERTYXML from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encodePropertyName(pname))
             pvalue = self._decodePropertyValue(pname, pxml)
             return pvalue
@@ -291,6 +341,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @return: a C{dict} containing property name/value.
         """
         
+        log.debug("[%s] Caching all properties for %s" % (self.instance, rname,))
         properties = {}
         statement = "select PROPERTYNAME, PROPERTYXML from PROPERTIES where RESOURCENAME = :1"
         if not hidden:
@@ -313,6 +364,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         """
         
         pname = property.qname()
+        log.debug("[%s] Setting property {%s}%s for %s" % (self.instance, pname[0], pname[1], rname,))
         self._add_to_db(rname, self._encodePropertyName(pname), property.toxml(), property.hidden)
         self._db_commit()
         
@@ -327,7 +379,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @param properties: a C{dict} containing the name of the properties to set.
         """
         
-        # Remove what is there, then add it back.
+        # Add properties.
+        log.debug("[%s] Setting properties for %s" % (self.instance, rname,))
         for property in properties:
             self._add_to_db(rname, self._encodePropertyName(property.qname()), property.toxml(), property.hidden)
         self._db_commit()
@@ -344,6 +397,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @param pname: a C{str} containing the name of the property to remove.
         """
 
+        log.debug("[%s] Removing property {%s}%s from %s" % (self.instance, pname[0], pname[1], rname,))
         self._delete_from_db(rname, self._encodePropertyName(pname))
         self._db_commit()
         
@@ -357,6 +411,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         @param rname: a C{str} containing the resource name.
         """
 
+        log.debug("[%s] Removing all properties from %s" % (self.instance, rname,))
         self._delete_all_from_db(rname)
         self._db_commit()
         
@@ -376,8 +431,10 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
 
         members = set()
         if self.use_cache and self.cache.has_key(rname):
+            log.debug("[%s] Listing all properties for %s from cache" % (self.instance, rname,))
             members.update([k for k, v in self.cache[rname].iteritems() if v is not None])
         else:
+            log.debug("[%s] Listing all properties for %s via query" % (self.instance, rname,))
             for row in self._db_execute("select PROPERTYNAME from PROPERTIES where RESOURCENAME = :1", rname):
                 members.add(self._decodePropertyName(row[0]))
         return members

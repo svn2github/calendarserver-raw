@@ -345,3 +345,28 @@ END:VCALENDAR
         # Make a calendar
         request = SimpleRequest(self.site, "MKCALENDAR", "/calendar1/")
         return self.send(request, doneMake1)
+
+    def test_cacheallproperties(self):
+
+        collection_name, _ignore = self.mkdtemp("sql")
+
+        file1 = CalDAVFile(os.path.join(collection_name, "file1.ics"))
+        file1_index = sqlPropertyStore(file1)
+        for prop in SQLProps.props:
+            self._setProperty(file1_index, prop)
+
+        file2 = CalDAVFile(os.path.join(collection_name, "file2.ics"))
+        file2_index = sqlPropertyStore(file2)
+        for prop in SQLProps.props:
+            self._setProperty(file2_index, prop)
+
+        file1 = None
+        file1_index = None
+        file2 = None
+        file2_index = None
+
+        collection = CalDAVFile(collection_name)
+        collection_index = sqlPropertyStore(collection)
+        collection_index.cacheAllChildProperties()
+
+        

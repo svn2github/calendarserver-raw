@@ -187,7 +187,9 @@ class RootResource(DAVFile):
         if path == self.fp.path:
             return self
         else:
-            return CalDAVFile(path, principalCollections=self.principalCollections())
+            child = CalDAVFile(path, principalCollections=self.principalCollections())
+            child.parent_resource = self
+            return child
 
     def http_COPY       (self, request): return responsecode.FORBIDDEN
     def http_MOVE       (self, request): return responsecode.FORBIDDEN
