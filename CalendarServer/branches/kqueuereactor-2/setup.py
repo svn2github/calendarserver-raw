@@ -136,7 +136,8 @@ dist = setup(
                          "twisted",
                        ],
     package_data     = {
-                         "twisted": ["plugins/caldav.py"],
+                         "twisted": ["plugins/caldav.py",
+                                     "plugins/kqueuereactor.py"],
                          "twistedcaldav": ["zoneinfo/*.ics", "zoneinfo/*/*.ics", "zoneinfo/*/*/*.ics"],
                        },
     scripts          = [ "bin/caldavd", "bin/caladmin" ],
