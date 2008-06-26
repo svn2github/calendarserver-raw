@@ -19,7 +19,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 ##
-from uuid import uuid4
 
 """
 DAV Property store using an sqlite database.
@@ -43,11 +42,11 @@ class sqlPropertyStore (object):
     A dead property store that uses an SQLite database back end.
     """
  
-    def __init__(self, resource, use_cache=True):
+    def __init__(self, resource):
         self.resource = resource
         if os.path.exists(os.path.dirname(resource.fp.path)):
             if resource.isCollection():
-                self.childindex = SQLPropertiesDatabase(resource.fp.path, use_cache)
+                self.childindex = SQLPropertiesDatabase(resource.fp.path, True)
             else:
                 self.childindex = None
 
@@ -56,11 +55,12 @@ class sqlPropertyStore (object):
                 self.rname = ""
                 self.index = self.childindex
             else:
+                # Try to re-use the childindex of the parent resource if one can be found.
                 self.rname = os.path.basename(resource.fp.path)
                 if hasattr(self.resource, "parent_resource"):
                     self.index = self.resource.parent_resource.deadProperties().childindex
                 else:
-                    self.index = SQLPropertiesDatabase(os.path.dirname(resource.fp.path), use_cache)
+                    self.index = SQLPropertiesDatabase(os.path.dirname(resource.fp.path), True)
         else:
             log.err("No sqlPropertyStore file for %s" % (os.path.dirname(resource.fp.path),))
             self.index = None
@@ -249,6 +249,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
     dbFilename = ".db.sqlproperties"
     dbFormatVersion = "1"
 
+    _debug_instance = 1
+
     @classmethod
     def _encodePropertyName(cls, name):
         return "{%s}%s" % name
@@ -291,7 +293,12 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         
         self.use_cache = use_cache
         self.cache = {}
-        self.instance = uuid4()
+        
+        _instance = SQLPropertiesDatabase._debug_instance
+        SQLPropertiesDatabase._debug_instance += 1
+        #self.instance = "%s - %s" % (path[105:-len(SQLPropertiesDatabase.dbFilename)], _instance,)
+        self.instance = "%s" % (_instance,)
+        log.debug("[%s]: Created instance" % (self.instance,))
 
     def cacheAllChildProperties(self):
         
