@@ -2,7 +2,7 @@ Index: twisted/web2/static.py
 ===================================================================
 --- twisted/web2/static.py	(revision 19773)
 +++ twisted/web2/static.py	(working copy)
-@@ -200,7 +200,10 @@
+@@ -200,7 +200,11 @@
          super(File, self).__init__()
  
          self.putChildren = {}
@@ -11,6 +11,15 @@ Index: twisted/web2/static.py
 +            self.fp = path
 +        else:
 +            self.fp = filepath.FilePath(path)
++
          # Remove the dots from the path to split
          self.defaultType = defaultType
          self.ignoredExts = list(ignoredExts)
+@@ -304,6 +308,7 @@
+         @param child: the child to register
+         """
+         self.putChildren[name] = child
++        child.parent_resource = self
+ 
+     def getChild(self, name):
+         """

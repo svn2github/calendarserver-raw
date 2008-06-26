@@ -106,6 +106,10 @@ def http_PROPFIND(self, request):
     request_uri = request.uri
     depth = request.headers.getHeader("depth", "infinity")
 
+    # For depth one cache all the child resource properties in one go if possible
+    if depth == "1":
+        self.deadProperties().cacheAllChildProperties()
+
     xml_responses = []
 
     # FIXME: take advantage of the new generative properties of findChildren

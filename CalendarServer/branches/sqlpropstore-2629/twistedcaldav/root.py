@@ -28,7 +28,7 @@ from twisted.web2.dav import davxml
 from twisted.web2.http import HTTPError
 from twisted.web2.auth.wrapper import UnauthorizedResponse
 
-from twistedcaldav.extensions import DAVFile, CachingXattrPropertyStore
+from twistedcaldav.extensions import DAVFile
 from twistedcaldav.config import config
 from twistedcaldav.cache import _CachedResponseResource
 from twistedcaldav.cache import MemcacheResponseCache, MemcacheChangeNotifier
@@ -36,6 +36,7 @@ from twistedcaldav.cache import DisabledCache
 from twistedcaldav.log import Logger
 from twistedcaldav.static import CalendarHomeFile
 from twistedcaldav.directory.principal import DirectoryPrincipalResource
+from twistedcaldav.static import CalDAVFile
 
 log = Logger()
 
@@ -93,7 +94,7 @@ class RootResource (RootACLMixIn, DAVFile):
 
     def deadProperties(self):
         if not hasattr(self, '_dead_properties'):
-            self._dead_properties = CachingXattrPropertyStore(self)
+            self._dead_properties = config.PropertyStoreClass(self)
 
         return self._dead_properties
 
@@ -205,6 +206,14 @@ class RootResource (RootACLMixIn, DAVFile):
             return d
 
         return super(RootResource, self).locateChild(request, segments)
+
+    def createSimilarFile(self, path):
+        if path == self.fp.path:
+            return self
+        else:
+            child = CalDAVFile(path, principalCollections=self.principalCollections())
+            child.parent_resource = self
+            return child
 
     def http_COPY       (self, request): return responsecode.FORBIDDEN
     def http_MOVE       (self, request): return responsecode.FORBIDDEN

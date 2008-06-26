@@ -53,16 +53,25 @@ Index: twisted/web2/dav/method/copymove.py
          yield destparent
          destparent = destparent.getResult()
  
-@@ -144,7 +155,19 @@
+@@ -144,10 +155,29 @@
          log.err(msg)
          raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, msg))
  
 -    x = waitForDeferred(move(self.fp, request.uri, destination.fp, destination_uri, depth))
+-    yield x
+-    yield x.getResult()
 +    # Lets optimise a move within the same directory to a new resource as a simple move
 +    # rather than using the full transaction based storeResource api. This allows simple
 +    # "rename" operations to work quickly.
 +    if (not destination.exists()) and destparent == parent:
 +        x = waitForDeferred(move(self.fp, request.uri, destination.fp, destination_uri, depth))
++        yield x
++        result = x.getResult()
+ 
++        # Explicitly move properties - no one else does it
++        destination.deadProperties().move(self.deadProperties())
++
++        yield result
 +    else:
 +        x = waitForDeferred(put_common.storeResource(request,
 +                                                     source=self,
@@ -71,6 +80,9 @@ Index: twisted/web2/dav/method/copymove.py
 +                                                     destination_uri=destination_uri,
 +                                                     deletesource=True,
 +                                                     depth=depth))
-     yield x
-     yield x.getResult()
++        yield x
++        yield x.getResult()
++
+ http_MOVE = deferredGenerator(http_MOVE)
  
+ def prepareForCopy(self, request):

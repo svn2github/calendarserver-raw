@@ -40,7 +40,7 @@ class AbstractSQLDatabase(object):
     A generic SQL database.
     """
 
-    def __init__(self, dbpath, persistent, autocommit=False):
+    def __init__(self, dbpath, persistent, autocommit=False, utf8=False):
         """
         
         @param dbpath: the path where the db file is stored.
@@ -50,10 +50,14 @@ class AbstractSQLDatabase(object):
         @type persistent: bool
         @param autocommit: C{True} if auto-commit mode is desired, C{False} otherwise
         @type autocommit: bool
+        @param utf8: C{True} if utf8 encoded C{str} should be returned for SQl TEXT data,
+            C{False} if C{unicode} should be returned.
+        @type utf8: bool
         """
         self.dbpath = dbpath
         self.persistent = persistent
         self.autocommit = autocommit
+        self.utf8 = utf8
 
     def __repr__(self):
         return "<%s %r>" % (self.__class__.__name__, self.dbpath)
@@ -85,6 +89,8 @@ class AbstractSQLDatabase(object):
             except:
                 log.err("Unable to open database: %s" % (self,))
                 raise
+            if self.utf8:
+                self._db_connection.text_factory = str
 
             #
             # Set up the schema

@@ -20,7 +20,7 @@ Implements a directory-backed principal hierarchy.
 
 __all__ = ["AutoProvisioningResourceMixIn"]
 
-from twisted.internet.defer import maybeDeferred
+from twisted.internet.defer import maybeDeferred, succeed
 
 class AutoProvisioningResourceMixIn (object):
     """
@@ -55,6 +55,12 @@ class AutoProvisioningResourceMixIn (object):
         This implementation calls L{provision}, then super's L{locateChild}, thereby
         ensuring that looked-up resources are provisioned.
         """
+        
+        # If getChild() finds a child resource, return it - we've already been provisioned
+        child = self.putChildren.get(segments[0], None)
+        if child is not None:
+            return succeed((child, segments[1:]))
+        
         d = maybeDeferred(self.provision)
 
         name = segments[0]

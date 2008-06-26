@@ -1,0 +1,12 @@
+Index: twisted/web2/resource.py
+===================================================================
+--- twisted/web2/resource.py	(revision 19773)
++++ twisted/web2/resource.py	(working copy)
+@@ -196,6 +196,7 @@
+         @param child: an object adaptable to L{iweb.IResource}.
+         """
+         setattr(self, 'child_%s' % (path, ), child)
++        child.parent_resource = self 
+     
+     def http_GET(self, request):
+         if self.addSlash and request.prepath[-1] != '':
