@@ -47,6 +47,7 @@ __all__ = [
     "root",
     "schedule",
     "sql",
+    "sqlprops",
     "static",
 ]
 

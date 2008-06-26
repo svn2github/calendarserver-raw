@@ -115,7 +115,7 @@ Index: twisted/web2/dav/element/base.py
 +            PrintXML(document, stream=output)
 +        else:
 +            output.write("<?xml version='1.0' encoding='UTF-8'?>\r\n")
-+            self.writeToStream(output, "", 0, True)
++            self.writeToStream(output, None, 0, True)
 +            output.write("\r\n")
 +    
 +    def writeToStream(self, output, ns, level, pretty):

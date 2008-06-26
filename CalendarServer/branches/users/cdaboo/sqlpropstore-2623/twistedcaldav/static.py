@@ -55,7 +55,6 @@ from twistedcaldav import customxml
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile
-from twistedcaldav.extensions import CachingXattrPropertyStore
 from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.index import Index, IndexSchedule
@@ -87,7 +86,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
     def deadProperties(self):
         if not hasattr(self, "_dead_properties"):
-            self._dead_properties = CachingXattrPropertyStore(self)
+            self._dead_properties = config.PropertyStoreClass(self)
 
         return self._dead_properties
 
@@ -457,9 +456,11 @@ class CalendarHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendar
 
     def provisionChild(self, name):
         if name == uidsResourceName:
-            return CalendarHomeUIDProvisioningFile(self.fp.child(name).path, self)
-
-        return CalendarHomeTypeProvisioningFile(self.fp.child(name).path, self, name)
+            child = CalendarHomeUIDProvisioningFile(self.fp.child(name).path, self)
+        else:
+            child = CalendarHomeTypeProvisioningFile(self.fp.child(name).path, self, name)
+        child.parent_resource = self
+        return child
 
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
@@ -501,6 +502,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
         
         childPath = self.fp.child(name[0:2]).child(name[2:4]).child(name)
         child = self.homeResourceClass(childPath.path, self, record)
+        child.parent_resource = self
 
         if not child.exists():
             self.provision()
@@ -581,6 +583,7 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
 
         if cls is not None:
             child = cls(self.fp.child(name).path, self)
+            child.parent_resource = self
             child.cacheNotifier = self.cacheNotifier
             return child
 
@@ -591,6 +594,7 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
             return self
         else:
             similar = CalDAVFile(path, principalCollections=self.principalCollections())
+            similar.parent_resource = self
             similar.cacheNotifier = self.cacheNotifier
             return similar
 
@@ -613,7 +617,9 @@ class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
         if path == self.fp.path:
             return self
         else:
-            return CalDAVFile(path, principalCollections=self.principalCollections())
+            child = CalDAVFile(path, principalCollections=self.principalCollections())
+            child.parent_resource = self
+            return child
 
     def index(self):
         """
@@ -690,7 +696,9 @@ class DropBoxHomeFile (AutoProvisioningFileMixIn, DropBoxHomeResource, CalDAVFil
         if path == self.fp.path:
             return self
         else:
-            return DropBoxCollectionFile(path, self)
+            child = DropBoxCollectionFile(path, self)
+            child.parent_resource = self
+            return child
 
     def __repr__(self):
         return "<%s (dropbox home collection): %s>" % (self.__class__.__name__, self.fp.path)
@@ -704,7 +712,9 @@ class DropBoxCollectionFile (DropBoxCollectionResource, CalDAVFile):
         if path == self.fp.path:
             return self
         else:
-            return DropBoxChildFile(path, self)
+            child = DropBoxChildFile(path, self)
+            child.parent_resource = self
+            return child
 
     def __repr__(self):
         return "<%s (dropbox collection): %s>" % (self.__class__.__name__, self.fp.path)
