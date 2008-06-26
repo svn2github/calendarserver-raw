@@ -131,14 +131,19 @@ Index: twisted/web2/dav/static.py
      # Workarounds for issues with File
      ##
  
-@@ -132,7 +186,9 @@
+@@ -132,7 +186,14 @@
          return (self.createSimilarFile(self.fp.child(path).path), segments[1:])
  
      def createSimilarFile(self, path):
 -        return self.__class__(path, defaultType=self.defaultType, indexNames=self.indexNames[:])
-+        return self.__class__(
-+            path, defaultType=self.defaultType, indexNames=self.indexNames[:],
-+            principalCollections=self.principalCollections())
++        if path == self.fp.path:
++            return self
++        else:
++            similar = self.__class__(
++                path, defaultType=self.defaultType, indexNames=self.indexNames[:],
++                principalCollections=self.principalCollections())
++            similar.parent_resource = self
++            return similar
  
  #
  # Attach method handlers to DAVFile
