@@ -42,11 +42,11 @@ class sqlPropertyStore (object):
     A dead property store that uses an SQLite database back end.
     """
  
-    def __init__(self, resource):
+    def __init__(self, resource, use_cache=True):
         self.resource = resource
         if os.path.exists(os.path.dirname(resource.fp.path)):
             if resource.isCollection():
-                self.childindex = SQLPropertiesDatabase(resource.fp.path, True)
+                self.childindex = SQLPropertiesDatabase(resource.fp.path, use_cache)
             else:
                 self.childindex = None
 
@@ -60,7 +60,7 @@ class sqlPropertyStore (object):
                 if hasattr(self.resource, "parent_resource"):
                     self.index = self.resource.parent_resource.deadProperties().childindex
                 else:
-                    self.index = SQLPropertiesDatabase(os.path.dirname(resource.fp.path), True)
+                    self.index = SQLPropertiesDatabase(os.path.dirname(resource.fp.path), use_cache)
         else:
             log.err("No sqlPropertyStore file for %s" % (os.path.dirname(resource.fp.path),))
             self.index = None
@@ -207,7 +207,7 @@ class sqlPropertyStore (object):
                 "Property store does not exist"
             ))
 
-    def copy(self, props):
+    def copyFrom(self, props):
         """
         Copy properties from another property store into this one, replacing everything
         currently present.
@@ -219,7 +219,7 @@ class sqlPropertyStore (object):
         oldprops = props._getAll(hidden=True)
         self._setAll(oldprops.itervalues())
 
-    def move(self, props):
+    def moveFrom(self, props):
         """
         Move properties from another property store into this one, replacing everything
         currently present.

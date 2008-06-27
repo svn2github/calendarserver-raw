@@ -153,10 +153,10 @@ Index: twisted/web2/dav/xattrprops.py
 +        return [ self._decode(name) for name in self.attrs if name.startswith(self.deadPropertyXattrPrefix) ]
  
 -        return [ self._decode(name) for name in self.attrs if name.startswith(prefix) ]
-+    def copy(self, props):
++    def copyFrom(self, props):
 +        for item in props.list():
 +            self.set(props.get(item))
 +
-+    def move(self, props):
++    def moveFrom(self, props):
 +        # xattrs move with the underlying file
 +        pass

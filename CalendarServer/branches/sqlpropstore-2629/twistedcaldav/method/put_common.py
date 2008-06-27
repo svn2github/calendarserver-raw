@@ -526,7 +526,7 @@ def storeCalendarObjectResource(
 
         # Copy dead properties first, before adding overridden values
         if source is not None:
-            destination.deadProperties().copy(source.deadProperties())
+            destination.deadProperties().copyFrom(source.deadProperties())
 
         # Update the MD5 value on the resource
         if source is not None:

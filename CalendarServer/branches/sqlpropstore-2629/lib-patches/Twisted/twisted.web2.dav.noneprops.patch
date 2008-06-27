@@ -27,8 +27,8 @@ Index: twisted/web2/dav/noneprops.py
      def list(self):
          return ()
 +
-+    def copy(self, props):
++    def copyFrom(self, props):
 +        pass
 +
-+    def move(self, props):
++    def moveFrom(self, props):
 +        pass
