@@ -71,6 +71,7 @@ defaultConfig = {
     "DocumentRoot"         : "/Library/CalendarServer/Documents",
     "UserQuota"            : 104857600, # User quota (in bytes)
     "MaximumAttachmentSize":   1048576, # Attachment size limit (in bytes)
+    "PropertyStore"        : "xattr",
 
     #
     # Directory service
@@ -237,16 +238,13 @@ class Config (object):
         self.setDefaults(defaults)
         self._data = copy.deepcopy(self._defaults)
         self._configFile = None
+        self.updateLogLevels()
+        self.updatePropertyStore()
         
-        from twistedcaldav.sqlprops import sqlPropertyStore
-        self.PropertyStoreClass = sqlPropertyStore
-        #from twistedcaldav.extensions import CachingXattrPropertyStore
-        #self.PropertyStoreClass = CachingXattrPropertyStore
-
     def __str__(self):
         return str(self._data)
 
-    def update(self, items):
+    def update(self, items={}):
         #
         # Special handling for directory services configs
         #
@@ -299,7 +297,7 @@ class Config (object):
                 davxml.Protected(),
                 TwistedACLInheritable(),
             )
-            for principal in config.AdminPrincipals
+            for principal in self.AdminPrincipals
         )
 
         self.ReadACEs = tuple(
@@ -312,7 +310,7 @@ class Config (object):
                 davxml.Protected(),
                 TwistedACLInheritable(),
             )
-            for principal in config.ReadPrincipals
+            for principal in self.ReadPrincipals
         )
 
         self.RootResourceACL = davxml.ACL(
@@ -340,7 +338,7 @@ class Config (object):
                     ),
                     davxml.Protected(),
                 )
-                for principal in config.AdminPrincipals
+                for principal in self.AdminPrincipals
             ]
         )
 
@@ -352,7 +350,15 @@ class Config (object):
         from twistedcaldav.resource import CalendarPrincipalResource
         CalendarPrincipalResource.enableDropBox(self.EnableDropBox)
 
+        #
+        # Update logging
+        #
         self.updateLogLevels()
+
+        #
+        # Handle DAV property store settings
+        #
+        self.updatePropertyStore()
 
     def updateLogLevels(self):
         clearLogLevels()
@@ -370,6 +376,21 @@ class Config (object):
 
         except InvalidLogLevelError, e:
             raise ConfigurationError("Invalid log level: %s" % (e.level))
+
+    def updatePropertyStore(self):
+        #
+        # FIXME: Use introspection
+        #
+        if self.PropertyStore == "xattr":
+            log.info("Using xattr backing for WebDAV properties.")
+            from twistedcaldav.extensions import CachingXattrPropertyStore
+            self.PropertyStoreClass = CachingXattrPropertyStore
+        elif self.PropertyStore == "SQL":
+            log.info("Using SQL backing for WebDAV properties.")
+            from twistedcaldav.sqlprops import sqlPropertyStore
+            self.PropertyStoreClass = sqlPropertyStore
+        else:
+            raise ConfigurationError("Invalid PropertyStore: %s" % (self.PropertyStore,))
 
     def updateDefaults(self, items):
         _mergeData(self._defaults, items)
