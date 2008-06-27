@@ -266,3 +266,9 @@ class RootTests(TestCase):
             headers=http_headers.Headers({"Destination":"/copy/"})
         )
         return self.send(request, do_test)
+
+    def test_CreateSimilarFile(self):
+        
+        os.mkdir(os.path.join(self.docroot, "test"))
+        child = self.root.resource.getChild("test/")
+        self.assertFalse(isinstance(child, RootResource))
