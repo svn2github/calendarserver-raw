@@ -288,8 +288,8 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         return result
 
     def __init__(self, path, use_cache=True):
-        path = os.path.join(path, SQLPropertiesDatabase.dbFilename)
-        super(SQLPropertiesDatabase, self).__init__(path, True, utf8=True)
+        dbpath = os.path.join(path, SQLPropertiesDatabase.dbFilename)
+        super(SQLPropertiesDatabase, self).__init__(dbpath, True, utf8=True)
         
         self.use_cache = use_cache
         self.cache = {}
@@ -298,7 +298,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         SQLPropertiesDatabase._debug_instance += 1
         #self.instance = "%s - %s" % (path[105:-len(SQLPropertiesDatabase.dbFilename)], _instance,)
         self.instance = "%s" % (_instance,)
-        log.debug("[%s]: Created instance" % (self.instance,))
+        log.debug("[%s]: Created instance for %s" % (self.instance, path,))
 
     def cacheAllChildProperties(self):
         
