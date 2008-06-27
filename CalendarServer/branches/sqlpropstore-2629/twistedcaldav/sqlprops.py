@@ -35,6 +35,8 @@ from twisted.web2.http import HTTPError, StatusResponse
 from twistedcaldav.log import Logger
 from twistedcaldav.sql import AbstractSQLDatabase
 
+import sqlite3 as sqlite
+
 log = Logger()
 
 class sqlPropertyStore (object):
@@ -51,7 +53,11 @@ class sqlPropertyStore (object):
                 self.childindex = None
 
             from twistedcaldav.root import RootResource
-            if resource.isCollection() and isinstance(resource, RootResource):
+            from twistedcaldav.directory.calendar import DirectoryCalendarHomeResource
+            if resource.isCollection() and (
+                isinstance(resource, RootResource) or
+                isinstance(resource, DirectoryCalendarHomeResource)
+            ):
                 self.rname = ""
                 self.index = self.childindex
             else:
@@ -82,7 +88,11 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            value = self.index.getOnePropertyForResource(self.rname, qname)
+            try:
+                value = self.index.getOnePropertyForResource(self.rname, qname)
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute getOnePropertyForResource: %s" % (e,))
+                value = None
             if not value:
                 raise HTTPError(StatusResponse(
                     responsecode.NOT_FOUND,
@@ -105,7 +115,11 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            return self.index.getAllPropertiesForResource(self.rname, hidden)
+            try:
+                return self.index.getAllPropertiesForResource(self.rname, hidden)
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute getAllPropertiesForResource: %s" % (e,))
+                return {}
         else:
             raise HTTPError(StatusResponse(
                 responsecode.NOT_FOUND,
@@ -120,7 +134,14 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setOnePropertyForResource(self.rname, property)
+            try:
+                self.index.setOnePropertyForResource(self.rname, property)
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute setOnePropertyForResource: %s" % (e,))
+                raise HTTPError(StatusResponse(
+                    responsecode.FORBIDDEN,
+                    "Cannot set property"
+                ))
         else:
             raise HTTPError(StatusResponse(
                 responsecode.INTERNAL_SERVER_ERROR,
@@ -135,7 +156,14 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            self.index.setSeveralPropertiesForResource(self.rname, properties)
+            try:
+                self.index.setSeveralPropertiesForResource(self.rname, properties)
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute setSeveralPropertiesForResource: %s" % (e,))
+                raise HTTPError(StatusResponse(
+                    responsecode.FORBIDDEN,
+                    "Cannot set property"
+                ))
         else:
             raise HTTPError(StatusResponse(
                 responsecode.INTERNAL_SERVER_ERROR,
@@ -149,8 +177,22 @@ class sqlPropertyStore (object):
         @param properties: C{list} of properties to write
         """
 
-        self.index.removeAllPropertiesForResource(self.rname)
-        self.index.setSeveralPropertiesForResource(self.rname, properties)
+        try:
+            self.index.removeAllPropertiesForResource(self.rname)
+        except sqlite.OperationalError, e:
+            log.error("Failed to execute removeAllPropertiesForResource: %s" % (e,))
+            raise HTTPError(StatusResponse(
+                responsecode.FORBIDDEN,
+                "Cannot set property"
+            ))
+        try:
+            self.index.setSeveralPropertiesForResource(self.rname, properties)
+        except sqlite.OperationalError, e:
+            log.error("Failed to execute setSeveralPropertiesForResource: %s" % (e,))
+            raise HTTPError(StatusResponse(
+                responsecode.FORBIDDEN,
+                "Cannot set property"
+            ))
 
     def delete(self, qname):
         """
@@ -162,7 +204,14 @@ class sqlPropertyStore (object):
         """
         
         if self.index:
-            self.index.removeOnePropertyForResource(self.rname, qname)
+            try:
+                self.index.removeOnePropertyForResource(self.rname, qname)
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute removeOnePropertyForResource: %s" % (e,))
+                raise HTTPError(StatusResponse(
+                    responsecode.FORBIDDEN,
+                    "Cannot remove property"
+                ))
         else:
             raise HTTPError(StatusResponse(
                 responsecode.INTERNAL_SERVER_ERROR,
@@ -177,7 +226,14 @@ class sqlPropertyStore (object):
         """
         
         if self.index:
-            self.index.removeAllPropertiesForResource(self.rname)
+            try:
+                self.index.removeAllPropertiesForResource(self.rname)
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute removeAllPropertiesForResource: %s" % (e,))
+                raise HTTPError(StatusResponse(
+                    responsecode.FORBIDDEN,
+                    "Cannot remove property"
+                ))
         else:
             raise HTTPError(StatusResponse(
                 responsecode.INTERNAL_SERVER_ERROR,
@@ -187,7 +243,11 @@ class sqlPropertyStore (object):
     def contains(self, qname):
 
         if self.index:
-            return self.index.getOnePropertyForResource(self.rname, qname) is not None
+            try:
+                return self.index.getOnePropertyForResource(self.rname, qname) is not None
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute getOnePropertyForResource: %s" % (e,))
+                return False
         else:
             return False
 
@@ -200,7 +260,11 @@ class sqlPropertyStore (object):
         """
 
         if self.index:
-            return self.index.listPropertiesForResource(self.rname)
+            try:
+                return self.index.listPropertiesForResource(self.rname)
+            except sqlite.OperationalError, e:
+                log.error("Failed to execute listPropertiesForResource: %s" % (e,))
+                return ()
         else:
             raise HTTPError(StatusResponse(
                 responsecode.INTERNAL_SERVER_ERROR,
