@@ -16,7 +16,7 @@ Index: twisted/web2/dav/noneprops.py
          # non-existing property is not an error.
          pass
  
-+    def deleteall(self, qname):
++    def deleteAll(self, qname):
 +        # RFC 2518 Section 12.13.1 says that removal of
 +        # non-existing property is not an error.
 +        pass
