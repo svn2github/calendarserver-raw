@@ -374,6 +374,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             pname = self._decodePropertyName(row[1])
             pvalue = self._decodePropertyValue(pname, row[2])
             self.cache.setdefault(rname, {})[pname] = pvalue
+        self._db_close()
 
     def getOnePropertyForResource(self, rname, pname):
         """
@@ -394,12 +395,14 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
                     sqlpname = self._decodePropertyName(row[0])
                     sqlpvalue = self._decodePropertyValue(sqlpname, row[1])
                     self.cache[rname][sqlpname] = sqlpvalue
+                self._db_close()
             
             # Get the property and do negative caching if not present
             return self.cache[rname].setdefault(pname, None)
         else:
             log.debug("[%s] Getting property {%s}%s for %s" % (self.instance, pname[0], pname[1], rname,))
             pxml = self._db_value_for_sql("select PROPERTYXML from PROPERTIES where RESOURCENAME = :1 and PROPERTYNAME = :2", rname, self._encodePropertyName(pname))
+            self._db_close()
             pvalue = self._decodePropertyValue(pname, pxml)
             return pvalue
 
@@ -421,6 +424,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             pname = self._decodePropertyName(row[0])
             pvalue = self._decodePropertyValue(pname, row[1])
             properties[pname] = pvalue
+        self._db_close()
 
         return properties
 
@@ -438,6 +442,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         log.debug("[%s] Setting property {%s}%s for %s" % (self.instance, pname[0], pname[1], rname,))
         self._add_to_db(rname, self._encodePropertyName(pname), property.toxml(), property.hidden)
         self._db_commit()
+        self._db_close()
         
         if self.use_cache and self.cache.has_key(rname):
             self.cache[rname][pname] = property 
@@ -455,6 +460,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         for property in properties:
             self._add_to_db(rname, self._encodePropertyName(property.qname()), property.toxml(), property.hidden)
         self._db_commit()
+        self._db_close()
 
         if self.use_cache and self.cache.has_key(rname):
             for property in properties:
@@ -471,6 +477,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         log.debug("[%s] Removing property {%s}%s from %s" % (self.instance, pname[0], pname[1], rname,))
         self._delete_from_db(rname, self._encodePropertyName(pname))
         self._db_commit()
+        self._db_close()
         
         if self.use_cache and self.cache.has_key(rname):
             self.cache[rname][pname] = None
@@ -485,6 +492,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
         log.debug("[%s] Removing all properties from %s" % (self.instance, rname,))
         self._delete_all_from_db(rname)
         self._db_commit()
+        self._db_close()
         
         if self.use_cache:
             try:
@@ -508,6 +516,7 @@ class SQLPropertiesDatabase(AbstractSQLDatabase):
             log.debug("[%s] Listing all properties for %s via query" % (self.instance, rname,))
             for row in self._db_execute("select PROPERTYNAME from PROPERTIES where RESOURCENAME = :1", rname):
                 members.add(self._decodePropertyName(row[0]))
+            self._db_close()
         return members
 
     def _add_to_db(self, rname, pname, pxml, hidden):

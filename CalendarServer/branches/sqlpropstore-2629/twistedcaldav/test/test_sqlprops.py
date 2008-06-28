@@ -14,13 +14,11 @@
 # limitations under the License.
 ##
 
-from twistedcaldav.ical import Component
-from twisted.web2.dav.element.rfc2518 import DisplayName
-
 import os
 
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
+from twisted.web2.dav.element.rfc2518 import DisplayName
 from twisted.web2.dav.fileop import put
 from twisted.web2.dav.resource import TwistedGETContentMD5
 from twisted.web2.dav.test.util import serialize
@@ -29,6 +27,8 @@ from twisted.web2.stream import MemoryStream
 from twisted.web2.test.test_server import SimpleRequest
 
 from twistedcaldav import caldavxml
+from twistedcaldav.config import config
+from twistedcaldav.ical import Component
 from twistedcaldav.root import RootResource
 from twistedcaldav.sqlprops import sqlPropertyStore, SQLPropertiesDatabase
 from twistedcaldav.static import CalDAVFile
@@ -52,6 +52,11 @@ class SQLProps (twistedcaldav.test.util.TestCase):
         caldavxml.CalendarDescription.fromString("My Calendar"),
     )
     
+    def setUp(self):
+        config.PropertyStore = "SQL"
+        config.updatePropertyStore()
+        super(SQLProps, self).setUp()
+
     def _setUpIndex(self):
         self.collection_name, self.collection_uri = self.mkdtemp("sql")
         rsrc = CalDAVFile(os.path.join(self.collection_name, "file.ics"))
