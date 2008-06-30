@@ -374,4 +374,29 @@ END:VCALENDAR
         collection_index = sqlPropertyStore(collection)
         collection_index.cacheAllChildProperties()
 
-        
+
+    def test_user_parent_db(self):
+
+        collection_name, _ignore = self.mkdtemp("sql")
+
+        collection_name1 = os.path.join(collection_name, "1")
+        os.mkdir(collection_name1)
+        collection_name1_A = os.path.join(collection_name1, "A")
+        os.mkdir(collection_name1_A)
+        collection1 = CalDAVFile(collection_name1_A)
+        collection1_index = sqlPropertyStore(collection1)
+        for prop in SQLProps.props:
+            self._setProperty(collection1_index, prop)
+        self.assertTrue(os.path.exists(os.path.join(collection_name1, SQLPropertiesDatabase.dbFilename)))
+        self.assertFalse(os.path.exists(os.path.join(collection_name1_A, SQLPropertiesDatabase.dbFilename)))
+
+        collection_name2 = os.path.join(collection_name, "2")
+        os.mkdir(collection_name2)
+        collection_name2_A = os.path.join(collection_name2, "A")
+        os.mkdir(collection_name2_A)
+        collection2 = CalDAVFile(collection_name2_A)
+        collection2_index = sqlPropertyStore(collection2, use_parent_db=False)
+        for prop in SQLProps.props:
+            self._setProperty(collection2_index, prop)
+        self.assertFalse(os.path.exists(os.path.join(collection_name2, SQLPropertiesDatabase.dbFilename)))
+        self.assertTrue(os.path.exists(os.path.join(collection_name2_A, SQLPropertiesDatabase.dbFilename)))

@@ -44,7 +44,7 @@ class sqlPropertyStore (object):
     A dead property store that uses an SQLite database back end.
     """
  
-    def __init__(self, resource, use_cache=True):
+    def __init__(self, resource, use_cache=True, use_parent_db=True):
         self.resource = resource
         if os.path.exists(os.path.dirname(resource.fp.path)):
             if resource.isCollection():
@@ -54,10 +54,13 @@ class sqlPropertyStore (object):
 
             from twistedcaldav.root import RootResource
             from twistedcaldav.directory.calendar import DirectoryCalendarHomeResource
-            if resource.isCollection() and (
+            if (
                 isinstance(resource, RootResource) or
                 isinstance(resource, DirectoryCalendarHomeResource)
             ):
+                use_parent_db = False
+
+            if resource.isCollection() and not use_parent_db:
                 self.rname = ""
                 self.index = self.childindex
             else:
