@@ -54,6 +54,7 @@ from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.static import TimezoneServiceFile
 from twistedcaldav.timezones import TimezoneCache
+from twistedcaldav.upgrade import UpgradeTheServer, UpgradeError
 from twistedcaldav import pdmonster
 from twistedcaldav import memcachepool
 
@@ -80,9 +81,12 @@ class CalDAVService(service.MultiService):
 
 
 class CalDAVOptions(Options):
-    optParameters = [[
-        "config", "f", "/etc/caldavd/caldavd.plist", "Path to configuration file."
-    ]]
+    optFlags = [
+        ["upgradeonly", "U", "Do server upgrade only."],
+    ]
+    optParameters = [
+        ["config", "f", "/etc/caldavd/caldavd.plist", "Path to configuration file."],
+    ]
 
     zsh_actions = {"config" : "_files -g '*.plist'"}
 
@@ -708,6 +712,13 @@ class CalDAVServiceMaker(object):
     makeService_Single   = makeService_Slave
 
     def makeService(self, options):
+
+        # Check for upgrade only
+        if options.get('upgradeonly', False):
+            # Now do any on disk upgrades we might need.
+            UpgradeTheServer.doUpgrade()
+            raise UpgradeError("Upgrade Completed Successfully")
+            
         serverType = config.ProcessType
 
         serviceMethod = getattr(self, "makeService_%s" % (serverType,), None)

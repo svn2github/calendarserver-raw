@@ -84,6 +84,7 @@ usage ()
     echo "Options:";
     echo "        -h Print this help and exit";
     echo "        -X Do not daemonize";
+    echo "        -U Upgrade Only";
     echo "        -u User name to run as";
     echo "        -g Group name to run as";
     echo "        -f Configuration file to read";

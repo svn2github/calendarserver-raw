@@ -43,6 +43,7 @@ disable_setup="false";
      read_key="";
       profile="";
       reactor="";
+      upgrade="";
 
 usage ()
 {
@@ -52,13 +53,13 @@ usage ()
 
   echo "Usage: ${program} [-hvgsfnpdkrR] [-K key] [-iI dst] [-t type] [-S statsdirectory] [-P plugin]";
   echo "Options:";
-  echo "	-h  Print this help and exit";
-  echo "	-v  Be verbose";
-  echo "	-g  Get dependencies only; don't run setup or run the server.";
-  echo "	-s  Run setup only; don't run server";
-  echo "	-f  Force setup to run";
-  echo "	-n  Do not run setup";
-  echo "	-p  Print PYTHONPATH value for server and exit";
+  echo "        -h  Print this help and exit";
+  echo "        -v  Be verbose";
+  echo "        -g  Get dependencies only; don't run setup or run the server";
+  echo "        -s  Run setup only; don't run server";
+  echo "        -f  Force setup to run";
+  echo "        -n  Do not run setup";
+  echo "        -p  Print PYTHONPATH value for server and exit";
   echo "        -d  Run caldavd as a daemon";
   echo "        -k  Stop caldavd";
   echo "        -r  Restart caldavd";
@@ -67,8 +68,9 @@ usage ()
   echo "        -I  Perform a home install into dst; implies -s";
   echo "        -t  Select the server process type (Master, Slave or Combined) [${service_type}]";
   echo "        -S  Write a pstats object for each process to the given directory when the server is stopped.";
-  echo "	-P  Select the twistd plugin name [${plugin_name}]";
+  echo "        -P  Select the twistd plugin name [${plugin_name}]";
   echo "        -R  Twisted Reactor plugin to execute [${reactor}]";
+  echo "        -U  Upgrade the server's data only when running it";
 
   if [ "${1-}" == "-" ]; then return 0; fi;
   exit 64;
@@ -85,6 +87,7 @@ while getopts 'hvgsfnpdkrK:i:I:t:S:P:R:' option; do
     'd')     daemonize=""; ;;
     'P')   plugin_name="${OPTARG}"; ;;
     'R')       reactor="-R ${OPTARG}"; ;;
+    'U')       upgrade="-U"; ;;
     't')  service_type="${OPTARG}"; ;;
     'K')      read_key="${OPTARG}"; ;;
     'S')       profile="-p ${OPTARG}"; ;;
@@ -251,7 +254,8 @@ run () {
         -T "${twisted}/bin/twistd"           \
         -P "${plugin_name}"                  \
         -t "${service_type}"                 \
-        ${reactor}                         \
+        ${reactor}                           \
+        ${upgrade}                           \
         ${profile};
     cd /;
   fi;

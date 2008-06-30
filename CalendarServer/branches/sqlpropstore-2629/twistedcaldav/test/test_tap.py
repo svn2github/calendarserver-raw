@@ -39,6 +39,7 @@ from twistedcaldav.directory.aggregate import AggregateDirectoryService
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.directory.directory import UnknownRecordTypeError
 
+from twistedcaldav.upgrade import UpgradeError
 
 class TestCalDAVOptions(CalDAVOptions):
     """
@@ -235,6 +236,30 @@ class BaseServiceMakerTests(unittest.TestCase):
         service = self.makeService()
 
         return service.services[0].args[1].protocolArgs['requestFactory']
+
+
+class UpgradeTests(BaseServiceMakerTests):
+    """
+    Test the supgrade behavior
+    """
+
+    def test_upgrade_U(self):
+        """
+        Test the default options of the dispatching makeService
+        """
+
+        self.options.parseOptions(['-f', self.configFile, "-U"])
+
+        self.assertRaises(UpgradeError, CalDAVServiceMaker().makeService, self.options)
+
+    def test_upgrade_dashdash(self):
+        """
+        Test the default options of the dispatching makeService
+        """
+
+        self.options.parseOptions(['-f', self.configFile, "--upgrade"])
+
+        self.assertRaises(UpgradeError, CalDAVServiceMaker().makeService, self.options)
 
 
 class CalDAVServiceMakerTests(BaseServiceMakerTests):
