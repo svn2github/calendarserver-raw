@@ -49,7 +49,12 @@ Index: twisted/web2/dav/xattrprops.py
  
          index = name.find("}")
      
-@@ -95,21 +94,79 @@
+@@ -91,25 +90,83 @@
+     _encode = classmethod(_encode)
+     _decode = classmethod(_decode)
+ 
+-    def __init__(self, resource):
++    def __init__(self, resource, **kwargs):
          self.resource = resource
          self.attrs = xattr.xattr(self.resource.fp.path)
  

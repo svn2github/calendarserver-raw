@@ -94,7 +94,7 @@ class RootResource (RootACLMixIn, DAVFile):
 
     def deadProperties(self):
         if not hasattr(self, '_dead_properties'):
-            self._dead_properties = config.PropertyStoreClass(self)
+            self._dead_properties = config.PropertyStoreClass(self, root_resource=True)
 
         return self._dead_properties
 

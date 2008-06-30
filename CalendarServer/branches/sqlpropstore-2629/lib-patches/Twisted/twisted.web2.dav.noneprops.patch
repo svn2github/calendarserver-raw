@@ -2,8 +2,19 @@ Index: twisted/web2/dav/noneprops.py
 ===================================================================
 --- twisted/web2/dav/noneprops.py	(revision 19773)
 +++ twisted/web2/dav/noneprops.py	(working copy)
-@@ -49,6 +49,9 @@
-     def __init__(self, resource):
+@@ -41,14 +41,17 @@
+     """
+     __singleton = None
+ 
+-    def __new__(clazz, resource):
++    def __new__(cls, resource, **kwargs):
+         if NonePropertyStore.__singleton is None:
+-            NonePropertyStore.__singleton = object.__new__(clazz)
++            NonePropertyStore.__singleton = object.__new__(cls)
+         return NonePropertyStore.__singleton
+ 
+-    def __init__(self, resource):
++    def __init__(self, resource, **kwargs):
          pass
  
 +    def cacheAllChildProperties(self):

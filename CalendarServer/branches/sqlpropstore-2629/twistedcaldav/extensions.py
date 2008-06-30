@@ -779,10 +779,10 @@ class CachingXattrPropertyStore(xattrPropertyStore):
     """
     A Property Store that caches attributes from the xattrs.
     """
-    def __init__(self, resource):
+    def __init__(self, resource, **kwargs):
         self._cache = {}
         self._not_found = {}
-        super(CachingXattrPropertyStore, self).__init__(resource)
+        super(CachingXattrPropertyStore, self).__init__(resource, **kwargs)
 
     def get(self, qname):
         log.debug("Get: %r, %r" % (self.resource.fp.path, qname))

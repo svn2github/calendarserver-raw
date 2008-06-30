@@ -60,7 +60,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
     def _setUpIndex(self):
         self.collection_name, self.collection_uri = self.mkdtemp("sql")
         rsrc = CalDAVFile(os.path.join(self.collection_name, "file.ics"))
-        return sqlPropertyStore(rsrc, False)
+        return sqlPropertyStore(rsrc, use_cache=False)
         
     def _setOnePropertyAndTest(self, prop):
         index = self._setUpIndex()
@@ -82,7 +82,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
     def test_db_init_directory(self):
         self.collection_name, self.collection_uri = self.mkdtemp("sql")
         rsrc = CalDAVFile(self.collection_name)
-        index = sqlPropertyStore(rsrc, False)
+        index = sqlPropertyStore(rsrc, use_cache=False)
         index.index._db()
         self.assertTrue(os.path.exists(os.path.join(os.path.dirname(self.collection_name), SQLPropertiesDatabase.dbFilename)),
                         msg="Could not initialize index via collection resource.")
@@ -90,7 +90,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
     def test_db_init_root(self):
         self.collection_name, self.collection_uri = self.mkdtemp("sql")
         rsrc = RootResource(self.collection_name)
-        index = sqlPropertyStore(rsrc, False)
+        index = sqlPropertyStore(rsrc, use_cache=False, root_resource=True)
         index.index._db()
         self.assertTrue(os.path.exists(os.path.join(self.collection_name, SQLPropertiesDatabase.dbFilename)),
                         msg="Could not initialize index via collection resource.")
@@ -158,7 +158,7 @@ class SQLProps (twistedcaldav.test.util.TestCase):
             rsrc.writeDeadProperty(md5)
             
             # Check index
-            index = sqlPropertyStore(rsrc, False)
+            index = sqlPropertyStore(rsrc, use_cache=False)
             self._testProperty(index, md5)
             
             def doneDelete(response):
@@ -226,7 +226,7 @@ END:VCALENDAR
             rsrc.writeDeadProperty(displayname)
             
             # Check index
-            index = sqlPropertyStore(rsrc, False)
+            index = sqlPropertyStore(rsrc, use_cache=False)
             self._testProperty(index, displayname)
             
             def doneCopy(response):
@@ -244,7 +244,7 @@ END:VCALENDAR
                 self._testProperty(index, displayname, "on original resource")
 
                 rsrc_new = CalDAVFile(fpath_new)
-                index_new = sqlPropertyStore(rsrc_new, False)
+                index_new = sqlPropertyStore(rsrc_new, use_cache=False)
                 self._testProperty(index_new, displayname, "on new resource")
 
             # Copy resource and test
@@ -295,7 +295,7 @@ END:VCALENDAR
             rsrc.writeDeadProperty(displayname)
             
             # Check index
-            index = sqlPropertyStore(rsrc, False)
+            index = sqlPropertyStore(rsrc, use_cache=False)
             self._testProperty(index, displayname)
             
             def doneMove(response):
@@ -314,7 +314,7 @@ END:VCALENDAR
                                  msg="Property %s exists after resource was moved." % displayname)
 
                 rsrc_new = CalDAVFile(fpath_new)
-                index_new = sqlPropertyStore(rsrc_new, False)
+                index_new = sqlPropertyStore(rsrc_new, use_cache=False)
                 self._testProperty(index_new, displayname, "on new resource")
 
             def work():
@@ -375,7 +375,7 @@ END:VCALENDAR
         collection_index.cacheAllChildProperties()
 
 
-    def test_user_parent_db(self):
+    def test_avoid_contention(self):
 
         collection_name, _ignore = self.mkdtemp("sql")
 
@@ -384,7 +384,7 @@ END:VCALENDAR
         collection_name1_A = os.path.join(collection_name1, "A")
         os.mkdir(collection_name1_A)
         collection1 = CalDAVFile(collection_name1_A)
-        collection1_index = sqlPropertyStore(collection1)
+        collection1_index = sqlPropertyStore(collection1, avoid_contention=False)
         for prop in SQLProps.props:
             self._setProperty(collection1_index, prop)
         self.assertTrue(os.path.exists(os.path.join(collection_name1, SQLPropertiesDatabase.dbFilename)))
@@ -395,7 +395,7 @@ END:VCALENDAR
         collection_name2_A = os.path.join(collection_name2, "A")
         os.mkdir(collection_name2_A)
         collection2 = CalDAVFile(collection_name2_A)
-        collection2_index = sqlPropertyStore(collection2, use_parent_db=False)
+        collection2_index = sqlPropertyStore(collection2, avoid_contention=True)
         for prop in SQLProps.props:
             self._setProperty(collection2_index, prop)
         self.assertFalse(os.path.exists(os.path.join(collection_name2, SQLPropertiesDatabase.dbFilename)))

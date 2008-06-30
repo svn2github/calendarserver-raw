@@ -273,6 +273,12 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
             assert isinstance(child, cls), "Child %r is not a %s: %r" % (name, cls.__name__, child)
             self.putChild(name, child)
 
+    def deadProperties(self):
+        if not hasattr(self, '_dead_properties'):
+            self._dead_properties = config.PropertyStoreClass(self, avoid_contention=True)
+
+        return self._dead_properties
+
     def provisionDefaultCalendars(self):
         self.provision()
 
