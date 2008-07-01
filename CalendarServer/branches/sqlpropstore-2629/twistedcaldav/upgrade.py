@@ -86,6 +86,14 @@ class UpgradePrincipalCollectionInMemory(object):
 
 class UpgradeXattrsToSqlite(object):
 
+    class DummyResource:
+        
+        def __init__(self, path):
+            self.fp = FilePath(path)
+    
+        def isCollection(self):
+            return self.fp.isdir()
+
     @classmethod
     def doUpgrade(cls):
         """
@@ -114,29 +122,31 @@ class UpgradeXattrsToSqlite(object):
     @classmethod
     def _upgradeXAttrs(cls, docroot, path):
         
-        class DummyResource:
-            
-            def __init__(self, path):
-                self.fp = FilePath(path)
-        
-            def isCollection(self):
-                return self.fp.isdir()
-    
-        log.debug("Doing xattr->sqlite property upgrade for: %s" % (path,))
-        resource = DummyResource(os.path.join(docroot, path))
+        splits = path.split("/")
+        if len(splits) <= 5:
+            log.debug("Doing xattr->sqlite property upgrade for: %s" % (path,))
+
+        resource = cls.DummyResource(os.path.join(docroot, path))
         xprops = xattrPropertyStore(resource)
         
         # Detect some special cases for sql properties
         root_resource = (len(path) == 0)
-        avoid_contention = path.startswith("calendars/__uids__/") and len(path.split("/")) == 5
+        avoid_contention = path.startswith("calendars/__uids__/") and len(splits) == 5
         sqlprops = sqlPropertyStore(resource, root_resource=root_resource, avoid_contention=avoid_contention)
         
+        props = []
         for propname in list(xprops.list()):
             try:
-                sqlprops.set(xprops.get(propname))
+                props.append(xprops.get(propname))
             except Exception, e:
-                log.debug("Unable to upgrade property '%s' on '%s' because of %s" % (propname, path, e,))
+                log.debug("Unable to upgrade properties '%s' on '%s' because of %s" % (propname, path, e,))
             xprops.delete(propname)
+
+        if props:
+            try:
+                sqlprops._setSeveral(props)
+            except Exception, e:
+                log.debug("Unable to upgrade properties on '%s' because of %s" % (path, e,))
 
 
 class UpgradeError(RuntimeError):
