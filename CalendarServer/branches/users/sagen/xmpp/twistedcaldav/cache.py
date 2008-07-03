@@ -86,7 +86,7 @@ class MemcacheChangeNotifier(LoggingMixIn, CachePoolUserMixIn,
 
         url = self._resource.url()
 
-        if config.EnableNotifications:
+        if config.Notifications["Enabled"]:
             self.log_debug("Notifications are enabled: %s" % (url,))
             self.sendNotification(url)
 

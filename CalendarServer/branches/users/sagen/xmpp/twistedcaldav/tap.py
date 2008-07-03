@@ -495,10 +495,10 @@ class CalDAVServiceMaker(object):
         #
         # Configure NotificationClient
         #
-        if config.EnableNotifications:
+        if config.Notifications["Enabled"]:
             installNotificationClient(reactor,
-                config.InternalNotificationHost,
-                config.InternalNotificationPort)
+                config.Notifications["InternalNotificationHost"],
+                config.Notifications["InternalNotificationPort"])
 
         #
         # Setup Resource hierarchy

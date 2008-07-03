@@ -171,12 +171,21 @@ defaultConfig = {
     #
     # Notifications
     #
-    "EnableNotifications" : False,
-    "CoalesceSeconds" : 10,
-    "InternalNotificationHost" : "localhost",
-    "InternalNotificationPort" : 62309,
-    "ExternalNotificationService" : "twistedcaldav.notify.SimpleLineNotifierService",
-    "SimpleLineNotificationPort" : 62308,
+    "Notifications" : {
+
+        "Enabled" : True,
+        "CoalesceSeconds" : 10,
+        "InternalNotificationHost" : "localhost",
+        "InternalNotificationPort" : 62309,
+
+        "Services" : [
+            {
+                "Service" : "twistedcaldav.notify.SimpleLineNotifierService",
+                "Enabled" : True,
+                "Port" : 62308,
+            },
+        ]
+    },
 
     #
     # Implementation details

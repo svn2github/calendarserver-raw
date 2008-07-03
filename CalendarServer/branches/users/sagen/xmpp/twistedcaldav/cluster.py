@@ -309,8 +309,8 @@ def makeService_Combined(self, options):
 
         monitor.addProcess('memcached', memcachedArgv, env=parentEnv)
 
-    if (config.EnableNotifications and
-        config.InternalNotificationHost == "localhost"):
+    if (config.Notifications["Enabled"] and
+        config.Notifications["InternalNotificationHost"] == "localhost"):
         log.msg("Adding notification service")
 
         notificationsArgv = [

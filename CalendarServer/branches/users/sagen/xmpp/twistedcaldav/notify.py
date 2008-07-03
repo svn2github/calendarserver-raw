@@ -33,15 +33,20 @@ These notifications originate from cache.py:MemcacheChangeNotifier.changed().
 """
 
 # TODO: bindAddress to local
+# TODO: XMPP support
 
 import os
 from twisted.internet import reactor, protocol
 from twisted.protocols import basic
 from twisted.plugin import IPlugin
 from twisted.application import internet, service
-from twistedcaldav.log import LoggingMixIn
 from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedClass
+from twisted.words.protocols.jabber import xmlstream
+from twisted.words.protocols.jabber.jid import JID
+from twisted.words.protocols.jabber.client import BasicAuthenticator
+from twisted.words.xish import domish
+from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
 
@@ -405,6 +410,73 @@ class SimpleLineNotificationFactory(protocol.ServerFactory):
 
 
 
+
+
+
+
+
+class XMPPNotifier(object):
+    implements(INotifier)
+
+    def __init__(self):
+        self.observers = set()
+
+    def enqueue(self, uri):
+        pass
+
+
+class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
+
+    def __init__(self, notifier, jid, password):
+        self.notifier = notifier
+        self.jid = jid
+
+        xmlstream.XmlStreamFactory.__init__(self,
+            BasicAuthenticator(JID(jid), password))
+
+        self.addBootstrap('//event/stream/authd', self.handleAuthSuccess)
+        self.addBootstrap('//event/stream/authe', self.handleAuthFailure)
+        self.addBootstrap('//event/client/basicauth/invaliduser',
+            self.handleAuthFailure)
+        self.addBootstrap('//event/client/basicauth/authfailed',
+            self.handleAuthFailure)
+
+
+    def handleAuthSuccess(self, xmlstream):
+        self.log_info("XMPP authentication successful: %s" % (self.jid,))
+        self.xmlstream = xmlstream
+        presence = domish.Element(('jabber:client', 'presence'))
+        xmlstream.send(presence)
+
+        xmlstream.addObserver('/message', self.handleMessage)
+        xmlstream.addObserver('/presence', self.trafficLog)
+        xmlstream.addObserver('/iq', self.trafficLog)
+
+    def handleAuthFailure(self, e):
+        self.log_error("Failed to authenticate with XMPP: %s" % (e,))
+
+    def handleMessage(self, elem):
+        self.log_info("GOT THIS")
+        self.trafficLog(elem)
+        sender = JID(elem['from']).full()
+        body = getattr(elem, 'body', None)
+        if body:
+            message = domish.Element(('jabber:client', 'message'))
+            message['to'] = sender
+            message.addChild(body)
+            self.log_info("SENDING THIS")
+            self.trafficLog(message)
+            self.xmlstream.send(message)
+
+    def trafficLog(self, elem):
+        self.log_info(elem.toXml().encode('utf-8'))
+
+
+
+
+
+
+
 #
 # Notification Server service config
 #
@@ -505,14 +577,15 @@ class NotificationServiceMaker(object):
 
         multiService = service.MultiService()
 
-        externalServiceClass = namedClass(config.ExternalNotificationService)
-        externalService = externalServiceClass()
-        externalService.setServiceParent(multiService)
+        for settings in config.Notifications["Services"]:
+            if settings["Enabled"]:
+                externalService = namedClass(settings["Service"])(settings)
+                externalService.setServiceParent(multiService)
 
         internet.TCPServer(
-            config.InternalNotificationPort,
+            config.Notifications["InternalNotificationPort"],
             InternalNotificationFactory(externalService,
-                delaySeconds=config.CoalesceSeconds)
+                delaySeconds=config.Notifications["CoalesceSeconds"])
         ).setServiceParent(multiService)
 
         return multiService
@@ -520,9 +593,9 @@ class NotificationServiceMaker(object):
 
 class SimpleLineNotifierService(service.Service):
 
-    def __init__(self):
+    def __init__(self, settings):
         self.notifier = SimpleLineNotifier()
-        self.server = internet.TCPServer(config.SimpleLineNotificationPort,
+        self.server = internet.TCPServer(settings["Port"],
             SimpleLineNotificationFactory(self.notifier))
 
     def enqueue(self, uri):
@@ -533,3 +606,22 @@ class SimpleLineNotifierService(service.Service):
 
     def stopService(self):
         self.server.stopService()
+
+
+class XMPPNotifierService(service.Service):
+
+    def __init__(self, settings):
+        self.notifier = XMPPNotifier()
+        self.client = internet.TCPClient(settings["Host"], settings["Port"],
+            XMPPNotificationFactory(self.notifier, settings["JID"],
+                settings["Password"]))
+
+    def enqueue(self, uri):
+        self.notifier.enqueue(uri)
+
+    def startService(self):
+        self.client.startService()
+
+    def stopService(self):
+        self.client.stopService()
+

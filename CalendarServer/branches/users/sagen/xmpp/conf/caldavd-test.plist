@@ -407,18 +407,45 @@ limitations under the License.
   <!--
     Notifications
   -->
-  <key>EnableNotifications</key>
-  <true/>
-  <key>CoalesceSeconds</key>
-  <integer>10</integer>
-  <key>InternalNotificationHost</key>
-  <string>localhost</string>
-  <key>InternalNotificationPort</key>
-  <integer>62309</integer>
-  <key>ExternalNotificationService</key>
-  <string>twistedcaldav.notify.SimpleLineNotifierService</string>
-  <key>SimpleLineNotificationPort</key>
-  <integer>62308</integer>
+
+  <key>Notifications</key>
+  <dict>
+    <key>Enabled</key>
+    <true/>
+    <key>CoalesceSeconds</key>
+    <integer>10</integer>
+    <key>InternalNotificationHost</key>
+    <string>localhost</string>
+    <key>InternalNotificationPort</key>
+    <integer>62309</integer>
+
+    <key>Services</key>
+    <array>
+      <dict>
+        <key>Service</key>
+        <string>twistedcaldav.notify.SimpleLineNotifierService</string>
+        <key>Enabled</key>
+        <true/>
+        <key>Port</key>
+        <integer>62308</integer>
+      </dict>
+      <dict>
+        <key>Service</key>
+        <string>twistedcaldav.notify.XMPPNotifierService</string>
+        <key>Enabled</key>
+        <false/>
+        <key>Host</key>
+        <string>mashmore1.apple.com</string>
+        <key>Port</key>
+        <integer>5222</integer>
+        <key>JID</key>
+        <string>jid_goes_here/resource</string>
+        <key>Password</key>
+        <string>password_goes_here</string>
+      </dict>
+    </array>
+
+  </dict>
 
 
   <!--
