@@ -415,14 +415,29 @@ class SimpleLineNotificationFactory(protocol.ServerFactory):
 
 
 
-class XMPPNotifier(object):
+class XMPPNotifier(LoggingMixIn):
     implements(INotifier)
 
-    def __init__(self):
-        self.observers = set()
+    def __init__(self, reactor=None):
+        self.xmlStream = None
+        if reactor is None:
+            from twisted.internet import reactor
+        self.reactor = reactor
 
     def enqueue(self, uri):
-        pass
+        self.log_info("ENQUEUE %s" % (uri,))
+        if self.xmlStream is not None:
+            message = domish.Element(('jabber:client', 'message'))
+            message['to'] = 'some_jid'
+            message.addElement('body', None, uri)
+            self.xmlStream.send(message)
+
+
+    def streamOpened(self, xmlStream):
+        self.xmlStream = xmlStream
+
+    def streamClosed(self):
+        self.xmlStream = None
 
 
 class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
@@ -430,34 +445,50 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
     def __init__(self, notifier, jid, password):
         self.notifier = notifier
         self.jid = jid
+        self.xmlStream = None
 
         xmlstream.XmlStreamFactory.__init__(self,
             BasicAuthenticator(JID(jid), password))
 
-        self.addBootstrap('//event/stream/authd', self.handleAuthSuccess)
-        self.addBootstrap('//event/stream/authe', self.handleAuthFailure)
-        self.addBootstrap('//event/client/basicauth/invaliduser',
-            self.handleAuthFailure)
-        self.addBootstrap('//event/client/basicauth/authfailed',
-            self.handleAuthFailure)
+        self.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
+        self.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)
+        self.addBootstrap(xmlstream.INIT_FAILED_EVENT, self.initFailed)
 
+        self.addBootstrap(xmlstream.STREAM_AUTHD_EVENT, self.authenticated)
+        self.addBootstrap(BasicAuthenticator.INVALID_USER_EVENT,
+            self.authFailed)
+        self.addBootstrap(BasicAuthenticator.AUTH_FAILED_EVENT,
+            self.authFailed)
 
-    def handleAuthSuccess(self, xmlstream):
+    def connected(self, xmlStream):
+        self.xmlStream = xmlStream
+        self.log_info("XMPP connection successful")
+        # Log all traffic
+        xmlStream.rawDataInFn = self.rawDataIn
+        xmlStream.rawDataOutFn = self.rawDataOut
+
+    def disconnected(self, xmlStream):
+        self.notifier.streamClosed()
+        self.xmlStream = None
+        self.log_info("XMPP disconnected")
+
+    def initFailed(self, failure):
+        self.xmlStream = None
+        self.log_info("XMPP Initialization failed: %s" % (failure,))
+
+    def authenticated(self, xmlStream):
         self.log_info("XMPP authentication successful: %s" % (self.jid,))
-        self.xmlstream = xmlstream
-        presence = domish.Element(('jabber:client', 'presence'))
-        xmlstream.send(presence)
+        xmlStream.addObserver('/message', self.handleMessage)
+        xmlStream.addObserver('/presence', self.trafficLog)
+        xmlStream.addObserver('/iq', self.trafficLog)
+        self.sendPresence()
+        self.notifier.streamOpened(xmlStream)
 
-        xmlstream.addObserver('/message', self.handleMessage)
-        xmlstream.addObserver('/presence', self.trafficLog)
-        xmlstream.addObserver('/iq', self.trafficLog)
-
-    def handleAuthFailure(self, e):
-        self.log_error("Failed to authenticate with XMPP: %s" % (e,))
+    def authFailed(self, e):
+        self.log_error("Failed to log in XMPP (%s); check JID and password" %
+            (self.jid,))
 
     def handleMessage(self, elem):
-        self.log_info("GOT THIS")
-        self.trafficLog(elem)
         sender = JID(elem['from']).full()
         body = getattr(elem, 'body', None)
         if body:
@@ -466,10 +497,24 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
             message.addChild(body)
             self.log_info("SENDING THIS")
             self.trafficLog(message)
-            self.xmlstream.send(message)
+            self.xmlStream.send(message)
+
+    def sendPresence(self):
+        if self.xmlStream is not None:
+            presence = domish.Element(('jabber:client', 'presence'))
+            self.xmlStream.send(presence)
 
     def trafficLog(self, elem):
         self.log_info(elem.toXml().encode('utf-8'))
+
+
+    def rawDataIn(self, buf):
+        self.log_info("RECV: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace'))
+
+
+    def rawDataOut(self, buf):
+        self.log_info("SEND: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace'))
+
 
 
 
