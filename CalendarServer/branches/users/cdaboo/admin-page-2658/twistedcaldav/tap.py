@@ -50,6 +50,7 @@ from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.aggregate import AggregateDirectoryService
 from twistedcaldav.directory.sudo import SudoDirectoryService
+from twistedcaldav.static import AdminServiceFile
 from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.static import TimezoneServiceFile
 from twistedcaldav.timezones import TimezoneCache
@@ -435,6 +436,7 @@ class CalDAVServiceMaker(object):
     principalResourceClass       = DirectoryPrincipalProvisioningResource
     calendarResourceClass        = CalendarHomeProvisioningFile
     timezoneServiceResourceClass = TimezoneServiceFile
+    adminServiceResourceClass    = AdminServiceFile
 
     def makeService_Slave(self, options):
         #
@@ -523,6 +525,14 @@ class CalDAVServiceMaker(object):
                 root
             )
             root.putChild('timezones', timezoneService)
+
+        # Admin service is optional
+        if config.EnableAdminService:
+            adminService = self.adminServiceResourceClass(
+                os.path.join(config.DocumentRoot, "admin"),
+                root
+            )
+            root.putChild('admin', adminService)
 
         #
         # Configure ancillary data

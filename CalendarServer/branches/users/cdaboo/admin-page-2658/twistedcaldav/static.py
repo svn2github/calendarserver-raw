@@ -52,6 +52,7 @@ from twisted.web2.dav.util import parentForURL, bindMethods
 
 from twistedcaldav import caldavxml
 from twistedcaldav import customxml
+from twistedcaldav.admin.resource import AdminServiceResource
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile
@@ -737,6 +738,32 @@ class TimezoneServiceFile (TimezoneServiceResource, CalDAVFile):
         else:
             return responsecode.NOT_FOUND
 
+    def http_PUT        (self, request): return responsecode.FORBIDDEN
+    def http_COPY       (self, request): return responsecode.FORBIDDEN
+    def http_MOVE       (self, request): return responsecode.FORBIDDEN
+    def http_DELETE     (self, request): return responsecode.FORBIDDEN
+    def http_MKCOL      (self, request): return responsecode.FORBIDDEN
+
+    def http_MKCALENDAR(self, request):
+        return ErrorResponse(
+            responsecode.FORBIDDEN,
+            (caldav_namespace, "calendar-collection-location-ok")
+        )
+
+class AdminServiceFile (AdminServiceResource, CalDAVFile):
+    def __init__(self, path, parent):
+        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
+        AdminServiceResource.__init__(self, parent)
+
+        assert self.fp.isfile() or not self.fp.exists()
+
+    def createSimilarFile(self, path):
+        if path == self.fp.path:
+            return self
+        else:
+            return responsecode.NOT_FOUND
+
+    def http_POST       (self, request): return responsecode.FORBIDDEN
     def http_PUT        (self, request): return responsecode.FORBIDDEN
     def http_COPY       (self, request): return responsecode.FORBIDDEN
     def http_MOVE       (self, request): return responsecode.FORBIDDEN

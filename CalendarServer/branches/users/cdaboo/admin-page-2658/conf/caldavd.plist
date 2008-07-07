@@ -301,6 +301,10 @@ limitations under the License.
   <key>EnableTimezoneService</key>
   <true/>
 
+  <!-- Admin Service -->
+  <key>EnableAdminService</key>
+  <true/>
+
 
 </dict>
 </plist>

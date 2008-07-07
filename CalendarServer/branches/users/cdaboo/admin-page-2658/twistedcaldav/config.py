@@ -173,6 +173,7 @@ defaultConfig = {
     "EnableDropBox"         : False, # Calendar Drop Box
     "EnablePrivateEvents"   : False, # Private Events
     "EnableTimezoneService" : False, # Timezone service
+    "EnableAdminService"    : False, # Admin service
 
     #
     # Implementation details
@@ -336,6 +337,13 @@ class Config (object):
             )
             for principal in config.ReadPrincipals
         )
+
+        self.AdminOnlyResourceACL = davxml.ACL(
+            # Add inheritable all access for admins
+            *self.AdminACEs
+        )
+
+        log.debug("Admin Only ACL: %s" % (self.AdminOnlyResourceACL.toxml(),))
 
         self.RootResourceACL = davxml.ACL(
             # Read-only for anon or authenticated, depending on config

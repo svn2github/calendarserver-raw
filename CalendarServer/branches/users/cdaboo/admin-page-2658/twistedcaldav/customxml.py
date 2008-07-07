@@ -244,6 +244,14 @@ class UTCOffset (davxml.WebDAVTextElement):
     namespace = calendarserver_namespace
     name = "utc-offset"
 
+class Administer (davxml.WebDAVEmptyElement):
+    """
+    Denotes an admin service resource.
+    (Apple Extension to CalDAV)
+    """
+    namespace = calendarserver_namespace
+    name = "administer"
+
 ##
 # Extensions to davxml.ResourceType
 ##
@@ -253,3 +261,4 @@ davxml.ResourceType.dropbox = davxml.ResourceType(davxml.Collection(), DropBox()
 davxml.ResourceType.calendarproxyread = davxml.ResourceType(davxml.Principal(), davxml.Collection(), CalendarProxyRead())
 davxml.ResourceType.calendarproxywrite = davxml.ResourceType(davxml.Principal(), davxml.Collection(), CalendarProxyWrite())
 davxml.ResourceType.timezones = davxml.ResourceType(Timezones())
+davxml.ResourceType.admin = davxml.ResourceType(Administer())
