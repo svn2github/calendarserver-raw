@@ -56,7 +56,8 @@ InternalNotificationFactory InternalNotificationProtocol
 NotificationClient NotificationClientFactory NotificationClientLineProtocol
 NotificationClientUserMixIn NotificationOptions NotificationServiceMaker
 SimpleLineNotificationFactory SimpleLineNotificationProtocol
-SimpleLineNotifier SimpleLineNotifierService
+SimpleLineNotifier SimpleLineNotifierService XMPPNotificationFactory
+XMPPNotifier
 '''.split()
 
 

@@ -297,3 +297,78 @@ class StubTransport(object):
 
     def getPeer(self):
         return "peer"
+
+
+
+
+
+
+class StubXmlStream(object):
+
+    def __init__(self):
+        self.elements = []
+
+    def send(self, element):
+        self.elements.append(element)
+
+    def addOnetimeObserver(*args, **kwds):
+        pass
+
+    def addObserver(*args, **kwds):
+        pass
+
+
+class XMPPNotifierTests(TestCase):
+
+    def test_sendWhileConnected(self):
+        xmlStream = StubXmlStream()
+        settings = { 'ServiceAddress' : 'pubsub.example.com' }
+        notifier = XMPPNotifier(settings, reactor=Clock())
+        notifier.streamOpened(xmlStream)
+        notifier.enqueue("A")
+
+        iq = xmlStream.elements[0]
+        self.assertEquals(iq.name, "iq")
+
+        pubsub = list(iq.elements())[0]
+        self.assertEquals(pubsub.name, "pubsub")
+        self.assertEquals(pubsub.uri, 'http://jabber.org/protocol/pubsub')
+
+        publish = list(pubsub.elements())[0]
+        self.assertEquals(publish.name, "publish")
+        self.assertEquals(publish.uri, 'http://jabber.org/protocol/pubsub')
+        self.assertEquals(publish['node'], "A")
+
+    def test_sendWhileNotConnected(self):
+        xmlStream = StubXmlStream()
+        settings = { 'ServiceAddress' : 'pubsub.example.com' }
+        notifier = XMPPNotifier(settings, Clock())
+        notifier.enqueue("A")
+        self.assertEquals(xmlStream.elements, [])
+
+
+class XMPPNotificationFactoryTests(TestCase):
+
+    def test_sendPresence(self):
+        clock = Clock()
+        xmlStream = StubXmlStream()
+        settings = { 'ServiceAddress' : 'pubsub.example.com', 'JID' : 'jid',
+            'Password' : 'password', 'KeepAliveSeconds' : 5 }
+        notifier = XMPPNotifier(settings, reactor=clock)
+        factory = XMPPNotificationFactory(notifier, settings, reactor=clock)
+        factory.connected(xmlStream)
+        factory.authenticated(xmlStream)
+
+        self.assertEquals(len(xmlStream.elements), 1)
+        presence = xmlStream.elements[0]
+        self.assertEquals(presence.name, 'presence')
+
+        clock.advance(5)
+
+        self.assertEquals(len(xmlStream.elements), 2)
+        presence = xmlStream.elements[1]
+        self.assertEquals(presence.name, 'presence')
+
+        factory.disconnected(xmlStream)
+        clock.advance(5)
+        self.assertEquals(len(xmlStream.elements), 2)
