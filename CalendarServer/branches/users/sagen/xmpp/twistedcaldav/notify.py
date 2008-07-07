@@ -44,7 +44,7 @@ from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedClass
 from twisted.words.protocols.jabber import xmlstream
 from twisted.words.protocols.jabber.jid import JID
-from twisted.words.protocols.jabber.client import BasicAuthenticator
+from twisted.words.protocols.jabber.client import BasicAuthenticator, IQ
 from twisted.words.xish import domish
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.config import config, parseConfig, defaultConfig
@@ -225,8 +225,8 @@ class InternalNotificationFactory(protocol.ServerFactory):
 
     protocol = InternalNotificationProtocol
 
-    def __init__(self, externalService, delaySeconds=None):
-        self.coalescer = Coalescer(externalService, delaySeconds=delaySeconds)
+    def __init__(self, notifiers, delaySeconds=None):
+        self.coalescer = Coalescer(notifiers, delaySeconds=delaySeconds)
 
 
 
@@ -242,7 +242,7 @@ class Coalescer(LoggingMixIn):
 
     delaySeconds = 5
 
-    def __init__(self, notifier, reactor=None, delaySeconds=None):
+    def __init__(self, notifiers, reactor=None, delaySeconds=None):
 
         if delaySeconds:
             self.delaySeconds = delaySeconds
@@ -254,7 +254,7 @@ class Coalescer(LoggingMixIn):
         self.reactor = reactor
 
         self.uris = dict()
-        self.notifier = notifier
+        self.notifiers = notifiers
 
     def add(self, uri):
         delayed = self.uris.get(uri, None)
@@ -262,8 +262,11 @@ class Coalescer(LoggingMixIn):
             delayed.reset(self.delaySeconds)
         else:
             self.uris[uri] = self.reactor.callLater(self.delaySeconds,
-                self.notifier.enqueue, uri)
+                self.delayedEnqueue, uri)
 
+    def delayedEnqueue(self, uri):
+        for notifier in self.notifiers:
+            notifier.enqueue(uri)
 
 
 
@@ -311,7 +314,7 @@ class SimpleLineNotifier(object):
 
     implements(INotifier)
 
-    def __init__(self):
+    def __init__(self, settings):
         self.reset()
         self.observers = set()
         self.sentReset = False
@@ -418,8 +421,11 @@ class SimpleLineNotificationFactory(protocol.ServerFactory):
 class XMPPNotifier(LoggingMixIn):
     implements(INotifier)
 
-    def __init__(self, reactor=None):
+    pubsubNS = 'http://jabber.org/protocol/pubsub'
+
+    def __init__(self, settings, reactor=None):
         self.xmlStream = None
+        self.settings = settings
         if reactor is None:
             from twisted.internet import reactor
         self.reactor = reactor
@@ -427,11 +433,26 @@ class XMPPNotifier(LoggingMixIn):
     def enqueue(self, uri):
         self.log_info("ENQUEUE %s" % (uri,))
         if self.xmlStream is not None:
-            message = domish.Element(('jabber:client', 'message'))
-            message['to'] = 'some_jid'
-            message.addElement('body', None, uri)
-            self.xmlStream.send(message)
+            iq = IQ(self.xmlStream)
+            child = iq.addElement('pubsub', defaultUri=self.pubsubNS)
+            child = child.addElement('publish')
+            child['node'] = uri # TODO: use proper node
+            iq.addCallback(self.response)
+            iq.send(to=self.settings['ServiceAddress'])
 
+            # Also send message to test JID, if specified:
+            testJid = self.settings.get("TestJID", "")
+            if testJid:
+                message = domish.Element(('jabber:client', 'message'))
+                message['to'] = testJid
+                message.addElement('body', None, uri)
+                self.xmlStream.send(message)
+
+    def response(self, iq):
+        if iq['type'] == 'error':
+            self.log_error("Error from pubsub")
+        self.log_info("Received response for pubsub iq: %s" %
+            (iq.toXml().encode('utf-8')),)
 
     def streamOpened(self, xmlStream):
         self.xmlStream = xmlStream
@@ -442,13 +463,19 @@ class XMPPNotifier(LoggingMixIn):
 
 class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
 
-    def __init__(self, notifier, jid, password):
+    def __init__(self, notifier, settings, reactor=None):
         self.notifier = notifier
-        self.jid = jid
+        self.settings = settings
+        self.jid = settings['JID']
+        self.keepAliveSeconds = settings.get('KeepAliveSeconds', 120)
         self.xmlStream = None
+        self.presenceCall = None
+        if reactor is None:
+            from twisted.internet import reactor
+        self.reactor = reactor
 
         xmlstream.XmlStreamFactory.__init__(self,
-            BasicAuthenticator(JID(jid), password))
+            BasicAuthenticator(JID(self.jid), settings['Password']))
 
         self.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
         self.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)
@@ -470,6 +497,9 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
     def disconnected(self, xmlStream):
         self.notifier.streamClosed()
         self.xmlStream = None
+        if self.presenceCall is not None:
+            self.presenceCall.cancel()
+            self.presenceCall = None
         self.log_info("XMPP disconnected")
 
     def initFailed(self, failure):
@@ -489,13 +519,14 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
             (self.jid,))
 
     def handleMessage(self, elem):
+        # Simply echo back any message sent to us.  Could be used later for
+        # something more interesting.
         sender = JID(elem['from']).full()
         body = getattr(elem, 'body', None)
         if body:
             message = domish.Element(('jabber:client', 'message'))
             message['to'] = sender
             message.addChild(body)
-            self.log_info("SENDING THIS")
             self.trafficLog(message)
             self.xmlStream.send(message)
 
@@ -503,17 +534,20 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
         if self.xmlStream is not None:
             presence = domish.Element(('jabber:client', 'presence'))
             self.xmlStream.send(presence)
+            self.presenceCall = self.reactor.callLater(self.keepAliveSeconds,
+                self.sendPresence)
 
     def trafficLog(self, elem):
         self.log_info(elem.toXml().encode('utf-8'))
 
 
     def rawDataIn(self, buf):
-        self.log_info("RECV: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace'))
-
+        self.log_info("RECV: %s" % unicode(buf, 'utf-8').encode('ascii',
+            'replace'))
 
     def rawDataOut(self, buf):
-        self.log_info("SEND: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace'))
+        self.log_info("SEND: %s" % unicode(buf, 'utf-8').encode('ascii',
+            'replace'))
 
 
 
@@ -622,14 +656,16 @@ class NotificationServiceMaker(object):
 
         multiService = service.MultiService()
 
+        notifiers = []
         for settings in config.Notifications["Services"]:
             if settings["Enabled"]:
-                externalService = namedClass(settings["Service"])(settings)
-                externalService.setServiceParent(multiService)
+                notifier = namedClass(settings["Service"])(settings)
+                notifier.setServiceParent(multiService)
+                notifiers.append(notifier)
 
         internet.TCPServer(
             config.Notifications["InternalNotificationPort"],
-            InternalNotificationFactory(externalService,
+            InternalNotificationFactory(notifiers,
                 delaySeconds=config.Notifications["CoalesceSeconds"])
         ).setServiceParent(multiService)
 
@@ -639,7 +675,7 @@ class NotificationServiceMaker(object):
 class SimpleLineNotifierService(service.Service):
 
     def __init__(self, settings):
-        self.notifier = SimpleLineNotifier()
+        self.notifier = SimpleLineNotifier(settings)
         self.server = internet.TCPServer(settings["Port"],
             SimpleLineNotificationFactory(self.notifier))
 
@@ -656,10 +692,9 @@ class SimpleLineNotifierService(service.Service):
 class XMPPNotifierService(service.Service):
 
     def __init__(self, settings):
-        self.notifier = XMPPNotifier()
+        self.notifier = XMPPNotifier(settings)
         self.client = internet.TCPClient(settings["Host"], settings["Port"],
-            XMPPNotificationFactory(self.notifier, settings["JID"],
-                settings["Password"]))
+            XMPPNotificationFactory(self.notifier, settings))
 
     def enqueue(self, uri):
         self.notifier.enqueue(uri)

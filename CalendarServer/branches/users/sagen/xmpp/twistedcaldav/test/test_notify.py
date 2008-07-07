@@ -135,7 +135,7 @@ class CoalescerTests(TestCase):
     def setUp(self):
         self.clock = Clock()
         self.notifier = StubNotifier()
-        self.coalescer = Coalescer(self.notifier, reactor=self.clock)
+        self.coalescer = Coalescer([self.notifier], reactor=self.clock)
 
     def test_delayedNotifications(self):
         self.coalescer.add("A")
@@ -174,8 +174,8 @@ class SimpleLineNotifierTests(TestCase):
 
     def setUp(self):
         self.clock = Clock()
-        self.notifier = SimpleLineNotifier()
-        self.coalescer = Coalescer(self.notifier, reactor=self.clock)
+        self.notifier = SimpleLineNotifier(None)
+        self.coalescer = Coalescer([self.notifier], reactor=self.clock)
 
     def test_initialConnection(self):
         protocol = StubProtocol()

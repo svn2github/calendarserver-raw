@@ -435,13 +435,17 @@ limitations under the License.
         <key>Enabled</key>
         <false/>
         <key>Host</key>
-        <string>mashmore1.apple.com</string>
+        <string>xmpp.host.name</string>
         <key>Port</key>
         <integer>5222</integer>
         <key>JID</key>
-        <string>jid_goes_here/resource</string>
+        <string>jid@xmpp.host/resource</string>
         <key>Password</key>
         <string>password_goes_here</string>
+        <key>ServiceAddress</key>
+        <string>pubsub.xmpp.host.name</string>
+        <key>KeepAliveSeconds</key>
+        <integer>120</integer>
       </dict>
     </array>
 
