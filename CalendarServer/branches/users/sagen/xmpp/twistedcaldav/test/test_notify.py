@@ -325,7 +325,7 @@ class XMPPNotifierTests(TestCase):
         settings = { 'ServiceAddress' : 'pubsub.example.com' }
         notifier = XMPPNotifier(settings, reactor=Clock())
         notifier.streamOpened(xmlStream)
-        notifier.enqueue("A")
+        notifier.enqueue("/principals/__uids__/test")
 
         iq = xmlStream.elements[0]
         self.assertEquals(iq.name, "iq")
@@ -337,13 +337,13 @@ class XMPPNotifierTests(TestCase):
         publish = list(pubsub.elements())[0]
         self.assertEquals(publish.name, "publish")
         self.assertEquals(publish.uri, 'http://jabber.org/protocol/pubsub')
-        self.assertEquals(publish['node'], "A")
+        self.assertEquals(publish['node'], "/test/com.apple.iCal")
 
     def test_sendWhileNotConnected(self):
         xmlStream = StubXmlStream()
         settings = { 'ServiceAddress' : 'pubsub.example.com' }
         notifier = XMPPNotifier(settings, Clock())
-        notifier.enqueue("A")
+        notifier.enqueue("/principals/__uids__/test")
         self.assertEquals(xmlStream.elements, [])
 
 

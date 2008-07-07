@@ -434,10 +434,13 @@ class XMPPNotifier(LoggingMixIn):
     def enqueue(self, uri):
         self.log_info("ENQUEUE %s" % (uri,))
         if self.xmlStream is not None:
+            # Convert uri to node
+            principal = uri.split('/')[3]
+            node = "/%s/com.apple.iCal" % (principal,)
             iq = IQ(self.xmlStream)
             child = iq.addElement('pubsub', defaultUri=self.pubsubNS)
             child = child.addElement('publish')
-            child['node'] = uri # TODO: use proper node
+            child['node'] = node
             iq.addCallback(self.response)
             iq.send(to=self.settings['ServiceAddress'])
 
@@ -446,7 +449,8 @@ class XMPPNotifier(LoggingMixIn):
             if testJid:
                 message = domish.Element(('jabber:client', 'message'))
                 message['to'] = testJid
-                message.addElement('body', None, uri)
+                message.addElement('body', None, "Calendar change: %s"
+                    % (principal,))
                 self.xmlStream.send(message)
 
     def response(self, iq):
