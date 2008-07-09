@@ -423,6 +423,8 @@ class XMPPNotifier(LoggingMixIn):
     implements(INotifier)
 
     pubsubNS = 'http://jabber.org/protocol/pubsub'
+    nodeNameFormat = '/Public/CalDAV/%s/%s'
+
 
     def __init__(self, settings, reactor=None):
         self.xmlStream = None
@@ -433,16 +435,11 @@ class XMPPNotifier(LoggingMixIn):
 
     def enqueue(self, uri):
         self.log_info("ENQUEUE %s" % (uri,))
+
         if self.xmlStream is not None:
             # Convert uri to node
-            principal = uri.split('/')[3]
-            node = "/%s/com.apple.iCal" % (principal,)
-            iq = IQ(self.xmlStream)
-            child = iq.addElement('pubsub', defaultUri=self.pubsubNS)
-            child = child.addElement('publish')
-            child['node'] = node
-            iq.addCallback(self.response)
-            iq.send(to=self.settings['ServiceAddress'])
+            nodeName = self.uriToNodeName(uri)
+            self.publishNode(nodeName)
 
             # Also send message to test JID, if specified:
             testJid = self.settings.get("TestJID", "")
@@ -450,14 +447,109 @@ class XMPPNotifier(LoggingMixIn):
                 message = domish.Element(('jabber:client', 'message'))
                 message['to'] = testJid
                 message.addElement('body', None, "Calendar change: %s"
-                    % (principal,))
+                    % (nodeName,))
                 self.xmlStream.send(message)
 
-    def response(self, iq):
+    def uriToNodeName(self, uri):
+        principal = uri.split('/')[3]
+        return self.nodeNameFormat % ('test', principal)
+
+    def publishNode(self, nodeName):
+        if self.xmlStream is not None:
+            iq = IQ(self.xmlStream)
+            pubsubElement = iq.addElement('pubsub', defaultUri=self.pubsubNS)
+            publishElement = pubsubElement.addElement('publish')
+            publishElement['node'] = nodeName
+            # itemElement = publishElement.addElement('item')
+            iq.addCallback(self.responseFromPublish, nodeName)
+            iq.send(to=self.settings['ServiceAddress'])
+
+    def responseFromPublish(self, nodeName, iq):
         if iq['type'] == 'error':
             self.log_error("Error from pubsub")
-        self.log_info("Received response for pubsub iq: %s" %
-            (iq.toXml().encode('utf-8')),)
+
+            errorElement = None
+            pubsubElement = None
+            for child in iq.elements():
+                if child.name == 'error':
+                    errorElement = child
+                if child.name == 'pubsub':
+                    pubsubElement = child
+
+            if errorElement:
+                if errorElement['code'] == '400':
+                    self.requestConfigurationForm(nodeName)
+
+                elif errorElement['code'] == '404':
+                    self.createNode(nodeName)
+
+    def createNode(self, nodeName):
+        if self.xmlStream is not None:
+            iq = IQ(self.xmlStream)
+            pubsubElement = iq.addElement('pubsub', defaultUri=self.pubsubNS)
+            child = pubsubElement.addElement('create')
+            child['node'] = nodeName
+            iq.addCallback(self.responseFromCreate, nodeName)
+            iq.send(to=self.settings['ServiceAddress'])
+
+    def responseFromCreate(self, nodeName, iq):
+        if iq['type'] == 'result':
+            # now time to configure; fetch the form
+            self.requestConfigurationForm(nodeName)
+
+    def requestConfigurationForm(self, nodeName):
+        if self.xmlStream is not None:
+            iq = IQ(self.xmlStream, type='get')
+            child = iq.addElement('pubsub', defaultUri=self.pubsubNS+"#owner")
+            child = child.addElement('configure')
+            child['node'] = nodeName
+            iq.addCallback(self.responseFromConfigurationForm, nodeName)
+            iq.send(to=self.settings['ServiceAddress'])
+
+    def _getChild(self, element, name):
+        for child in element.elements():
+            if child.name == name:
+                return child
+        return None
+
+    def responseFromConfigurationForm(self, nodeName, iq):
+        pubsubElement = self._getChild(iq, 'pubsub')
+        if pubsubElement:
+            configureElement = self._getChild(pubsubElement, 'configure')
+            if configureElement:
+                formElement = configureElement.firstChildElement()
+                if formElement['type'] == 'form':
+                    # We've found the form; start building a response
+                    filledIq = IQ(self.xmlStream, type='set')
+                    filledPubSub = filledIq.addElement('pubsub',
+                        defaultUri=self.pubsubNS+"#owner")
+                    filledConfigure = filledPubSub.addElement('configure')
+                    filledConfigure['node'] = nodeName
+                    filledForm = filledConfigure.addElement('x',
+                        defaultUri='jabber:x:data')
+                    filledForm['type'] = 'submit'
+
+                    for field in formElement.elements():
+                        if field.name == 'field':
+                            if field['var'] == 'pubsub#deliver_payloads':
+                                value = self._getChild(field, 'value')
+                                value.children = []
+                                value.addContent('0')
+                            elif field['var'] == 'pubsub#persist_items':
+                                value = self._getChild(field, 'value')
+                                value.children = []
+                                value.addContent('0')
+                        filledForm.addChild(field)
+                    filledIq.addCallback(self.responseFromConfiguration,
+                        nodeName)
+                    filledIq.send(to=self.settings['ServiceAddress'])
+
+
+    def responseFromConfiguration(self, nodeName, iq):
+        if iq['type'] == 'result':
+            self.log_info("Node %s id configured" % (nodeName,))
+        self.publishNode(nodeName)
+
 
     def streamOpened(self, xmlStream):
         self.xmlStream = xmlStream
