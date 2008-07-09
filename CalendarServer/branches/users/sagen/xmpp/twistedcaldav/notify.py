@@ -425,6 +425,10 @@ class XMPPNotifier(LoggingMixIn):
     pubsubNS = 'http://jabber.org/protocol/pubsub'
     nodeNameFormat = '/Public/CalDAV/%s/%s'
 
+    nodeConfiguration = {
+        'pubsub#deliver_payloads' : '0',
+        'pubsub#persist_items' : '0',
+    }
 
     def __init__(self, settings, reactor=None):
         self.xmlStream = None
@@ -522,14 +526,12 @@ class XMPPNotifier(LoggingMixIn):
 
                     for field in formElement.elements():
                         if field.name == 'field':
-                            if field['var'] == 'pubsub#deliver_payloads':
-                                value = self._getChild(field, 'value')
-                                value.children = []
-                                value.addContent('0')
-                            elif field['var'] == 'pubsub#persist_items':
-                                value = self._getChild(field, 'value')
-                                value.children = []
-                                value.addContent('0')
+                            value = self.nodeConfiguration.get(field['var'],
+                                None)
+                            if value is not None:
+                                valueElement = self._getChild(field, 'value')
+                                valueElement.children = []
+                                valueElement.addContent(value)
                         filledForm.addChild(field)
                     filledIq.addCallback(self.responseFromConfiguration,
                         nodeName)
