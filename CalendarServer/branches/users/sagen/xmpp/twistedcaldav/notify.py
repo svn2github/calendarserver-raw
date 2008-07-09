@@ -441,15 +441,6 @@ class XMPPNotifier(LoggingMixIn):
             nodeName = self.uriToNodeName(uri)
             self.publishNode(nodeName)
 
-            # Also send message to test JID, if specified:
-            testJid = self.settings.get("TestJID", "")
-            if testJid:
-                message = domish.Element(('jabber:client', 'message'))
-                message['to'] = testJid
-                message.addElement('body', None, "Calendar change: %s"
-                    % (nodeName,))
-                self.xmlStream.send(message)
-
     def uriToNodeName(self, uri):
         principal = uri.split('/')[3]
         return self.nodeNameFormat % ('test', principal)
@@ -616,15 +607,23 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
             (self.jid,))
 
     def handleMessage(self, elem):
-        # Simply echo back any message sent to us.  Could be used later for
-        # something more interesting.
-        sender = JID(elem['from']).full()
         body = getattr(elem, 'body', None)
+        if not body:
+            event = getattr(elem, 'event', None)
+            if event:
+                body = domish.Element((None, 'body'))
+                body.addContent(event.toXml().encode('utf-8'))
         if body:
+            # forward message to test JID, if specified; else bounce to sender:
+            testJid = self.settings.get("TestJID", "")
+            if testJid:
+                dest = testJid
+            else:
+                dest = JID(elem['from']).full()
+
             message = domish.Element(('jabber:client', 'message'))
-            message['to'] = sender
+            message['to'] = dest
             message.addChild(body)
-            self.trafficLog(message)
             self.xmlStream.send(message)
 
     def sendPresence(self):
