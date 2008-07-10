@@ -52,7 +52,7 @@ from zope.interface import Interface, implements
 
 __all__ = '''
 Coalescer getNotificationClient
-getPubSubConfiguration getPubSubPath
+getPubSubConfiguration getPubSubPath getPubSubXMPPURI
 INotifier installNotificationClient
 InternalNotificationFactory InternalNotificationProtocol
 NotificationClient NotificationClientFactory NotificationClientLineProtocol
@@ -448,8 +448,7 @@ class XMPPNotifier(LoggingMixIn):
             self.publishNode(nodeName)
 
     def uriToNodeName(self, uri):
-        principal = uri.split('/')[3]
-        return getPubSubPath(principal, getPubSubConfiguration())
+        return getPubSubPath(uri, getPubSubConfiguration())
 
     def publishNode(self, nodeName):
         if self.xmlStream is not None:
@@ -665,9 +664,13 @@ def getPubSubConfiguration():
 
     return results
 
-def getPubSubPath(guid, pubSubConfiguration):
-    return ("/Public/CalDAV/%s-%d/%s/" % (pubSubConfiguration['host'],
-        pubSubConfiguration['port'], guid))
+def getPubSubPath(uri, pubSubConfiguration):
+    return ("/Public/CalDAV/%s/%d/%s/" % (pubSubConfiguration['host'],
+        pubSubConfiguration['port'], uri.strip("/")))
+
+def getPubSubXMPPURI(uri, pubSubConfiguration):
+    return "xmpp:%s?pubsub;node=%s" % (pubSubConfiguration['service'],
+        getPubSubPath(uri, pubSubConfiguration))
 
 #
 # Notification Server service config
