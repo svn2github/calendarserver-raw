@@ -423,7 +423,7 @@ class XMPPNotifier(LoggingMixIn):
 
     pubsubNS = 'http://jabber.org/protocol/pubsub'
 
-    nodeConfiguration = {
+    nodeConf = {
         'pubsub#deliver_payloads' : '0',
         'pubsub#persist_items' : '0',
     }
@@ -436,9 +436,9 @@ class XMPPNotifier(LoggingMixIn):
         self.reactor = reactor
         self.config = configOverride or config
 
-    def enqueue(self, uri):
-        self.log_debug("ENQUEUE %s" % (uri,))
+        self.sendDebugMessages = False
 
+    def enqueue(self, uri):
         if self.xmlStream is not None:
             # Convert uri to node
             nodeName = self.uriToNodeName(uri)
@@ -457,8 +457,12 @@ class XMPPNotifier(LoggingMixIn):
             iq.send(to=self.settings['ServiceAddress'])
 
     def responseFromPublish(self, nodeName, iq):
-        if iq['type'] == 'error':
-            self.log_debug("Error from pubsub")
+        if iq['type'] == 'result':
+            self.sendDebug("Node publish successful (%s)" % (nodeName,), iq)
+        else:
+            self.log_error("PubSub node publish error: %s" %
+                (iq.toXml().encode('ascii', 'replace')),)
+            self.sendDebug("Node publish failed (%s)" % (nodeName,), iq)
 
             errorElement = None
             pubsubElement = None
@@ -486,8 +490,13 @@ class XMPPNotifier(LoggingMixIn):
 
     def responseFromCreate(self, nodeName, iq):
         if iq['type'] == 'result':
+            self.sendDebug("Node creation successful (%s)" % (nodeName,), iq)
             # now time to configure; fetch the form
             self.requestConfigurationForm(nodeName)
+        else:
+            self.log_error("PubSub node creation error: %s" %
+                (iq.toXml().encode('ascii', 'replace')),)
+            self.sendError("Node creation failed (%s)" % (nodeName,), iq)
 
     def requestConfigurationForm(self, nodeName):
         if self.xmlStream is not None:
@@ -505,47 +514,106 @@ class XMPPNotifier(LoggingMixIn):
         return None
 
     def responseFromConfigurationForm(self, nodeName, iq):
-        pubsubElement = self._getChild(iq, 'pubsub')
-        if pubsubElement:
-            configureElement = self._getChild(pubsubElement, 'configure')
-            if configureElement:
-                formElement = configureElement.firstChildElement()
-                if formElement['type'] == 'form':
-                    # We've found the form; start building a response
-                    filledIq = IQ(self.xmlStream, type='set')
-                    filledPubSub = filledIq.addElement('pubsub',
-                        defaultUri=self.pubsubNS+"#owner")
-                    filledConfigure = filledPubSub.addElement('configure')
-                    filledConfigure['node'] = nodeName
-                    filledForm = filledConfigure.addElement('x',
-                        defaultUri='jabber:x:data')
-                    filledForm['type'] = 'submit'
+        if iq['type'] == 'result':
+            self.sendDebug("Received configuration form (%s)" % (nodeName,), iq)
+            pubsubElement = self._getChild(iq, 'pubsub')
+            if pubsubElement:
+                configureElement = self._getChild(pubsubElement, 'configure')
+                if configureElement:
+                    formElement = configureElement.firstChildElement()
+                    if formElement['type'] == 'form':
+                        # We've found the form; start building a response
+                        filledIq = IQ(self.xmlStream, type='set')
+                        filledPubSub = filledIq.addElement('pubsub',
+                            defaultUri=self.pubsubNS+"#owner")
+                        filledConfigure = filledPubSub.addElement('configure')
+                        filledConfigure['node'] = nodeName
+                        filledForm = filledConfigure.addElement('x',
+                            defaultUri='jabber:x:data')
+                        filledForm['type'] = 'submit'
 
-                    for field in formElement.elements():
-                        if field.name == 'field':
-                            value = self.nodeConfiguration.get(field['var'],
-                                None)
-                            if value is not None:
-                                valueElement = self._getChild(field, 'value')
-                                valueElement.children = []
-                                valueElement.addContent(value)
-                        filledForm.addChild(field)
-                    filledIq.addCallback(self.responseFromConfiguration,
-                        nodeName)
-                    filledIq.send(to=self.settings['ServiceAddress'])
+                        for field in formElement.elements():
+                            if field.name == 'field':
+                                value = self.nodeConf.get(field['var'], None)
+                                if value is not None:
+                                    valueElement = self._getChild(field,
+                                        'value')
+                                    valueElement.children = []
+                                    valueElement.addContent(value)
+                            filledForm.addChild(field)
+                        filledIq.addCallback(self.responseFromConfiguration,
+                            nodeName)
+                        filledIq.send(to=self.settings['ServiceAddress'])
+        else:
+            self.log_error("PubSub configuration form request error: %s" %
+                (iq.toXml().encode('ascii', 'replace')),)
+            self.sendError("Failed to receive configuration form (%s)" % (nodeName,), iq)
 
 
     def responseFromConfiguration(self, nodeName, iq):
         if iq['type'] == 'result':
-            self.log_debug("Node %s id configured" % (nodeName,))
-        self.publishNode(nodeName)
+            self.log_debug("PubSub node %s is configured" % (nodeName,))
+            self.sendDebug("Configured node (%s)" % (nodeName,), iq)
+            self.publishNode(nodeName)
+
+        else:
+            self.log_error("PubSub node configuration error: %s" %
+                (iq.toXml().encode('ascii', 'replace')),)
+            self.sendError("Failed to configure node (%s)" % (nodeName,), iq)
 
 
     def streamOpened(self, xmlStream):
         self.xmlStream = xmlStream
+        xmlStream.addObserver('/message', self.handleMessage)
 
     def streamClosed(self):
         self.xmlStream = None
+
+    def sendDebug(self, txt, element):
+        if self.sendDebugMessages:
+            testJid = self.settings.get("TestJID", "")
+            if testJid:
+                txt = "DEBUG: %s %s" % (txt, element.toXml().encode('ascii',
+                    'replace'))
+                self.sendAlert(testJid, txt)
+
+    def sendError(self, txt, element):
+        testJid = self.settings.get("TestJID", "")
+        if testJid:
+            txt = "ERROR: %s %s" % (txt, element.toXml().encode('ascii',
+                'replace'))
+            self.sendAlert(testJid, txt)
+
+    def sendAlert(self, jid, txt):
+        if self.xmlStream is not None:
+            message = domish.Element(('jabber:client', 'message'))
+            message['to'] = JID(jid).full()
+            message.addElement('body', content=txt)
+            self.xmlStream.send(message)
+
+    def handleMessage(self, iq):
+        body = getattr(iq, 'body', None)
+        if body:
+            response = None
+            txt = str(body).lower()
+            if txt == "help":
+                response = "debug on, debug off"
+            elif txt == "debug on":
+                self.sendDebugMessages = True
+                response = "Debugging on"
+            elif txt == "debug off":
+                self.sendDebugMessages = False
+                response = "Debugging off"
+            else:
+                response = "I don't understand.  Try 'help'."
+
+            if response:
+                message = domish.Element(('jabber:client', 'message'))
+                message['to'] = JID(iq['from']).full()
+                message.addElement('body', content=response)
+                self.xmlStream.send(message)
+
+
 
 
 class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
@@ -595,7 +663,7 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
 
     def authenticated(self, xmlStream):
         self.log_info("XMPP authentication successful: %s" % (self.jid,))
-        xmlStream.addObserver('/message', self.handleMessage)
+        # xmlStream.addObserver('/message', self.handleMessage)
         self.sendPresence()
         self.notifier.streamOpened(xmlStream)
 
@@ -603,33 +671,12 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
         self.log_error("Failed to log in XMPP (%s); check JID and password" %
             (self.jid,))
 
-    def handleMessage(self, elem):
-        body = getattr(elem, 'body', None)
-        if not body:
-            event = getattr(elem, 'event', None)
-            if event:
-                body = domish.Element((None, 'body'))
-                body.addContent(event.toXml().encode('utf-8'))
-        if body:
-            # forward message to test JID, if specified; else bounce to sender:
-            testJid = self.settings.get("TestJID", "")
-            if testJid:
-                dest = testJid
-            else:
-                dest = JID(elem['from']).full()
-
-            message = domish.Element(('jabber:client', 'message'))
-            message['to'] = dest
-            message.addChild(body)
-            self.xmlStream.send(message)
-
     def sendPresence(self):
         if self.xmlStream is not None:
             presence = domish.Element(('jabber:client', 'presence'))
             self.xmlStream.send(presence)
             self.presenceCall = self.reactor.callLater(self.keepAliveSeconds,
                 self.sendPresence)
-
 
     def rawDataIn(self, buf):
         self.log_debug("RECV: %s" % unicode(buf, 'utf-8').encode('ascii',

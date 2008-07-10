@@ -415,7 +415,7 @@ class XMPPNotifierTests(TestCase):
                     return child
             return None
 
-        response = IQ(self.xmlStream)
+        response = IQ(self.xmlStream, type='result')
         pubsubElement = response.addElement('pubsub')
         configElement = pubsubElement.addElement('configure')
         formElement = configElement.addElement('x')
