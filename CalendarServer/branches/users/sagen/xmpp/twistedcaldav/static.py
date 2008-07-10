@@ -617,7 +617,7 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
             qname = property.qname()
 
         if qname == (customxml.pubsubnode_namespace, "node"):
-            pubSubConfiguration = getPubSubConfiguration()
+            pubSubConfiguration = getPubSubConfiguration(config)
             if pubSubConfiguration['enabled']:
                 return succeed(customxml.PubSubNodeProperty(
                     customxml.PubSubService(pubSubConfiguration['service']),

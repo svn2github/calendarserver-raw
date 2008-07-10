@@ -184,6 +184,16 @@ defaultConfig = {
                 "Enabled" : True,
                 "Port" : 62308,
             },
+            {
+                "Service" : "twistedcaldav.notify.XMPPNotifierService",
+                "Enabled" : False,
+                "Host" : "xmpp.host.name",
+                "Port" : 5222,
+                "JID" : "jid@xmpp.host/resource",
+                "Password" : "password_goes_here",
+                "ServiceAddress" : "pubsub.xmpp.host.name",
+                "KeepAliveSeconds" : 120,
+            },
         ]
     },
 

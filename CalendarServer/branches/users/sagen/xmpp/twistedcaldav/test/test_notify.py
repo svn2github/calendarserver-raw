@@ -14,9 +14,14 @@
 # limitations under the License.
 ##
 
+from copy import deepcopy
+
 from twisted.trial.unittest import TestCase
 from twisted.internet.task import Clock
+from twisted.words.protocols.jabber.client import IQ
 from twistedcaldav.notify import *
+from twistedcaldav import config as config_mod
+from twistedcaldav.config import Config
 
 
 
@@ -320,31 +325,139 @@ class StubXmlStream(object):
 
 class XMPPNotifierTests(TestCase):
 
-    def test_sendWhileConnected(self):
-        xmlStream = StubXmlStream()
-        settings = { 'ServiceAddress' : 'pubsub.example.com' }
-        notifier = XMPPNotifier(settings, reactor=Clock())
-        notifier.streamOpened(xmlStream)
-        notifier.enqueue("/principals/__uids__/test")
+    xmppEnabledConfig = Config(config_mod.defaultConfig)
+    xmppEnabledConfig.Notifications['Services'][1]['Enabled'] = True
+    xmppEnabledConfig.ServerHostName = "server.example.com"
+    xmppEnabledConfig.HTTPPort = 80
 
-        iq = xmlStream.elements[0]
+    xmppDisabledConfig = Config(config_mod.defaultConfig)
+    xmppDisabledConfig.Notifications['Services'][1]['Enabled'] = False
+
+    def setUp(self):
+        self.xmlStream = StubXmlStream()
+        self.settings = { 'ServiceAddress' : 'pubsub.example.com' }
+        self.notifier = XMPPNotifier(self.settings, reactor=Clock(),
+            configOverride=self.xmppEnabledConfig)
+        self.notifier.streamOpened(self.xmlStream)
+
+    def test_sendWhileConnected(self):
+        self.notifier.enqueue("/principals/__uids__/test")
+
+        iq = self.xmlStream.elements[0]
         self.assertEquals(iq.name, "iq")
 
-        pubsub = list(iq.elements())[0]
-        self.assertEquals(pubsub.name, "pubsub")
-        self.assertEquals(pubsub.uri, 'http://jabber.org/protocol/pubsub')
+        pubsubElement = list(iq.elements())[0]
+        self.assertEquals(pubsubElement.name, "pubsub")
+        self.assertEquals(pubsubElement.uri, 'http://jabber.org/protocol/pubsub')
 
-        publish = list(pubsub.elements())[0]
-        self.assertEquals(publish.name, "publish")
-        self.assertEquals(publish.uri, 'http://jabber.org/protocol/pubsub')
-        self.assertEquals(publish['node'], "/test/com.apple.iCal")
+        publishElement = list(pubsubElement.elements())[0]
+        self.assertEquals(publishElement.name, "publish")
+        self.assertEquals(publishElement.uri, 'http://jabber.org/protocol/pubsub')
+        self.assertEquals(publishElement['node'],
+            "/Public/CalDAV/server.example.com/80/principals/__uids__/test/")
 
     def test_sendWhileNotConnected(self):
-        xmlStream = StubXmlStream()
-        settings = { 'ServiceAddress' : 'pubsub.example.com' }
-        notifier = XMPPNotifier(settings, Clock())
+        notifier = XMPPNotifier(self.settings, reactor=Clock(),
+            configOverride=self.xmppDisabledConfig)
         notifier.enqueue("/principals/__uids__/test")
-        self.assertEquals(xmlStream.elements, [])
+        self.assertEquals(self.xmlStream.elements, [])
+
+    def test_publishNewNode(self):
+        self.notifier.publishNode("testNodeName")
+        iq = self.xmlStream.elements[0]
+        self.assertEquals(iq.name, "iq")
+
+    def test_publishReponse400(self):
+        response = IQ(self.xmlStream, type='error')
+        errorElement = response.addElement('error')
+        errorElement['code'] = '400'
+        self.assertEquals(len(self.xmlStream.elements), 0)
+        self.notifier.responseFromPublish("testNodeName", response)
+        self.assertEquals(len(self.xmlStream.elements), 1)
+        iq = self.xmlStream.elements[0]
+        self.assertEquals(iq.name, "iq")
+        self.assertEquals(iq['type'], "get")
+
+        pubsubElement = list(iq.elements())[0]
+        self.assertEquals(pubsubElement.name, "pubsub")
+        self.assertEquals(pubsubElement.uri,
+            'http://jabber.org/protocol/pubsub#owner')
+        configElement = list(pubsubElement.elements())[0]
+        self.assertEquals(configElement.name, "configure")
+        self.assertEquals(configElement['node'], "testNodeName")
+
+
+    def test_publishReponse404(self):
+        response = IQ(self.xmlStream, type='error')
+        errorElement = response.addElement('error')
+        errorElement['code'] = '404'
+        self.assertEquals(len(self.xmlStream.elements), 0)
+        self.notifier.responseFromPublish("testNodeName", response)
+        self.assertEquals(len(self.xmlStream.elements), 1)
+        iq = self.xmlStream.elements[0]
+        self.assertEquals(iq.name, "iq")
+        self.assertEquals(iq['type'], "set")
+
+        pubsubElement = list(iq.elements())[0]
+        self.assertEquals(pubsubElement.name, "pubsub")
+        self.assertEquals(pubsubElement.uri,
+            'http://jabber.org/protocol/pubsub')
+        createElement = list(pubsubElement.elements())[0]
+        self.assertEquals(createElement.name, "create")
+        self.assertEquals(createElement['node'], "testNodeName")
+
+
+    def test_configureResponse(self):
+
+        def _getChild(element, name):
+            for child in element.elements():
+                if child.name == name:
+                    return child
+            return None
+
+        response = IQ(self.xmlStream)
+        pubsubElement = response.addElement('pubsub')
+        configElement = pubsubElement.addElement('configure')
+        formElement = configElement.addElement('x')
+        formElement['type'] = 'form'
+        fields = [
+            ( "unknown", "don't edit me" ),
+            ( "pubsub#deliver_payloads", "1" ),
+            ( "pubsub#persist_items", "1" ),
+        ]
+        expectedFields = {
+            "unknown" : "don't edit me",
+            "pubsub#deliver_payloads" : "0",
+            "pubsub#persist_items" : "0",
+        }
+        for field in fields:
+            fieldElement = formElement.addElement("field")
+            fieldElement['var'] = field[0]
+            fieldElement.addElement('value', content=field[1])
+
+        print response.toXml()
+        self.assertEquals(len(self.xmlStream.elements), 0)
+        self.notifier.responseFromConfigurationForm("testNodeName", response)
+        self.assertEquals(len(self.xmlStream.elements), 1)
+
+        iq = self.xmlStream.elements[0]
+        self.assertEquals(iq.name, "iq")
+        self.assertEquals(iq['type'], "set")
+
+        pubsubElement = list(iq.elements())[0]
+        self.assertEquals(pubsubElement.name, "pubsub")
+        configElement = list(pubsubElement.elements())[0]
+        self.assertEquals(configElement.name, "configure")
+        self.assertEquals(configElement['node'], "testNodeName")
+        formElement = list(configElement.elements())[0]
+        self.assertEquals(formElement['type'], "submit")
+        for field in formElement.elements():
+            print field.name, field['var']
+            valueElement = _getChild(field, "value")
+            if valueElement is not None:
+                self.assertEquals(expectedFields[field['var']],
+                    str(valueElement))
+
 
 
 class XMPPNotificationFactoryTests(TestCase):

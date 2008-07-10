@@ -432,12 +432,13 @@ class XMPPNotifier(LoggingMixIn):
         'pubsub#persist_items' : '0',
     }
 
-    def __init__(self, settings, reactor=None):
+    def __init__(self, settings, reactor=None, configOverride=None):
         self.xmlStream = None
         self.settings = settings
         if reactor is None:
             from twisted.internet import reactor
         self.reactor = reactor
+        self.config = configOverride or config
 
     def enqueue(self, uri):
         self.log_info("ENQUEUE %s" % (uri,))
@@ -448,7 +449,7 @@ class XMPPNotifier(LoggingMixIn):
             self.publishNode(nodeName)
 
     def uriToNodeName(self, uri):
-        return getPubSubPath(uri, getPubSubConfiguration())
+        return getPubSubPath(uri, getPubSubConfiguration(self.config))
 
     def publishNode(self, nodeName):
         if self.xmlStream is not None:
@@ -456,7 +457,6 @@ class XMPPNotifier(LoggingMixIn):
             pubsubElement = iq.addElement('pubsub', defaultUri=self.pubsubNS)
             publishElement = pubsubElement.addElement('publish')
             publishElement['node'] = nodeName
-            # itemElement = publishElement.addElement('item')
             iq.addCallback(self.responseFromPublish, nodeName)
             iq.send(to=self.settings['ServiceAddress'])
 
@@ -649,7 +649,7 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
             'replace'))
 
 
-def getPubSubConfiguration():
+def getPubSubConfiguration(config):
     # TODO: Should probably cache this
     results = { 'enabled' : False }
 
