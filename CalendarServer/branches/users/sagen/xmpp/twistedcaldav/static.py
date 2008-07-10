@@ -72,6 +72,7 @@ from twistedcaldav.log import Logger
 from twistedcaldav.timezoneservice import TimezoneServiceResource
 
 from twistedcaldav.cache import DisabledCacheNotifier, PropfindCacheMixin
+from twistedcaldav.notify import getPubSubConfiguration, getPubSubPath
 
 log = Logger()
 
@@ -559,6 +560,12 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
     """
     cacheNotifierFactory = DisabledCacheNotifier
 
+    # TODO: "node" should only be live if pubsub is enabled
+    liveProperties = CalDAVFile.liveProperties + (
+        (customxml.pubsubnode_namespace, "node"),
+        (customxml.pubsubnotify_namespace, "notify"),
+    )
+
     def __init__(self, path, parent, record):
         """
         @param path: the path to the file which will back the resource.
@@ -601,6 +608,27 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
 
         return super(CalendarHomeFile, self).getChild(name)
 
+
+    def readProperty(self, property, request):
+        if type(property) is tuple:
+            qname = property
+        else:
+            qname = property.qname()
+
+        if qname == (customxml.pubsubnode_namespace, "node"):
+            pubSubConfiguration = getPubSubConfiguration()
+            if pubSubConfiguration['enabled']:
+                return succeed(customxml.PubSubNodeProperty(
+                    customxml.PubSubService(pubSubConfiguration['service']),
+                    customxml.PubSubNodeId(getPubSubPath(self.record.guid,
+                        pubSubConfiguration))))
+
+        elif qname == (customxml.pubsubnotify_namespace, "notify"):
+            pubSubConfiguration = getPubSubConfiguration()
+            return succeed(customxml.PubSubNotifyProperty("true" if
+                pubSubConfiguration['enabled'] else "false"))
+
+        return super(CalendarHomeFile, self).readProperty(property, request)
 
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
     def __init__(self, path, parent):

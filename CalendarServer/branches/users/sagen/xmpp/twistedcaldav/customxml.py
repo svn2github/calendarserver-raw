@@ -29,6 +29,8 @@ from twisted.web2.dav import davxml
 from twistedcaldav.ical import Component as iComponent
 
 calendarserver_namespace = "http://calendarserver.org/ns/"
+pubsubnode_namespace = "urn:ietf:params:xml:ns:webdav-event:prop:node"
+pubsubnotify_namespace = "urn:ietf:params:xml:ns:webdav-event:prop:notify"
 
 calendarserver_proxy_compliance = (
     "calendar-proxy",
@@ -243,6 +245,46 @@ class UTCOffset (davxml.WebDAVTextElement):
     """
     namespace = calendarserver_namespace
     name = "utc-offset"
+
+class PubSubNotifyProperty (davxml.WebDAVTextElement):
+    """
+    A calendarhomefile property to indicate whether pubsub notifications are
+    published for the resource.
+    (http://tools.ietf.org/draft/draft-hildebrand-webdav-notify/draft-hildebrand-webdav-notify-00.txt)
+    """
+    namespace = pubsubnotify_namespace
+    name = "notify"
+
+class PubSubNodeProperty (davxml.WebDAVElement):
+    """
+    A calendarhomefile property to indicate the pubsub service and node to
+    subscribe to for notifications.
+    (http://tools.ietf.org/draft/draft-hildebrand-webdav-notify/draft-hildebrand-webdav-notify-00.txt)
+    """
+    namespace = pubsubnode_namespace
+    name = "node"
+
+    allowed_children = {
+        (pubsubnode_namespace, "service"): (0, 1),
+        (pubsubnode_namespace, "nodeid"): (0, 1),
+    }
+
+class PubSubNodeId (davxml.WebDAVTextElement):
+    """
+    A pubsub node path
+    """
+    namespace = pubsubnode_namespace
+    name = "nodeid"
+
+class PubSubService (davxml.WebDAVTextElement):
+    """
+    A pubsub service name
+    """
+    namespace = pubsubnode_namespace
+    name = "service"
+
+
+
 
 ##
 # Extensions to davxml.ResourceType

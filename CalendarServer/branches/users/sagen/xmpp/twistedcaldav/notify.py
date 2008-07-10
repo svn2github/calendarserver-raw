@@ -51,7 +51,9 @@ from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
 
 __all__ = '''
-Coalescer getNotificationClient INotifier installNotificationClient
+Coalescer getNotificationClient
+getPubSubConfiguration getPubSubPath
+INotifier installNotificationClient
 InternalNotificationFactory InternalNotificationProtocol
 NotificationClient NotificationClientFactory NotificationClientLineProtocol
 NotificationClientUserMixIn NotificationOptions NotificationServiceMaker
@@ -76,6 +78,7 @@ class NotificationClientUserMixIn(object):
 
     def sendNotification(self, uri):
         getNotificationClient().send(uri)
+
 
 
 class NotificationClientLineProtocol(basic.LineReceiver, LoggingMixIn):
@@ -423,7 +426,6 @@ class XMPPNotifier(LoggingMixIn):
     implements(INotifier)
 
     pubsubNS = 'http://jabber.org/protocol/pubsub'
-    nodeNameFormat = '/Public/CalDAV/%s/%s'
 
     nodeConfiguration = {
         'pubsub#deliver_payloads' : '0',
@@ -447,7 +449,7 @@ class XMPPNotifier(LoggingMixIn):
 
     def uriToNodeName(self, uri):
         principal = uri.split('/')[3]
-        return self.nodeNameFormat % ('test', principal)
+        return getPubSubPath(principal, getPubSubConfiguration())
 
     def publishNode(self, nodeName):
         if self.xmlStream is not None:
@@ -648,11 +650,24 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
             'replace'))
 
 
+def getPubSubConfiguration():
+    # TODO: Should probably cache this
+    results = { 'enabled' : False }
 
+    # return the first enabled xmpp service settings in the config file
+    for settings in config.Notifications["Services"]:
+        if (settings["Service"] == "twistedcaldav.notify.XMPPNotifierService"
+            and settings["Enabled"]):
+            results['enabled'] = True
+            results['service'] = settings['ServiceAddress']
+            results['host'] = config.ServerHostName
+            results['port'] = config.SSLPort or config.HTTPPort
 
+    return results
 
-
-
+def getPubSubPath(guid, pubSubConfiguration):
+    return ("/Public/CalDAV/%s-%d/%s/" % (pubSubConfiguration['host'],
+        pubSubConfiguration['port'], guid))
 
 #
 # Notification Server service config
