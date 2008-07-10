@@ -33,7 +33,6 @@ These notifications originate from cache.py:MemcacheChangeNotifier.changed().
 """
 
 # TODO: bindAddress to local
-# TODO: XMPP support
 
 import os
 from twisted.internet import reactor, protocol
@@ -51,9 +50,8 @@ from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
 
 __all__ = '''
-Coalescer getNotificationClient
-getPubSubConfiguration getPubSubPath getPubSubXMPPURI
-INotifier installNotificationClient
+Coalescer getNotificationClient getPubSubConfiguration getPubSubPath
+getPubSubXMPPURI INotifier installNotificationClient
 InternalNotificationFactory InternalNotificationProtocol
 NotificationClient NotificationClientFactory NotificationClientLineProtocol
 NotificationClientUserMixIn NotificationOptions NotificationServiceMaker
@@ -251,8 +249,6 @@ class Coalescer(LoggingMixIn):
         if delaySeconds:
             self.delaySeconds = delaySeconds
 
-        self.log_warn("Coalescer seconds: %d" % (self.delaySeconds,))
-
         if reactor is None:
             from twisted.internet import reactor
         self.reactor = reactor
@@ -441,7 +437,7 @@ class XMPPNotifier(LoggingMixIn):
         self.config = configOverride or config
 
     def enqueue(self, uri):
-        self.log_info("ENQUEUE %s" % (uri,))
+        self.log_debug("ENQUEUE %s" % (uri,))
 
         if self.xmlStream is not None:
             # Convert uri to node
@@ -462,7 +458,7 @@ class XMPPNotifier(LoggingMixIn):
 
     def responseFromPublish(self, nodeName, iq):
         if iq['type'] == 'error':
-            self.log_error("Error from pubsub")
+            self.log_debug("Error from pubsub")
 
             errorElement = None
             pubsubElement = None
@@ -541,7 +537,7 @@ class XMPPNotifier(LoggingMixIn):
 
     def responseFromConfiguration(self, nodeName, iq):
         if iq['type'] == 'result':
-            self.log_info("Node %s id configured" % (nodeName,))
+            self.log_debug("Node %s id configured" % (nodeName,))
         self.publishNode(nodeName)
 
 
@@ -600,8 +596,6 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
     def authenticated(self, xmlStream):
         self.log_info("XMPP authentication successful: %s" % (self.jid,))
         xmlStream.addObserver('/message', self.handleMessage)
-        xmlStream.addObserver('/presence', self.trafficLog)
-        xmlStream.addObserver('/iq', self.trafficLog)
         self.sendPresence()
         self.notifier.streamOpened(xmlStream)
 
@@ -636,16 +630,13 @@ class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
             self.presenceCall = self.reactor.callLater(self.keepAliveSeconds,
                 self.sendPresence)
 
-    def trafficLog(self, elem):
-        self.log_info(elem.toXml().encode('utf-8'))
-
 
     def rawDataIn(self, buf):
-        self.log_info("RECV: %s" % unicode(buf, 'utf-8').encode('ascii',
+        self.log_debug("RECV: %s" % unicode(buf, 'utf-8').encode('ascii',
             'replace'))
 
     def rawDataOut(self, buf):
-        self.log_info("SEND: %s" % unicode(buf, 'utf-8').encode('ascii',
+        self.log_debug("SEND: %s" % unicode(buf, 'utf-8').encode('ascii',
             'replace'))
 
 
