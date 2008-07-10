@@ -435,7 +435,6 @@ class XMPPNotifierTests(TestCase):
             fieldElement['var'] = field[0]
             fieldElement.addElement('value', content=field[1])
 
-        print response.toXml()
         self.assertEquals(len(self.xmlStream.elements), 0)
         self.notifier.responseFromConfigurationForm("testNodeName", response)
         self.assertEquals(len(self.xmlStream.elements), 1)
@@ -452,7 +451,6 @@ class XMPPNotifierTests(TestCase):
         formElement = list(configElement.elements())[0]
         self.assertEquals(formElement['type'], "submit")
         for field in formElement.elements():
-            print field.name, field['var']
             valueElement = _getChild(field, "value")
             if valueElement is not None:
                 self.assertEquals(expectedFields[field['var']],

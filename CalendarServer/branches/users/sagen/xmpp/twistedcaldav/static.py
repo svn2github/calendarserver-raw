@@ -563,6 +563,7 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
     cacheNotifierFactory = DisabledCacheNotifier
 
     liveProperties = CalDAVFile.liveProperties + (
+        (customxml.calendarserver_namespace, "xmpp-uri"),
         (customxml.pubsubnode_namespace, "node"),
         (customxml.pubsubnotify_namespace, "notify"),
     )
@@ -616,14 +617,20 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
         else:
             qname = property.qname()
 
+        if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
+            pubSubConfiguration = getPubSubConfiguration(config)
+            if pubSubConfiguration['enabled']:
+                return succeed(customxml.PubSubXMPPURIProperty(
+                    getPubSubXMPPURI(self.url(), pubSubConfiguration)))
+            else:
+                return succeed(customxml.PubSubXMPPURIProperty())
+
         if qname == (customxml.pubsubnode_namespace, "node"):
             pubSubConfiguration = getPubSubConfiguration(config)
             if pubSubConfiguration['enabled']:
                 return succeed(customxml.PubSubNodeProperty(
                     customxml.PubSubService(pubSubConfiguration['service']),
                     customxml.PubSubNodeId(getPubSubPath(self.url(),
-                        pubSubConfiguration)),
-                    customxml.PubSubXMPPURI(getPubSubXMPPURI(self.url(),
                         pubSubConfiguration))))
             else:
                 return succeed(customxml.PubSubNodeProperty())

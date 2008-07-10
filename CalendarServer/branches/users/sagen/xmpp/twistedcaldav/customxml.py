@@ -267,7 +267,6 @@ class PubSubNodeProperty (davxml.WebDAVElement):
     allowed_children = {
         (pubsubnode_namespace, "service"): (0, 1),
         (pubsubnode_namespace, "nodeid"): (0, 1),
-        (calendarserver_namespace, "xmpp-uri"): (0, 1),
     }
 
 class PubSubNodeId (davxml.WebDAVTextElement):
@@ -284,9 +283,10 @@ class PubSubService (davxml.WebDAVTextElement):
     namespace = pubsubnode_namespace
     name = "service"
 
-class PubSubXMPPURI (davxml.WebDAVTextElement):
+class PubSubXMPPURIProperty (davxml.WebDAVTextElement):
     """
-    The XMPP URI for a particular pubsub node
+    A calendarhomefile property to indicate the pubsub XMPP URI to subscribe to
+    for notifications.
     """
     namespace = calendarserver_namespace
     name = "xmpp-uri"
