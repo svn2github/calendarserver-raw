@@ -51,19 +51,29 @@ from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
 
-__all__ = '''
-Coalescer getNotificationClient getPubSubConfiguration getPubSubPath
-getPubSubXMPPURI INotifier installNotificationClient
-InternalNotificationFactory InternalNotificationProtocol
-NotificationClient NotificationClientFactory NotificationClientLineProtocol
-NotificationClientUserMixIn NotificationOptions NotificationServiceMaker
-SimpleLineNotificationFactory SimpleLineNotificationProtocol
-SimpleLineNotifier SimpleLineNotifierService XMPPNotificationFactory
-XMPPNotifier
-'''.split()
-
-
-
+__all__ = [
+    "Coalescer",
+    "getNotificationClient",
+    "getPubSubConfiguration",
+    "getPubSubPath",
+    "getPubSubXMPPURI",
+    "INotifier",
+    "installNotificationClient",
+    "InternalNotificationFactory",
+    "InternalNotificationProtocol",
+    "NotificationClient",
+    "NotificationClientFactory",
+    "NotificationClientLineProtocol",
+    "NotificationClientUserMixIn",
+    "NotificationOptions",
+    "NotificationServiceMaker",
+    "SimpleLineNotificationFactory",
+    "SimpleLineNotificationProtocol",
+    "SimpleLineNotifier",
+    "SimpleLineNotifierService",
+    "XMPPNotificationFactory",
+    "XMPPNotifier",
+]
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Classes used within calendarserver itself
