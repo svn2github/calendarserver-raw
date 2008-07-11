@@ -172,8 +172,6 @@ defaultConfig = {
     # Notifications
     #
     "Notifications" : {
-
-        "Enabled" : True,
         "CoalesceSeconds" : 10,
         "InternalNotificationHost" : "localhost",
         "InternalNotificationPort" : 62309,
@@ -181,7 +179,7 @@ defaultConfig = {
         "Services" : [
             {
                 "Service" : "twistedcaldav.notify.SimpleLineNotifierService",
-                "Enabled" : True,
+                "Enabled" : False,
                 "Port" : 62308,
             },
             {
@@ -377,6 +375,16 @@ class Config (object):
         CalendarPrincipalResource.enableDropBox(self.EnableDropBox)
 
         self.updateLogLevels()
+
+        #
+        # Notifications
+        #
+        for service in self.Notifications["Services"]:
+            if service["Enabled"]:
+                self.Notifications["Enabled"] = True
+                break
+        else:
+            self.Notifications["Enabled"] = False
 
     def updateLogLevels(self):
         clearLogLevels()
