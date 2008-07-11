@@ -42,6 +42,9 @@ from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
 from twistedcaldav.directory.idirectory import IDirectoryService
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
+from twistedcaldav.notify import getPubSubConfiguration, getPubSubPath
+from twistedcaldav.notify import getPubSubXMPPURI
+
 
 # Use __underbars__ convention to avoid conflicts with directory resource types.
 uidsResourceName = "__uids__"
@@ -247,6 +250,10 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
     """
     Calendar home collection resource.
     """
+    liveProperties = CalDAVFile.liveProperties + (
+        (customxml.calendarserver_namespace, "xmpp-uri"),
+    )
+
     def __init__(self, parent, record):
         """
         @param path: the path to the file which will back the resource.
@@ -315,6 +322,23 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
     
     def isCollection(self):
         return True
+
+    def readProperty(self, property, request):
+        if type(property) is tuple:
+            qname = property
+        else:
+            qname = property.qname()
+
+        if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
+            pubSubConfiguration = getPubSubConfiguration(config)
+            if pubSubConfiguration['enabled']:
+                return succeed(customxml.PubSubXMPPURIProperty(
+                    getPubSubXMPPURI(self.url(), pubSubConfiguration)))
+            else:
+                return succeed(customxml.PubSubXMPPURIProperty())
+
+        return super(CalendarHomeFile, self).readProperty(property, request)
+
 
     ##
     # ACL

@@ -70,11 +70,7 @@ from twistedcaldav.directory.calendar import DirectoryCalendarHomeResource
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
 from twistedcaldav.log import Logger
 from twistedcaldav.timezoneservice import TimezoneServiceResource
-
 from twistedcaldav.cache import DisabledCacheNotifier, PropfindCacheMixin
-
-from twistedcaldav.notify import getPubSubConfiguration, getPubSubPath
-from twistedcaldav.notify import getPubSubXMPPURI
 
 log = Logger()
 
@@ -562,10 +558,6 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
     """
     cacheNotifierFactory = DisabledCacheNotifier
 
-    liveProperties = CalDAVFile.liveProperties + (
-        (customxml.calendarserver_namespace, "xmpp-uri"),
-    )
-
     def __init__(self, path, parent, record):
         """
         @param path: the path to the file which will back the resource.
@@ -609,21 +601,6 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
         return super(CalendarHomeFile, self).getChild(name)
 
 
-    def readProperty(self, property, request):
-        if type(property) is tuple:
-            qname = property
-        else:
-            qname = property.qname()
-
-        if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
-            pubSubConfiguration = getPubSubConfiguration(config)
-            if pubSubConfiguration['enabled']:
-                return succeed(customxml.PubSubXMPPURIProperty(
-                    getPubSubXMPPURI(self.url(), pubSubConfiguration)))
-            else:
-                return succeed(customxml.PubSubXMPPURIProperty())
-
-        return super(CalendarHomeFile, self).readProperty(property, request)
 
 
 class ScheduleFile (AutoProvisioningFileMixIn, CalDAVFile):
