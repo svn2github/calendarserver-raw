@@ -34,6 +34,7 @@ These notifications originate from cache.py:MemcacheChangeNotifier.changed().
 
 # TODO: bindAddress to local
 # TODO: add CalDAVTester test for examining new xmpp-uri property
+# TODO: auto-registration and roster management for XMPP
 
 import os
 from twisted.internet import reactor, protocol
@@ -420,6 +421,30 @@ class SimpleLineNotificationFactory(protocol.ServerFactory):
 
 
 class XMPPNotifier(LoggingMixIn):
+    """
+    XMPP Notifier
+
+    Uses pubsub XMPP requests to let subscribers know when there
+    has been a change made to a DAV resource (currently just
+    CalendarHomeFiles).  Uses XMPP login info from the config file
+    to determine which pubsub service to connect to.  When it's
+    time to send a notification, XMPPNotifier computes a node path
+    corresponding to the DAV resource and emits a publish request
+    for that node.  If the request comes back 404 XMPPNotifier will
+    create the node and then go through the configuration process,
+    followed by a publish retry.
+
+    For monitoring purposes, you can specify a "TestJID" value in
+    the config file; XMPPNotifier will send error messages to that
+    JID.  If you also want to receive non-error, debug messages,
+    send the calendar server JID the message, "debug on".  Send
+    "help" for other commands.  Note, XMPPNotifier doesn't yet
+    handle registration or roster management, so you'll need to set
+    up the JID accounts out-of-band, using another XMPP client, for
+    example.
+
+    """
+
     implements(INotifier)
 
     pubsubNS = 'http://jabber.org/protocol/pubsub'
