@@ -251,8 +251,7 @@ class PubSubXMPPURIProperty (davxml.WebDAVTextElement):
     """
     namespace = calendarserver_namespace
     name = "xmpp-uri"
-
-
+    protected = True
 
 
 
