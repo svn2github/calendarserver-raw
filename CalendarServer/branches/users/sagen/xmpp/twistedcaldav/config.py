@@ -172,6 +172,7 @@ defaultConfig = {
     # Notifications
     #
     "Notifications" : {
+        "Enabled": False,
         "CoalesceSeconds" : 10,
         "InternalNotificationHost" : "localhost",
         "InternalNotificationPort" : 62309,
