@@ -185,11 +185,11 @@ defaultConfig = {
             {
                 "Service" : "twistedcaldav.notify.XMPPNotifierService",
                 "Enabled" : False,
-                "Host" : "xmpp.host.name",
+                "Host" : "", # "xmpp.host.name"
                 "Port" : 5222,
-                "JID" : "jid@xmpp.host/resource",
-                "Password" : "password_goes_here",
-                "ServiceAddress" : "pubsub.xmpp.host.name",
+                "JID" : "", # "jid@xmpp.host.name/resource"
+                "Password" : "",
+                "ServiceAddress" : "", # "pubsub.xmpp.host.name"
                 "KeepAliveSeconds" : 120,
             },
         ]
@@ -385,6 +385,16 @@ class Config (object):
                 break
         else:
             self.Notifications["Enabled"] = False
+
+        for service in self.Notifications["Services"]:
+            if (
+                service["Service"] == "twistedcaldav.notify.XMPPNotifierService" and
+                service["Enabled"]
+            ):
+                for key, value in service.iteritems():
+                    if not value:
+                        raise ConfigurationError("Invalid %s for XMPPNotifierService: %r"
+                                                 % (key, value))
 
     def updateLogLevels(self):
         clearLogLevels()
