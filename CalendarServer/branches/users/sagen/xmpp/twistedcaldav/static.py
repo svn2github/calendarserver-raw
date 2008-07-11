@@ -564,8 +564,6 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
 
     liveProperties = CalDAVFile.liveProperties + (
         (customxml.calendarserver_namespace, "xmpp-uri"),
-        (customxml.pubsubnode_namespace, "node"),
-        (customxml.pubsubnotify_namespace, "notify"),
     )
 
     def __init__(self, path, parent, record):
@@ -624,21 +622,6 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
                     getPubSubXMPPURI(self.url(), pubSubConfiguration)))
             else:
                 return succeed(customxml.PubSubXMPPURIProperty())
-
-        if qname == (customxml.pubsubnode_namespace, "node"):
-            pubSubConfiguration = getPubSubConfiguration(config)
-            if pubSubConfiguration['enabled']:
-                return succeed(customxml.PubSubNodeProperty(
-                    customxml.PubSubService(pubSubConfiguration['service']),
-                    customxml.PubSubNodeId(getPubSubPath(self.url(),
-                        pubSubConfiguration))))
-            else:
-                return succeed(customxml.PubSubNodeProperty())
-
-        elif qname == (customxml.pubsubnotify_namespace, "notify"):
-            pubSubConfiguration = getPubSubConfiguration()
-            return succeed(customxml.PubSubNotifyProperty("true" if
-                pubSubConfiguration['enabled'] else "false"))
 
         return super(CalendarHomeFile, self).readProperty(property, request)
 

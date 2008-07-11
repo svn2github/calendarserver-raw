@@ -33,6 +33,7 @@ These notifications originate from cache.py:MemcacheChangeNotifier.changed().
 """
 
 # TODO: bindAddress to local
+# TODO: add CalDAVTester test for examining new xmpp-uri property
 
 import os
 from twisted.internet import reactor, protocol
