@@ -65,6 +65,11 @@ class URINotFoundException(Exception):
 
 
 
+#
+# FIXME: This should be a generic notifier class, not specific to
+# memcache, as evidenced by the addition of the sendNotification()
+# addition in changed() below.
+#
 class MemcacheChangeNotifier(LoggingMixIn, CachePoolUserMixIn,
     NotificationClientUserMixIn):
 
