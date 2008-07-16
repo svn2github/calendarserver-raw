@@ -375,6 +375,10 @@ limitations under the License.
   <key>EnableTimezoneService</key>
   <true/>
 
+  <!-- Manually trigger auto-accept behavior -->
+  <key>EnableAutoAcceptTrigger</key>
+  <false/>
+
 
   <!--
     Twisted
