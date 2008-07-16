@@ -117,7 +117,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
 
         if not html_agent and self.isPseudoCalendarCollection():
             # Render a monolithic iCalendar file
-            if request.uri[-1] != "/":
+            if request.path[-1] != "/":
                 # Redirect to include trailing '/' in URI
                 return RedirectResponse(request.unparseURL(path=request.path+"/"))
 
