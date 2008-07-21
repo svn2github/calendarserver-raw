@@ -310,6 +310,18 @@ def makeService_Combined(self, options):
         monitor.addProcess('memcached', memcachedArgv, env=parentEnv)
 
 
+    if (config.MailGateway["Enabled"] and
+        config.MailGateway["MailGatewayHost"] == "localhost"):
+        log.msg("Adding mail gateway service")
+
+        mailGatewayArgv = [
+            config.Twisted['twistd'],
+            '-n', 'caldav_mailgateway',
+            '-f', options['config'],
+        ]
+        monitor.addProcess('mailgateway', mailGatewayArgv, env=parentEnv)
+
+
     logger = AMPLoggingFactory(
         RotatingFileAccessLoggingObserver(config.AccessLogFile))
 

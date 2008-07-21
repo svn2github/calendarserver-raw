@@ -30,3 +30,5 @@ class TAP(object):
 
 
 TwistedCalDAV = TAP('twistedcaldav.tap.CalDAVServiceMaker')
+
+CalDAVMailGateway = TAP('twistedcaldav.mail.MailGatewayServiceMaker')
