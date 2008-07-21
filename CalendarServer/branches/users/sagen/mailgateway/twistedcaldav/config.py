@@ -204,6 +204,39 @@ defaultConfig = {
         ]
     },
 
+
+    #
+    # Mail Gateway
+    #
+    "MailGateway" : {
+        "Enabled": False,
+        "MailGatewayHost" : "localhost",
+        "MailGatewayPort" : 62310,
+
+        "Services" : [
+            {
+                "Service" : "twistedcaldav.mail.POP3Service",
+                "Enabled" : False,
+                "Host" : "", # "pop.host.name"
+                "UseSSL" : True,
+                "Port" : 995,
+                "PollingSeconds" : 60,
+                "Username" : "",
+                "Password" : "",
+            },
+            {
+                "Service" : "twistedcaldav.mail.IMAP4Service",
+                "Enabled" : False,
+                "Host" : "", # "pop.host.name"
+                "UseSSL" : True,
+                "Port" : 993,
+                "PollingSeconds" : 60,
+                "Username" : "",
+                "Password" : "",
+            },
+        ]
+    },
+
     #
     # Implementation details
     #
@@ -281,6 +314,7 @@ class Config (object):
             self.updateLogLevels,
             self.updateThreadPoolSize,
             self.updateNotifications,
+            self.updateMailGateway,
         ]
 
     def __str__(self):
@@ -492,6 +526,28 @@ class Config (object):
                 for key, value in service.iteritems():
                     if not value and key not in ("TestJID"):
                         raise ConfigurationError("Invalid %s for XMPPNotifierService: %r"
+                                                 % (key, value))
+
+    @staticmethod
+    def updateMailGateway(self, items):
+        #
+        # Mail Gateway
+        #
+        for service in self.MailGateway["Services"]:
+            if service["Enabled"]:
+                self.MailGateway["Enabled"] = True
+                break
+        else:
+            self.MailGateway["Enabled"] = False
+
+        for service in self.MailGateway["Services"]:
+            if (
+                service["Service"] == "twistedcaldav.mail.POP3Service" and
+                service["Enabled"]
+            ):
+                for key, value in service.iteritems():
+                    if not value:
+                        raise ConfigurationError("Invalid %s for POP3Service: %r"
                                                  % (key, value))
 
 
