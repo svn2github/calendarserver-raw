@@ -20,7 +20,7 @@ Mail Gateway for Calendar Server
 """
 
 from twisted.internet import protocol, defer, ssl
-from twisted.web.client import HTTPClientFactory
+from twisted.web import resource, static, server, client
 from twisted.internet.defer import fail, succeed, inlineCallbacks, returnValue
 from twisted.protocols import basic
 from twisted.mail import pop3client, imap4
@@ -33,6 +33,7 @@ from twistedcaldav import ical
 from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.scheduling.scheduler import IMIPScheduler
 from twistedcaldav.config import config, parseConfig, defaultConfig
+from twistedcaldav.sql import AbstractSQLDatabase
 from zope.interface import Interface, implements
 import email, uuid
 
@@ -227,7 +228,7 @@ def injectMessage(reactor, useSSL, host, port, path, originator, recipient,
     scheme = "https:" if useSSL else "http:"
     url = "%s//%s:%d/%s/" % (scheme, host, port, path)
 
-    factory = HTTPClientFactory(url, method='POST', headers=headers,
+    factory = client.HTTPClientFactory(url, method='POST', headers=headers,
         postdata=data)
     if useSSL:
         reactor.connectSSL(host, port, factory, ssl.ClientContextFactory())
@@ -341,7 +342,57 @@ class MailGatewayServiceMaker(object):
                 client = namedClass(settings["Service"])(settings)
                 client.setServiceParent(multiService)
 
+        IScheduleService().setServiceParent(multiService)
+
         return multiService
+
+
+#
+# ISchedule Inbox
+#
+class IScheduleService(service.Service, LoggingMixIn):
+
+    def __init__(self): # TODO: settings
+        root = resource.Resource()
+        root.putChild('', self.HomePage())
+        root.putChild('inbox', self.IScheduleInbox())
+        self.site = server.Site(root)
+        self.server = internet.TCPServer(62311, self.site)
+
+    def startService(self):
+        self.server.startService()
+
+    def stopService(self):
+        self.server.stopService()
+
+
+    class HomePage(resource.Resource):
+        def render(self, request):
+            return """
+            <html>
+            <head><title>ISchedule - IMIP Gateway</title></head>
+            <body>ISchedule - IMIP Gateway</body>
+            </html>
+            """
+
+    class IScheduleInbox(resource.Resource):
+
+        def render_GET(self, request):
+            return """
+            <html>
+            <head><title>ISchedule Inbox</title></head>
+            <body>ISchedule Inbox</body>
+            </html>
+            """
+
+        def render_POST(self, request):
+            return """
+            <html>
+            <head><title>ISchedule Inbox</title></head>
+            <body>POSTED ISchedule Inbox</body>
+            </html>
+            """
+
 
 
 #
@@ -607,3 +658,230 @@ class IMAP4DownloadFactory(protocol.ClientFactory, LoggingMixIn):
         self.connector = connector
         self.log_info("IMAP factory connection failed")
         self.retry(connector)
+
+
+
+
+"""
+class ScheduleViaIMip(DeliveryService):
+    
+    @classmethod
+    def serviceType(cls):
+        return DeliveryService.serviceType_imip
+
+    @inlineCallbacks
+    def generateSchedulingResponses(self):
+        
+        # Generate an HTTP client request
+        try:
+            # We do not do freebusy requests via iMIP
+            if self.freebusy:
+                raise ValueError("iMIP VFREEBUSY REQUESTs not supported.")
+
+            # Copy the ical component because we need to substitute the
+            # calendar server's sepcial email address for ORGANIZER
+            itip = self.scheduler.calendar.duplicate( )
+            itip.getOrganizerProperty().setValue("mailto:SERVER_ADDRESS+TOKEN@HOST.NAME")
+            # TODO: generate +address token
+            # TODO: grab server email address from config
+
+            message = self._generateTemplateMessage(itip)
+
+            # The email's From: will be the calendar server's address (without
+            # + addressing), while the Reply-To: will be the organizer's email
+            # address.
+            cuAddr = self.scheduler.originator.cuaddr
+            if not cuAddr.startswith("mailto:"):
+                raise ValueError("ORGANIZER address '%s' must be mailto: for iMIP operation." % (fromAddr,))
+            cuAddr = cuAddr[7:]
+            fromAddr = "SERVER_ADDRESS@HOST.NAME"
+            message = message.replace("${fromaddress}", fromAddr)
+            message = message.replace("${replytoaddress}", cuAddr)
+            
+            for recipient in self.recipients:
+                try:
+                    toAddr = recipient.cuaddr
+                    if not toAddr.startswith("mailto:"):
+                        raise ValueError("ATTENDEE address '%s' must be mailto: for iMIP operation." % (toAddr,))
+                    toAddr = toAddr[7:]
+                    sendit = message.replace("${toaddress}", toAddr)
+                    log.debug("Sending iMIP message To: '%s', From :'%s'\n%s" % (toAddr, fromAddr, sendit,))
+                    yield sendmail(config.Scheduling[self.serviceType()]["Sending"]["Server"], fromAddr, toAddr, sendit, port=config.Scheduling[self.serviceType()]["Sending"]["Port"])
+        
+                except Exception, e:
+                    # Generated failed response for this recipient
+                    log.err("Could not do server-to-imip request : %s %s" % (self, e))
+                    err = HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "recipient-failed")))
+                    self.responses.add(recipient.cuaddr, Failure(exc_value=err), reqstatus="5.1;Service unavailable")
+                
+                else:
+                    self.responses.add(recipient.cuaddr, responsecode.OK, reqstatus="2.0;Success")
+
+        except Exception, e:
+            # Generated failed responses for each recipient
+            log.err("Could not do server-to-imip request : %s %s" % (self, e))
+            for recipient in self.recipients:
+                err = HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "recipient-failed")))
+                self.responses.add(recipient.cuaddr, Failure(exc_value=err), reqstatus="5.1;Service unavailable")
+
+    def _generateTemplateMessage(self, calendar):
+
+        caldata = str(calendar)
+        data = cStringIO.StringIO()
+        writer = MimeWriter.MimeWriter(data)
+    
+        writer.addheader("From", "${fromaddress}")
+        writer.addheader("Reply-To", "${replytoaddress}")
+        writer.addheader("To", "${toaddress}")
+        writer.addheader("Date", rfc822date())
+        writer.addheader("Subject", "DO NOT REPLY: calendar invitation test")
+        writer.addheader("Message-ID", messageid())
+        writer.addheader("Mime-Version", "1.0")
+        writer.flushheaders()
+    
+        writer.startmultipartbody("mixed")
+    
+        # message body
+        part = writer.nextpart()
+        body = part.startbody("text/plain")
+        body.write("Hi, You've been invited to a cool event by CalendarServer's new iMIP processor.  %s " % (self._generateCalendarSummary(calendar),))
+    
+        part = writer.nextpart()
+        encoding = "7bit"
+        for i in caldata:
+            if ord(i) > 127:
+                encoding = "base64"
+                caldata = base64.encodestring(caldata)
+                break
+        part.addheader("Content-Transfer-Encoding", encoding)
+        body = part.startbody("text/calendar; charset=utf-8")
+        body.write(caldata.replace("\r", ""))
+    
+        # finish
+        writer.lastpart()
+
+        return data.getvalue()
+
+    def _generateCalendarSummary(self, calendar):
+
+        # Get the most appropriate component
+        component = calendar.masterComponent()
+        if component is None:
+            component = calendar.mainComponent(True)
+            
+        organizer = component.getOrganizerProperty()
+        if "CN" in organizer.params():
+            organizer = "%s <%s>" % (organizer.params()["CN"][0], organizer.value(),)
+        else:
+            organizer = organizer.value()
+            
+        dtinfo = self._getDateTimeInfo(component)
+        
+        summary = component.propertyValue("SUMMARY")
+        if summary is None:
+            summary = ""
+
+        description = component.propertyValue("DESCRIPTION")
+        if description is None:
+            description = ""
+
+        return "---- Begin Calendar Event Summary ----
+
+Organizer:   %s
+Summary:     %s
+%sDescription: %s
+
+----  End Calendar Event Summary  ----
+" % (organizer, summary, dtinfo, description,)
+
+    def _getDateTimeInfo(self, component):
+        
+        dtstart = component.propertyNativeValue("DTSTART")
+        tzid_start = component.getProperty("DTSTART").params().get("TZID", "UTC")
+
+        dtend = component.propertyNativeValue("DTEND")
+        if dtend:
+            tzid_end = component.getProperty("DTEND").params().get("TZID", "UTC")
+            duration = dtend - dtstart
+        else:
+            duration = component.propertyNativeValue("DURATION")
+            if duration:
+                dtend = dtstart + duration
+                tzid_end = tzid_start
+            else:
+                if isinstance(dtstart, datetime.date):
+                    dtend = None
+                    duration = datetime.timedelta(days=1)
+                else:
+                    dtend = dtstart + datetime.timedelta(days=1)
+                    dtend.hour = dtend.minute = dtend.second = 0
+                    duration = dtend - dtstart
+        result = "Starts:      %s\n" % (self._getDateTimeText(dtstart, tzid_start),)
+        if dtend is not None:
+            result += "Ends:        %s\n" % (self._getDateTimeText(dtend, tzid_end),)
+        result += "Duration:    %s\n" % (self._getDurationText(duration),)
+        
+        if not isinstance(dtstart, datetime.datetime):
+            result += "All Day\n"
+        
+        for property_name in ("RRULE", "RDATE", "EXRULE", "EXDATE", "RECURRENCE-ID",):
+            if component.hasProperty(property_name):
+                result += "Recurring\n"
+                break
+            
+        return result
+
+    def _getDateTimeText(self, dtvalue, tzid):
+        
+        if isinstance(dtvalue, datetime.datetime):
+            timeformat = "%A, %B %e, %Y %I:%M %p"
+        elif isinstance(dtvalue, datetime.date):
+            timeformat = "%A, %B %e, %Y"
+            tzid = ""
+        if tzid:
+            tzid = " (%s)" % (tzid,)
+
+        return "%s%s" % (dtvalue.strftime(timeformat), tzid,)
+        
+    def _getDurationText(self, duration):
+        
+        result = ""
+        if duration.days > 0:
+            result += "%d %s" % (
+                duration.days,
+                self._pluralize(duration.days, "day", "days")
+            )
+
+        hours = duration.seconds / 3600
+        minutes = divmod(duration.seconds / 60, 60)[1]
+        seconds = divmod(duration.seconds, 60)[1]
+        
+        if hours > 0:
+            if result:
+                result += ", "
+            result += "%d %s" % (
+                hours,
+                self._pluralize(hours, "hour", "hours")
+            )
+        
+        if minutes > 0:
+            if result:
+                result += ", "
+            result += "%d %s" % (
+                minutes,
+                self._pluralize(minutes, "minute", "minutes")
+            )
+        
+        if seconds > 0:
+            if result:
+                result += ", "
+            result += "%d %s" % (
+                seconds,
+                self._pluralize(seconds, "second", "seconds")
+            )
+
+        return result
+
+    def _pluralize(self, number, unit1, unitS):
+        return unit1 if number == 1 else unitS
+"""
