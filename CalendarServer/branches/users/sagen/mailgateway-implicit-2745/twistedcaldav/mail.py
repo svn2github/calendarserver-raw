@@ -27,6 +27,9 @@ from twisted.application import internet, service
 from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedClass
 from twistedcaldav.log import LoggingMixIn
+from twistedcaldav import ical
+from twistedcaldav.scheduling.scheduler import IMIPScheduler
+from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
 import email
@@ -252,6 +255,13 @@ class POP3DownloadFactory(protocol.ClientFactory, LoggingMixIn):
         self.log_info(message)
         parsedMessage = email.message_from_string(message)
         # TODO: messages can be handed off here...
+        for part in parsedMessage.walk():
+            if part.get_content_type() == "text/calendar":
+                calBody = part.get_payload(decode=True)
+                calComponent = ical.Component.fromString(calBody)
+                scheduler = IMIPScheduler(None, None)
+                organizer = LocalCalendarUser("mailto:user01@example.com", None)
+                scheduler.doSchedulingViaPUT(None, (organizer,), calComponent)
 
 
 #

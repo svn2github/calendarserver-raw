@@ -717,6 +717,31 @@ class IScheduleScheduler(Scheduler):
             log.err("Unknown iTIP METHOD for security checks: %s" % (self.calendar.propertyValue("METHOD"),))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data")))
 
+
+class IMIPScheduler(Scheduler):
+
+    def checkAuthorization(self):
+        pass
+
+    def checkOriginator(self):
+        pass
+
+    def checkRecipients(self):
+        pass
+
+    def checkOrganizer(self):
+        pass
+
+    def checkOrganizerAsOriginator(self):
+        pass
+
+    def checkAttendeeAsOriginator(self):
+        pass
+
+    def securityChecks(self):
+        pass
+
+
 class ScheduleResponseResponse (Response):
     """
     ScheduleResponse L{Response} object.

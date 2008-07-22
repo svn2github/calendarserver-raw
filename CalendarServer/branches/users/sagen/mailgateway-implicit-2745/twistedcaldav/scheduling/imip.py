@@ -61,12 +61,25 @@ class ScheduleViaIMip(DeliveryService):
             if self.freebusy:
                 raise ValueError("iMIP VFREEBUSY REQUESTs not supported.")
 
-            message = self._generateTemplateMessage(self.scheduler.calendar)
-            fromAddr = self.scheduler.originator.cuaddr
-            if not fromAddr.startswith("mailto:"):
+            # Copy the ical component because we need to substitute the
+            # calendar server's sepcial email address for ORGANIZER
+            itip = self.scheduler.calendar.duplicate( )
+            itip.getOrganizerProperty().setValue("mailto:SERVER_ADDRESS+TOKEN@HOST.NAME")
+            # TODO: generate +address token
+            # TODO: grab server email address from config
+
+            message = self._generateTemplateMessage(itip)
+
+            # The email's From: will be the calendar server's address (without
+            # + addressing), while the Reply-To: will be the organizer's email
+            # address.
+            cuAddr = self.scheduler.originator.cuaddr
+            if not cuAddr.startswith("mailto:"):
                 raise ValueError("ORGANIZER address '%s' must be mailto: for iMIP operation." % (fromAddr,))
-            fromAddr = fromAddr[7:]
+            cuAddr = cuAddr[7:]
+            fromAddr = "SERVER_ADDRESS@HOST.NAME"
             message = message.replace("${fromaddress}", fromAddr)
+            message = message.replace("${replytoaddress}", cuAddr)
             
             for recipient in self.recipients:
                 try:
@@ -101,6 +114,7 @@ class ScheduleViaIMip(DeliveryService):
         writer = MimeWriter.MimeWriter(data)
     
         writer.addheader("From", "${fromaddress}")
+        writer.addheader("Reply-To", "${replytoaddress}")
         writer.addheader("To", "${toaddress}")
         writer.addheader("Date", rfc822date())
         writer.addheader("Subject", "DO NOT REPLY: calendar invitation test")
