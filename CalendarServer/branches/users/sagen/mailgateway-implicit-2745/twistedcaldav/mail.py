@@ -20,6 +20,8 @@ Mail Gateway for Calendar Server
 """
 
 from twisted.internet import protocol, defer, ssl
+from twisted.web.client import HTTPClientFactory
+from twisted.internet.defer import fail, succeed, inlineCallbacks, returnValue
 from twisted.protocols import basic
 from twisted.mail import pop3client, imap4
 from twisted.plugin import IPlugin
@@ -28,13 +30,14 @@ from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedClass
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav import ical
+from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.scheduling.scheduler import IMIPScheduler
-from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
-import email
+import email, uuid
 
 __all__ = [
+    "IMIPInboxResource",
     "MailGatewayServiceMaker",
 ]
 
@@ -132,6 +135,195 @@ class MailGatewayOptions(Options):
         config.updateDefaults(self.overrides)
         self.parent['pidfile'] = None
 
+
+
+class IMIPInboxResource(CalDAVResource):
+    """
+    IMIP-delivery Inbox resource.
+
+    Extends L{DAVResource} to provide IMIP delivery functionality.
+    """
+
+    def __init__(self, parent):
+        """
+        @param parent: the parent resource of this one.
+        """
+        assert parent is not None
+
+        CalDAVResource.__init__(self, principalCollections=parent.principalCollections())
+
+        self.parent = parent
+
+    def defaultAccessControlList(self):
+        return davxml.ACL(
+            # DAV:Read, CalDAV:schedule for all principals (includes anonymous)
+            davxml.ACE(
+                davxml.Principal(davxml.All()),
+                davxml.Grant(
+                    davxml.Privilege(davxml.Read()),
+                    davxml.Privilege(caldavxml.Schedule()),
+                ),
+                davxml.Protected(),
+            ),
+        )
+
+    def resourceType(self):
+        return davxml.ResourceType.ischeduleinbox
+
+    def isCollection(self):
+        return False
+
+    def isCalendarCollection(self):
+        return False
+
+    def isPseudoCalendarCollection(self):
+        return False
+
+    def render(self, request):
+        output = """<html>
+<head>
+<title>IMIP Delivery Resource</title>
+</head>
+<body>
+<h1>IMIP Delivery Resource.</h1>
+</body
+</html>"""
+
+        response = Response(200, {}, output)
+        response.headers.setHeader("content-type", MimeType("text", "html"))
+        return response
+
+    @inlineCallbacks
+    def http_POST(self, request):
+        """
+        The IMIP delivery POST method.
+        """
+
+        # Check authentication and access controls
+        # yield self.authorize(request, (caldavxml.Schedule(),))
+
+        # Inject using the IMIPScheduler.
+        scheduler = IMIPScheduler(request, self)
+
+        # Do the POST processing treating this as a non-local schedule
+        response = (yield scheduler.doSchedulingViaPOST())
+        returnValue(response)
+
+
+
+def injectMessage(reactor, useSSL, host, port, path, originator, recipient,
+    calendar):
+
+    headers = {
+        'Content-Type' : 'text/calendar',
+        'Originator' : originator,
+        'Recipient' : recipient,
+    }
+
+    # TODO: use token to look up actual organizer for substitution
+    calendar.getOrganizerProperty().setValue("mailto:user01@example.com")
+    data = str(calendar)
+
+    scheme = "https:" if useSSL else "http:"
+    url = "%s//%s:%d/%s/" % (scheme, host, port, path)
+
+    factory = HTTPClientFactory(url, method='POST', headers=headers,
+        postdata=data)
+    if useSSL:
+        reactor.connectSSL(host, port, factory, ssl.ClientContextFactory())
+    else:
+        reactor.connectTCP(host, port, factory)
+    return factory.deferred
+
+
+
+
+class MailGatewayTokensDatabase(AbstractSQLDatabase):
+    """
+    A database to maintain "plus-address" tokens for IMIP requests.
+
+    SCHEMA:
+
+    Token Database:
+
+    ROW: TOKEN, ORGANIZER
+
+    """
+
+    dbType = "MAILGATEWAYTOKENS"
+    dbFilename = "mailgatewaytokens.sqlite"
+    dbFormatVersion = "1"
+
+
+    def __init__(self, path):
+        path = os.path.join(path, MailGatewayTokensDatabase.dbFilename)
+        super(MailGatewayTokensDatabase, self).__init__(path, True)
+
+    def createToken(self, organizer):
+        token = uuid.uuid4()
+        self._db_execute(
+            """
+            insert into TOKENS (TOKEN, ORGANIZER)
+            values (:1, :2)
+            """, token, organizer
+        )
+
+    def deleteToken(self, token):
+        self._db_execute(
+            """
+            delete from TOKENS where TOKEN = :1
+            """, token
+        )
+
+    def _db_version(self):
+        """
+        @return: the schema version assigned to this index.
+        """
+        return MailGatewayTokensDatabase.dbFormatVersion
+
+    def _db_type(self):
+        """
+        @return: the collection type assigned to this index.
+        """
+        return MailGatewayTokensDatabase.dbType
+
+    def _db_init_data_tables(self, q):
+        """
+        Initialise the underlying database tables.
+        @param q:           a database cursor to use.
+        """
+
+        #
+        # TOKENS table
+        #
+        q.execute(
+            """
+            create table TOKENS (
+                TOKEN       text,
+                ORGANIZER   text
+            )
+            """
+        )
+        q.execute(
+            """
+            create index TOKENSINDEX on TOKENS (TOKEN)
+            """
+        )
+
+    def _db_upgrade_data_tables(self, q, old_version):
+        """
+        Upgrade the data from an older version of the DB.
+        @param q: a database cursor to use.
+        @param old_version: existing DB's version number
+        @type old_version: str
+        """
+        pass
+
+
+
+#
+# Service
+#
 
 class MailGatewayServiceMaker(object):
     implements(IPlugin, service.IServiceMaker)
@@ -250,6 +442,7 @@ class POP3DownloadFactory(protocol.ClientFactory, LoggingMixIn):
         self.log_info("POP factory connection failed")
         self.retry(connector)
 
+    @inlineCallbacks
     def handleMessage(self, message):
         self.log_info("POP factory handle message")
         self.log_info(message)
@@ -258,10 +451,13 @@ class POP3DownloadFactory(protocol.ClientFactory, LoggingMixIn):
         for part in parsedMessage.walk():
             if part.get_content_type() == "text/calendar":
                 calBody = part.get_payload(decode=True)
-                calComponent = ical.Component.fromString(calBody)
-                scheduler = IMIPScheduler(None, None)
-                organizer = LocalCalendarUser("mailto:user01@example.com", None)
-                scheduler.doSchedulingViaPUT(None, (organizer,), calComponent)
+                self.log_info(calBody)
+                calendar = ical.Component.fromString(calBody)
+                yield injectMessage(self.reactor, False, "localhost", 8008,
+                    "email-inbox", "mailto:ORGANIZER@HOST.NAME",
+                    "mailto:user01@example.com", calendar)
+
+
 
 
 #

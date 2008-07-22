@@ -53,6 +53,7 @@ from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.static import IScheduleInboxFile
 from twistedcaldav.static import TimezoneServiceFile
+from twistedcaldav.static import IMIPInboxFile
 from twistedcaldav.timezones import TimezoneCache
 from twistedcaldav import pdmonster
 from twistedcaldav import memcachepool
@@ -436,6 +437,7 @@ class CalDAVServiceMaker(object):
     principalResourceClass       = DirectoryPrincipalProvisioningResource
     calendarResourceClass        = CalendarHomeProvisioningFile
     iScheduleResourceClass       = IScheduleInboxFile
+    imipResourceClass            = IMIPInboxFile
     timezoneServiceResourceClass = TimezoneServiceFile
 
     def makeService_Slave(self, options):
@@ -535,6 +537,15 @@ class CalDAVServiceMaker(object):
                 root,
             )
             root.putChild('inbox', ischedule)
+
+        #
+        # IMIP delivery resource
+        #
+        imipInbox = self.imipResourceClass(
+            os.path.join(config.DocumentRoot, 'imip-inbox'),
+            root,
+        )
+        root.putChild('email-inbox', imipInbox)
 
         #
         # Configure ancillary data
