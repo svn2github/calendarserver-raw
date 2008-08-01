@@ -479,7 +479,7 @@ class XMPPNotifier(LoggingMixIn):
         self.reactor = reactor
         self.config = configOverride or config
 
-        self.sendDebugMessages = False
+        self.roster = {}
 
     def enqueue(self, uri):
         if self.xmlStream is not None:
@@ -496,6 +496,11 @@ class XMPPNotifier(LoggingMixIn):
             pubsubElement = iq.addElement('pubsub', defaultUri=self.pubsubNS)
             publishElement = pubsubElement.addElement('publish')
             publishElement['node'] = nodeName
+            # itemElement = publishElement.addElement('item')
+            # payloadElement = itemElement.addElement('item')
+            # payloadElement['id'] = '0'
+            # payloadElement.addContent('xyzzy')
+            self.sendDebug("Publishing (%s)" % (nodeName,), iq)
             iq.addCallback(self.responseFromPublish, nodeName)
             iq.send(to=self.settings['ServiceAddress'])
 
@@ -588,7 +593,7 @@ class XMPPNotifier(LoggingMixIn):
                                         filledField['type'] = field['type']
                                         valueElement = filledField.addElement('value')
                                         valueElement.addContent(value)
-                                        filledForm.addChild(field)
+                                        # filledForm.addChild(field)
                         filledIq.addCallback(self.responseFromConfiguration,
                             nodeName)
                         self.sendDebug("Sending configuration form (%s)"
@@ -612,27 +617,89 @@ class XMPPNotifier(LoggingMixIn):
             self.sendError("Failed to configure node (%s)" % (nodeName,), iq)
 
 
+    def requestRoster(self):
+        self.roster = {}
+        rosterIq = IQ(self.xmlStream, type='get')
+        rosterIq.addElement("query", "jabber:iq:roster")
+        rosterIq.addCallback(self.handleRoster)
+        rosterIq.send()
+
+    def handleRoster(self, iq):
+        for child in iq.children[0].children:
+            jid = child['jid']
+            self.log_info("In roster: %s" % (jid,))
+            if not self.roster.has_key(jid):
+                self.roster[jid] = { 'debug' : False, 'available' : False }
+
+    def handlePresence(self, iq):
+        self.log_info("Presence IQ: %s" %
+            (iq.toXml().encode('ascii', 'replace')),)
+        presenceType = iq.getAttribute('type')
+
+        if presenceType == 'subscribe':
+            frm = JID(iq['from']).userhost()
+            self.roster[frm] = { 'debug' : False, 'available' : True }
+            response = domish.Element(('jabber:client', 'presence'))
+            response['to'] = iq['from']
+            response['type'] = 'subscribed'
+            self.xmlStream.send(response)
+
+            # request subscription as well
+            subscribe = domish.Element(('jabber:client', 'presence'))
+            subscribe['to'] = iq['from']
+            subscribe['type'] = 'subscribe'
+            self.xmlStream.send(subscribe)
+
+        elif presenceType == 'unsubscribe':
+            frm = JID(iq['from']).userhost()
+            if self.roster.has_key(frm):
+                del self.roster[frm]
+            response = domish.Element(('jabber:client', 'presence'))
+            response['to'] = iq['from']
+            response['type'] = 'unsubscribed'
+            self.xmlStream.send(response)
+
+            # remove from roster as well
+            removal = IQ(self.xmlStream, type='set')
+            query = removal.addElement("query", "jabber:iq:roster")
+            query.addElement("item")
+            query.item["jid"] = iq["from"]
+            query.item["subscription"] = "remove"
+            removal.send()
+
+        elif presenceType == 'unavailable':
+            frm = JID(iq['from']).userhost()
+            if self.roster.has_key(frm):
+                self.roster[frm]['available'] = False
+
+        else:
+            frm = JID(iq['from']).userhost()
+            if self.roster.has_key(frm):
+                self.roster[frm]['available'] = True
+            else:
+                self.roster[frm] = { 'debug' : False, 'available' : True }
+
     def streamOpened(self, xmlStream):
         self.xmlStream = xmlStream
         xmlStream.addObserver('/message', self.handleMessage)
+        xmlStream.addObserver('/presence', self.handlePresence)
+        self.requestRoster()
+
 
     def streamClosed(self):
         self.xmlStream = None
 
     def sendDebug(self, txt, element):
-        if self.sendDebugMessages:
-            testJid = self.settings.get("TestJID", "")
-            if testJid:
-                txt = "DEBUG: %s %s" % (txt, element.toXml().encode('ascii',
-                    'replace'))
-                self.sendAlert(testJid, txt)
+        txt = "DEBUG: %s %s" % (txt, element.toXml().encode('ascii', 'replace'))
+        for jid, info in self.roster.iteritems():
+            if info['available'] and info['debug']:
+                self.sendAlert(jid, txt)
 
     def sendError(self, txt, element):
-        testJid = self.settings.get("TestJID", "")
-        if testJid:
-            txt = "ERROR: %s %s" % (txt, element.toXml().encode('ascii',
-                'replace'))
-            self.sendAlert(testJid, txt)
+        txt = "ERROR: %s %s" % (txt, element.toXml().encode('ascii', 'replace'))
+        for jid, info in self.roster.iteritems():
+            if info['available']:
+                self.sendAlert(jid, txt)
 
     def sendAlert(self, jid, txt):
         if self.xmlStream is not None:
@@ -645,14 +712,17 @@ class XMPPNotifier(LoggingMixIn):
         body = getattr(iq, 'body', None)
         if body:
             response = None
+            frm = JID(iq['from']).userhost()
             txt = str(body).lower()
             if txt == "help":
                 response = "debug on, debug off"
+            elif txt == "roster":
+                response = "Roster: %s" % (str(self.roster),)
             elif txt == "debug on":
-                self.sendDebugMessages = True
+                self.roster[frm]['debug'] = True
                 response = "Debugging on"
             elif txt == "debug off":
-                self.sendDebugMessages = False
+                self.roster[frm]['debug'] = False
                 response = "Debugging off"
             else:
                 response = "I don't understand.  Try 'help'."
