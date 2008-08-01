@@ -49,6 +49,7 @@ from twisted.words.xish import domish
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
+import re
 
 __all__ = [
     "Coalescer",
@@ -467,7 +468,7 @@ class XMPPNotifier(LoggingMixIn):
     pubsubNS = 'http://jabber.org/protocol/pubsub'
 
     nodeConf = {
-        'pubsub#deliver_payloads': '0',
+        'pubsub#deliver_payloads': '1',
         'pubsub#persist_items'   : '0',
     }
 
@@ -496,10 +497,9 @@ class XMPPNotifier(LoggingMixIn):
             pubsubElement = iq.addElement('pubsub', defaultUri=self.pubsubNS)
             publishElement = pubsubElement.addElement('publish')
             publishElement['node'] = nodeName
-            # itemElement = publishElement.addElement('item')
-            # payloadElement = itemElement.addElement('item')
-            # payloadElement['id'] = '0'
-            # payloadElement.addContent('xyzzy')
+            itemElement = publishElement.addElement('item')
+            payloadElement = itemElement.addElement('plistfrag',
+                defaultUri='plist-apple')
             self.sendDebug("Publishing (%s)" % (nodeName,), iq)
             iq.addCallback(self.responseFromPublish, nodeName)
             iq.send(to=self.settings['ServiceAddress'])
@@ -624,12 +624,24 @@ class XMPPNotifier(LoggingMixIn):
         rosterIq.addCallback(self.handleRoster)
         rosterIq.send()
 
+    def allowedInRoster(self, jid):
+        for pattern in self.settings.get("AllowedJIDs", []):
+            try:
+                if re.match(pattern, jid) is not None:
+                    return True
+            except re.error:
+                self.log_error("Invalid regular expression for XMPP notification configuration: %s" % (pattern,))
+        return False
+
     def handleRoster(self, iq):
         for child in iq.children[0].children:
             jid = child['jid']
-            self.log_info("In roster: %s" % (jid,))
-            if not self.roster.has_key(jid):
-                self.roster[jid] = { 'debug' : False, 'available' : False }
+            if self.allowedInRoster(jid):
+                self.log_info("In roster: %s" % (jid,))
+                if not self.roster.has_key(jid):
+                    self.roster[jid] = { 'debug' : False, 'available' : False }
+            else:
+                self.log_info("JID not allowed in roster: %s" % (jid,))
 
     def handlePresence(self, iq):
         self.log_info("Presence IQ: %s" %
@@ -638,17 +650,25 @@ class XMPPNotifier(LoggingMixIn):
 
         if presenceType == 'subscribe':
             frm = JID(iq['from']).userhost()
-            self.roster[frm] = { 'debug' : False, 'available' : True }
-            response = domish.Element(('jabber:client', 'presence'))
-            response['to'] = iq['from']
-            response['type'] = 'subscribed'
-            self.xmlStream.send(response)
+            if self.allowedInRoster(frm):
+                self.roster[frm] = { 'debug' : False, 'available' : True }
+                response = domish.Element(('jabber:client', 'presence'))
+                response['to'] = iq['from']
+                response['type'] = 'subscribed'
+                self.xmlStream.send(response)
 
-            # request subscription as well
-            subscribe = domish.Element(('jabber:client', 'presence'))
-            subscribe['to'] = iq['from']
-            subscribe['type'] = 'subscribe'
-            self.xmlStream.send(subscribe)
+                # request subscription as well
+                subscribe = domish.Element(('jabber:client', 'presence'))
+                subscribe['to'] = iq['from']
+                subscribe['type'] = 'subscribe'
+                self.xmlStream.send(subscribe)
+            else:
+                self.log_info("JID not allowed in roster: %s" % (frm,))
+                # Reject
+                response = domish.Element(('jabber:client', 'presence'))
+                response['to'] = iq['from']
+                response['type'] = 'unsubscribed'
+                self.xmlStream.send(response)
 
         elif presenceType == 'unsubscribe':
             frm = JID(iq['from']).userhost()
@@ -674,10 +694,13 @@ class XMPPNotifier(LoggingMixIn):
 
         else:
             frm = JID(iq['from']).userhost()
-            if self.roster.has_key(frm):
-                self.roster[frm]['available'] = True
+            if self.allowedInRoster(frm):
+                if self.roster.has_key(frm):
+                    self.roster[frm]['available'] = True
+                else:
+                    self.roster[frm] = { 'debug' : False, 'available' : True }
             else:
-                self.roster[frm] = { 'debug' : False, 'available' : True }
+                self.log_info("JID not allowed in roster: %s" % (frm,))
 
     def streamOpened(self, xmlStream):
         self.xmlStream = xmlStream
@@ -713,19 +736,22 @@ class XMPPNotifier(LoggingMixIn):
         if body:
             response = None
             frm = JID(iq['from']).userhost()
-            txt = str(body).lower()
-            if txt == "help":
-                response = "debug on, debug off"
-            elif txt == "roster":
-                response = "Roster: %s" % (str(self.roster),)
-            elif txt == "debug on":
-                self.roster[frm]['debug'] = True
-                response = "Debugging on"
-            elif txt == "debug off":
-                self.roster[frm]['debug'] = False
-                response = "Debugging off"
+            if frm in self.roster:
+                txt = str(body).lower()
+                if txt == "help":
+                    response = "debug on, debug off, roster"
+                elif txt == "roster":
+                    response = "Roster: %s" % (str(self.roster),)
+                elif txt == "debug on":
+                    self.roster[frm]['debug'] = True
+                    response = "Debugging on"
+                elif txt == "debug off":
+                    self.roster[frm]['debug'] = False
+                    response = "Debugging off"
+                else:
+                    response = "I don't understand.  Try 'help'."
             else:
-                response = "I don't understand.  Try 'help'."
+                response = "Sorry, you are not authorized to converse with this server"
 
             if response:
                 message = domish.Element(('jabber:client', 'message'))
