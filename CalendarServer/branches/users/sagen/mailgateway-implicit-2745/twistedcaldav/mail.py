@@ -50,8 +50,6 @@ __all__ = [
 ]
 
 
-# TODO: generate reply-to headers for authenticating responses
-# TODO: hand off authenticated responses to calendarserver
 # TODO: use @inlineCallbacks
 
 #
@@ -270,8 +268,6 @@ class MailGatewayTokensDatabase(AbstractSQLDatabase):
     def __init__(self, path):
         path = os.path.join(path, MailGatewayTokensDatabase.dbFilename)
         super(MailGatewayTokensDatabase, self).__init__(path, True)
-
-        # TODO: generate random number for use in token creation
 
     def createToken(self, organizer, attendee):
         token = str(uuid.uuid4())
