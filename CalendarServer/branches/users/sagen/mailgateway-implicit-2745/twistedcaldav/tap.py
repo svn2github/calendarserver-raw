@@ -542,7 +542,7 @@ class CalDAVServiceMaker(object):
         # IMIP delivery resource
         #
         imipInbox = self.imipResourceClass(
-            os.path.join(config.DocumentRoot, 'imip-inbox'),
+            os.path.join(config.DocumentRoot, 'email-inbox'),
             root,
         )
         root.putChild('email-inbox', imipInbox)
