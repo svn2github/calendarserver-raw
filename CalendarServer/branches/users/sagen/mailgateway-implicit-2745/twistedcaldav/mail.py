@@ -50,8 +50,6 @@ __all__ = [
 ]
 
 
-# TODO: use @inlineCallbacks
-
 #
 # Mail gateway service config
 #
@@ -282,6 +280,7 @@ class MailGatewayTokensDatabase(AbstractSQLDatabase):
             values (:1, :2, :3)
             """, token, organizer, attendee
         )
+        self._db_commit()
         return token
 
     def lookupByToken(self, token):
@@ -464,7 +463,37 @@ class MailHandler(LoggingMixIn):
         self.db = MailGatewayTokensDatabase(config.DataRoot)
 
     @inlineCallbacks
-    def inbound(self, token, calendar):
+    def inbound(self, message):
+        parsedMessage = email.message_from_string(message)
+
+        # TODO: make sure this is an email message we want to handle
+
+        # extract the token from the To header
+        name, addr = email.utils.parseaddr(parsedMessage['To'])
+        if addr:
+            # addr looks like: server_address+token@example.com
+            try:
+                pre, post = addr.split('@')
+                pre, token = pre.split('+')
+            except ValueError:
+                # TODO: handle this error
+                return
+        else:
+            # TODO: handle this error
+            return
+
+        for part in parsedMessage.walk():
+            if part.get_content_type() == "text/calendar":
+                calBody = part.get_payload(decode=True)
+                break
+        else:
+            # TODO: handle this condition
+            # No icalendear attachment
+            return
+
+        self.log_debug(calBody)
+        calendar = ical.Component.fromString(calBody)
+
         # process mail messages from POP or IMAP, inject to calendar server
         result = self.db.lookupByToken(token)
         if result is None:
@@ -505,7 +534,7 @@ class MailHandler(LoggingMixIn):
         toAddr = attendee
         message = message.replace("${fromaddress}", fromAddr)
         message = message.replace("${replytoaddress}", organizer)
-        
+
         if not attendee.startswith("mailto:"):
             raise ValueError("ATTENDEE address '%s' must be mailto: for iMIP operation." % (attendee,))
         attendee = attendee[7:]
@@ -519,7 +548,7 @@ class MailHandler(LoggingMixIn):
         caldata = str(calendar)
         data = cStringIO.StringIO()
         writer = MimeWriter.MimeWriter(data)
-    
+
         writer.addheader("From", "${fromaddress}")
         writer.addheader("Reply-To", "${replytoaddress}")
         writer.addheader("To", "${toaddress}")
@@ -528,14 +557,14 @@ class MailHandler(LoggingMixIn):
         writer.addheader("Message-ID", messageid())
         writer.addheader("Mime-Version", "1.0")
         writer.flushheaders()
-    
+
         writer.startmultipartbody("mixed")
-    
+
         # message body
         part = writer.nextpart()
         body = part.startbody("text/plain")
         body.write("Hi, You've been invited to a cool event by CalendarServer's new iMIP processor.  %s " % (self._generateCalendarSummary(calendar),))
-    
+
         part = writer.nextpart()
         encoding = "7bit"
         for i in caldata:
@@ -546,7 +575,7 @@ class MailHandler(LoggingMixIn):
         part.addheader("Content-Transfer-Encoding", encoding)
         body = part.startbody("text/calendar; charset=utf-8")
         body.write(caldata.replace("\r", ""))
-    
+
         # finish
         writer.lastpart()
 
@@ -558,15 +587,15 @@ class MailHandler(LoggingMixIn):
         component = calendar.masterComponent()
         if component is None:
             component = calendar.mainComponent(True)
-            
+
         organizer = component.getOrganizerProperty()
         if "CN" in organizer.params():
             organizer = "%s <%s>" % (organizer.params()["CN"][0], organizer.value(),)
         else:
             organizer = organizer.value()
-            
+
         dtinfo = self._getDateTimeInfo(component)
-        
+
         summary = component.propertyValue("SUMMARY")
         if summary is None:
             summary = ""
@@ -585,7 +614,7 @@ Summary:     %s
 """ % (organizer, summary, dtinfo, description,)
 
     def _getDateTimeInfo(self, component):
-        
+
         dtstart = component.propertyNativeValue("DTSTART")
         tzid_start = component.getProperty("DTSTART").params().get("TZID", "UTC")
 
@@ -610,19 +639,19 @@ Summary:     %s
         if dtend is not None:
             result += "Ends:        %s\n" % (self._getDateTimeText(dtend, tzid_end),)
         result += "Duration:    %s\n" % (self._getDurationText(duration),)
-        
+
         if not isinstance(dtstart, datetime.datetime):
             result += "All Day\n"
-        
+
         for property_name in ("RRULE", "RDATE", "EXRULE", "EXDATE", "RECURRENCE-ID",):
             if component.hasProperty(property_name):
                 result += "Recurring\n"
                 break
-            
+
         return result
 
     def _getDateTimeText(self, dtvalue, tzid):
-        
+
         if isinstance(dtvalue, datetime.datetime):
             timeformat = "%A, %B %e, %Y %I:%M %p"
         elif isinstance(dtvalue, datetime.date):
@@ -632,9 +661,9 @@ Summary:     %s
             tzid = " (%s)" % (tzid,)
 
         return "%s%s" % (dtvalue.strftime(timeformat), tzid,)
-        
+
     def _getDurationText(self, duration):
-        
+
         result = ""
         if duration.days > 0:
             result += "%d %s" % (
@@ -645,7 +674,7 @@ Summary:     %s
         hours = duration.seconds / 3600
         minutes = divmod(duration.seconds / 60, 60)[1]
         seconds = divmod(duration.seconds, 60)[1]
-        
+
         if hours > 0:
             if result:
                 result += ", "
@@ -653,7 +682,7 @@ Summary:     %s
                 hours,
                 self._pluralize(hours, "hour", "hours")
             )
-        
+
         if minutes > 0:
             if result:
                 result += ", "
@@ -661,7 +690,7 @@ Summary:     %s
                 minutes,
                 self._pluralize(minutes, "minute", "minutes")
             )
-        
+
         if seconds > 0:
             if result:
                 result += ", "
@@ -710,7 +739,7 @@ class POP3DownloadProtocol(pop3client.POP3Client, LoggingMixIn):
     allowInsecureLogin = False
 
     def serverGreeting(self, greeting):
-        self.log_info("POP servergreeting")
+        self.log_debug("POP servergreeting")
         pop3client.POP3Client.serverGreeting(self, greeting)
         login = self.login(self.factory.settings["Username"],
             self.factory.settings["Password"])
@@ -723,24 +752,24 @@ class POP3DownloadProtocol(pop3client.POP3Client, LoggingMixIn):
         return self.quit()
 
     def cbLoggedIn(self, result):
-        self.log_info("POP loggedin")
+        self.log_debug("POP loggedin")
         return self.listSize().addCallback(self.cbGotMessageSizes)
 
     def cbGotMessageSizes(self, sizes):
-        self.log_info("POP gotmessagesizes")
+        self.log_debug("POP gotmessagesizes")
         downloads = []
         for i in range(len(sizes)):
             downloads.append(self.retrieve(i).addCallback(self.cbDownloaded, i))
         return defer.DeferredList(downloads).addCallback(self.cbFinished)
 
     def cbDownloaded(self, lines, id):
-        self.log_info("POP downloaded message %d" % (id,))
+        self.log_debug("POP downloaded message %d" % (id,))
         self.factory.handleMessage("\r\n".join(lines))
-        self.log_info("POP deleting message %d" % (id,))
+        self.log_debug("POP deleting message %d" % (id,))
         self.delete(id)
 
     def cbFinished(self, results):
-        self.log_info("POP finished")
+        self.log_debug("POP finished")
         return self.quit()
 
 
@@ -769,13 +798,13 @@ class POP3DownloadFactory(protocol.ClientFactory, LoggingMixIn):
             self.nextPoll = None
             connector.connect()
 
-        self.log_info("Scheduling next POP3 poll")
+        self.log_debug("Scheduling next POP3 poll")
         self.nextPoll = self.reactor.callLater(self.settings["PollingSeconds"],
             reconnector)
 
     def clientConnectionLost(self, connector, reason):
         self.connector = connector
-        self.log_info("POP factory connection lost")
+        self.log_debug("POP factory connection lost")
         self.retry(connector)
 
 
@@ -786,38 +815,10 @@ class POP3DownloadFactory(protocol.ClientFactory, LoggingMixIn):
 
     @inlineCallbacks
     def handleMessage(self, message):
-        self.log_info("POP factory handle message")
-        self.log_info(message)
-        parsedMessage = email.message_from_string(message)
+        self.log_debug("POP factory handle message")
+        self.log_debug(message)
 
-        # TODO: make sure this is an email message we want to handle
-
-        # extract the token from the To header
-        name, addr = email.utils.parseaddr(parsedMessage['To'])
-        if addr:
-            # addr looks like: server_address+token@example.com
-            try:
-                pre, post = addr.split('@')
-                pre, token = pre.split('+')
-            except ValueError:
-                # TODO: handle this error
-                return
-        else:
-            # TODO: handle this error
-            return
-
-        for part in parsedMessage.walk():
-            if part.get_content_type() == "text/calendar":
-                calBody = part.get_payload(decode=True)
-                break
-        else:
-            # TODO: handle this condition
-            # No icalendear attachment
-            return
-
-        self.log_info(calBody)
-        calendar = ical.Component.fromString(calBody)
-        yield self.mailer.inbound(token, calendar)
+        yield self.mailer.inbound(message)
 
 
 
@@ -852,7 +853,7 @@ class IMAP4Service(service.Service):
 class IMAP4DownloadProtocol(imap4.IMAP4Client, LoggingMixIn):
 
     def serverGreeting(self, capabilities):
-        self.log_info("IMAP servergreeting")
+        self.log_debug("IMAP servergreeting")
         return self.login(self.factory.settings["Username"],
             self.factory.settings["Password"]).addCallback(self.cbLoggedIn)
 
@@ -865,42 +866,42 @@ class IMAP4DownloadProtocol(imap4.IMAP4Client, LoggingMixIn):
         return self.transport.loseConnection()
 
     def cbLoggedIn(self, result):
-        self.log_info("IMAP logged in [%s]" % (self.state,))
+        self.log_debug("IMAP logged in [%s]" % (self.state,))
         return self.select("Inbox").addCallback(self.cbInboxSelected)
 
     def cbInboxSelected(self, result):
-        self.log_info("IMAP Inbox selected [%s]" % (self.state,))
+        self.log_debug("IMAP Inbox selected [%s]" % (self.state,))
         allMessages = imap4.MessageSet(1, None)
         return self.fetchUID(allMessages, True).addCallback(self.cbGotUIDs)
 
     def cbGotUIDs(self, results):
-        self.log_info("IMAP got uids [%s]" % (self.state,))
+        self.log_debug("IMAP got uids [%s]" % (self.state,))
         self.messageUIDs = [result['UID'] for result in results.values()]
         self.messageCount = len(self.messageUIDs)
-        self.log_info("IMAP Inbox has %d messages" % (self.messageCount,))
+        self.log_debug("IMAP Inbox has %d messages" % (self.messageCount,))
         return self.fetchNextMessage()
 
     def fetchNextMessage(self):
-        self.log_info("IMAP in fetchnextmessage [%s]" % (self.state,))
+        self.log_debug("IMAP in fetchnextmessage [%s]" % (self.state,))
         if self.messageUIDs:
             nextUID = self.messageUIDs.pop(0)
             messageListToFetch = imap4.MessageSet(nextUID)
-            self.log_info("Downloading message %d of %d (%s)" %
+            self.log_debug("Downloading message %d of %d (%s)" %
                 (self.messageCount - len(self.messageUIDs), self.messageCount,
                 nextUID))
             return self.fetchMessage(messageListToFetch, True).addCallback(
                 self.cbGotMessage, messageListToFetch).addErrback(self.ebLogError)
         else:
-            self.log_info("All messages downloaded")
+            self.log_debug("All messages downloaded")
             return self.close().addCallback(self.cbClosed)
 
     def cbGotMessage(self, results, messageList):
-        self.log_info("IMAP in cbGotMessage [%s]" % (self.state,))
+        self.log_debug("IMAP in cbGotMessage [%s]" % (self.state,))
         try:
             messageData = results.values()[0]['RFC822']
         except IndexError:
             # not sure what happened, but results is empty
-            self.log_info("Skipping empty results")
+            self.log_error("Skipping empty results")
             return self.fetchNextMessage()
 
         self.factory.handleMessage(messageData)
@@ -908,22 +909,22 @@ class IMAP4DownloadProtocol(imap4.IMAP4Client, LoggingMixIn):
             uid=True).addCallback(self.cbMessageDeleted, messageList)
 
     def cbMessageDeleted(self, results, messageList):
-        self.log_info("IMAP in cbMessageDeleted [%s]" % (self.state,))
-        self.log_info("Deleted message")
+        self.log_debug("IMAP in cbMessageDeleted [%s]" % (self.state,))
+        self.log_debug("Deleted message")
         self.fetchNextMessage()
 
     def cbClosed(self, results):
-        self.log_info("IMAP in cbClosed [%s]" % (self.state,))
-        self.log_info("Mailbox closed")
+        self.log_debug("IMAP in cbClosed [%s]" % (self.state,))
+        self.log_debug("Mailbox closed")
         return self.logout().addCallback(
             lambda _: self.transport.loseConnection())
 
     def lineReceived(self, line):
-        self.log_info("RECEIVED: %s" % (line,))
+        self.log_debug("RECEIVED: %s" % (line,))
         imap4.IMAP4Client.lineReceived(self, line)
 
     def sendLine(self, line):
-        self.log_info("SENDING: %s" % (line,))
+        self.log_debug("SENDING: %s" % (line,))
         imap4.IMAP4Client.sendLine(self, line)
 
 
@@ -931,7 +932,7 @@ class IMAP4DownloadFactory(protocol.ClientFactory, LoggingMixIn):
     protocol = IMAP4DownloadProtocol
 
     def __init__(self, settings, mailer, reactor=None):
-        self.log_info("Setting up IMAPFactory")
+        self.log_debug("Setting up IMAPFactory")
 
         self.settings = settings
         self.mailer = mailer
@@ -941,10 +942,10 @@ class IMAP4DownloadFactory(protocol.ClientFactory, LoggingMixIn):
 
 
     def handleMessage(self, message):
-        self.log_info("IMAP factory handle message")
-        self.log_info(message)
-        parsedMessage = email.message_from_string(message)
-        # TODO: messages can be handed off here...
+        self.log_debug("IMAP factory handle message")
+        self.log_debug(message)
+
+        yield self.mailer.inbound(message)
 
 
     def retry(self, connector=None):
@@ -961,16 +962,16 @@ class IMAP4DownloadFactory(protocol.ClientFactory, LoggingMixIn):
             self.nextPoll = None
             connector.connect()
 
-        self.log_info("Scheduling next IMAP4 poll")
+        self.log_debug("Scheduling next IMAP4 poll")
         self.nextPoll = self.reactor.callLater(self.settings["PollingSeconds"],
             reconnector)
 
     def clientConnectionLost(self, connector, reason):
         self.connector = connector
-        self.log_info("IMAP factory connection lost")
+        self.log_debug("IMAP factory connection lost")
         self.retry(connector)
 
     def clientConnectionFailed(self, connector, reason):
         self.connector = connector
-        self.log_info("IMAP factory connection failed")
+        self.log_error("IMAP factory connection failed")
         self.retry(connector)
