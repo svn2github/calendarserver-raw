@@ -408,7 +408,7 @@ class IScheduleService(service.Service, LoggingMixIn):
         self.mailer = mailer
         root = resource.Resource()
         root.putChild('', self.HomePage())
-        root.putChild('email-inbox', self.IScheduleInbox(mailer))
+        root.putChild('inbox', self.IScheduleInbox(mailer))
         self.site = server.Site(root)
         self.server = internet.TCPServer(settings['MailGatewayPort'], self.site)
 

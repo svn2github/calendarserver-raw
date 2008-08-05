@@ -97,7 +97,7 @@ class ScheduleViaIMip(DeliveryService):
 
         mailGatewayServer = config.Scheduling['iMIP']['MailGatewayServer']
         mailGatewayPort = config.Scheduling['iMIP']['MailGatewayPort']
-        url = "http://%s:%d/email-inbox" % (mailGatewayServer, mailGatewayPort)
+        url = "http://%s:%d/inbox" % (mailGatewayServer, mailGatewayPort)
         headers = {
             'Content-Type' : 'text/calendar',
             'Originator' : fromAddr,
