@@ -310,8 +310,8 @@ def makeService_Combined(self, options):
         monitor.addProcess('memcached', memcachedArgv, env=parentEnv)
 
 
-    if (config.MailGateway["Enabled"] and
-        config.MailGateway["MailGatewayHost"] == "localhost"):
+    if (config.Scheduling['iMIP']['Enabled'] and
+        config.Scheduling['iMIP']["MailGatewayServer"] == "localhost"):
         log.msg("Adding mail gateway service")
 
         mailGatewayArgv = [

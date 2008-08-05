@@ -95,7 +95,9 @@ class ScheduleViaIMip(DeliveryService):
         if reactor is None:
             from twisted.internet import reactor
 
-        url = "http://localhost:62311/email-inbox"
+        mailGatewayServer = config.Scheduling['iMIP']['MailGatewayServer']
+        mailGatewayPort = config.Scheduling['iMIP']['MailGatewayPort']
+        url = "http://%s:%d/email-inbox" % (mailGatewayServer, mailGatewayPort)
         headers = {
             'Content-Type' : 'text/calendar',
             'Originator' : fromAddr,
@@ -103,6 +105,6 @@ class ScheduleViaIMip(DeliveryService):
         }
         factory = client.HTTPClientFactory(url, method='POST', headers=headers,
             postdata=caldata)
-        reactor.connectTCP("localhost", 62311, factory)
+        reactor.connectTCP(mailGatewayServer, mailGatewayPort, factory)
         return factory.deferred
 

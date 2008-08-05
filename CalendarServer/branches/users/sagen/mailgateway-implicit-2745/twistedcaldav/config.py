@@ -195,14 +195,21 @@ defaultConfig = {
 
         "iMIP": {
             "Enabled"          : False, # Server-to-iMIP protocol
+            "MailGatewayServer"     : "localhost",
+            "MailGatewayPort"       : 62311,
             "Sending": {
                 "Server"       : "",    # SMTP server to relay messages through
-                "Port"         : 587,   # SMTP server port to relay messages through
+                "Port"         : 25,    # SMTP server port to relay messages through
+                "Address"      : "",    # 'From' address for server
             },
             "Receiving": {
                 "Server"       : "",    # Server to retrieve email messages from
-                "Port"         : 0,     # Server port to retrieve email messages from
-                "Type"         : "",    # Type of message access server: 'pop3' or 'imap'
+                "UseSSL"       : True,  # Server to retrieve email messages from
+                "Port"         : 995,   # Server port to retrieve email messages from
+                "Type"         : "pop", # Type of message access server: 'pop' or 'imap'
+                "PollingSeconds"    : 60,   # How often to fetch mail
+                "Username"     : "",    # For account receiving email
+                "Password"     : "",    # For account receiving email
             },
             "AddressPatterns"  : [],    # Reg-ex patterns to match iMIP-able calendar user addresses
         },
@@ -213,39 +220,6 @@ defaultConfig = {
         "Enabled"          : False, # Per-user free-busy-url protocol
         "TimePeriod"       : 14,    # Number of days into the future to generate f-b data if no explicit time-range is specified
         "AnonymousAccess"  : False, # Allow anonymous read access to free-busy URL
-    },
-
-
-    #
-    # Mail Gateway
-    #
-    "MailGateway" : {
-        "Enabled": False,
-        "MailGatewayHost" : "localhost",
-        "MailGatewayPort" : 62310,
-
-        "Services" : [
-            {
-                "Service" : "twistedcaldav.mail.POP3Service",
-                "Enabled" : False,
-                "Host" : "", # "pop.host.name"
-                "UseSSL" : True,
-                "Port" : 995,
-                "PollingSeconds" : 60,
-                "Username" : "",
-                "Password" : "",
-            },
-            {
-                "Service" : "twistedcaldav.mail.IMAP4Service",
-                "Enabled" : False,
-                "Host" : "", # "imap.host.name"
-                "UseSSL" : True,
-                "Port" : 993,
-                "PollingSeconds" : 60,
-                "Username" : "",
-                "Password" : "",
-            },
-        ]
     },
 
 
@@ -328,7 +302,6 @@ class Config (object):
             self.updateDropBox,
             self.updateLogLevels,
             self.updateThreadPoolSize,
-            self.updateMailGateway,
         ]
 
     def __str__(self):
@@ -519,29 +492,6 @@ class Config (object):
             configDict = readPlist(configFile)
             configDict = _cleanup(configDict)
             self.update(configDict)
-
-    @staticmethod
-    def updateMailGateway(self, items):
-        #
-        # Mail Gateway
-        #
-        for service in self.MailGateway["Services"]:
-            if service["Enabled"]:
-                self.MailGateway["Enabled"] = True
-                break
-        else:
-            self.MailGateway["Enabled"] = False
-
-        for service in self.MailGateway["Services"]:
-            if (
-                service["Service"] in ("twistedcaldav.mail.POP3Service",
-                    "twistedcaldav.mail.IMAP4Service") and
-                service["Enabled"]
-            ):
-                for key, value in service.iteritems():
-                    if not value:
-                        raise ConfigurationError("Invalid %s for %s: %r"
-                            % (key, service["Service"], value))
 
 
 def _mergeData(oldData, newData):

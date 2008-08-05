@@ -230,9 +230,14 @@ def injectMessage(organizer, attendee, calendar, reactor=None):
 
     data = str(calendar)
 
-    useSSL = False
-    host = "localhost"
-    port = 8008
+    if config.SSLPort:
+        useSSL = True
+        port = config.SSLPort
+    else:
+        useSSL = False
+        port = config.HTTPPort
+
+    host = config.ServerHostName
     path = "email-inbox"
     scheme = "https:" if useSSL else "http:"
     url = "%s//%s:%d/%s/" % (scheme, host, port, path)
@@ -361,7 +366,7 @@ class MailGatewayTokensDatabase(AbstractSQLDatabase):
 # Service
 #
 
-class MailGatewayServiceMaker(object):
+class MailGatewayServiceMaker(LoggingMixIn):
     implements(IPlugin, service.IServiceMaker)
 
     tapname = "caldav_mailgateway"
@@ -372,14 +377,24 @@ class MailGatewayServiceMaker(object):
 
         multiService = service.MultiService()
 
-        mailer = MailHandler()
+        settings = config.Scheduling['iMIP']
+        if settings['Enabled']:
+            mailer = MailHandler()
 
-        for settings in config.MailGateway["Services"]:
-            if settings["Enabled"]:
-                client = namedClass(settings["Service"])(settings, mailer)
-                client.setServiceParent(multiService)
+            mailType = settings['Receiving']['Type']
+            if mailType.lower().startswith('pop'):
+                client = POP3Service(settings['Receiving'], mailer)
+            elif mailType.lower().startswith('imap'):
+                client = IMAP4Service(settings['Receiving'], mailer)
+            else:
+                # TODO: raise error?
+                self.log_error("Invalid iMIP type in configuration: %s" %
+                    (mailType,))
+                return multiService
 
-        IScheduleService(mailer).setServiceParent(multiService)
+            client.setServiceParent(multiService)
+
+            IScheduleService(settings, mailer).setServiceParent(multiService)
 
         return multiService
 
@@ -389,13 +404,14 @@ class MailGatewayServiceMaker(object):
 #
 class IScheduleService(service.Service, LoggingMixIn):
 
-    def __init__(self, mailer): # TODO: settings
+    def __init__(self, settings, mailer):
+        self.settings = settings
         self.mailer = mailer
         root = resource.Resource()
         root.putChild('', self.HomePage())
         root.putChild('email-inbox', self.IScheduleInbox(mailer))
         self.site = server.Site(root)
-        self.server = internet.TCPServer(62311, self.site)
+        self.server = internet.TCPServer(settings['MailGatewayPort'], self.site)
 
     def startService(self):
         self.server.startService()
@@ -469,8 +485,13 @@ class MailHandler(LoggingMixIn):
         if token is None:
             token = self.db.createToken(organizer, attendee)
 
-        calendar.getOrganizerProperty().setValue("mailto:SERVER_ADDRESS+%s@example.com" % (token,))
-        # TODO: grab server email address from config
+        settings = config.Scheduling['iMIP']['Sending']
+        fullServerAddress = settings['Address']
+        name, serverAddress = email.utils.parseaddr(fullServerAddress)
+        pre, post = serverAddress.split('@')
+        addressWithToken = "%s+%s@%s" % (pre, token, post)
+        calendar.getOrganizerProperty().setValue("mailto:%s" %
+            (addressWithToken,))
 
         message = self._generateTemplateMessage(calendar)
 
@@ -480,15 +501,17 @@ class MailHandler(LoggingMixIn):
         if not organizer.startswith("mailto:"):
             raise ValueError("ORGANIZER address '%s' must be mailto: for iMIP operation." % (organizer,))
         organizer = organizer[7:]
-        fromAddr = "SERVER_ADDRESS@example.com"
+        fromAddr = serverAddress
+        toAddr = attendee
         message = message.replace("${fromaddress}", fromAddr)
         message = message.replace("${replytoaddress}", organizer)
         
         if not attendee.startswith("mailto:"):
             raise ValueError("ATTENDEE address '%s' must be mailto: for iMIP operation." % (attendee,))
         attendee = attendee[7:]
-        sendit = message.replace("${toaddress}", attendee)
-        yield sendmail('smtp.example.com', fromAddr, attendee, sendit, port=25)
+        message = message.replace("${toaddress}", attendee)
+        yield sendmail(settings['Server'], fromAddr, toAddr, message,
+            port=settings['Port'])
 
 
     def _generateTemplateMessage(self, calendar):
@@ -665,11 +688,13 @@ class POP3Service(service.Service, LoggingMixIn):
 
     def __init__(self, settings, mailer):
         if settings["UseSSL"]:
-            self.client = internet.SSLClient(settings["Host"], settings["Port"],
+            self.client = internet.SSLClient(settings["Server"],
+                settings["Port"],
                 POP3DownloadFactory(settings, mailer),
                 ssl.ClientContextFactory())
         else:
-            self.client = internet.TCPClient(settings["Host"], settings["Port"],
+            self.client = internet.TCPClient(settings["Server"],
+                settings["Port"],
                 POP3DownloadFactory(settings, mailer))
 
         self.mailer = mailer
@@ -770,7 +795,7 @@ class POP3DownloadFactory(protocol.ClientFactory, LoggingMixIn):
         # extract the token from the To header
         name, addr = email.utils.parseaddr(parsedMessage['To'])
         if addr:
-            # addr looks like: SERVER_ADDRESS+token@example.com
+            # addr looks like: server_address+token@example.com
             try:
                 pre, post = addr.split('@')
                 pre, token = pre.split('+')
@@ -806,11 +831,13 @@ class IMAP4Service(service.Service):
     def __init__(self, settings, mailer):
 
         if settings["UseSSL"]:
-            self.client = internet.SSLClient(settings["Host"], settings["Port"],
+            self.client = internet.SSLClient(settings["Server"],
+                settings["Port"],
                 IMAP4DownloadFactory(settings, mailer),
                 ssl.ClientContextFactory())
         else:
-            self.client = internet.TCPClient(settings["Host"], settings["Port"],
+            self.client = internet.TCPClient(settings["Server"],
+                settings["Port"],
                 IMAP4DownloadFactory(settings, mailer))
 
         self.mailer = mailer
