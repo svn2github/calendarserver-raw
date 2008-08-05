@@ -196,7 +196,7 @@ defaultConfig = {
         "iMIP": {
             "Enabled"          : False, # Server-to-iMIP protocol
             "MailGatewayServer"     : "localhost",
-            "MailGatewayPort"       : 62311,
+            "MailGatewayPort"       : 62310,
             "Sending": {
                 "Server"       : "",    # SMTP server to relay messages through
                 "Port"         : 25,    # SMTP server port to relay messages through

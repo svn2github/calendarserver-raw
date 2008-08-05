@@ -407,21 +407,35 @@ limitations under the License.
   	<dict>
   	  <key>Enabled</key>
   	  <false/>
+	  <key>MailGatewayServer</key>
+	  <string>localhost</string>
+	  <key>MailGatewayPort</key>
+	  <integer>62310</integer>
   	  <key>Sending</key>
   	  <dict>
   	    <key>Server</key>
-  	    <string></string>
+  	    <string></string> <-- SMTP server -->
   	    <key>Port</key>
-  	    <integer>587</integer>
+  	    <integer>25</integer> <-- SMTP port -->
+		<key>Address</key>
+		<string></string> <-- Address email will be sent from -->
       </dict>
       <key>Receiving</key>
       <dict>
   	    <key>Server</key>
-  	    <string></string>
+  	    <string></string> <-- Incoming mail server -->
+        <key>UseSSL</key>
+        <true/>
   	    <key>Port</key>
-  	    <integer>0</integer>
+  	    <integer>995</integer> <-- Incoming mail port -->
   	    <key>Type</key>
-  	    <string></string> <!-- Either 'pop3' or 'imap' -->
+  	    <string>pop</string> <!-- Either 'pop' or 'imap' -->
+        <key>PollingSeconds</key> <-- How often to fetch mail -->
+        <integer>20</integer>
+        <key>Username</key>
+        <string></string> <-- Incoming mail account -->
+        <key>Password</key>
+        <string></string>
   	  </dict>
   	  <key>AddressPatterns</key>
   	  <array>
