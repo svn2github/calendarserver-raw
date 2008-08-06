@@ -217,14 +217,7 @@ class IMIPInboxResource(CalDAVResource):
 
 
 
-def injectMessage(organizer, attendee, calendar, reactor=None):
-
-    def _success(result):
-        log.info("iMIP response POSTed successfully")
-
-    def _failure(failure):
-        log.err("Failed to POST iMIP response: %s" %
-            (failure.getErrorMessage(),))
+def injectMessage(organizer, attendee, calendar, msgId, reactor=None):
 
     if reactor is None:
         from twisted.internet import reactor
@@ -255,7 +248,15 @@ def injectMessage(organizer, attendee, calendar, reactor=None):
         reactor.connectSSL(host, port, factory, ssl.ClientContextFactory())
     else:
         reactor.connectTCP(host, port, factory)
-    factory.deferred.addCallback(_success).addErrback(_failure)
+
+    def _success(result, msgId):
+        log.info("Mail gateway successfully injected message %s" % (msgId,))
+
+    def _failure(failure, msgId):
+        log.err("Mail gateway failed to inject message %s (Reason: %s)" %
+            (msgId, failure.getErrorMessage()))
+
+    factory.deferred.addCallback(_success, msgId).addErrback(_failure, msgId)
     return factory.deferred
 
 
@@ -475,6 +476,9 @@ class MailHandler(LoggingMixIn):
     @inlineCallbacks
     def inbound(self, message):
         parsedMessage = email.message_from_string(message)
+        self.log_info("Mail gateway received message %s from %s to %s" %
+            (parsedMessage['Message-ID'], parsedMessage['From'],
+             parsedMessage['To']))
 
         # TODO: make sure this is an email message we want to handle
 
@@ -514,10 +518,10 @@ class MailHandler(LoggingMixIn):
         organizer = str(organizer)
         attendee = str(attendee)
         calendar.getOrganizerProperty().setValue(organizer)
-        yield injectMessage(organizer, attendee, calendar)
+        yield injectMessage(organizer, attendee, calendar,
+            parsedMessage['Message-ID'])
 
 
-    @inlineCallbacks
     def outbound(self, organizer, attendee, calendar):
         # create token, send email
         token = self.db.getToken(organizer, attendee)
@@ -532,7 +536,7 @@ class MailHandler(LoggingMixIn):
         calendar.getOrganizerProperty().setValue("mailto:%s" %
             (addressWithToken,))
 
-        message = self._generateTemplateMessage(calendar)
+        msgId, message = self._generateTemplateMessage(calendar, organizer)
 
         # The email's From: will be the calendar server's address (without
         # + addressing), while the Reply-To: will be the organizer's email
@@ -549,13 +553,27 @@ class MailHandler(LoggingMixIn):
             raise ValueError("ATTENDEE address '%s' must be mailto: for iMIP operation." % (attendee,))
         attendee = attendee[7:]
         message = message.replace("${toaddress}", attendee)
-        yield sendmail(settings['Server'], fromAddr, toAddr, message,
+
+        def _success(result, msgId, fromAddr, toAddr):
+            self.log_info("Mail gateway sent message %s from %s to %s" %
+                (msgId, fromAddr, toAddr))
+
+        def _failure(failure, msgId, fromAddr, toAddr):
+            self.log_error("Mail gateway failed to send message %s from %s to %s (Reason: %s)" %
+                (msgId, fromAddr, toAddr, failure.getErrorMessage()))
+
+        deferred = sendmail(settings['Server'], fromAddr, toAddr, message,
             port=settings['Port'])
 
+        deferred.addCallback(_success, msgId, fromAddr, toAddr)
+        deferred.addErrback(_failure, msgId, fromAddr, toAddr)
 
-    def _generateTemplateMessage(self, calendar):
+
+    def _generateTemplateMessage(self, calendar, organizer):
 
         caldata = str(calendar)
+        title, summary = self._generateCalendarSummary(calendar, organizer)
+
         data = cStringIO.StringIO()
         writer = MimeWriter.MimeWriter(data)
 
@@ -563,8 +581,9 @@ class MailHandler(LoggingMixIn):
         writer.addheader("Reply-To", "${replytoaddress}")
         writer.addheader("To", "${toaddress}")
         writer.addheader("Date", rfc822date())
-        writer.addheader("Subject", "DO NOT REPLY: calendar invitation test")
-        writer.addheader("Message-ID", messageid())
+        writer.addheader("Subject", "Event invitation: %s" % (title,))
+        msgId = messageid()
+        writer.addheader("Message-ID", msgId)
         writer.addheader("Mime-Version", "1.0")
         writer.flushheaders()
 
@@ -573,7 +592,7 @@ class MailHandler(LoggingMixIn):
         # message body
         part = writer.nextpart()
         body = part.startbody("text/plain")
-        body.write("Hi, You've been invited to a cool event by CalendarServer's new iMIP processor.  %s " % (self._generateCalendarSummary(calendar),))
+        body.write("You've been invited to the following event:  %s To accept or decline this invitation, click the link below.\n" % (summary,))
 
         part = writer.nextpart()
         encoding = "7bit"
@@ -589,20 +608,19 @@ class MailHandler(LoggingMixIn):
         # finish
         writer.lastpart()
 
-        return data.getvalue()
+        return msgId, data.getvalue()
 
-    def _generateCalendarSummary(self, calendar):
+    def _generateCalendarSummary(self, calendar, organizer):
 
         # Get the most appropriate component
         component = calendar.masterComponent()
         if component is None:
             component = calendar.mainComponent(True)
 
-        organizer = component.getOrganizerProperty()
-        if "CN" in organizer.params():
-            organizer = "%s <%s>" % (organizer.params()["CN"][0], organizer.value(),)
-        else:
-            organizer = organizer.value()
+        organizerProp = component.getOrganizerProperty()
+        if "CN" in organizerProp.params():
+            organizer = "%s <%s>" % (organizerProp.params()["CN"][0],
+                organizer,)
 
         dtinfo = self._getDateTimeInfo(component)
 
@@ -614,14 +632,13 @@ class MailHandler(LoggingMixIn):
         if description is None:
             description = ""
 
-        return """---- Begin Calendar Event Summary ----
+        return summary, """
 
-Organizer:   %s
-Summary:     %s
+Summary: %s
+Organizer: %s
 %sDescription: %s
 
-----  End Calendar Event Summary  ----
-""" % (organizer, summary, dtinfo, description,)
+""" % (summary, organizer, dtinfo, description,)
 
     def _getDateTimeInfo(self, component):
 
