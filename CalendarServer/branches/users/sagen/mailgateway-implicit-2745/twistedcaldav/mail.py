@@ -490,10 +490,10 @@ class MailHandler(LoggingMixIn):
                 pre, post = addr.split('@')
                 pre, token = pre.split('+')
             except ValueError:
-                # TODO: handle this error
+                self.log_error("Mail gateway didn't find a token in message %s (%s)" % (parsedMessage['Message-ID'], parsedMessage['To']))
                 return
         else:
-            # TODO: handle this error
+            self.log_error("Mail gateway couldn't parse To: address (%s) in message %s" % (parsedMessage['To'], parsedMessage['Message-ID']))
             return
 
         for part in parsedMessage.walk():
@@ -501,8 +501,8 @@ class MailHandler(LoggingMixIn):
                 calBody = part.get_payload(decode=True)
                 break
         else:
-            # TODO: handle this condition
             # No icalendear attachment
+            self.log_error("Mail gateway didn't find an icalendar attachment in message %s" % (parsedMessage['Message-ID'],))
             return
 
         self.log_debug(calBody)
@@ -512,8 +512,9 @@ class MailHandler(LoggingMixIn):
         result = self.db.lookupByToken(token)
         if result is None:
             # This isn't a token we recognize
-            self.error("Received a token I don't recognize: %s" % (token,))
+            self.log_error("Mail gateway found a token (%s) but didn't recognize it in message %s" % (token, parsedMessage['Message-ID']))
             return
+
         organizer, attendee = result
         organizer = str(organizer)
         attendee = str(attendee)
