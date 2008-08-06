@@ -736,7 +736,23 @@ class IMIPScheduler(Scheduler):
         pass
 
     def securityChecks(self):
-        pass
+        """
+        Check that the connection is from the mail gateway
+        """
+        allowed = config.Scheduling['iMIP']['MailGatewayServer']
+        # Get the request IP and map to hostname.
+        clientip = self.request.remoteAddr.host
+        host, aliases, _ignore_ips = socket.gethostbyaddr(clientip)
+        for host in itertools.chain((host,), aliases):
+            if host == allowed:
+                break
+        else:
+            log.err("Only %s is allowed to submit internal scheduling requests, not %s" % (allowed, host))
+            # TODO: verify this is the right response:
+            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "originator-allowed")))
+
+            
+            
 
     @inlineCallbacks
     def checkOriginator(self):

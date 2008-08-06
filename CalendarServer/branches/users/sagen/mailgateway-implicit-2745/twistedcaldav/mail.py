@@ -29,7 +29,7 @@ from twisted.application import internet, service
 from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedClass
 from twisted.mail.smtp import messageid, rfc822date, sendmail
-from twistedcaldav.log import LoggingMixIn
+from twistedcaldav.log import Logger, LoggingMixIn
 from twistedcaldav import ical
 from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.scheduling.scheduler import IMIPScheduler
@@ -49,6 +49,8 @@ __all__ = [
     "MailGatewayServiceMaker",
 ]
 
+
+log = Logger()
 
 #
 # Mail gateway service config
@@ -217,6 +219,13 @@ class IMIPInboxResource(CalDAVResource):
 
 def injectMessage(organizer, attendee, calendar, reactor=None):
 
+    def _success(result):
+        log.info("iMIP response POSTed successfully")
+
+    def _failure(failure):
+        log.err("Failed to POST iMIP response: %s" %
+            (failure.getErrorMessage(),))
+
     if reactor is None:
         from twisted.internet import reactor
 
@@ -236,7 +245,7 @@ def injectMessage(organizer, attendee, calendar, reactor=None):
         port = config.HTTPPort
 
     host = config.ServerHostName
-    path = "email-inbox"
+    path = "inbox"
     scheme = "https:" if useSSL else "http:"
     url = "%s//%s:%d/%s/" % (scheme, host, port, path)
 
@@ -246,6 +255,7 @@ def injectMessage(organizer, attendee, calendar, reactor=None):
         reactor.connectSSL(host, port, factory, ssl.ClientContextFactory())
     else:
         reactor.connectTCP(host, port, factory)
+    factory.deferred.addCallback(_success).addErrback(_failure)
     return factory.deferred
 
 

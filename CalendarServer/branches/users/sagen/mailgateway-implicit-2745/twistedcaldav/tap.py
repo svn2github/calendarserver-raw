@@ -533,19 +533,19 @@ class CalDAVServiceMaker(object):
             log.msg("Setting up iSchedule inbox resource: %r" % (self.iScheduleResourceClass,))
     
             ischedule = self.iScheduleResourceClass(
-                os.path.join(config.DocumentRoot, 'inbox'),
+                os.path.join(config.DocumentRoot, 'ischedule'),
                 root,
             )
-            root.putChild('inbox', ischedule)
+            root.putChild('ischedule', ischedule)
 
         #
         # IMIP delivery resource
         #
         imipInbox = self.imipResourceClass(
-            os.path.join(config.DocumentRoot, 'email-inbox'),
+            os.path.join(config.DocumentRoot, 'inbox'),
             root,
         )
-        root.putChild('email-inbox', imipInbox)
+        root.putChild('inbox', imipInbox)
 
         #
         # Configure ancillary data
