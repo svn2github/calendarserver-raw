@@ -262,7 +262,7 @@ def injectMessage(organizer, attendee, calendar, msgId, reactor=None):
 
 
 
-class MailGatewayTokensDatabase(AbstractSQLDatabase):
+class MailGatewayTokensDatabase(AbstractSQLDatabase, LoggingMixIn):
     """
     A database to maintain "plus-address" tokens for IMIP requests.
 
@@ -292,6 +292,7 @@ class MailGatewayTokensDatabase(AbstractSQLDatabase):
             """, token, organizer, attendee
         )
         self._db_commit()
+        self.log_info("Mail gateway created token %s for %s (organizer) and %s (attendee)" % (token, organizer, attendee))
         return token
 
     def lookupByToken(self, token):
