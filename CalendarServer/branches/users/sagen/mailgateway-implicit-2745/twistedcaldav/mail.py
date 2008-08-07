@@ -474,7 +474,6 @@ class MailHandler(LoggingMixIn):
     def __init__(self):
         self.db = MailGatewayTokensDatabase(config.DataRoot)
 
-    @inlineCallbacks
     def inbound(self, message):
         parsedMessage = email.message_from_string(message)
         self.log_info("Mail gateway received message %s from %s to %s" %
@@ -502,7 +501,7 @@ class MailHandler(LoggingMixIn):
                 calBody = part.get_payload(decode=True)
                 break
         else:
-            # No icalendear attachment
+            # No icalendar attachment
             self.log_error("Mail gateway didn't find an icalendar attachment in message %s" % (parsedMessage['Message-ID'],))
             return
 
@@ -520,7 +519,7 @@ class MailHandler(LoggingMixIn):
         organizer = str(organizer)
         attendee = str(attendee)
         calendar.getOrganizerProperty().setValue(organizer)
-        yield injectMessage(organizer, attendee, calendar,
+        return injectMessage(organizer, attendee, calendar,
             parsedMessage['Message-ID'])
 
 
@@ -842,12 +841,11 @@ class POP3DownloadFactory(protocol.ClientFactory, LoggingMixIn):
         self.log_info("POP factory connection failed")
         self.retry(connector)
 
-    @inlineCallbacks
     def handleMessage(self, message):
         self.log_debug("POP factory handle message")
         self.log_debug(message)
 
-        yield self.mailer.inbound(message)
+        return self.mailer.inbound(message)
 
 
 
@@ -883,32 +881,38 @@ class IMAP4DownloadProtocol(imap4.IMAP4Client, LoggingMixIn):
 
     def serverGreeting(self, capabilities):
         self.log_debug("IMAP servergreeting")
-        return self.login(self.factory.settings["Username"],
-            self.factory.settings["Password"]).addCallback(self.cbLoggedIn)
+        login = self.login(self.factory.settings["Username"],
+            self.factory.settings["Password"])
+        login.addCallback(self.cbLoggedIn)
+        login.addErrback(self.ebLoginFailed)
 
     def ebLogError(self, error):
         self.log_error("IMAP Error: %s" % (error,))
 
-    def cbLoginFailed(self, reason):
+    def ebLoginFailed(self, reason):
         self.log_error("IMAP login failed for %s" %
             (self.factory.settings["Username"],))
-        return self.transport.loseConnection()
+        self.transport.loseConnection()
 
     def cbLoggedIn(self, result):
         self.log_debug("IMAP logged in [%s]" % (self.state,))
-        return self.select("Inbox").addCallback(self.cbInboxSelected)
+        self.select("Inbox").addCallback(self.cbInboxSelected)
 
     def cbInboxSelected(self, result):
         self.log_debug("IMAP Inbox selected [%s]" % (self.state,))
         allMessages = imap4.MessageSet(1, None)
-        return self.fetchUID(allMessages, True).addCallback(self.cbGotUIDs)
+        self.fetchUID(allMessages, True).addCallback(self.cbGotUIDs)
 
     def cbGotUIDs(self, results):
         self.log_debug("IMAP got uids [%s]" % (self.state,))
         self.messageUIDs = [result['UID'] for result in results.values()]
         self.messageCount = len(self.messageUIDs)
         self.log_debug("IMAP Inbox has %d messages" % (self.messageCount,))
-        return self.fetchNextMessage()
+        if self.messageCount:
+            self.fetchNextMessage()
+        else:
+            # No messages; close it out
+            self.close().addCallback(self.cbClosed)
 
     def fetchNextMessage(self):
         self.log_debug("IMAP in fetchnextmessage [%s]" % (self.state,))
@@ -918,23 +922,33 @@ class IMAP4DownloadProtocol(imap4.IMAP4Client, LoggingMixIn):
             self.log_debug("Downloading message %d of %d (%s)" %
                 (self.messageCount - len(self.messageUIDs), self.messageCount,
                 nextUID))
-            return self.fetchMessage(messageListToFetch, True).addCallback(
+            self.fetchMessage(messageListToFetch, True).addCallback(
                 self.cbGotMessage, messageListToFetch).addErrback(self.ebLogError)
         else:
-            self.log_debug("All messages downloaded")
-            return self.close().addCallback(self.cbClosed)
+            self.log_debug("Seeing if anything new has arrived")
+            # Go back and see if any more messages have come in
+            self.expunge().addCallback(self.cbInboxSelected)
 
     def cbGotMessage(self, results, messageList):
         self.log_debug("IMAP in cbGotMessage [%s]" % (self.state,))
         try:
             messageData = results.values()[0]['RFC822']
         except IndexError:
-            # not sure what happened, but results is empty
-            self.log_error("Skipping empty results")
-            return self.fetchNextMessage()
+            # results will be empty unless the "twistedmail-imap-flags-anywhere"
+            # patch from http://twistedmatrix.com/trac/ticket/1105 is applied
+            self.log_error("Skipping empty results -- apply twisted patch!")
+            self.fetchNextMessage()
+            return
 
-        self.factory.handleMessage(messageData)
-        return self.addFlags(messageList, ("\\Deleted",),
+        d = self.factory.handleMessage(messageData)
+        if d:
+            d.addCallback(self.cbFlagDeleted, messageList)
+        else:
+            # No deferred returned, so no need for addCallback( )
+            self.cbFlagDeleted(None, messageList)
+
+    def cbFlagDeleted(self, results, messageList):
+        self.addFlags(messageList, ("\\Deleted",),
             uid=True).addCallback(self.cbMessageDeleted, messageList)
 
     def cbMessageDeleted(self, results, messageList):
@@ -945,8 +959,12 @@ class IMAP4DownloadProtocol(imap4.IMAP4Client, LoggingMixIn):
     def cbClosed(self, results):
         self.log_debug("IMAP in cbClosed [%s]" % (self.state,))
         self.log_debug("Mailbox closed")
-        return self.logout().addCallback(
+        self.logout().addCallback(
             lambda _: self.transport.loseConnection())
+
+    def rawDataReceived(self, data):
+        self.log_debug("RAW RECEIVED: %s" % (data,))
+        imap4.IMAP4Client.rawDataReceived(self, data)
 
     def lineReceived(self, line):
         self.log_debug("RECEIVED: %s" % (line,))
@@ -974,7 +992,7 @@ class IMAP4DownloadFactory(protocol.ClientFactory, LoggingMixIn):
         self.log_debug("IMAP factory handle message")
         self.log_debug(message)
 
-        yield self.mailer.inbound(message)
+        return self.mailer.inbound(message)
 
 
     def retry(self, connector=None):
