@@ -739,7 +739,7 @@ class XMPPNotifier(LoggingMixIn):
             if frm in self.roster:
                 txt = str(body).lower()
                 if txt == "help":
-                    response = "debug on, debug off, roster"
+                    response = "debug on, debug off, roster, hammer <count>"
                 elif txt == "roster":
                     response = "Roster: %s" % (str(self.roster),)
                 elif txt == "debug on":
@@ -748,6 +748,15 @@ class XMPPNotifier(LoggingMixIn):
                 elif txt == "debug off":
                     self.roster[frm]['debug'] = False
                     response = "Debugging off"
+                elif txt.startswith("hammer"):
+                    try:
+                        hammer, count = txt.split()
+                        count = int(count)
+                    except ValueError:
+                        response = "Please phrase it like 'hammer 100'"
+                    else:
+                        response = "Hammer will commence now, %d times" % (count,)
+                        self.reactor.callLater(1, self.hammer, count)
                 else:
                     response = "I don't understand.  Try 'help'."
             else:
@@ -760,6 +769,9 @@ class XMPPNotifier(LoggingMixIn):
                 self.xmlStream.send(message)
 
 
+    def hammer(self, count):
+        for i in xrange(count):
+            self.enqueue("hammertesting")
 
 
 class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
