@@ -460,10 +460,10 @@ limitations under the License.
         <key>KeepAliveSeconds</key>
         <integer>120</integer>
 
-        <!-- List of regular expressions defining which XMPP JIDs can converse with the server -->
+        <!-- List of glob-like expressions defining which XMPP JIDs can converse with the server -->
         <key>AllowedJIDs</key>
         <array>
-        <string>.*.apple.com</string>
+          <string>*.apple.com</string>
         </array>
       </dict>
     </array>

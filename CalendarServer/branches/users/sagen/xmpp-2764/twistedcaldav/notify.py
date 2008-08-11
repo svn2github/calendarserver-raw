@@ -49,7 +49,7 @@ from twisted.words.xish import domish
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.config import config, parseConfig, defaultConfig
 from zope.interface import Interface, implements
-import re
+from fnmatch import fnmatch
 
 __all__ = [
     "Coalescer",
@@ -642,11 +642,8 @@ class XMPPNotifier(LoggingMixIn):
 
     def allowedInRoster(self, jid):
         for pattern in self.settings.get("AllowedJIDs", []):
-            try:
-                if re.match(pattern, jid) is not None:
-                    return True
-            except re.error:
-                self.log_error("Invalid regular expression for XMPP notification configuration: %s" % (pattern,))
+            if fnmatch(jid, pattern):
+                return True
         return False
 
     def handleRoster(self, iq):
