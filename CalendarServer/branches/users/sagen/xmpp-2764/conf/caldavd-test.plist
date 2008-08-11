@@ -463,7 +463,9 @@ limitations under the License.
         <!-- List of glob-like expressions defining which XMPP JIDs can converse with the server -->
         <key>AllowedJIDs</key>
         <array>
+          <!--
           <string>*.apple.com</string>
+          -->
         </array>
       </dict>
     </array>
