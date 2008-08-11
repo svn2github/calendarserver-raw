@@ -180,7 +180,7 @@ class NotificationClient(LoggingMixIn):
                 self.log_debug("Sending to notification server: %s" % (uri,))
                 observer.sendLine(str(uri))
         else:
-            self.log_debug("Queing: %s" % (uri,))
+            self.log_debug("Queuing: %s" % (uri,))
             self.queued.add(uri)
 
     def connectionMade(self):
@@ -258,8 +258,13 @@ class Coalescer(LoggingMixIn):
     """
 
     delaySeconds = 5
+    sendAnywayAfterCount = 5
 
-    def __init__(self, notifiers, reactor=None, delaySeconds=None):
+    def __init__(self, notifiers, reactor=None, delaySeconds=None,
+        sendAnywayAfterCount=None):
+
+        if sendAnywayAfterCount:
+            self.sendAnywayAfterCount = sendAnywayAfterCount
 
         if delaySeconds:
             self.delaySeconds = delaySeconds
@@ -268,18 +273,29 @@ class Coalescer(LoggingMixIn):
             from twisted.internet import reactor
         self.reactor = reactor
 
-        self.uris = dict()
+        self.uris = {}
         self.notifiers = notifiers
 
     def add(self, uri):
-        delayed = self.uris.get(uri, None)
+        delayed, count = self.uris.get(uri, [None, 0])
+
         if delayed and delayed.active():
-            delayed.reset(self.delaySeconds)
+            count += 1
+            if count < self.sendAnywayAfterCount:
+                # reschedule for delaySeconds in the future
+                delayed.reset(self.delaySeconds)
+                self.uris[uri][1] = count
+                self.log_info("Delaying: %s" % (uri,))
+            else:
+                self.log_info("Not delaying to avoid starvation: %s" % (uri,))
         else:
-            self.uris[uri] = self.reactor.callLater(self.delaySeconds,
-                self.delayedEnqueue, uri)
+            self.log_info("Scheduling: %s" % (uri,))
+            self.uris[uri] = [self.reactor.callLater(self.delaySeconds,
+                self.delayedEnqueue, uri), 0]
 
     def delayedEnqueue(self, uri):
+        self.log_info("Time to send: %s" % (uri,))
+        self.uris[uri][1] = 0
         for notifier in self.notifiers:
             notifier.enqueue(uri)
 
@@ -771,7 +787,7 @@ class XMPPNotifier(LoggingMixIn):
 
     def hammer(self, count):
         for i in xrange(count):
-            self.enqueue("hammertesting")
+            self.enqueue("hammertesting%d" % (count,))
 
 
 class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
