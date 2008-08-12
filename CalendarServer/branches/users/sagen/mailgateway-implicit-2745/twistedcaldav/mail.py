@@ -47,6 +47,7 @@ import MimeWriter
 __all__ = [
     "IMIPInboxResource",
     "MailGatewayServiceMaker",
+    "MailHandler",
 ]
 
 
@@ -471,38 +472,104 @@ class IScheduleService(service.Service, LoggingMixIn):
 
 class MailHandler(LoggingMixIn):
 
-    def __init__(self):
-        self.db = MailGatewayTokensDatabase(config.DataRoot)
+    def __init__(self, dataRoot=None):
+        if dataRoot is None:
+            dataRoot = config.DataRoot
+        self.db = MailGatewayTokensDatabase(dataRoot)
+
+    def checkDSN(self, message):
+        # returns (isDSN, Action, Original Message-ID)
+
+        report = deliveryStatus = original = None
+
+        for part in message.walk():
+            content_type = part.get_content_type()
+            if content_type == "multipart/report":
+                report = part
+                continue
+            elif content_type == "message/delivery-status":
+                deliveryStatus = part
+                continue
+            elif content_type == "message/rfc822":
+                original = part
+                continue
+
+        if report is not None and deliveryStatus is not None:
+            # we have what appears to be a DSN
+
+            lines = str(deliveryStatus).split("\n")
+            for line in lines:
+                lower = line.lower()
+                if lower.startswith("action:"):
+                    # found Action:
+                    action = lower.split(' ')[1]
+                    break
+            else:
+                action = None
+
+            if action is None or original is None:
+                # This is a DSN we can't do anything with
+                return True, None, None
+
+            lines = str(original).split("\n")
+            for line in lines:
+                lower = line.lower()
+                if lower.startswith("message-id:"):
+                    # found Message-ID:
+                    messageID = lower.split(' ')[1]
+                    break
+            else:
+                messageID = None
+
+            return True, action, messageID
+
+        else:
+            # Not a DSN
+            return False, None, None
+
+
+
+
 
     def inbound(self, message):
-        parsedMessage = email.message_from_string(message)
+        msg = email.message_from_string(message)
+
+        isDSN, action, original = self.checkDSN(msg)
+        if isDSN:
+            if action == 'failed' and original:
+                # This is a DSN we can handle
+                pass
+            else:
+                # It's a DSN without enough to go on
+                self.log_error("Can't process DSN %s" % (msg['Message-ID'],))
+                return
+
         self.log_info("Mail gateway received message %s from %s to %s" %
-            (parsedMessage['Message-ID'], parsedMessage['From'],
-             parsedMessage['To']))
+            (msg['Message-ID'], msg['From'], msg['To']))
 
         # TODO: make sure this is an email message we want to handle
 
         # extract the token from the To header
-        name, addr = email.utils.parseaddr(parsedMessage['To'])
+        name, addr = email.utils.parseaddr(msg['To'])
         if addr:
             # addr looks like: server_address+token@example.com
             try:
                 pre, post = addr.split('@')
                 pre, token = pre.split('+')
             except ValueError:
-                self.log_error("Mail gateway didn't find a token in message %s (%s)" % (parsedMessage['Message-ID'], parsedMessage['To']))
+                self.log_error("Mail gateway didn't find a token in message %s (%s)" % (msg['Message-ID'], msg['To']))
                 return
         else:
-            self.log_error("Mail gateway couldn't parse To: address (%s) in message %s" % (parsedMessage['To'], parsedMessage['Message-ID']))
+            self.log_error("Mail gateway couldn't parse To: address (%s) in message %s" % (msg['To'], msg['Message-ID']))
             return
 
-        for part in parsedMessage.walk():
+        for part in msg.walk():
             if part.get_content_type() == "text/calendar":
                 calBody = part.get_payload(decode=True)
                 break
         else:
             # No icalendar attachment
-            self.log_error("Mail gateway didn't find an icalendar attachment in message %s" % (parsedMessage['Message-ID'],))
+            self.log_error("Mail gateway didn't find an icalendar attachment in message %s" % (msg['Message-ID'],))
             return
 
         self.log_debug(calBody)
@@ -512,7 +579,7 @@ class MailHandler(LoggingMixIn):
         result = self.db.lookupByToken(token)
         if result is None:
             # This isn't a token we recognize
-            self.log_error("Mail gateway found a token (%s) but didn't recognize it in message %s" % (token, parsedMessage['Message-ID']))
+            self.log_error("Mail gateway found a token (%s) but didn't recognize it in message %s" % (token, msg['Message-ID']))
             return
 
         organizer, attendee = result
@@ -520,7 +587,7 @@ class MailHandler(LoggingMixIn):
         attendee = str(attendee)
         calendar.getOrganizerProperty().setValue(organizer)
         return injectMessage(organizer, attendee, calendar,
-            parsedMessage['Message-ID'])
+            msg['Message-ID'])
 
 
     def outbound(self, organizer, attendee, calendar):
