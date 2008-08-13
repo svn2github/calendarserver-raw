@@ -38,12 +38,13 @@ from twistedcaldav.sql import AbstractSQLDatabase
 from twistedcaldav.ical import Property
 from zope.interface import Interface, implements
 import email, email.utils
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+from email.mime.text import MIMEText
 import uuid
 import os
-import cStringIO
 import datetime
 import base64
-import MimeWriter
 
 __all__ = [
     "IMIPInboxResource",
@@ -662,44 +663,57 @@ class MailHandler(LoggingMixIn):
 
     def _generateTemplateMessage(self, calendar, organizer):
 
-        caldata = str(calendar)
         title, summary = self._generateCalendarSummary(calendar, organizer)
 
-        data = cStringIO.StringIO()
-        writer = MimeWriter.MimeWriter(data)
-
-        writer.addheader("From", "${fromaddress}")
-        writer.addheader("Reply-To", "${replytoaddress}")
-        writer.addheader("To", "${toaddress}")
-        writer.addheader("Date", rfc822date())
-        writer.addheader("Subject", "Event invitation: %s" % (title,))
+        msg = MIMEMultipart()
+        msg["From"] = "${fromaddress}"
+        msg["Reply-To"] = "${replytoaddress}"
+        msg["To"] = "${toaddress}"
+        msg["Date"] = rfc822date()
+        msg["Subject"] = "Event invitation: %s" % (title,)
         msgId = messageid()
-        writer.addheader("Message-ID", msgId)
-        writer.addheader("Mime-Version", "1.0")
-        writer.flushheaders()
+        msg["Message-ID"] = msgId
 
-        writer.startmultipartbody("mixed")
+        msgAlt = MIMEMultipart("alternative")
+        msg.attach(msgAlt)
 
-        # message body
-        part = writer.nextpart()
-        body = part.startbody("text/plain")
-        body.write("You've been invited to the following event:  %s To accept or decline this invitation, click the link below.\n" % (summary,))
+        # plain text version
+        plainText = u"You've been invited to the following event:  %s To accept or decline this invitation, click the link below.\n" % (summary,)
+        msgPlain = MIMEText(plainText.encode("UTF-8"), "plain", "UTF-8")
+        msgAlt.attach(msgPlain)
 
-        part = writer.nextpart()
-        encoding = "7bit"
-        for i in caldata:
-            if ord(i) > 127:
-                encoding = "base64"
-                caldata = base64.encodestring(caldata)
-                break
-        part.addheader("Content-Transfer-Encoding", encoding)
-        body = part.startbody("text/calendar; charset=utf-8")
-        body.write(caldata.replace("\r", ""))
+        # html version
+        msgHtmlRelated = MIMEMultipart("related", type="text/html")
+        msgAlt.attach(msgHtmlRelated)
+        htmlText = u"""
+<html><body><div>
+<img src="cid:icalserver.png">
+%s
+</div></body></html>
+""" % plainText
+        msgHtml = MIMEText(htmlText.encode("UTF-8"), "html", "UTF-8")
+        msgHtmlRelated.attach(msgHtml)
 
-        # finish
-        writer.lastpart()
+        # an image for html version
+        imageName = "icalserver.png"
+        imageFile = open(os.path.join(os.path.dirname(__file__),
+            "images", "mail", imageName))
+        msgImage = MIMEImage(imageFile.read(),
+            _subtype='image/png;x-apple-mail-type=stationery;name="%s"' %
+            (imageName,))
+        imageFile.close()
+        msgImage.add_header("Content-ID", "<%s>" % (imageName,))
+        msgImage.add_header("Content-Disposition", "inline;filename=%s" %
+            (imageName,))
+        msgHtmlRelated.attach(msgImage)
 
-        return msgId, data.getvalue()
+        # the icalendar attachment
+        msgIcal = MIMEText(str(calendar), "calendar", "UTF-8")
+        msgIcal.add_header("Content-Disposition",
+            "attachment;filename=invitation.ics")
+        msg.attach(msgIcal)
+
+        return msgId, msg.as_string()
 
     def _generateCalendarSummary(self, calendar, organizer):
 
