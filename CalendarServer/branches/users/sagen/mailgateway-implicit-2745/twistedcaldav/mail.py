@@ -35,6 +35,7 @@ from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.scheduling.scheduler import IMIPScheduler
 from twistedcaldav.config import config, parseConfig, defaultConfig
 from twistedcaldav.sql import AbstractSQLDatabase
+from twistedcaldav.ical import Property
 from zope.interface import Interface, implements
 import email, email.utils
 import uuid
@@ -478,9 +479,9 @@ class MailHandler(LoggingMixIn):
         self.db = MailGatewayTokensDatabase(dataRoot)
 
     def checkDSN(self, message):
-        # returns (isDSN, Action, Original Message-ID)
+        # returns (isDSN, Action, icalendar attachment)
 
-        report = deliveryStatus = original = None
+        report = deliveryStatus = original = calBody = None
 
         for part in message.walk():
             content_type = part.get_content_type()
@@ -492,6 +493,9 @@ class MailHandler(LoggingMixIn):
                 continue
             elif content_type == "message/rfc822":
                 original = part
+                continue
+            elif content_type == "text/calendar":
+                calBody = part.get_payload(decode=True)
                 continue
 
         if report is not None and deliveryStatus is not None:
@@ -507,21 +511,8 @@ class MailHandler(LoggingMixIn):
             else:
                 action = None
 
-            if action is None or original is None:
-                # This is a DSN we can't do anything with
-                return True, None, None
+            return True, action, calBody
 
-            lines = str(original).split("\n")
-            for line in lines:
-                lower = line.lower()
-                if lower.startswith("message-id:"):
-                    # found Message-ID:
-                    messageID = lower.split(' ')[1]
-                    break
-            else:
-                messageID = None
-
-            return True, action, messageID
 
         else:
             # Not a DSN
@@ -529,19 +520,50 @@ class MailHandler(LoggingMixIn):
 
 
 
+    def _extractToken(self, text):
+        try:
+            pre, post = text.split('@')
+            pre, token = pre.split('+')
+            return token
+        except ValueError:
+            return None
 
 
     def inbound(self, message):
         msg = email.message_from_string(message)
 
-        isDSN, action, original = self.checkDSN(msg)
+        isDSN, action, calBody = self.checkDSN(msg)
         if isDSN:
-            if action == 'failed' and original:
+            if action == 'failed' and calBody:
                 # This is a DSN we can handle
-                pass
+                calendar = ical.Component.fromString(calBody)
+                # Extract the token (from organizer property)
+                organizer = calendar.getOrganizer()
+                token = self._extractToken(organizer)
+                if not token:
+                    self.log_error("Mail gateway can't find token in DSN %s" % (msg['Message-ID'],))
+                    return
+
+                result = self.db.lookupByToken(token)
+                if result is None:
+                    # This isn't a token we recognize
+                    self.log_error("Mail gateway found a token (%s) but didn't recognize it in DSN %s" % (token, msg['Message-ID']))
+                    return
+
+                organizer, attendee = result
+                organizer = str(organizer)
+                attendee = str(attendee)
+                calendar.getOrganizerProperty().setValue(organizer)
+                calendar.addProperty(Property("REQUEST-STATUS",
+                    "5.1;Service unavailable"))
+
+                self.log_error("Mail gateway processing DSN %s" % (msg['Message-ID'],))
+                return injectMessage(organizer, attendee, calendar,
+                    msg['Message-ID'])
+
             else:
                 # It's a DSN without enough to go on
-                self.log_error("Can't process DSN %s" % (msg['Message-ID'],))
+                self.log_error("Mail gateway can't process DSN %s" % (msg['Message-ID'],))
                 return
 
         self.log_info("Mail gateway received message %s from %s to %s" %
@@ -553,10 +575,8 @@ class MailHandler(LoggingMixIn):
         name, addr = email.utils.parseaddr(msg['To'])
         if addr:
             # addr looks like: server_address+token@example.com
-            try:
-                pre, post = addr.split('@')
-                pre, token = pre.split('+')
-            except ValueError:
+            token = self._extractToken(addr)
+            if not token:
                 self.log_error("Mail gateway didn't find a token in message %s (%s)" % (msg['Message-ID'], msg['To']))
                 return
         else:
