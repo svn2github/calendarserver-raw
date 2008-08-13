@@ -244,6 +244,7 @@ def injectMessage(organizer, attendee, calendar, msgId, reactor=None):
     scheme = "https:" if useSSL else "http:"
     url = "%s//%s:%d/%s/" % (scheme, host, port, path)
 
+    log.debug("Injecting to %s: %s %s" % (url, str(headers), data))
     factory = client.HTTPClientFactory(url, method='POST', headers=headers,
         postdata=data)
     if useSSL:
@@ -553,6 +554,7 @@ class MailHandler(LoggingMixIn):
                 organizer, attendee = result
                 organizer = str(organizer)
                 attendee = str(attendee)
+                calendar.removeAllButOneAttendee(attendee)
                 calendar.getOrganizerProperty().setValue(organizer)
                 calendar.addProperty(Property("REQUEST-STATUS",
                     "5.1;Service unavailable"))
@@ -605,6 +607,7 @@ class MailHandler(LoggingMixIn):
         organizer, attendee = result
         organizer = str(organizer)
         attendee = str(attendee)
+        calendar.removeAllButOneAttendee(attendee)
         calendar.getOrganizerProperty().setValue(organizer)
         return injectMessage(organizer, attendee, calendar,
             msg['Message-ID'])
