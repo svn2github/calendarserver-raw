@@ -23,6 +23,9 @@ import email
 import os
 
 
+def echo(*args):
+    return args
+
 
 class MailHandlerTests(TestCase):
 
@@ -30,7 +33,7 @@ class MailHandlerTests(TestCase):
         self.handler = MailHandler(dataRoot=":memory:")
         self.dataDir = os.path.join(os.path.dirname(__file__), "data", "mail")
 
-    def test_CheckDSNFailure(self):
+    def test_checkDSNFailure(self):
 
         data = {
             'good_reply' : (False, None, None),
@@ -49,22 +52,40 @@ class MailHandlerTests(TestCase):
     def test_processDSN(self):
 
         template = 'BEGIN:VCALENDAR\nVERSION:2.0\nCALSCALE:GREGORIAN\nMETHOD:REQUEST\nPRODID:-//example Inc.//iCal 3.0//EN\nBEGIN:VTIMEZONE\nTZID:US/Pacific\nBEGIN:STANDARD\nDTSTART:20071104T020000\nRRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU\nTZNAME:PST\nTZOFFSETFROM:-0700\nTZOFFSETTO:-0800\nEND:STANDARD\nBEGIN:DAYLIGHT\nDTSTART:20070311T020000\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU\nTZNAME:PDT\nTZOFFSETFROM:-0800\nTZOFFSETTO:-0700\nEND:DAYLIGHT\nEND:VTIMEZONE\nBEGIN:VEVENT\nUID:1E71F9C8-AEDA-48EB-98D0-76E898F6BB5C\nDTSTART;TZID=US/Pacific:20080812T094500\nDTEND;TZID=US/Pacific:20080812T104500\nATTENDEE;CUTYPE=INDIVIDUAL;CN=User 01;PARTSTAT=ACCEPTED:mailto:user01@exam\n ple.com\nATTENDEE;CUTYPE=INDIVIDUAL;RSVP=TRUE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-A\n CTION;CN=nonexistant@example.com:mailto:nonexistant@example.com\nCREATED:20080812T191857Z\nDTSTAMP:20080812T191932Z\nORGANIZER;CN=User 01:mailto:xyzzy+%s@example.com\nSEQUENCE:2\nSUMMARY:New Event\nTRANSP:OPAQUE\nEND:VEVENT\nEND:VCALENDAR\n'
+
+        # Make sure an unknown token is not processed
         calBody = template % "bogus_token"
-
-        def echo(*args):
-            return args
-
         self.assertEquals(self.handler.processDSN(calBody, "xyzzy", echo),
            None)
 
+        # Make sure a known token *is* processed
         token = self.handler.db.createToken("mailto:user01@example.com",
             "mailto:user02@example.com")
-
         calBody = template % token
-
         organizer, attendee, calendar, msgId = self.handler.processDSN(calBody,
             "xyzzy", echo)
         self.assertEquals(organizer, 'mailto:user01@example.com')
         self.assertEquals(attendee, 'mailto:user02@example.com')
         self.assertEquals(str(calendar), 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nCALSCALE:GREGORIAN\r\nMETHOD:REQUEST\r\nPRODID:-//example Inc.//iCal 3.0//EN\r\nBEGIN:VTIMEZONE\r\nTZID:US/Pacific\r\nBEGIN:STANDARD\r\nDTSTART:20071104T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU\r\nTZNAME:PST\r\nTZOFFSETFROM:-0700\r\nTZOFFSETTO:-0800\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:20070311T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU\r\nTZNAME:PDT\r\nTZOFFSETFROM:-0800\r\nTZOFFSETTO:-0700\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\nREQUEST-STATUS:5.1\\;Service unavailable\r\nBEGIN:VEVENT\r\nUID:1E71F9C8-AEDA-48EB-98D0-76E898F6BB5C\r\nDTSTART;TZID=US/Pacific:20080812T094500\r\nDTEND;TZID=US/Pacific:20080812T104500\r\nCREATED:20080812T191857Z\r\nDTSTAMP:20080812T191932Z\r\nORGANIZER;CN=User 01:mailto:user01@example.com\r\nSEQUENCE:2\r\nSUMMARY:New Event\r\nTRANSP:OPAQUE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
         self.assertEquals(msgId, 'xyzzy')
+
+
+
+    def test_processReply(self):
+        msg = email.message_from_string(
+            file(os.path.join(self.dataDir, 'good_reply')).read()
+        )
+
+        # Make sure an unknown token is not processed
+        result = self.handler.processReply(msg, echo)
+        self.assertEquals(result, None)
+
+        # Make sure a known token *is* processed
+        self.handler.db.createToken("mailto:user01@example.com", "mailto:xyzzy@example.com", token="d7cdf68d-8b73-4df1-ad3b-f08002fb285f")
+        organizer, attendee, calendar, msgId = self.handler.processReply(msg,
+            echo)
+        self.assertEquals(organizer, 'mailto:user01@example.com')
+        self.assertEquals(attendee, 'mailto:xyzzy@example.com')
+        self.assertEquals(msgId, '<1983F777-BE86-4B98-881E-06D938E60920@example.com>')
+        self.assertEquals(str(calendar), 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nCALSCALE:GREGORIAN\r\nMETHOD:REPLY\r\nPRODID:-//example Inc.//iCal 3.0//EN\r\nBEGIN:VTIMEZONE\r\nTZID:US/Pacific\r\nBEGIN:STANDARD\r\nDTSTART:20071104T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU\r\nTZNAME:PST\r\nTZOFFSETFROM:-0700\r\nTZOFFSETTO:-0800\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:20070311T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU\r\nTZNAME:PDT\r\nTZOFFSETFROM:-0800\r\nTZOFFSETTO:-0700\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:1E71F9C8-AEDA-48EB-98D0-76E898F6BB5C\r\nDTSTART;TZID=US/Pacific:20080812T100000\r\nDTEND;TZID=US/Pacific:20080812T110000\r\nATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;CN=xyzzy@example.com;PARTS\r\n TAT=ACCEPTED:mailto:xyzzy@example.com\r\nCREATED:20080812T201906Z\r\nDTSTAMP:20080812T201911Z\r\nORGANIZER;CN=User 01:mailto:user01@example.com\r\nSEQUENCE:7\r\nSUMMARY:New Event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+

@@ -288,8 +288,9 @@ class MailGatewayTokensDatabase(AbstractSQLDatabase, LoggingMixIn):
             path = os.path.join(path, MailGatewayTokensDatabase.dbFilename)
         super(MailGatewayTokensDatabase, self).__init__(path, True)
 
-    def createToken(self, organizer, attendee):
-        token = str(uuid.uuid4())
+    def createToken(self, organizer, attendee, token=None):
+        if token is None:
+            token = str(uuid.uuid4())
         self._db_execute(
             """
             insert into TOKENS (TOKEN, ORGANIZER, ATTENDEE)
