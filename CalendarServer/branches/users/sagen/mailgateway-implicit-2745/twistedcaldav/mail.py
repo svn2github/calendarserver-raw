@@ -284,7 +284,8 @@ class MailGatewayTokensDatabase(AbstractSQLDatabase, LoggingMixIn):
 
 
     def __init__(self, path):
-        path = os.path.join(path, MailGatewayTokensDatabase.dbFilename)
+        if path != ":memory:":
+            path = os.path.join(path, MailGatewayTokensDatabase.dbFilename)
         super(MailGatewayTokensDatabase, self).__init__(path, True)
 
     def createToken(self, organizer, attendee):
@@ -515,11 +516,9 @@ class MailHandler(LoggingMixIn):
 
             return True, action, calBody
 
-
         else:
             # Not a DSN
             return False, None, None
-
 
 
     def _extractToken(self, text):
@@ -530,50 +529,33 @@ class MailHandler(LoggingMixIn):
         except ValueError:
             return None
 
+    def processDSN(self, calBody, msgId, fn):
+        calendar = ical.Component.fromString(calBody)
+        # Extract the token (from organizer property)
+        organizer = calendar.getOrganizer()
+        token = self._extractToken(organizer)
+        if not token:
+            self.log_error("Mail gateway can't find token in DSN %s" % (msgId,))
+            return
 
-    def inbound(self, message):
-        msg = email.message_from_string(message)
+        result = self.db.lookupByToken(token)
+        if result is None:
+            # This isn't a token we recognize
+            self.log_error("Mail gateway found a token (%s) but didn't recognize it in DSN %s" % (token, msgId))
+            return
 
-        isDSN, action, calBody = self.checkDSN(msg)
-        if isDSN:
-            if action == 'failed' and calBody:
-                # This is a DSN we can handle
-                calendar = ical.Component.fromString(calBody)
-                # Extract the token (from organizer property)
-                organizer = calendar.getOrganizer()
-                token = self._extractToken(organizer)
-                if not token:
-                    self.log_error("Mail gateway can't find token in DSN %s" % (msg['Message-ID'],))
-                    return
+        organizer, attendee = result
+        organizer = str(organizer)
+        attendee = str(attendee)
+        calendar.removeAllButOneAttendee(attendee)
+        calendar.getOrganizerProperty().setValue(organizer)
+        calendar.addProperty(Property("REQUEST-STATUS",
+            "5.1;Service unavailable"))
 
-                result = self.db.lookupByToken(token)
-                if result is None:
-                    # This isn't a token we recognize
-                    self.log_error("Mail gateway found a token (%s) but didn't recognize it in DSN %s" % (token, msg['Message-ID']))
-                    return
+        self.log_error("Mail gateway processing DSN %s" % (msgId,))
+        return fn(organizer, attendee, calendar, msgId)
 
-                organizer, attendee = result
-                organizer = str(organizer)
-                attendee = str(attendee)
-                calendar.removeAllButOneAttendee(attendee)
-                calendar.getOrganizerProperty().setValue(organizer)
-                calendar.addProperty(Property("REQUEST-STATUS",
-                    "5.1;Service unavailable"))
-
-                self.log_error("Mail gateway processing DSN %s" % (msg['Message-ID'],))
-                return injectMessage(organizer, attendee, calendar,
-                    msg['Message-ID'])
-
-            else:
-                # It's a DSN without enough to go on
-                self.log_error("Mail gateway can't process DSN %s" % (msg['Message-ID'],))
-                return
-
-        self.log_info("Mail gateway received message %s from %s to %s" %
-            (msg['Message-ID'], msg['From'], msg['To']))
-
-        # TODO: make sure this is an email message we want to handle
-
+    def processReply(self, msg, fn):
         # extract the token from the To header
         name, addr = email.utils.parseaddr(msg['To'])
         if addr:
@@ -610,8 +592,27 @@ class MailHandler(LoggingMixIn):
         attendee = str(attendee)
         calendar.removeAllButOneAttendee(attendee)
         calendar.getOrganizerProperty().setValue(organizer)
-        return injectMessage(organizer, attendee, calendar,
-            msg['Message-ID'])
+        return fn(organizer, attendee, calendar, msg['Message-ID'])
+
+
+    def inbound(self, message, fn=injectMessage):
+        msg = email.message_from_string(message)
+
+        isDSN, action, calBody = self.checkDSN(msg)
+        if isDSN:
+            if action == 'failed' and calBody:
+                # This is a DSN we can handle
+                return self.processDSN(calBody, msg['Message-ID'], fn)
+            else:
+                # It's a DSN without enough to go on
+                self.log_error("Mail gateway can't process DSN %s" % (msg['Message-ID'],))
+                return
+
+        self.log_info("Mail gateway received message %s from %s to %s" %
+            (msg['Message-ID'], msg['From'], msg['To']))
+
+        return self.processReply(msg, fn)
+
 
 
     def outbound(self, organizer, attendee, calendar):
@@ -646,6 +647,7 @@ class MailHandler(LoggingMixIn):
         attendee = attendee[7:]
         message = message.replace("${toaddress}", attendee)
 
+        self.log_debug("Sending: %s" % (message,))
         def _success(result, msgId, fromAddr, toAddr):
             self.log_info("Mail gateway sent message %s from %s to %s" %
                 (msgId, fromAddr, toAddr))
@@ -673,6 +675,14 @@ class MailHandler(LoggingMixIn):
         msg["Subject"] = "Event invitation: %s" % (title,)
         msgId = messageid()
         msg["Message-ID"] = msgId
+
+        # the icalendar attachment (putting this first because if we get a
+        # DSN failure in response, having this attachment in this position
+        # seems to increase the chance we will get it back in the DSN).
+        msgIcal = MIMEText(str(calendar), "calendar", "UTF-8")
+        msgIcal.add_header("Content-Disposition",
+            "attachment;filename=invitation.ics")
+        msg.attach(msgIcal)
 
         msgAlt = MIMEMultipart("alternative")
         msg.attach(msgAlt)
@@ -706,12 +716,6 @@ class MailHandler(LoggingMixIn):
         msgImage.add_header("Content-Disposition", "inline;filename=%s" %
             (imageName,))
         msgHtmlRelated.attach(msgImage)
-
-        # the icalendar attachment
-        msgIcal = MIMEText(str(calendar), "calendar", "UTF-8")
-        msgIcal.add_header("Content-Disposition",
-            "attachment;filename=invitation.ics")
-        msg.attach(msgIcal)
 
         return msgId, msg.as_string()
 
@@ -1045,7 +1049,7 @@ class IMAP4DownloadProtocol(imap4.IMAP4Client, LoggingMixIn):
             return
 
         d = self.factory.handleMessage(messageData)
-        if d:
+        if isinstance(d, defer.Deferred):
             d.addCallback(self.cbFlagDeleted, messageList)
         else:
             # No deferred returned, so no need for addCallback( )
