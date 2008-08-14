@@ -677,14 +677,6 @@ class MailHandler(LoggingMixIn):
         msgId = messageid()
         msg["Message-ID"] = msgId
 
-        # the icalendar attachment (putting this first because if we get a
-        # DSN failure in response, having this attachment in this position
-        # seems to increase the chance we will get it back in the DSN).
-        msgIcal = MIMEText(str(calendar), "calendar", "UTF-8")
-        msgIcal.add_header("Content-Disposition",
-            "attachment;filename=invitation.ics")
-        msg.attach(msgIcal)
-
         msgAlt = MIMEMultipart("alternative")
         msg.attach(msgAlt)
 
@@ -698,7 +690,7 @@ class MailHandler(LoggingMixIn):
         msgAlt.attach(msgHtmlRelated)
         htmlText = u"""
 <html><body><div>
-<img src="cid:icalserver.png">
+<img src="cid:ical.jpg">
 %s
 </div></body></html>
 """ % plainText
@@ -706,7 +698,7 @@ class MailHandler(LoggingMixIn):
         msgHtmlRelated.attach(msgHtml)
 
         # an image for html version
-        imageName = "icalserver.png"
+        imageName = "ical.jpg"
         imageFile = open(os.path.join(os.path.dirname(__file__),
             "images", "mail", imageName))
         msgImage = MIMEImage(imageFile.read(),
@@ -717,6 +709,12 @@ class MailHandler(LoggingMixIn):
         msgImage.add_header("Content-Disposition", "inline;filename=%s" %
             (imageName,))
         msgHtmlRelated.attach(msgImage)
+
+        # the icalendar attachment
+        msgIcal = MIMEText(str(calendar), "calendar", "UTF-8")
+        msgIcal.add_header("Content-Disposition",
+            "attachment;filename=invitation.ics")
+        msg.attach(msgIcal)
 
         return msgId, msg.as_string()
 
