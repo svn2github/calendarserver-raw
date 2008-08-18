@@ -49,6 +49,7 @@ import base64
 __all__ = [
     "IMIPInboxResource",
     "MailGatewayServiceMaker",
+    "MailGatewayTokensDatabase",
     "MailHandler",
 ]
 
