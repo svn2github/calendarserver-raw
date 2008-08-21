@@ -253,6 +253,15 @@ class PubSubXMPPURIProperty (davxml.WebDAVTextElement):
     name = "xmpp-uri"
     protected = True
 
+class PubSubHeartbeatURIProperty (davxml.WebDAVTextElement):
+    """
+    A calendarhomefile property to indicate the pubsub XMPP URI to subscribe to
+    for server heartbeats.
+    """
+    namespace = calendarserver_namespace
+    name = "xmpp-heartbeat-uri"
+    protected = True
+
 
 
 ##
