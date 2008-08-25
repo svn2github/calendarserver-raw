@@ -533,6 +533,8 @@ class OpenDirectoryService(DirectoryService):
             # Now get useful record info.
             recordGUID     = value.get(dsattributes.kDS1AttrGeneratedUID)
             recordFullName = value.get(dsattributes.kDS1AttrDistinguishedName)
+            recordFirstName = value.get(dsattributes.kDS1AttrFirstName)
+            recordLastName = value.get(dsattributes.kDS1AttrLastName)
             recordNodeName = value.get(dsattributes.kDSNAttrMetaNodeLocation)
 
             if not recordGUID:
@@ -581,6 +583,8 @@ class OpenDirectoryService(DirectoryService):
                 nodeName              = recordNodeName,
                 shortName             = recordShortName,
                 fullName              = recordFullName,
+                firstName             = recordFirstName,
+                lastName              = recordLastName,
                 calendarUserAddresses = calendarUserAddresses,
                 autoSchedule          = autoSchedule,
                 enabledForCalendaring = enabledForCalendaring,
@@ -665,6 +669,8 @@ class OpenDirectoryService(DirectoryService):
         attrs = [
             dsattributes.kDS1AttrGeneratedUID,
             dsattributes.kDS1AttrDistinguishedName,
+            dsattributes.kDS1AttrFirstName,
+            dsattributes.kDS1AttrLastName,
             dsattributes.kDSNAttrEMailAddress,
             dsattributes.kDSNAttrServicesLocator,
             dsattributes.kDSNAttrMetaNodeLocation,
@@ -827,6 +833,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     def __init__(
         self, service, recordType, guid, nodeName, shortName, fullName,
+        firstName, lastName,
         calendarUserAddresses, autoSchedule, enabledForCalendaring,
         memberGUIDs, proxyGUIDs, readOnlyProxyGUIDs,
     ):
@@ -836,6 +843,8 @@ class OpenDirectoryRecord(DirectoryRecord):
             guid                  = guid,
             shortName             = shortName,
             fullName              = fullName,
+            firstName             = firstName,
+            lastName              = lastName,
             calendarUserAddresses = calendarUserAddresses,
             autoSchedule          = autoSchedule,
             enabledForCalendaring = enabledForCalendaring,

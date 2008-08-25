@@ -253,6 +253,22 @@ class PubSubXMPPURIProperty (davxml.WebDAVTextElement):
     name = "xmpp-uri"
     protected = True
 
+class FirstNameProperty (davxml.WebDAVTextElement):
+    """
+    A property representing first name of a principal
+    """
+    namespace = calendarserver_namespace
+    name = "first-name"
+    protected = True
+
+class LastNameProperty (davxml.WebDAVTextElement):
+    """
+    A property representing last name of a principal
+    """
+    namespace = calendarserver_namespace
+    name = "last-name"
+    protected = True
+
 
 
 ##
