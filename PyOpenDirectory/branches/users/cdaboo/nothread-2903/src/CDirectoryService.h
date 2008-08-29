@@ -23,7 +23,7 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <DirectoryService/DirectoryService.h>
-#include <Python.h>
+#include <Python/Python.h>
 
 class CFStringUtil;
 
@@ -37,9 +37,11 @@ public:
     CFMutableArrayRef QueryRecordsWithAttribute(const char* attr, const char* value, int matchType, bool casei, const char* recordType, CFArrayRef attributes);
     CFMutableArrayRef QueryRecordsWithAttributes(const char* query, bool casei, const char* recordType, CFArrayRef attributes);
 
+    CFMutableArrayRef ListAllRecordsWithAttributes_NoThread(const char* recordType, CFArrayRef attributes);
+
     bool AuthenticateUserBasic(const char* nodename, const char* user, const char* pswd, bool& result);
     bool AuthenticateUserDigest(const char* nodename, const char* user, const char* challenge, const char* response, const char* method, bool& result);
-    
+
 private:
 
     class StPythonThreadState

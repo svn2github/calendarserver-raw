@@ -21,7 +21,7 @@
 
 #include "CDirectoryServiceException.h"
 
-#include <Python.h>
+#include <Python/Python.h>
 
 #include <stdlib.h>
 #include <string.h>

@@ -22,9 +22,12 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <DirectoryService/DirectoryService.h>
+#include <Python.h>
 
 #include "CDirectoryService.h"
 #include "CFStringUtil.h"
+
+PyMODINIT_FUNC initopendirectory(void);
 
 tDirReference gDirRef = NULL;
 
@@ -43,7 +46,7 @@ int main (int argc, const char * argv[]) {
     
 	CDirectoryService* dir = new CDirectoryService("/Search");
 
-#if 0
+#if 1
 #if 0
 	CFStringRef strings[2];
 	strings[0] = CFSTR(kDS1AttrDistinguishedName);
@@ -80,9 +83,8 @@ int main (int argc, const char * argv[]) {
 	}
 	CFRelease(array);
 #endif
-
 	AuthenticateUser(dir, "gooeyed", "test", "test-no");
-	AuthenticateUser(dir, "gooeyed", "test", "test-yes");
+	//AuthenticateUser(dir, "gooeyed", "test", "test-yes");
 #elif 0
 	CFStringRef keys[2];
 	keys[0] = CFSTR(kDS1AttrFirstName);
@@ -129,7 +131,7 @@ int main (int argc, const char * argv[]) {
 	}
 	CFRelease(array);
 	
-#elif 1
+#elif 0
 	const char* compoundtest = "(&(|(dsAttrTypeStandard:RealName=U2*)(dsAttrTypeStandard:RealName=X S*))(dsAttrTypeStandard:ServicesLocator=D9A8E41B-C591-4D6B-A1CA-B57FFB8EF2F5:F967C034-54B8-4E65-9B38-7A6CD2600268:calendar))";
                         
 	CFStringRef strings[2];
@@ -151,12 +153,12 @@ int main (int argc, const char * argv[]) {
 	CFRelease(array);
 	
 #else
-	const char* u = "test";
+	const char* u = "cdaboo";
 	//const char* c = "nonce=\"1\", qop=\"auth\", realm=\"Test\", algorithm=\"md5\", opaque=\"1\"";
 	//const char* r = "username=\"test\", nonce=\"1\", cnonce=\"1\", nc=\"1\", realm=\"Test\", algorithm=\"md5\", opaque=\"1\", qop=\"auth\", uri=\"/\", response=\"4241f31ffe6f9c99b891f88e9c41caa9\"";
-	const char* c = "WWW-Authenticate: digest nonce=\"1621696297327727918745238639\", opaque=\"121994e78694cbdff74f12cb32ee6f00-MTYyMTY5NjI5NzMyNzcyNzkxODc0NTIzODYzOSwxMjcuMC4wLjEsMTE2ODU2ODg5NQ==\", realm=\"Test Realm\", algorithm=\"md5\", qop=\"auth\"";
-	const char* r = "Authorization: Digest username=\"test\", realm=\"Test Realm\", nonce=\"1621696297327727918745238639\", uri=\"/principals/users/test/\", response=\"e260f13cffcc15572ddeec9c31de437b\", opaque=\"121994e78694cbdff74f12cb32ee6f00-MTYyMTY5NjI5NzMyNzcyNzkxODc0NTIzODYzOSwxMjcuMC4wLjEsMTE2ODU2ODg5NQ==\", algorithm=\"md5\", cnonce=\"70cbd8f04227d8d46c0193b290beaf0d\", nc=00000001, qop=\"auth\"";
-	AuthenticateUserDigest(dir, u, c, r, "GET");
+	const char* c = "Digest realm=\"/Search\", nonce=\"54039924814543640301021652121\"";
+	const char* r = "Digest username=\"cdaboo\", realm=\"/Search\", nonce=\"54039924814543640301021652121\", uri=\"/principals/\", response=\"2706ccfadd0b8a15dae33d831e4e2a27\"";
+	AuthenticateUserDigest(dir, "1D8B3915-4CA4-487E-B3CC-4822D80DFC97", u, c, r, "GET");
 #endif
 	return 0;
 }

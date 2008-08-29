@@ -25,7 +25,7 @@
 
 #include "CFStringUtil.h"
 
-#include <Python.h>
+#include <Python/Python.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -109,6 +109,26 @@ CFMutableArrayRef CDirectoryService::ListAllRecordsWithAttributes(const char* re
         dserror.SetPythonException();
         return NULL;
     }
+}
+
+CFMutableArrayRef CDirectoryService::ListAllRecordsWithAttributes_NoThread(const char* recordType, CFArrayRef attributes)
+{
+	try
+	{
+		// Get attribute map
+		return _ListAllRecordsWithAttributes(recordType, NULL, attributes);
+	}
+	catch(CDirectoryServiceException& dserror)
+	{
+		dserror.SetPythonException();
+		return NULL;
+	}
+	catch(...)
+	{
+		CDirectoryServiceException dserror;
+		dserror.SetPythonException();
+		return NULL;
+	}
 }
 
 // QueryRecordsWithAttribute
