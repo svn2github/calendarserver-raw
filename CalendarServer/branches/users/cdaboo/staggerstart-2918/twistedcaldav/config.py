@@ -161,6 +161,10 @@ defaultConfig = {
             "Enabled": True,
             "Scheduler": "LeastConnections",
         },
+        "StaggeredStartup": {
+            "Enabled": False,
+            "Interval": 15,
+        },
     },
 
     #

@@ -20,6 +20,7 @@ import tempfile
 
 from twisted.runner import procmon
 from twisted.application import internet, service
+from twisted.internet import reactor
 
 from twistedcaldav.accesslog import AMPLoggingFactory, RotatingFileAccessLoggingObserver
 from twistedcaldav.config import config, ConfigurationError
@@ -141,9 +142,24 @@ class TwistdSlaveProcess(object):
                                'bindAddress': '127.0.0.1'}
 
 
+class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
+
+    def startService(self):
+        service.Service.startService(self)
+        self.active = 1
+        delay = 0
+        delay_interval = config.MultiProcess['StaggeredStartup']['Interval'] if config.MultiProcess['StaggeredStartup']['Enabled'] else 0 
+        for name in self.processes.keys():
+            reactor.callLater(delay if name.startswith("caldav") else 0, self.startProcess, name)
+            if name.startswith("caldav"):
+                delay += delay_interval
+        self.consistency = reactor.callLater(self.consistencyDelay,
+                                             self._checkConsistency)
+
+
 def makeService_Combined(self, options):
     s = service.MultiService()
-    monitor = procmon.ProcessMonitor()
+    monitor = DelayedStartupProcessMonitor()
     monitor.setServiceParent(s)
 
     parentEnv = {
