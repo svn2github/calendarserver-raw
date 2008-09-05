@@ -120,8 +120,12 @@ limitations under the License.
     <dict>
       <key>node</key>
       <string>/Search</string>
-      <key>requireComputerRecord</key>
-      <true/>
+      <key>restrictEnabledRecords</key>
+      <false/>
+      <key>restrictToGroupGUID</key>
+      <string></string>
+      <key>restrictToGroupName</key>
+      <string></string>
     </dict>
   </dict>
 

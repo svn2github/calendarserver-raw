@@ -35,7 +35,9 @@ serviceDefaultParams = {
     },
     "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
         "node": "/Search",
-        "requireComputerRecord": True,
+        "restrictEnabledRecords": False,
+        "restrictToGroupGUID": "",
+        "restrictToGroupName": "",
         "cacheTimeout": 30,
     },
 }
