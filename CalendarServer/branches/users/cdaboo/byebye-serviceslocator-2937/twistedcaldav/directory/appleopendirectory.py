@@ -92,9 +92,6 @@ class OpenDirectoryService(DirectoryService):
         self._records = {}
         self._delayedCalls = set()
 
-        self.doSACLs = config.EnableSACLs
-        self.SACLwasEnabled = False
-
         if dosetup:
             for recordType in self.recordTypes():
                 self.recordsForType(recordType)
@@ -115,7 +112,7 @@ class OpenDirectoryService(DirectoryService):
             h = (h + hash(getattr(self, attr))) & sys.maxint
         return h
 
-    def _expandGroupMembership(self, members, nestedGroups, processedGUIDs=None):
+    def _expandGroupMembership(self, members, nestedGroups, processedGUIDs=None, returnGroups=False):
 
         if processedGUIDs is None:
             processedGUIDs = set()
@@ -162,11 +159,14 @@ class OpenDirectoryService(DirectoryService):
             group = result[0][1]
 
             processedGUIDs.add(groupGUID)
+            if returnGroups:
+                yield groupGUID
 
             for GUID in self._expandGroupMembership(
                 group.get(dsattributes.kDSNAttrGroupMembers, []),
                 group.get(dsattributes.kDSNAttrNestedGroups, []),
-                processedGUIDs
+                processedGUIDs,
+                returnGroups,
             ):
                 yield GUID
 
@@ -339,15 +339,7 @@ class OpenDirectoryService(DirectoryService):
             # Determine enabled state
             enabledForCalendaring = True
 
-            if self.doSACLs and self.SACLwasEnabled and recordType == DirectoryService.recordType_users:
-                # We have already filtered based on allowed GUIDs
-                enabledForCalendaring = True
-
-            elif not self.restrictEnabledRecords:
-                # Enable everything
-                enabledForCalendaring = True
-            
-            elif self.restrictedGUIDs is not None:
+            if self.restrictEnabledRecords and self.restrictedGUIDs is not None:
                 enabledForCalendaring = recordGUID in self.restrictedGUIDs
 
             if not enabledForCalendaring:
@@ -522,17 +514,9 @@ class OpenDirectoryService(DirectoryService):
         else:
             raise UnknownRecordTypeError("Unknown Open Directory record type: %s" % (recordType))
 
-        # Query policy:
-        #
-        # For Users - always check for SACL and use that to determine enabled users
-        #             if no SACL then do same processing as for other types
-        #
-        # Other types - load all records. If restricted access is in place, load the
-        #               group membership for the restricted group and enable those users
-        #               in the group
-
-        processed = False
-        if self.doSACLs and recordType == DirectoryService.recordType_users:
+        # First see if SACL is enabled and if so only allow users in the SACL group
+        # to be valid user records.
+        if config.EnableSACLs and recordType == DirectoryService.recordType_users:
             if shortName is None and guid is None:
                 self.log_debug("Doing SACL membership check")
                 self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r,%r,%r)" % (
@@ -555,7 +539,6 @@ class OpenDirectoryService(DirectoryService):
                 )
 
                 if len(results) == 1:
-                    self.SACLwasEnabled = True
                     members      = results[0][1].get(dsattributes.kDSNAttrGroupMembers, [])
                     nestedGroups = results[0][1].get(dsattributes.kDSNAttrNestedGroups, [])
     
@@ -572,12 +555,13 @@ class OpenDirectoryService(DirectoryService):
     
                     query = dsquery.expression(dsquery.expression.OR, guidQueries)
                     self.log_debug("Got %d SACL members" % (len(guidQueries),))
-                    processed = True
                 else:
-                    self.SACLwasEnabled = False
                     self.log_debug("SACL not enabled for calendar service")
         
-        if not processed and self.restrictEnabledRecords and self.restrictedGUIDs is None:
+        # If restricting enabled records, then make sure the restricted group member
+        # details are loaded. Do nested group expansion and include the nested groups
+        # as enabled records too.
+        if self.restrictEnabledRecords and self.restrictedGUIDs is None:
 
             attributeToMatch = dsattributes.kDS1AttrGeneratedUID if self.restrictToGroupGUID else dsattributes.kDSNAttrRecordName 
             valueToMatch = self.restrictToGroupGUID if self.restrictToGroupGUID else self.restrictToGroupName
@@ -609,9 +593,7 @@ class OpenDirectoryService(DirectoryService):
                 members = []
                 nestedGroups = []
 
-            self.restrictedGUIDs = set()
-            for expanded_guid in self._expandGroupMembership(members, nestedGroups):
-                self.restrictedGUIDs.add(expanded_guid)
+            self.restrictedGUIDs = set(self._expandGroupMembership(members, nestedGroups, returnGroups=True))
             self.log_debug("Got %d restricted group members" % (len(self.restrictedGUIDs),))
 
         if shortName is not None:
