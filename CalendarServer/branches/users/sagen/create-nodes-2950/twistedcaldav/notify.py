@@ -35,7 +35,9 @@ These notifications originate from cache.py:MemcacheChangeNotifier.changed().
 # TODO: bindAddress to local
 # TODO: add CalDAVTester test for examining new xmpp-uri property
 
-from twisted.internet import protocol
+from twisted.internet import protocol, defer
+from twisted.internet.address import IPv4Address
+from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.protocols import basic
 from twisted.plugin import IPlugin
 from twisted.application import internet, service
@@ -48,11 +50,15 @@ from twisted.words.protocols.jabber.xmlstream import IQ
 from twisted.words.xish import domish
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.config import config, parseConfig, defaultConfig
+from twistedcaldav.memcacher import Memcacher
+from twistedcaldav import memcachepool
 from zope.interface import Interface, implements
 from fnmatch import fnmatch
 
 __all__ = [
+    "ClientNotifier",
     "Coalescer",
+    "getNodeCacher",
     "getNotificationClient",
     "getPubSubConfiguration",
     "getPubSubHeartbeatURI",
@@ -65,8 +71,6 @@ __all__ = [
     "NotificationClient",
     "NotificationClientFactory",
     "NotificationClientLineProtocol",
-    "NotificationClientUserMixIn",
-    "NotificationOptions",
     "NotificationServiceMaker",
     "SimpleLineNotificationFactory",
     "SimpleLineNotificationProtocol",
@@ -80,16 +84,35 @@ __all__ = [
 # Classes used within calendarserver itself
 #
 
-class NotificationClientUserMixIn(object):
+class ClientNotifier(LoggingMixIn):
     """
-    Notification Client User (Mixin)
-
     Provides a method to send change notifications to the L{NotificationClient}.
     """
 
-    def sendNotification(self, uri):
-        getNotificationClient().send(uri)
+    def __init__(self, resource, configOverride=None):
+        self._resource = resource
+        self._notify = True
+        self.config = configOverride or config
 
+    def enableNotify(self, arg):
+        url = self._resource.url()
+        self.log_debug("enableNotify: %s" % (url,))
+        self._notify = True
+
+    def disableNotify(self):
+        url = self._resource.url()
+        self.log_debug("disableNotify: %s" % (url,))
+        self._notify = False
+
+    def notify(self, op="update"):
+        url = self._resource.url()
+
+        if self.config.Notifications["Enabled"]:
+            if self._notify:
+                self.log_debug("Notifications are enabled: %s %s" % (op, url))
+                return getNotificationClient().send(op, url)
+            else:
+                self.log_debug("Skipping notification for: %s" % (url,))
 
 
 class NotificationClientLineProtocol(basic.LineReceiver, LoggingMixIn):
@@ -154,7 +177,7 @@ class NotificationClient(LoggingMixIn):
     """
     Notification Client
 
-    Forwards on notifications from NotificationClientUserMixIns to the
+    Forwards on notifications from ClientNotifiers to the
     notification server.  A NotificationClient is installed by the tap at
     startup.
     """
@@ -170,26 +193,27 @@ class NotificationClient(LoggingMixIn):
             from twisted.internet import reactor
         self.reactor = reactor
 
-    def send(self, uri):
+    def send(self, op, uri):
         if self.factory is None:
             self.factory = NotificationClientFactory(self)
             self.reactor.connectTCP(self.host, self.port, self.factory)
             self.log_debug("Creating factory")
 
+        msg = "%s %s" % (op, str(uri))
         if self.factory.isReady() and self.observers:
             for observer in self.observers:
-                self.log_debug("Sending to notification server: %s" % (uri,))
-                observer.sendLine(str(uri))
+                self.log_debug("Sending to notification server: %s" % (msg,))
+                observer.sendLine(msg)
         else:
-            self.log_debug("Queuing: %s" % (uri,))
-            self.queued.add(uri)
+            self.log_debug("Queuing: %s" % (msg,))
+            self.queued.add(msg)
 
     def connectionMade(self):
         if self.factory.isReady() and self.observers:
             for observer in self.observers:
-                for uri in self.queued:
-                    self.log_debug("Sending from queue: %s" % (uri,))
-                    observer.sendLine(str(uri))
+                for msg in self.queued:
+                    self.log_debug("Sending from queue: %s" % (msg,))
+                    observer.sendLine(msg)
             self.queued.clear()
 
     def addObserver(self, observer):
@@ -211,6 +235,81 @@ def getNotificationClient():
 
 
 
+class NodeCacher(Memcacher, LoggingMixIn):
+
+    def __init__(self, reactor=None):
+        if reactor is None:
+            from twisted.internet import reactor
+        self.reactor = reactor
+        super(NodeCacher, self).__init__("pubsubnodes")
+
+    @inlineCallbacks
+    def nodeExists(self, nodeName):
+        result = (yield self.get(nodeName))
+        self.log_debug("nodeExists result = %s" % (result,))
+        returnValue(result is not None)
+
+    @inlineCallbacks
+    def storeNode(self, nodeName):
+        return
+        self.log_debug("Storing node %s" % (nodeName,))
+        try:
+            yield self.set(nodeName, "1")
+        except Exception, e:
+            import pdb; pdb.set_trace()
+            self.log_error(e)
+            raise
+
+    @inlineCallbacks
+    def waitForNode(self, notifier, nodeName):
+        self.log_debug("in waitForNode %s" % (nodeName,))
+        doesExist = (yield self.nodeExists(nodeName))
+        self.log_debug("doesExist = %s" % (doesExist,))
+        if doesExist:
+            self.log_debug("waitForNode returning True")
+            returnValue(True)
+        else:
+            self.log_debug("waitForNode calling notify()")
+            notifier.notify(op="create")
+            self.log_debug("waitForNode called notify()")
+            (yield self._waitForNode(None, nodeName))
+
+    def _waitForNode(self, result, nodeName, retries=5, deferred=None):
+        self.log_debug("waiting for node %s, retries %d" % (nodeName, retries))
+
+        if deferred == None:
+            deferred = defer.Deferred()
+
+        def _exists(result, nodeName, retries, deferred):
+            if result is True:
+                self.log_debug("node exists %s" % (nodeName,))
+                deferred.callback(True)
+                return
+            else:
+                retries -= 1
+                if retries == 0:
+                    self.log_debug("giving up on node %s" % (nodeName,))
+                    deferred.errback()
+                    return
+                self.log_debug("scheduling a retry of node %s" % (nodeName,))
+                self.reactor.callLater(2, self._waitForNode, result, nodeName,
+                    retries=retries, deferred=deferred)
+
+        self.nodeExists(nodeName).addCallback(_exists, nodeName, retries,
+            deferred)
+        return deferred
+
+
+
+_nodeCacher = None
+
+def getNodeCacher():
+    global _nodeCacher
+    if _nodeCacher is None:
+        _nodeCacher = NodeCacher()
+    return _nodeCacher
+
+
 
 
 
@@ -230,8 +329,8 @@ class InternalNotificationProtocol(basic.LineReceiver):
     """
 
     def lineReceived(self, line):
-        val = str(line.strip())
-        self.factory.coalescer.add(val)
+        op, uri = line.strip().split()
+        self.factory.coalescer.add(op, uri)
 
 
 class InternalNotificationFactory(protocol.ServerFactory):
@@ -277,28 +376,37 @@ class Coalescer(LoggingMixIn):
         self.uris = {}
         self.notifiers = notifiers
 
-    def add(self, uri):
-        delayed, count = self.uris.get(uri, [None, 0])
+    def add(self, op, uri):
 
-        if delayed and delayed.active():
-            count += 1
-            if count < self.sendAnywayAfterCount:
-                # reschedule for delaySeconds in the future
-                delayed.reset(self.delaySeconds)
-                self.uris[uri][1] = count
-                self.log_info("Delaying: %s" % (uri,))
+        if op == "create":
+            # we don't want to delay a "create" notification; this opcode
+            # is meant for XMPP pubsub -- it means create and configure the
+            # node but don't publish to it
+            for notifier in self.notifiers:
+                notifier.enqueue(op, uri)
+
+        else: # normal update notification
+            delayed, count = self.uris.get(uri, [None, 0])
+
+            if delayed and delayed.active():
+                count += 1
+                if count < self.sendAnywayAfterCount:
+                    # reschedule for delaySeconds in the future
+                    delayed.reset(self.delaySeconds)
+                    self.uris[uri][1] = count
+                    self.log_info("Delaying: %s" % (uri,))
+                else:
+                    self.log_info("Not delaying to avoid starvation: %s" % (uri,))
             else:
-                self.log_info("Not delaying to avoid starvation: %s" % (uri,))
-        else:
-            self.log_info("Scheduling: %s" % (uri,))
-            self.uris[uri] = [self.reactor.callLater(self.delaySeconds,
-                self.delayedEnqueue, uri), 0]
+                self.log_info("Scheduling: %s" % (uri,))
+                self.uris[uri] = [self.reactor.callLater(self.delaySeconds,
+                    self.delayedEnqueue, op, uri), 0]
 
-    def delayedEnqueue(self, uri):
+    def delayedEnqueue(self, op, uri):
         self.log_info("Time to send: %s" % (uri,))
         self.uris[uri][1] = 0
         for notifier in self.notifiers:
-            notifier.enqueue(uri)
+            notifier.enqueue(op, uri)
 
 
 
@@ -313,11 +421,12 @@ class INotifier(Interface):
     Defines an enqueue method that Notifier classes need to implement.
     """
 
-    def enqueue(uri):
+    def enqueue(self, op, uri):
         """
         Let's the notifier object know that a change has been made for this
         uri, and enough time has passed to allow for coalescence.
 
+        @type op: C{str}
         @type uri: C{str}
         """
 
@@ -351,17 +460,19 @@ class SimpleLineNotifier(LoggingMixIn):
         self.observers = set()
         self.sentReset = False
 
-    def enqueue(self, uri):
+    def enqueue(self, op, uri):
 
-        self.latestSeq += 1L
+        if op == "update":
 
-        # Update history
-        self.history[uri] = self.latestSeq
+            self.latestSeq += 1L
 
-        for observer in self.observers:
-            msg = "%d %s" % (self.latestSeq, uri)
-            self.log_debug("Sending %s" % (msg,))
-            observer.sendLine(msg)
+            # Update history
+            self.history[uri] = self.latestSeq
+
+            for observer in self.observers:
+                msg = "%d %s" % (self.latestSeq, uri)
+                self.log_debug("Sending %s" % (msg,))
+                observer.sendLine(msg)
 
     def reset(self):
         self.latestSeq = 0L
@@ -518,15 +629,22 @@ class XMPPNotifier(LoggingMixIn):
 
     def sendHeartbeat(self):
         if self.doHeartbeat and self.xmlStream is not None:
-            self.enqueue("", lock=False)
+            self.enqueue("update", "", lock=False)
             self.reactor.callLater(self.settings['HeartbeatSeconds'],
                 self.sendHeartbeat)
 
-    def enqueue(self, uri, lock=True):
+    def enqueue(self, op, uri, lock=True):
         if self.xmlStream is not None:
             # Convert uri to node
             nodeName = self.uriToNodeName(uri)
-            self.publishNode(nodeName, lock=lock)
+            if op == "create":
+                if not self.lockNode(nodeName):
+                    # this node is busy, so it must already be created, or at
+                    # least in the proccess
+                    return
+                self.createNode(nodeName, publish=False)
+            else:
+                self.publishNode(nodeName, lock=lock)
 
     def uriToNodeName(self, uri):
         return getPubSubPath(uri, getPubSubConfiguration(self.config))
@@ -569,7 +687,7 @@ class XMPPNotifier(LoggingMixIn):
 
             if iq.name == "error":
                 if iq['code'] == '400':
-                    self.requestConfigurationForm(nodeName)
+                    self.requestConfigurationForm(nodeName, True)
 
                 elif iq['code'] == '404':
                     self.createNode(nodeName)
@@ -580,7 +698,7 @@ class XMPPNotifier(LoggingMixIn):
             self.unlockNode(None, nodeName)
             raise
 
-    def createNode(self, nodeName):
+    def createNode(self, nodeName, publish=True):
         if self.xmlStream is None:
             # We lost our connection
             self.unlockNode(None, nodeName)
@@ -592,32 +710,39 @@ class XMPPNotifier(LoggingMixIn):
             child = pubsubElement.addElement('create')
             child['node'] = nodeName
             d = iq.send(to=self.settings['ServiceAddress'])
-            d.addCallback(self.createNodeSuccess, nodeName)
-            d.addErrback(self.createNodeFailure, nodeName)
+            d.addCallback(self.createNodeSuccess, nodeName, publish)
+            d.addErrback(self.createNodeFailure, nodeName, publish)
         except:
             self.unlockNode(None, nodeName)
             raise
 
-    def createNodeSuccess(self, iq, nodeName):
+    def createNodeSuccess(self, iq, nodeName, publish):
         try:
             self.sendDebug("Node creation successful (%s)" % (nodeName,), iq)
             # now time to configure; fetch the form
-            self.requestConfigurationForm(nodeName)
+            self.requestConfigurationForm(nodeName, publish)
         except:
             self.unlockNode(None, nodeName)
             raise
 
-    def createNodeFailure(self, result, nodeName):
-        # If we get here we're giving up
+    def createNodeFailure(self, result, nodeName, publish):
         try:
             iq = result.value.getElement()
-            self.log_error("PubSub node creation error: %s" %
-                (iq.toXml().encode('ascii', 'replace')),)
-            self.sendError("Node creation failed (%s)" % (nodeName,), iq)
-        finally:
+            if iq['code'] == '409':
+                # node already exists, proceed to configure
+                self.sendDebug("Node already exists (%s)" % (nodeName,), iq)
+                self.requestConfigurationForm(nodeName, publish)
+            else:
+                # couldn't create node, give up
+                self.unlockNode(None, nodeName)
+                self.log_error("PubSub node creation error: %s" %
+                    (iq.toXml().encode('ascii', 'replace')),)
+                self.sendError("Node creation failed (%s)" % (nodeName,), iq)
+        except:
             self.unlockNode(None, nodeName)
+            raise
 
-    def requestConfigurationForm(self, nodeName):
+    def requestConfigurationForm(self, nodeName, publish):
         if self.xmlStream is None:
             # We lost our connection
             self.unlockNode(None, nodeName)
@@ -630,7 +755,8 @@ class XMPPNotifier(LoggingMixIn):
             child = child.addElement('configure')
             child['node'] = nodeName
             d = iq.send(to=self.settings['ServiceAddress'])
-            d.addCallback(self.requestConfigurationFormSuccess, nodeName)
+            d.addCallback(self.requestConfigurationFormSuccess, nodeName,
+                publish)
             d.addErrback(self.requestConfigurationFormFailure, nodeName)
         except:
             self.unlockNode(None, nodeName)
@@ -642,7 +768,7 @@ class XMPPNotifier(LoggingMixIn):
                 return child
         return None
 
-    def requestConfigurationFormSuccess(self, iq, nodeName):
+    def requestConfigurationFormSuccess(self, iq, nodeName, publish):
         if self.xmlStream is None:
             # We lost our connection
             self.unlockNode(None, nodeName)
@@ -683,7 +809,8 @@ class XMPPNotifier(LoggingMixIn):
                         self.sendDebug("Sending configuration form (%s)"
                                        % (nodeName,), filledIq)
                         d = filledIq.send(to=self.settings['ServiceAddress'])
-                        d.addCallback(self.configurationSuccess, nodeName)
+                        d.addCallback(self.configurationSuccess, nodeName,
+                            publish)
                         d.addErrback(self.configurationFailure, nodeName)
                         return
 
@@ -706,7 +833,7 @@ class XMPPNotifier(LoggingMixIn):
         finally:
             self.unlockNode(None, nodeName)
 
-    def configurationSuccess(self, iq, nodeName):
+    def configurationSuccess(self, iq, nodeName, publish):
         if self.xmlStream is None:
             # We lost our connection
             self.unlockNode(None, nodeName)
@@ -715,7 +842,12 @@ class XMPPNotifier(LoggingMixIn):
         try:
             self.log_debug("PubSub node %s is configured" % (nodeName,))
             self.sendDebug("Configured node (%s)" % (nodeName,), iq)
-            self.publishNode(nodeName, lock=False)
+            nodeCacher = getNodeCacher()
+            nodeCacher.storeNode(nodeName)
+            if publish:
+                self.publishNode(nodeName, lock=False)
+            else:
+                self.unlockNode(None, nodeName)
         except:
             self.unlockNode(None, nodeName)
             raise
@@ -852,7 +984,7 @@ class XMPPNotifier(LoggingMixIn):
             if frm in self.roster:
                 txt = str(body).lower()
                 if txt == "help":
-                    response = "debug on, debug off, roster, publish <nodename>, hammer <count>"
+                    response = "debug on, debug off, roster, create <nodename>, publish <nodename>, hammer <count>"
                 elif txt == "roster":
                     response = "Roster: %s" % (str(self.roster),)
                 elif txt == "debug on":
@@ -870,7 +1002,17 @@ class XMPPNotifier(LoggingMixIn):
                         response = "Please phrase it like 'publish nodename'"
                     else:
                         response = "Publishing node %s" % (nodeName,)
-                        self.reactor.callLater(1, self.publishNode, nodeName)
+                        self.reactor.callLater(1, self.enqueue, "update",
+                            nodeName)
+                elif txt.startswith("create"):
+                    try:
+                        publish, nodeName = txt.split()
+                    except ValueError:
+                        response = "Please phrase it like 'create nodename'"
+                    else:
+                        response = "Creating and configuring node %s" % (nodeName,)
+                        self.reactor.callLater(1, self.enqueue, "create",
+                            nodeName)
                 elif txt.startswith("hammer"):
                     try:
                         hammer, count = txt.split()
@@ -894,7 +1036,7 @@ class XMPPNotifier(LoggingMixIn):
 
     def hammer(self, count):
         for i in xrange(count):
-            self.enqueue("hammertesting%d" % (i,))
+            self.enqueue("update", "hammertesting%d" % (i,))
 
 
 class XMPPNotificationFactory(xmlstream.XmlStreamFactory, LoggingMixIn):
@@ -1101,6 +1243,17 @@ class NotificationServiceMaker(object):
 
     def makeService(self, options):
 
+        #
+        # Configure Memcached Client Pool
+        #
+        if config.Memcached["ClientEnabled"]:
+            memcachepool.installPool(
+                IPv4Address(
+                    'TCP',
+                    config.Memcached["BindAddress"],
+                    config.Memcached["Port"]),
+                config.Memcached["MaxClients"])
+
         multiService = service.MultiService()
 
         notifiers = []
@@ -1126,8 +1279,8 @@ class SimpleLineNotifierService(service.Service):
         self.server = internet.TCPServer(settings["Port"],
             SimpleLineNotificationFactory(self.notifier))
 
-    def enqueue(self, uri):
-        self.notifier.enqueue(uri)
+    def enqueue(self, op, uri):
+        self.notifier.enqueue(op, uri)
 
     def startService(self):
         self.server.startService()
@@ -1143,8 +1296,8 @@ class XMPPNotifierService(service.Service):
         self.client = internet.TCPClient(settings["Host"], settings["Port"],
             XMPPNotificationFactory(self.notifier, settings))
 
-    def enqueue(self, uri):
-        self.notifier.enqueue(uri)
+    def enqueue(self, op, uri):
+        self.notifier.enqueue(op, uri)
 
     def startService(self):
         self.client.startService()
