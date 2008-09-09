@@ -37,7 +37,7 @@ These notifications originate from cache.py:MemcacheChangeNotifier.changed().
 
 from twisted.internet import protocol, defer
 from twisted.internet.address import IPv4Address
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, Deferred
 from twisted.protocols import basic
 from twisted.plugin import IPlugin
 from twisted.application import internet, service
@@ -234,6 +234,8 @@ def getNotificationClient():
 
 
 
+class NodeCreationException(Exception):
+    pass
 
 class NodeCacher(Memcacher, LoggingMixIn):
 
@@ -243,62 +245,37 @@ class NodeCacher(Memcacher, LoggingMixIn):
         self.reactor = reactor
         super(NodeCacher, self).__init__("pubsubnodes")
 
-    @inlineCallbacks
     def nodeExists(self, nodeName):
-        result = (yield self.get(nodeName))
-        self.log_debug("nodeExists result = %s" % (result,))
-        returnValue(result is not None)
+        return self.get(nodeName)
 
-    @inlineCallbacks
     def storeNode(self, nodeName):
-        return
-        self.log_debug("Storing node %s" % (nodeName,))
-        try:
-            yield self.set(nodeName, "1")
-        except Exception, e:
-            import pdb; pdb.set_trace()
-            self.log_error(e)
-            raise
+        return self.set(nodeName, "1")
 
     @inlineCallbacks
     def waitForNode(self, notifier, nodeName):
-        self.log_debug("in waitForNode %s" % (nodeName,))
-        doesExist = (yield self.nodeExists(nodeName))
-        self.log_debug("doesExist = %s" % (doesExist,))
-        if doesExist:
-            self.log_debug("waitForNode returning True")
-            returnValue(True)
-        else:
-            self.log_debug("waitForNode calling notify()")
-            notifier.notify(op="create")
-            self.log_debug("waitForNode called notify()")
-            (yield self._waitForNode(None, nodeName))
+        retryCount = 0
+        verified = False
+        requestedCreation = False
+        while(retryCount < 5):
+            if (yield self.nodeExists(nodeName)):
+                verified = True
+                break
 
-    def _waitForNode(self, result, nodeName, retries=5, deferred=None):
-        self.log_debug("waiting for node %s, retries %d" % (nodeName, retries))
+            if not requestedCreation:
+                notifier.notify(op="create")
+                requestedCreation = True
 
-        if deferred == None:
-            deferred = defer.Deferred()
+            retryCount += 1
 
-        def _exists(result, nodeName, retries, deferred):
-            if result is True:
-                self.log_debug("node exists %s" % (nodeName,))
-                deferred.callback(True)
-                return
-            else:
-                retries -= 1
-                if retries == 0:
-                    self.log_debug("giving up on node %s" % (nodeName,))
-                    deferred.errback()
-                    return
-                self.log_debug("scheduling a retry of node %s" % (nodeName,))
-                self.reactor.callLater(2, self._waitForNode, result, nodeName,
-                    retries=retries, deferred=deferred)
+            pause = Deferred()
+            def _timedDeferred():
+                pause.callback(True)
+            self.reactor.callLater(1, _timedDeferred)
+            yield pause
 
-        self.nodeExists(nodeName).addCallback(_exists, nodeName, retries,
-            deferred)
-        return deferred
-
+        if not verified:
+            self.log_debug("Giving up!")
+            raise NodeCreationException("Could not create node %s" % (nodeName,))
 
 
 _nodeCacher = None
