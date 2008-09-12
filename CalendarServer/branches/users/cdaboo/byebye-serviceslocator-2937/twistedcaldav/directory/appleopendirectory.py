@@ -36,14 +36,10 @@ from twisted.internet.threads import deferToThread
 from twisted.cred.credentials import UsernamePassword
 from twisted.web2.auth.digest import DigestedCredentials
 
-from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 from twistedcaldav.directory.directory import DirectoryError, UnknownRecordTypeError
 
 from plistlib import readPlistFromString
-
-serverPreferences = '/Library/Preferences/com.apple.servermgr_info.plist'
-saclGroup = 'com.apple.access_calendar'
 
 class OpenDirectoryService(DirectoryService):
     """
@@ -494,7 +490,6 @@ class OpenDirectoryService(DirectoryService):
             dsattributes.kDSNAttrMetaNodeLocation,
         ]
 
-        query = None
         if recordType == DirectoryService.recordType_users:
             listRecordType = dsattributes.kDSStdRecordTypeUsers
 
@@ -514,50 +509,6 @@ class OpenDirectoryService(DirectoryService):
         else:
             raise UnknownRecordTypeError("Unknown Open Directory record type: %s" % (recordType))
 
-        # First see if SACL is enabled and if so only allow users in the SACL group
-        # to be valid user records.
-        if config.EnableSACLs and recordType == DirectoryService.recordType_users:
-            if shortName is None and guid is None:
-                self.log_debug("Doing SACL membership check")
-                self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r,%r,%r)" % (
-                    self.directory,
-                    dsattributes.kDSNAttrRecordName,
-                    saclGroup,
-                    dsattributes.eDSExact,
-                    False,
-                    dsattributes.kDSStdRecordTypeGroups,
-                    [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups],
-                ))
-                results = opendirectory.queryRecordsWithAttribute_list(
-                    self.directory,
-                    dsattributes.kDSNAttrRecordName,
-                    saclGroup,
-                    dsattributes.eDSExact,
-                    False,
-                    dsattributes.kDSStdRecordTypeGroups,
-                    [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups]
-                )
-
-                if len(results) == 1:
-                    members      = results[0][1].get(dsattributes.kDSNAttrGroupMembers, [])
-                    nestedGroups = results[0][1].get(dsattributes.kDSNAttrNestedGroups, [])
-    
-                    guidQueries = []
-    
-                    for GUID in self._expandGroupMembership(members, nestedGroups):
-                        guidQueries.append(
-                            dsquery.match(dsattributes.kDS1AttrGeneratedUID, GUID, dsattributes.eDSExact)
-                        )
-    
-                    if not guidQueries:
-                        self.log_warn("No SACL enabled users found.")
-                        return ()
-    
-                    query = dsquery.expression(dsquery.expression.OR, guidQueries)
-                    self.log_debug("Got %d SACL members" % (len(guidQueries),))
-                else:
-                    self.log_debug("SACL not enabled for calendar service")
-        
         # If restricting enabled records, then make sure the restricted group member
         # details are loaded. Do nested group expansion and include the nested groups
         # as enabled records too.
@@ -596,55 +547,32 @@ class OpenDirectoryService(DirectoryService):
             self.restrictedGUIDs = set(self._expandGroupMembership(members, nestedGroups, returnGroups=True))
             self.log_debug("Got %d restricted group members" % (len(self.restrictedGUIDs),))
 
+        query = None
         if shortName is not None:
-            subquery = dsquery.match(dsattributes.kDSNAttrRecordName, shortName, dsattributes.eDSExact)
+            query = dsquery.match(dsattributes.kDSNAttrRecordName, shortName, dsattributes.eDSExact)
         elif guid is not None:
-            subquery = dsquery.match(dsattributes.kDS1AttrGeneratedUID, guid, dsattributes.eDSExact)
-        else:
-            subquery = None
-
-        if subquery is not None:
-            if query is None:
-                query = subquery
-            else:
-                query = dsquery.expression(dsquery.expression.AND, (subquery, query))
+            query = dsquery.match(dsattributes.kDS1AttrGeneratedUID, guid, dsattributes.eDSExact)
 
         try:
             if query:
-                if isinstance(query, dsquery.match):
-                    self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r,%r,%r)" % (
-                        self.directory,
-                        query.attribute,
-                        query.value,
-                        query.matchType,
-                        False,
-                        listRecordType,
-                        attrs,
-                    ))
-                    results = opendirectory.queryRecordsWithAttribute_list(
-                        self.directory,
-                        query.attribute,
-                        query.value,
-                        query.matchType,
-                        False,
-                        listRecordType,
-                        attrs,
-                    )
-                else:
-                    self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r)" % (
-                        self.directory,
-                        query.generate(),
-                        False,
-                        listRecordType,
-                        attrs,
-                    ))
-                    results = opendirectory.queryRecordsWithAttributes_list(
-                        self.directory,
-                        query.generate(),
-                        False,
-                        listRecordType,
-                        attrs,
-                    )
+                self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r,%r,%r)" % (
+                    self.directory,
+                    query.attribute,
+                    query.value,
+                    query.matchType,
+                    False,
+                    listRecordType,
+                    attrs,
+                ))
+                results = opendirectory.queryRecordsWithAttribute_list(
+                    self.directory,
+                    query.attribute,
+                    query.value,
+                    query.matchType,
+                    False,
+                    listRecordType,
+                    attrs,
+                )
             else:
                 self.log_debug("opendirectory.listAllRecordsWithAttributes_list(%r,%r,%r)" % (
                     self.directory,
