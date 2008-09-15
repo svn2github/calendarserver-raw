@@ -98,6 +98,9 @@ class SudoDirectoryService(DirectoryService):
             if entry['username'] == shortName:
                 return self._recordForEntry(entry)
 
+    def recordsStartingWith(self, string):
+        return None
+
     def requestAvatarId(self, credentials):
         # FIXME: ?
         # We were checking if principal is enabled; seems unnecessary in current
@@ -132,6 +135,8 @@ class SudoDirectoryRecord(DirectoryRecord):
             guid=None,
             shortName=shortName,
             fullName=shortName,
+            firstName="",
+            lastName="",
             calendarUserAddresses=set(),
             autoSchedule=False,
             enabledForCalendaring=False)

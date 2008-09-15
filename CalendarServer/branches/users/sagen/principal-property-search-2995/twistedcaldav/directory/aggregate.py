@@ -103,6 +103,9 @@ class AggregateDirectoryService(DirectoryService):
     def recordWithCalendarUserAddress(self, address):
         return self._queryAll("recordWithCalendarUserAddress", address)
 
+    def recordsStartingWith(self, str):
+        return self._queryAll("recordsStartingWith", str)
+
     def serviceForRecordType(self, recordType):
         try:
             return self._recordTypes[recordType]
