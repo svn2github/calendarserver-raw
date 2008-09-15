@@ -155,6 +155,7 @@ class DirectoryRecord(LoggingMixIn):
 
     def __init__(
         self, service, recordType, guid, shortName, fullName,
+        firstName, lastName,
         calendarUserAddresses, autoSchedule, enabledForCalendaring=True,
     ):
         assert service.realmName is not None
@@ -174,6 +175,8 @@ class DirectoryRecord(LoggingMixIn):
         self.guid                  = guid
         self.shortName             = shortName
         self.fullName              = fullName
+        self.firstName             = firstName
+        self.lastName              = lastName
         self.enabledForCalendaring = enabledForCalendaring
         self.calendarUserAddresses = calendarUserAddresses
         self.autoSchedule          = autoSchedule

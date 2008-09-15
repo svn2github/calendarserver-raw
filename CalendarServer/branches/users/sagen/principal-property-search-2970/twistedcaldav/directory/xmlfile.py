@@ -108,6 +108,8 @@ class XMLDirectoryRecord(DirectoryRecord):
             guid                  = xmlPrincipal.guid,
             shortName             = shortName,
             fullName              = xmlPrincipal.name,
+            firstName             = xmlPrincipal.firstName,
+            lastName              = xmlPrincipal.lastName,
             calendarUserAddresses = xmlPrincipal.calendarUserAddresses,
             autoSchedule          = xmlPrincipal.autoSchedule,
             enabledForCalendaring = xmlPrincipal.enabledForCalendaring,

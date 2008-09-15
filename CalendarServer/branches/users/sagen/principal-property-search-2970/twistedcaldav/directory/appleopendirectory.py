@@ -460,6 +460,62 @@ class OpenDirectoryService(DirectoryService):
 
         return record
 
+    def recordsStartingWith(self, string):
+        results = opendirectory.queryRecordsWithAttributes(
+            self.directory,
+            dsquery.expression(dsquery.expression.OR,
+                (
+                    dsquery.match(dsattributes.kDS1AttrFirstName, string,
+                        dsattributes.eDSStartsWith),
+                    dsquery.match(dsattributes.kDS1AttrLastName, string,
+                        dsattributes.eDSStartsWith),
+                    dsquery.match(dsattributes.kDSNAttrEMailAddress, string,
+                        dsattributes.eDSStartsWith)
+                )
+            ).generate(),
+            True,
+            dsattributes.kDSStdRecordTypeUsers,
+            [
+                dsattributes.kDS1AttrGeneratedUID,
+                dsattributes.kDS1AttrFirstName,
+                dsattributes.kDS1AttrLastName,
+                dsattributes.kDSNAttrEMailAddress,
+                dsattributes.kDS1AttrDistinguishedName,
+                dsattributes.kDSNAttrMetaNodeLocation,
+            ]
+        )
+        returning = []
+        for key, val in results.iteritems():
+            try:
+                calendarUserAddresses = set()
+                enabledForCalendaring = False
+                if val.has_key(dsattributes.kDSNAttrEMailAddress):
+                    enabledForCalendaring = True
+                    calendarUserAddresses.add(val[dsattributes.kDSNAttrEMailAddress])
+                rec = OpenDirectoryRecord(
+                    service               = self,
+                    recordType            = DirectoryService.recordType_users,
+                    guid                  = val[dsattributes.kDS1AttrGeneratedUID],
+                    nodeName              = val[dsattributes.kDSNAttrMetaNodeLocation],
+                    shortName             = key,
+                    fullName              = val[dsattributes.kDS1AttrDistinguishedName],
+                    firstName             = val[dsattributes.kDS1AttrFirstName],
+                    lastName              = val[dsattributes.kDS1AttrLastName],
+                    calendarUserAddresses = calendarUserAddresses,
+                    autoSchedule          = False,
+                    enabledForCalendaring = enabledForCalendaring,
+                    memberGUIDs           = (),
+                    proxyGUIDs            = (),
+                    readOnlyProxyGUIDs    = (),
+                )
+                returning.append(rec)
+            except Exception, e:
+                print e
+                import pdb; pdb.set_trace()
+                
+        return returning
+
+
     def reloadCache(self, recordType, shortName=None, guid=None):
         if shortName:
             self.log_info("Faulting record %s into %s record cache" % (shortName, recordType))
@@ -533,6 +589,8 @@ class OpenDirectoryService(DirectoryService):
             # Now get useful record info.
             recordGUID     = value.get(dsattributes.kDS1AttrGeneratedUID)
             recordFullName = value.get(dsattributes.kDS1AttrDistinguishedName)
+            recordFirstName = value.get(dsattributes.kDS1AttrFirstName)
+            recordLastName = value.get(dsattributes.kDS1AttrLastName)
             recordNodeName = value.get(dsattributes.kDSNAttrMetaNodeLocation)
 
             if not recordGUID:
@@ -581,6 +639,8 @@ class OpenDirectoryService(DirectoryService):
                 nodeName              = recordNodeName,
                 shortName             = recordShortName,
                 fullName              = recordFullName,
+                firstName             = recordFirstName,
+                lastName              = recordLastName,
                 calendarUserAddresses = calendarUserAddresses,
                 autoSchedule          = autoSchedule,
                 enabledForCalendaring = enabledForCalendaring,
@@ -665,6 +725,8 @@ class OpenDirectoryService(DirectoryService):
         attrs = [
             dsattributes.kDS1AttrGeneratedUID,
             dsattributes.kDS1AttrDistinguishedName,
+            dsattributes.kDS1AttrFirstName,
+            dsattributes.kDS1AttrLastName,
             dsattributes.kDSNAttrEMailAddress,
             dsattributes.kDSNAttrServicesLocator,
             dsattributes.kDSNAttrMetaNodeLocation,
@@ -827,6 +889,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     def __init__(
         self, service, recordType, guid, nodeName, shortName, fullName,
+        firstName, lastName,
         calendarUserAddresses, autoSchedule, enabledForCalendaring,
         memberGUIDs, proxyGUIDs, readOnlyProxyGUIDs,
     ):
@@ -836,6 +899,8 @@ class OpenDirectoryRecord(DirectoryRecord):
             guid                  = guid,
             shortName             = shortName,
             fullName              = fullName,
+            firstName             = firstName,
+            lastName              = lastName,
             calendarUserAddresses = calendarUserAddresses,
             autoSchedule          = autoSchedule,
             enabledForCalendaring = enabledForCalendaring,
