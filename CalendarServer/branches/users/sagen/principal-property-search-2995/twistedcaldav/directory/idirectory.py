@@ -72,13 +72,6 @@ class IDirectoryService(Interface):
             addresses.
         """
 
-    def recordsStartingWith(string):
-        """
-        @return: a sequence of L{IDirectoryRecord}s whose first name, last
-            name, or email address start with the given string (case
-            insensitive)
-        """
-
     def recordsMatchingFields(fields):
         """
         @return: a sequence of L{IDirectoryRecord}s which match the given

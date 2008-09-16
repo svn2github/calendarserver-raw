@@ -460,60 +460,6 @@ class OpenDirectoryService(DirectoryService):
 
         return record
 
-    def recordsStartingWith(self, string):
-        results = opendirectory.queryRecordsWithAttributes(
-            self.directory,
-            dsquery.expression(dsquery.expression.OR,
-                (
-                    dsquery.match(dsattributes.kDS1AttrFirstName, string,
-                        dsattributes.eDSStartsWith),
-                    dsquery.match(dsattributes.kDS1AttrLastName, string,
-                        dsattributes.eDSStartsWith),
-                    dsquery.match(dsattributes.kDSNAttrEMailAddress, string,
-                        dsattributes.eDSStartsWith)
-                )
-            ).generate(),
-            True,
-            dsattributes.kDSStdRecordTypeUsers,
-            [
-                dsattributes.kDS1AttrGeneratedUID,
-                dsattributes.kDS1AttrFirstName,
-                dsattributes.kDS1AttrLastName,
-                dsattributes.kDSNAttrEMailAddress,
-                dsattributes.kDS1AttrDistinguishedName,
-                dsattributes.kDSNAttrMetaNodeLocation,
-            ]
-        )
-        returning = []
-        for key, val in results.iteritems():
-            try:
-                calendarUserAddresses = set()
-                enabledForCalendaring = False
-                if val.has_key(dsattributes.kDSNAttrEMailAddress):
-                    enabledForCalendaring = True
-                    calendarUserAddresses.add(val[dsattributes.kDSNAttrEMailAddress])
-                rec = OpenDirectoryRecord(
-                    service               = self,
-                    recordType            = DirectoryService.recordType_users,
-                    guid                  = val[dsattributes.kDS1AttrGeneratedUID],
-                    nodeName              = val[dsattributes.kDSNAttrMetaNodeLocation],
-                    shortName             = key,
-                    fullName              = val[dsattributes.kDS1AttrDistinguishedName],
-                    firstName             = val[dsattributes.kDS1AttrFirstName],
-                    lastName              = val[dsattributes.kDS1AttrLastName],
-                    calendarUserAddresses = calendarUserAddresses,
-                    autoSchedule          = False,
-                    enabledForCalendaring = enabledForCalendaring,
-                    memberGUIDs           = (),
-                    proxyGUIDs            = (),
-                    readOnlyProxyGUIDs    = (),
-                )
-                returning.append(rec)
-            except Exception, e:
-                print e
-                import pdb; pdb.set_trace()
-
-        return returning
 
     _ODFields = {
         'firstName' : dsattributes.kDS1AttrFirstName,
