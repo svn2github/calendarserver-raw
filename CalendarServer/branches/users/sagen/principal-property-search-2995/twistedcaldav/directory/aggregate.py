@@ -106,6 +106,10 @@ class AggregateDirectoryService(DirectoryService):
     def recordsStartingWith(self, str):
         return self._queryAll("recordsStartingWith", str)
 
+    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or"):
+        return self._queryAll("recordsMatchingFields", fields,
+            caseInsensitive=caseInsensitive, operand=operand)
+
     def serviceForRecordType(self, recordType):
         try:
             return self._recordTypes[recordType]
@@ -123,9 +127,9 @@ class AggregateDirectoryService(DirectoryService):
             *[a[len(service.recordTypePrefix):] for a in args]
         )
 
-    def _queryAll(self, query, *args):
+    def _queryAll(self, query, *args, **kwds):
         for service in self._recordTypes.values():
-            record = getattr(service, query)(*args)
+            record = getattr(service, query)(*args, **kwds)
             if record is not None:
                 return record
         else:

@@ -137,6 +137,7 @@ class SudoDirectoryRecord(DirectoryRecord):
             fullName=shortName,
             firstName="",
             lastName="",
+            emailAddress="",
             calendarUserAddresses=set(),
             autoSchedule=False,
             enabledForCalendaring=False)

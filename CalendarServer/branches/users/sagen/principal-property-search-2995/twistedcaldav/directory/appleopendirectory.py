@@ -512,7 +512,72 @@ class OpenDirectoryService(DirectoryService):
             except Exception, e:
                 print e
                 import pdb; pdb.set_trace()
-                
+
+        return returning
+
+    _ODFields = {
+        'firstName' : dsattributes.kDS1AttrFirstName,
+        'lastName' : dsattributes.kDS1AttrLastName,
+        'emailAddress' : dsattributes.kDSNAttrEMailAddress,
+    }
+
+    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or"):
+
+        comparison = dsattributes.eDSStartsWith
+        operand = (dsquery.expression.OR if operand == "or"
+            else dsquery.expression.AND)
+
+        expressions = []
+        for field, value in fields:
+            if field in self._ODFields:
+                ODField = self._ODFields[field]
+                expressions.append(dsquery.match(ODField, value, comparison))
+
+
+        results = opendirectory.queryRecordsWithAttributes(
+            self.directory,
+            dsquery.expression(operand, expressions).generate(),
+            caseInsensitive,
+            dsattributes.kDSStdRecordTypeUsers,
+            [
+                dsattributes.kDS1AttrGeneratedUID,
+                dsattributes.kDS1AttrFirstName,
+                dsattributes.kDS1AttrLastName,
+                dsattributes.kDSNAttrEMailAddress,
+                dsattributes.kDS1AttrDistinguishedName,
+                dsattributes.kDSNAttrMetaNodeLocation,
+            ]
+        )
+        returning = []
+        for key, val in results.iteritems():
+            try:
+                calendarUserAddresses = set()
+                enabledForCalendaring = False
+                if val.has_key(dsattributes.kDSNAttrEMailAddress):
+                    enabledForCalendaring = True
+                    calendarUserAddresses.add(val[dsattributes.kDSNAttrEMailAddress])
+                rec = OpenDirectoryRecord(
+                    service = self,
+                    recordType = DirectoryService.recordType_users,
+                    guid = val[dsattributes.kDS1AttrGeneratedUID],
+                    nodeName = val[dsattributes.kDSNAttrMetaNodeLocation],
+                    shortName = key,
+                    fullName = val[dsattributes.kDS1AttrDistinguishedName],
+                    firstName = val[dsattributes.kDS1AttrFirstName],
+                    lastName = val[dsattributes.kDS1AttrLastName],
+                    emailAddress = val.get(dsattributes.kDSNAttrEMailAddress, ""),
+                    calendarUserAddresses = calendarUserAddresses,
+                    autoSchedule = False,
+                    enabledForCalendaring = enabledForCalendaring,
+                    memberGUIDs = (),
+                    proxyGUIDs = (),
+                    readOnlyProxyGUIDs = (),
+                )
+                returning.append(rec)
+            except Exception, e:
+                print e
+                import pdb; pdb.set_trace()
+
         return returning
 
 
@@ -591,6 +656,7 @@ class OpenDirectoryService(DirectoryService):
             recordFullName = value.get(dsattributes.kDS1AttrDistinguishedName)
             recordFirstName = value.get(dsattributes.kDS1AttrFirstName)
             recordLastName = value.get(dsattributes.kDS1AttrLastName)
+            recordEmailAddress = value.get(dsattributes.kDSNAttrEMailAddress)
             recordNodeName = value.get(dsattributes.kDSNAttrMetaNodeLocation)
 
             if not recordGUID:
@@ -641,6 +707,7 @@ class OpenDirectoryService(DirectoryService):
                 fullName              = recordFullName,
                 firstName             = recordFirstName,
                 lastName              = recordLastName,
+                emailAddress          = recordEmailAddress,
                 calendarUserAddresses = calendarUserAddresses,
                 autoSchedule          = autoSchedule,
                 enabledForCalendaring = enabledForCalendaring,
@@ -889,7 +956,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     def __init__(
         self, service, recordType, guid, nodeName, shortName, fullName,
-        firstName, lastName,
+        firstName, lastName, emailAddress,
         calendarUserAddresses, autoSchedule, enabledForCalendaring,
         memberGUIDs, proxyGUIDs, readOnlyProxyGUIDs,
     ):
@@ -901,6 +968,7 @@ class OpenDirectoryRecord(DirectoryRecord):
             fullName              = fullName,
             firstName             = firstName,
             lastName              = lastName,
+            emailAddress          = emailAddress,
             calendarUserAddresses = calendarUserAddresses,
             autoSchedule          = autoSchedule,
             enabledForCalendaring = enabledForCalendaring,

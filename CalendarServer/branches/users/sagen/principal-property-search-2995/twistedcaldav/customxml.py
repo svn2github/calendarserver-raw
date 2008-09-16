@@ -306,6 +306,14 @@ class LastNameProperty (davxml.WebDAVTextElement):
     name = "last-name"
     protected = True
 
+class EMailProperty (davxml.WebDAVTextElement):
+    """
+    A property representing email address of a principal
+    """
+    namespace = calendarserver_namespace
+    name = "email-address"
+    protected = True
+
 class IScheduleInbox (davxml.WebDAVEmptyElement):
     """
     Denotes the resourcetype of a iSchedule Inbox.

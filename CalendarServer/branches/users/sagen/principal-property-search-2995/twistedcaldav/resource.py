@@ -707,6 +707,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
         (caldav_namespace, "schedule-outbox-URL"      ),
         (calendarserver_namespace, "first-name"       ),
         (calendarserver_namespace, "last-name"        ),
+        (calendarserver_namespace, "email-address"    ),
     )
 
     @classmethod
@@ -773,6 +774,13 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
                     lastName = self.record.lastName
                     if lastName:
                         return customxml.LastNameProperty(lastName)
+                    else:
+                        return None
+
+                if name == "email-address":
+                    emailAddress = self.record.emailAddress
+                    if emailAddress:
+                        return customxml.EMailProperty(emailAddress)
                     else:
                         return None
 

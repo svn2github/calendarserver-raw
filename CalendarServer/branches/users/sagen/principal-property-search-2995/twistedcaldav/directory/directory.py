@@ -138,6 +138,8 @@ class DirectoryService(LoggingMixIn):
             for record in self.listRecords(recordType):
                 yield record
 
+    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or"):
+        return None
 
 class DirectoryRecord(LoggingMixIn):
     implements(IDirectoryRecord)
@@ -155,7 +157,7 @@ class DirectoryRecord(LoggingMixIn):
 
     def __init__(
         self, service, recordType, guid, shortName, fullName,
-        firstName, lastName,
+        firstName, lastName, emailAddress,
         calendarUserAddresses, autoSchedule, enabledForCalendaring=True,
     ):
         assert service.realmName is not None
@@ -177,6 +179,7 @@ class DirectoryRecord(LoggingMixIn):
         self.fullName              = fullName
         self.firstName             = firstName
         self.lastName              = lastName
+        self.emailAddress          = emailAddress
         self.enabledForCalendaring = enabledForCalendaring
         self.calendarUserAddresses = calendarUserAddresses
         self.autoSchedule          = autoSchedule
