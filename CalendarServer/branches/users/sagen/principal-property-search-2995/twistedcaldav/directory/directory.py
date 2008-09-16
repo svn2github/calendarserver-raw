@@ -138,8 +138,49 @@ class DirectoryService(LoggingMixIn):
             for record in self.listRecords(recordType):
                 yield record
 
-    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or"):
-        return None
+    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or",
+        recordType=recordType_users):
+        # Default, bruteforce method; override with one optimized for each
+        # service
+
+        def fieldMatches(fieldValue, value):
+            if caseInsensitive:
+                return fieldValue.lower().startswith(value.lower())
+            else:
+                return fieldValue.startswith(value)
+
+        def recordMatches(record):
+            if operand == "and":
+                for fieldName, value in fields:
+                    try:
+                        fieldValue = getattr(record, fieldName)
+                        if not fieldMatches(fieldValue, value):
+                            return False
+                    except AttributeError:
+                        # No property => no match
+                        return False
+                # we hit on every property
+                return True
+            else: # "or"
+                for fieldName, value in fields:
+                    try:
+                        fieldValue = getattr(record, fieldName)
+                        if fieldMatches(fieldValue, value):
+                            return True
+                    except AttributeError:
+                        # No value
+                        pass
+                # we didn't hit any
+                return False
+
+        try:
+            for record in self.listRecords(recordType):
+                if recordMatches(record):
+                    yield record
+        except UnknownRecordTypeError:
+            # Skip this service since it doesn't understand this record type
+            pass
+
 
 class DirectoryRecord(LoggingMixIn):
     implements(IDirectoryRecord)

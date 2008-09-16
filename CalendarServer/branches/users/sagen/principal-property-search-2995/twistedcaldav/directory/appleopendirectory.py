@@ -467,7 +467,8 @@ class OpenDirectoryService(DirectoryService):
         'emailAddress' : dsattributes.kDSNAttrEMailAddress,
     }
 
-    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or"):
+    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or",
+        recordType=DirectoryService.recordType_users):
 
         comparison = dsattributes.eDSStartsWith
         operand = (dsquery.expression.OR if operand == "or"
@@ -494,7 +495,6 @@ class OpenDirectoryService(DirectoryService):
                 dsattributes.kDSNAttrMetaNodeLocation,
             ]
         )
-        returning = []
         for key, val in results.iteritems():
             try:
                 calendarUserAddresses = set()
@@ -519,12 +519,10 @@ class OpenDirectoryService(DirectoryService):
                     proxyGUIDs = (),
                     readOnlyProxyGUIDs = (),
                 )
-                returning.append(rec)
+                yield rec
             except Exception, e:
                 print e
                 import pdb; pdb.set_trace()
-
-        return returning
 
 
     def reloadCache(self, recordType, shortName=None, guid=None):

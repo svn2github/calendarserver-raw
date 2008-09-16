@@ -2,13 +2,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
 ===================================================================
 --- twisted/web2/dav/method/report_principal_property_search.py	(revision 19773)
 +++ twisted/web2/dav/method/report_principal_property_search.py	(working copy)
-@@ -46,17 +46,24 @@
-     Generate a principal-property-search REPORT. (RFC 3744, section 9.4)
-     """
- 
-+
-     # Verify root element
-     if not isinstance(principal_property_search, davxml.PrincipalPropertySearch):
+@@ -51,12 +51,18 @@
          raise ValueError("%s expected as root element, not %s."
                           % (davxml.PrincipalPropertySearch.sname(), principal_property_search.sname()))
  
@@ -28,7 +22,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
      # Get a single DAV:prop element from the REPORT request body
      propertiesForResource = None
      propElement = None
-@@ -93,73 +100,157 @@
+@@ -93,73 +99,147 @@
          else:
              return False
          
@@ -101,25 +95,15 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
      try:
 -        resources = []
 -        responses = []
-+        # propertySearches is a list of tuple(tuple(props), match)
 +
-+        # TODO: should this mapping live elsewhere?
-+        # See if there are any that are recognized by record fields
-+        cs_ns = "http://calendarserver.org/ns/"
-+        fieldMap = {
-+            "<{%s}%s>" % (cs_ns, "first-name") : "firstName",
-+            "<{%s}%s>" % (cs_ns, "last-name") : "lastName",
-+            "<{%s}%s>" % (cs_ns, "email-address") : "emailAddress",
-+        }
-+
++        # See if we can take advantage of the directory
 +        fields = []
 +        nonDirectorySearches = []
 +        for props, match in propertySearches:
 +            nonDirectoryProps = []
 +            for prop in props:
-+                uri = repr(prop)
-+                if fieldMap.has_key(uri):
-+                    fieldName = fieldMap[uri]
++                fieldName = self.propertyToField(prop)
++                if fieldName:
 +                    fields.append((fieldName, match))
 +                else:
 +                    nonDirectoryProps.append(prop)
@@ -232,7 +216,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
                      yield d
                      d = d.getResult()
                      if d:
-@@ -167,18 +258,26 @@
+@@ -167,18 +247,26 @@
                          matchcount += 1
                          if matchcount > max_number_of_matches:
                              raise NumberOfMatchesWithinLimits

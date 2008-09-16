@@ -212,6 +212,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
 
         return None
 
+
     ##
     # Static
     ##
@@ -288,6 +289,21 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
 
     def principalCollections(self):
         return self.parent.principalCollections()
+
+    ##
+    # DAV-property-to-record-field mapping
+    ##
+
+    _cs_ns = "http://calendarserver.org/ns/"
+    _fieldMap = {
+        "<{%s}%s>" % (_cs_ns, "first-name") : "firstName",
+        "<{%s}%s>" % (_cs_ns, "last-name") : "lastName",
+        "<{%s}%s>" % (_cs_ns, "email-address") : "emailAddress",
+    }
+
+    def propertyToField(self, property):
+        return self._fieldMap.get(repr(property), None)
+
 
 class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
     """

@@ -103,9 +103,13 @@ class AggregateDirectoryService(DirectoryService):
     def recordWithCalendarUserAddress(self, address):
         return self._queryAll("recordWithCalendarUserAddress", address)
 
-    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or"):
-        return self._queryAll("recordsMatchingFields", fields,
-            caseInsensitive=caseInsensitive, operand=operand)
+    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or",
+        recordType=DirectoryService.recordType_users):
+        for service in self._recordTypes.values():
+            for record in service.recordsMatchingFields(fields,
+                caseInsensitive=caseInsensitive, operand=operand,
+                recordType=recordType):
+                    yield record
 
     def serviceForRecordType(self, recordType):
         try:
@@ -124,9 +128,9 @@ class AggregateDirectoryService(DirectoryService):
             *[a[len(service.recordTypePrefix):] for a in args]
         )
 
-    def _queryAll(self, query, *args, **kwds):
+    def _queryAll(self, query, *args):
         for service in self._recordTypes.values():
-            record = getattr(service, query)(*args, **kwds)
+            record = getattr(service, query)(*args)
             if record is not None:
                 return record
         else:
