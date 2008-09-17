@@ -138,6 +138,10 @@ class DirectoryProvisioningResource (
     }
 
     def propertyToField(self, property):
+        """
+        If property is a DAV property that maps to a directory field, return
+        that field's name, otherwise return None
+        """
         return self._fieldMap.get(repr(property), None)
 
 
