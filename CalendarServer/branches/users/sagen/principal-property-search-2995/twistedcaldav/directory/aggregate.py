@@ -104,8 +104,13 @@ class AggregateDirectoryService(DirectoryService):
         return self._queryAll("recordWithCalendarUserAddress", address)
 
     def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or",
-        recordType=DirectoryService.recordType_users):
-        for service in self._recordTypes.values():
+        recordType=None):
+        if recordType:
+            services = (self.serviceForRecordType(recordType),)
+        else:
+            services = set(self._recordTypes.values())
+
+        for service in services:
             for record in service.recordsMatchingFields(fields,
                 caseInsensitive=caseInsensitive, operand=operand,
                 recordType=recordType):

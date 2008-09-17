@@ -125,6 +125,22 @@ class DirectoryProvisioningResource (
     def principalForCalendarUserAddress(self, address):
         raise NotImplementedError("Subclass must implement principalForCalendarUserAddress()")
 
+    ##
+    # DAV-property-to-record-field mapping
+    ##
+
+    _cs_ns = "http://calendarserver.org/ns/"
+    _fieldMap = {
+        "<{DAV:}%s>" % ("displayname",) : "fullName",
+        "<{%s}%s>" % (_cs_ns, "first-name") : "firstName",
+        "<{%s}%s>" % (_cs_ns, "last-name") : "lastName",
+        "<{%s}%s>" % (_cs_ns, "email-address") : "emailAddress",
+    }
+
+    def propertyToField(self, property):
+        return self._fieldMap.get(repr(property), None)
+
+
 class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     """
     Collection resource which provisions directory principals as its children.
@@ -237,6 +253,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
     def principalCollections(self):
         return (self,)
 
+
 class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource):
     """
     Collection resource which provisions directory principals of a
@@ -289,20 +306,6 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
 
     def principalCollections(self):
         return self.parent.principalCollections()
-
-    ##
-    # DAV-property-to-record-field mapping
-    ##
-
-    _cs_ns = "http://calendarserver.org/ns/"
-    _fieldMap = {
-        "<{%s}%s>" % (_cs_ns, "first-name") : "firstName",
-        "<{%s}%s>" % (_cs_ns, "last-name") : "lastName",
-        "<{%s}%s>" % (_cs_ns, "email-address") : "emailAddress",
-    }
-
-    def propertyToField(self, property):
-        return self._fieldMap.get(repr(property), None)
 
 
 class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):

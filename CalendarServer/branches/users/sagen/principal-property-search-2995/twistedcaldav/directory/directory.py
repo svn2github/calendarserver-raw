@@ -139,9 +139,19 @@ class DirectoryService(LoggingMixIn):
                 yield record
 
     def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or",
-        recordType=recordType_users):
+        recordType=None):
         # Default, bruteforce method; override with one optimized for each
         # service
+
+        if recordType is None:
+            recordTypes = (
+                DirectoryService.recordType_users,
+                DirectoryService.recordType_groups,
+                DirectoryService.recordType_locations,
+                DirectoryService.recordType_resources,
+            )
+        else:
+            recordTypes = (recordType,)
 
         def fieldMatches(fieldValue, value):
             if caseInsensitive:
@@ -174,9 +184,10 @@ class DirectoryService(LoggingMixIn):
                 return False
 
         try:
-            for record in self.listRecords(recordType):
-                if recordMatches(record):
-                    yield record
+            for recordType in recordTypes:
+                for record in self.listRecords(recordType):
+                    if recordMatches(record):
+                        yield record
         except UnknownRecordTypeError:
             # Skip this service since it doesn't understand this record type
             pass

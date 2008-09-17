@@ -22,7 +22,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
      # Get a single DAV:prop element from the REPORT request body
      propertiesForResource = None
      propElement = None
-@@ -93,73 +99,147 @@
+@@ -93,73 +99,155 @@
          else:
              return False
          
@@ -102,7 +102,10 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
 +        for props, match in propertySearches:
 +            nonDirectoryProps = []
 +            for prop in props:
-+                fieldName = self.propertyToField(prop)
++                try:
++                    fieldName = self.propertyToField(prop)
++                except AttributeError:
++                    fieldName = None
 +                if fieldName:
 +                    fields.append((fieldName, match))
 +                else:
@@ -193,8 +196,13 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
 +
 +
 +        elif fields: # search the directory
++            try:
++                recordType = self.recordType
++            except AttributeError:
++                recordType = None
++
 +            for record in self.directory.recordsMatchingFields(fields,
-+                operand=operand):
++                operand=operand, recordType=recordType):
 +
 +                resource = self.principalForRecord(record)
 +                url = resource.url()
@@ -216,7 +224,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
                      yield d
                      d = d.getResult()
                      if d:
-@@ -167,18 +247,26 @@
+@@ -167,18 +255,26 @@
                          matchcount += 1
                          if matchcount > max_number_of_matches:
                              raise NumberOfMatchesWithinLimits
