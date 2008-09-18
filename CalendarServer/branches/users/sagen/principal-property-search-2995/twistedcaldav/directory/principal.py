@@ -131,10 +131,10 @@ class DirectoryProvisioningResource (
 
     _cs_ns = "http://calendarserver.org/ns/"
     _fieldMap = {
-        "<{DAV:}%s>" % ("displayname",) : "fullName",
-        "<{%s}%s>" % (_cs_ns, "first-name") : "firstName",
-        "<{%s}%s>" % (_cs_ns, "last-name") : "lastName",
-        "<{%s}%s>" % (_cs_ns, "email-address") : "emailAddress",
+        ("DAV:" , "displayname") : "fullName",
+        (_cs_ns, "first-name") : "firstName",
+        (_cs_ns, "last-name") : "lastName",
+        (_cs_ns, "email-address") : "emailAddress",
     }
 
     def propertyToField(self, property):
@@ -142,7 +142,7 @@ class DirectoryProvisioningResource (
         If property is a DAV property that maps to a directory field, return
         that field's name, otherwise return None
         """
-        return self._fieldMap.get(repr(property), None)
+        return self._fieldMap.get(property.qname(), None)
 
 
 class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
