@@ -472,7 +472,7 @@ class OpenDirectoryService(DirectoryService):
         DirectoryService.recordType_users :
             dsattributes.kDSStdRecordTypeUsers,
         DirectoryService.recordType_locations :
-            dsattributes.kDSStdRecordTypeLocations,
+            dsattributes.kDSStdRecordTypePlaces,
         DirectoryService.recordType_groups :
             dsattributes.kDSStdRecordTypeGroups,
         DirectoryService.recordType_resources :
