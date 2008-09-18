@@ -521,7 +521,7 @@ class OpenDirectoryService(DirectoryService):
                 )
                 self.log_info("Got back %d records from OD" % (len(results),))
                 for key, val in results.iteritems():
-                    self.log_info("OD result: %s %s" % (key, val))
+                    self.log_debug("OD result: %s %s" % (key, val))
                     try:
                         calendarUserAddresses = set()
                         enabledForCalendaring = False
