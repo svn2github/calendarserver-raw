@@ -181,6 +181,17 @@ defaultConfig = {
     "EnableAutoAcceptTrigger" : False, # Manually trigger auto-accept behavior
     
     #
+    # Clustering related options
+    #
+    
+    "Clustering" : {
+        "Enabled"               : False,                            # Option enabled?
+        "NodeIDHostnameMap"     : {},                               # Map from NodeID to hostnames/ips
+        "NodeID"                : "",                               # ID for this node
+        "UserNodeMapFile"       : "/etc/caldavd/usernodemap.plist", # plist containing a dict mapping user GUIDs to node-id.
+    },
+
+    #
     # Scheduling related options
     #
 

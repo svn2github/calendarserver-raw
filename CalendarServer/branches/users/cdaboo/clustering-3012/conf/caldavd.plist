@@ -67,7 +67,6 @@
     <array>
     </array>
 
-
     <!--
         Data Store
       -->
@@ -275,6 +274,22 @@
     </dict>
 
 
+	<!-- Configuration for clustering -->
+	<key>Clustering</key>
+	<dict>
+		<key>Enabled</key>
+		<string>False</string>
+
+		<key>NodeIDHostnameMap</key>
+		<dict></dict>
+		
+		<key>NodeID</key>
+		<string></string>
+		
+		<key>UserNodeMapFile</key>
+		<string>/etc/caldavd/usernodemap.plist</string>
+	</dict>
+	
     <!--
         Notifications
       -->
