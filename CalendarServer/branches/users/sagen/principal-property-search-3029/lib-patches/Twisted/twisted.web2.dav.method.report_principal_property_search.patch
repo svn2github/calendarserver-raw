@@ -22,7 +22,31 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
      # Get a single DAV:prop element from the REPORT request body
      propertiesForResource = None
      propElement = None
-@@ -93,73 +99,155 @@
+@@ -71,9 +77,22 @@
+         elif child.qname() == (dav_namespace, "property-search"):
+             props = child.childOfType(davxml.PropertyContainer)
+             props.removeWhitespaceNodes()
++
+             match = child.childOfType(davxml.Match)
+-            propertySearches.append((props.children, str(match).lower()))
++            caseless = match.attributes.get("caseless", "yes")
++            if caseless not in ("yes", "no"):
++                raise ValueError("Unknown value for caseless attribute: %s" %
++                    (caseless,))
++            caseless = True if caseless == "yes" else False
++            matchType = match.attributes.get("match-type", "contains")
++            if matchType not in ("starts-with", "contains"):
++                raise ValueError("Unknown value for match-type attribute: %s" %
++                    (matchType,))
++
++            propertySearches.append((props.children, str(match),
++                caseless, matchType))
+     
++    # TODO: support caseless and matchType
+     def nodeMatch(node, match):
+         """
+         See if the content of the supplied node matches the supplied text.
+@@ -93,73 +112,156 @@
          else:
              return False
          
@@ -46,7 +70,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
 -                    if propvalue and not nodeMatch(propvalue, match):
 +
 +        if operand == "and":
-+            for props, match in propertySearches:
++            for props, match, caseless, matchType in propertySearches:
 +                # Test each property
 +                for prop in props:
 +                    try:
@@ -71,7 +95,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
 +            yield True
  
 +        else: # "or"
-+            for props, match in propertySearches:
++            for props, match, caseless, matchType in propertySearches:
 +                # Test each property
 +                for prop in props:
 +                    try:
@@ -99,7 +123,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
 +        # See if we can take advantage of the directory
 +        fields = []
 +        nonDirectorySearches = []
-+        for props, match in propertySearches:
++        for props, match, caseless, matchType in propertySearches:
 +            nonDirectoryProps = []
 +            for prop in props:
 +                try:
@@ -107,11 +131,12 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
 +                except AttributeError:
 +                    fieldName = None
 +                if fieldName:
-+                    fields.append((fieldName, match))
++                    fields.append((fieldName, match, caseless, matchType))
 +                else:
 +                    nonDirectoryProps.append(prop)
 +            if nonDirectoryProps:
-+                nonDirectorySearches.append((nonDirectoryProps, match))
++                nonDirectorySearches.append((nonDirectoryProps, match,
++                    caseless, matchType))
 +
 +        matchingResources = []
          matchcount = 0
@@ -224,7 +249,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
                      yield d
                      d = d.getResult()
                      if d:
-@@ -167,18 +255,26 @@
+@@ -167,18 +269,26 @@
                          matchcount += 1
                          if matchcount > max_number_of_matches:
                              raise NumberOfMatchesWithinLimits
