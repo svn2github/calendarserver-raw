@@ -481,17 +481,23 @@ class OpenDirectoryService(DirectoryService):
 
     _fromODRecordTypes = dict([(b, a) for a, b in _toODRecordTypes.iteritems()])
 
-    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or",
-        recordType=None):
+    def recordsMatchingFields(self, fields, operand="or", recordType=None):
 
-        comparison = dsattributes.eDSStartsWith
+        # Note that OD applies case-sensitivity globally across the entire
+        # query, not per expression, so the current code uses whatever is
+        # specified in the last field in the fields list
+
         operand = (dsquery.expression.OR if operand == "or"
             else dsquery.expression.AND)
 
         expressions = []
-        for field, value in fields:
+        for field, value, caseless, matchType in fields:
             if field in self._ODFields:
                 ODField = self._ODFields[field]
+                if matchType == "starts-with":
+                    comparison = dsattributes.eDSStartsWith
+                else:
+                    comparison = dsattributes.eDSContains
                 expressions.append(dsquery.match(ODField, value, comparison))
 
 
@@ -503,12 +509,11 @@ class OpenDirectoryService(DirectoryService):
         for recordType in recordTypes:
 
             try:
-                self.log_info("Calling OD: %s %s %s" % (recordType, operand,
-                    fields))
+                self.log_info("Calling OD: Type %s, Operand %s, Caseless %s, %s" % (recordType, operand, caseless, fields))
                 results = opendirectory.queryRecordsWithAttributes(
                     self.directory,
                     dsquery.expression(operand, expressions).generate(),
-                    caseInsensitive,
+                    caseless,
                     recordType,
                     [
                         dsattributes.kDS1AttrGeneratedUID,

@@ -138,8 +138,7 @@ class DirectoryService(LoggingMixIn):
             for record in self.listRecords(recordType):
                 yield record
 
-    def recordsMatchingFields(self, fields, caseInsensitive=True, operand="or",
-        recordType=None):
+    def recordsMatchingFields(self, fields, operand="or", recordType=None):
         # Default, bruteforce method; override with one optimized for each
         # service
 
@@ -153,18 +152,27 @@ class DirectoryService(LoggingMixIn):
         else:
             recordTypes = (recordType,)
 
-        def fieldMatches(fieldValue, value):
-            if caseInsensitive:
+        def fieldMatches(fieldValue, value, caseless, matchType):
+            if caseless:
+                fieldValue = fieldValue.lower()
+                value = value.lower()
+
+            if matchType == 'starts-with':
                 return fieldValue.lower().startswith(value.lower())
             else:
-                return fieldValue.startswith(value)
+                try:
+                    discard = fieldValue.lower().index(value.lower())
+                    return True
+                except ValueError:
+                    return False
 
         def recordMatches(record):
             if operand == "and":
-                for fieldName, value in fields:
+                for fieldName, value, caseless, matchType in fields:
                     try:
                         fieldValue = getattr(record, fieldName)
-                        if not fieldMatches(fieldValue, value):
+                        if not fieldMatches(fieldValue, value, caseless,
+                            matchType):
                             return False
                     except AttributeError:
                         # No property => no match
@@ -172,10 +180,11 @@ class DirectoryService(LoggingMixIn):
                 # we hit on every property
                 return True
             else: # "or"
-                for fieldName, value in fields:
+                for fieldName, value, caseless, matchType in fields:
                     try:
                         fieldValue = getattr(record, fieldName)
-                        if fieldMatches(fieldValue, value):
+                        if fieldMatches(fieldValue, value, caseless,
+                            matchType):
                             return True
                     except AttributeError:
                         # No value
