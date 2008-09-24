@@ -465,7 +465,7 @@ class OpenDirectoryService(DirectoryService):
         'fullName' : dsattributes.kDS1AttrDistinguishedName,
         'firstName' : dsattributes.kDS1AttrFirstName,
         'lastName' : dsattributes.kDS1AttrLastName,
-        'emailAddress' : dsattributes.kDSNAttrEMailAddress,
+        'emailAddresses' : dsattributes.kDSNAttrEMailAddress,
     }
 
     _toODRecordTypes = {
@@ -522,7 +522,19 @@ class OpenDirectoryService(DirectoryService):
                 self.log_info("Got back %d records from OD" % (len(results),))
                 for key, val in results.iteritems():
                     self.log_debug("OD result: %s %s" % (key, val))
+
                     try:
+
+                        # Email field from OD can either be a string or a list
+                        emailAddresses = set()
+                        addrs = val.get(dsattributes.kDSNAttrEMailAddress, None)
+                        if isinstance(addrs, str):
+                            emailAddresses.add(addrs)
+                        elif isinstance(addrs, list):
+                            for addr in addrs:
+                                emailAddresses.add(addr)
+
+                        # TODO: Review this code...
                         calendarUserAddresses = set()
                         enabledForCalendaring = False
                         if val.has_key(dsattributes.kDSNAttrEMailAddress):
@@ -537,7 +549,7 @@ class OpenDirectoryService(DirectoryService):
                             fullName = val.get(dsattributes.kDS1AttrDistinguishedName, ""),
                             firstName = val.get(dsattributes.kDS1AttrFirstName, ""),
                             lastName = val.get(dsattributes.kDS1AttrLastName, ""),
-                            emailAddress = val.get(dsattributes.kDSNAttrEMailAddress, ""),
+                            emailAddresses = emailAddresses,
                             calendarUserAddresses = calendarUserAddresses,
                             autoSchedule = False,
                             enabledForCalendaring = enabledForCalendaring,
@@ -643,6 +655,14 @@ class OpenDirectoryService(DirectoryService):
             else:
                 calendarUserAddresses = ()
 
+            # Get email address from directory record
+            emailAddresses = set()
+            if isinstance(recordEmailAddress, str):
+                emailAddresses.add(recordEmailAddress)
+            elif isinstance(recordEmailAddress, list):
+                for addr in emailAddresses:
+                    emailAddresses.add(addr)
+
             # Special case for groups, which have members.
             if recordType == DirectoryService.recordType_groups:
                 memberGUIDs = value.get(dsattributes.kDSNAttrGroupMembers)
@@ -680,7 +700,7 @@ class OpenDirectoryService(DirectoryService):
                 fullName              = recordFullName,
                 firstName             = recordFirstName,
                 lastName              = recordLastName,
-                emailAddress          = recordEmailAddress,
+                emailAddresses        = emailAddresses,
                 calendarUserAddresses = calendarUserAddresses,
                 autoSchedule          = autoSchedule,
                 enabledForCalendaring = enabledForCalendaring,
@@ -929,7 +949,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     def __init__(
         self, service, recordType, guid, nodeName, shortName, fullName,
-        firstName, lastName, emailAddress,
+        firstName, lastName, emailAddresses,
         calendarUserAddresses, autoSchedule, enabledForCalendaring,
         memberGUIDs, proxyGUIDs, readOnlyProxyGUIDs,
     ):
@@ -941,7 +961,7 @@ class OpenDirectoryRecord(DirectoryRecord):
             fullName              = fullName,
             firstName             = firstName,
             lastName              = lastName,
-            emailAddress          = emailAddress,
+            emailAddresses        = emailAddresses,
             calendarUserAddresses = calendarUserAddresses,
             autoSchedule          = autoSchedule,
             enabledForCalendaring = enabledForCalendaring,
