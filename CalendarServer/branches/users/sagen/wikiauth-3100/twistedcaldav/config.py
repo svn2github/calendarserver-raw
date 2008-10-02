@@ -120,6 +120,12 @@ defaultConfig = {
             "Enabled": False,
             "ServicePrincipal": ""
         },
+        "Wiki": {
+            "Enabled": True,
+            "Cookie": "sessionID",
+            "URL": "http://sswiki.apple.com/RPC2",
+            "method": "userForSession",
+        },
     },
 
     #
