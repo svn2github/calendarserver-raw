@@ -123,7 +123,7 @@ defaultConfig = {
         "Wiki": {
             "Enabled": True,
             "Cookie": "sessionID",
-            "URL": "http://sswiki.apple.com/RPC2",
+            "URL": "http://127.0.0.1/RPC2",
             "method": "userForSession",
         },
     },
