@@ -97,9 +97,6 @@ class AggregateDirectoryService(DirectoryService):
     def recordWithShortName(self, recordType, shortName):
         return self._query("recordWithShortName", recordType, shortName)
 
-    # def recordWithGUID(self, guid):
-    #     return self._queryAll("recordWithGUID", guid)
-
     def recordWithUID(self, uid):
         return self._queryAll("recordWithUID", uid)
 
