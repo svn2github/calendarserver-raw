@@ -537,6 +537,7 @@ class ImplicitProcessor(object):
                      isiTIP = False,
                      allowImplicitSchedule = False,
                      internal_request = True,
+                     processing_organizer = self.isOrganizerReceivingMessage(),
                  ).run()
     
         returnValue(newchild)

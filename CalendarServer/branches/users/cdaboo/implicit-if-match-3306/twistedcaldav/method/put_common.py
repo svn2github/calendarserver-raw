@@ -204,6 +204,7 @@ class StoreCalendarObjectResource(object):
         isiTIP=False,
         allowImplicitSchedule=True,
         internal_request=False,
+        processing_organizer=None,
     ):
         """
         Function that does common PUT/COPY/MOVE behavior.
@@ -223,6 +224,7 @@ class StoreCalendarObjectResource(object):
         @param isiTIP:                True if relaxed calendar data validation is to be done, False otherwise.
         @param allowImplicitSchedule: True if implicit scheduling should be attempted, False otherwise.
         @param internal_request:   True if this request originates internally and needs to bypass scheduling authorization checks.
+        @param processing_organizer: True if implicit processing for an organizer, False if for an attendee, None if not implicit processing.
         """
         
         # Check that all arguments are valid
@@ -262,6 +264,7 @@ class StoreCalendarObjectResource(object):
         self.isiTIP = isiTIP
         self.allowImplicitSchedule = allowImplicitSchedule
         self.internal_request = internal_request
+        self.processing_organizer = processing_organizer
         
         self.rollback = None
         self.access = None
@@ -901,8 +904,14 @@ class StoreCalendarObjectResource(object):
 
                 change_scheduletag = True
                 if self.internal_request:
-                    # TODO: Organizer vs Attendee logic
-                    change_scheduletag = False
+                    # Check what kind of processing is going on
+                    if self.processing_organizer == True:
+                        # All auto-processed updates for an Organizer leave the tag unchanged
+                        change_scheduletag = False
+                    elif self.processing_organizer == False:
+                        # Auto-processed updates that are the result of an organizer "refresh' due
+                        # to another Attendee's REPLY should leave the tag unchanged
+                        change_scheduletag = not hasattr(self.request, "doing_attendee_refresh")
 
                 if change_scheduletag or self.scheduletag is None:
                     self.scheduletag = str(uuid.uuid4())

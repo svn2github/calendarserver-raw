@@ -236,7 +236,11 @@ class ImplicitScheduler(object):
         self.originatorPrincipal = self.organizerPrincipal
         self.originator = self.organizer
         
-        result = (yield self.processRequests())
+        self.request.doing_attendee_refresh = True
+        try:
+            result = (yield self.processRequests())
+        finally:
+            delattr(self.request, "doing_attendee_refresh")
 
         returnValue(result)
 
