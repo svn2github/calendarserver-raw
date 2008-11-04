@@ -22,6 +22,7 @@ __all__ = ["StoreCalendarObjectResource"]
 
 import os
 import types
+import uuid
 
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred, inlineCallbacks, succeed
@@ -44,7 +45,7 @@ from twisted.web2.iweb import IResponse
 from twisted.web2.stream import MemoryStream
 
 from twistedcaldav.config import config
-from twistedcaldav.caldavxml import NoUIDConflict
+from twistedcaldav.caldavxml import NoUIDConflict, ScheduleTag
 from twistedcaldav.caldavxml import NumberOfRecurrencesWithinLimits
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.customxml import calendarserver_namespace ,\
@@ -273,6 +274,7 @@ class StoreCalendarObjectResource(object):
 
         # Basic validation
         yield self.validCopyMoveOperation()
+        self.validIfScheduleMatch()
 
         if self.destinationcal:
             # Valid resource name check
@@ -365,6 +367,24 @@ class StoreCalendarObjectResource(object):
                     msg = "Calendar-to-calendar %s with different owners are not supported" % ("moves" if self.deletesource else "copies",)
                     log.debug(msg)
                     raise HTTPError(StatusResponse(responsecode.FORBIDDEN, msg))
+
+    def validIfScheduleMatch(self):
+        """
+        Check for If-ScheduleTag-Match header behavior.
+        """
+        
+        # Only when a direct request
+        if not self.isiTIP and not self.internal_request:
+            header = self.request.headers.getHeader("If-Schedule-Tag-Match")
+            if header:
+                # Do "precondition" test
+                matched = False
+                if self.destination.exists() and self.destination.hasDeadProperty(ScheduleTag):
+                    scheduletag = self.destination.readDeadProperty(ScheduleTag)
+                    matched = (scheduletag == header)
+                if not matched:
+                    log.debug("If-Schedule-Tag-Match: header value '%s' does not match resource value '%s'" % (header, scheduletag,))
+                    raise HTTPError(responsecode.PRECONDITION_FAILED)
 
     def validResourceName(self):
         """
@@ -606,6 +626,15 @@ class StoreCalendarObjectResource(object):
 
     @inlineCallbacks
     def doImplicitScheduling(self):
+
+        # Get any existing scheduletag property on the resource
+        if self.destination.exists() and self.destination.hasDeadProperty(ScheduleTag):
+            self.scheduletag = self.destination.readDeadProperty(ScheduleTag)
+            if self.scheduletag:
+                self.scheduletag = str(self.scheduletag)
+        else:
+            self.scheduletag = None
+
         data_changed = False
 
         # Do scheduling
@@ -862,8 +891,29 @@ class StoreCalendarObjectResource(object):
             # Check for scheduling object resource and write property
             if is_scheduling_resource:
                 self.destination.writeDeadProperty(TwistedSchedulingObjectResource())
-            elif not self.destinationcal:
+
+                # Need to figure out when to change the schedule tag:
+                #
+                # 1. If this is not an internal request then the resource is being explicitly changed
+                # 2. If it is an internal request for the Organizer, schedule tag never changes
+                # 3. If it is an internal request for an Attendee and the message being processed came
+                #    from the Organizer then the schedule tag changes.
+
+                change_scheduletag = True
+                if self.internal_request:
+                    # TODO: Organizer vs Attendee logic
+                    change_scheduletag = False
+
+                if change_scheduletag or self.scheduletag is None:
+                    self.scheduletag = str(uuid.uuid4())
+                self.destination.writeDeadProperty(ScheduleTag.fromString(self.scheduletag))
+
+                # Add a response header
+                response.headers.setHeader("Schedule-Tag", self.scheduletag)                
+
+            else:
                 self.destination.removeDeadProperty(TwistedSchedulingObjectResource)                
+                self.destination.removeDeadProperty(ScheduleTag)                
 
             # Check for existence of private comments and write property
             if config.Scheduling["CalDAV"].get("EnablePrivateComments", True):
