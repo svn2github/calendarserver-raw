@@ -377,6 +377,7 @@ class StoreCalendarObjectResource(object):
         """
         
         # Only when a direct request
+        self.schedule_tag_match = False
         if not self.isiTIP and not self.internal_request:
             header = self.request.headers.getHeader("If-Schedule-Tag-Match")
             if header:
@@ -388,6 +389,7 @@ class StoreCalendarObjectResource(object):
                 if not matched:
                     log.debug("If-Schedule-Tag-Match: header value '%s' does not match resource value '%s'" % (header, scheduletag,))
                     raise HTTPError(responsecode.PRECONDITION_FAILED)
+                self.schedule_tag_match = True
 
     def validResourceName(self):
         """
@@ -630,7 +632,7 @@ class StoreCalendarObjectResource(object):
     @inlineCallbacks
     def doImplicitScheduling(self):
 
-        # Get any existing scheduletag property on the resource
+        # Get any existing schedule-tag property on the resource
         if self.destination.exists() and self.destination.hasDeadProperty(ScheduleTag):
             self.scheduletag = self.destination.readDeadProperty(ScheduleTag)
             if self.scheduletag:
@@ -682,7 +684,7 @@ class StoreCalendarObjectResource(object):
                 ))
             
             if do_implicit_action and self.allowImplicitSchedule:
-                new_calendar = (yield scheduler.doImplicitScheduling())
+                new_calendar = (yield scheduler.doImplicitScheduling(self.schedule_tag_match))
                 if new_calendar:
                     self.calendar = new_calendar
                     self.calendardata = str(self.calendar)
