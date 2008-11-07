@@ -183,7 +183,7 @@ class ImplicitScheduler(object):
         returnValue(self.state is not None)
 
     @inlineCallbacks
-    def doImplicitScheduling(self, do_smart_merge):
+    def doImplicitScheduling(self, do_smart_merge=False):
         """
         Do implicit scheduling operation based on the data already set by call to checkImplicitScheduling.
 

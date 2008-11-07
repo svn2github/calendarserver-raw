@@ -162,7 +162,7 @@ class iCalDiff(object):
             relevant, C{False} otherwise
         """
 
-        props_to_test = ("DTSTART", "DTEND", "DURATION", "RRULE", "RDATE", "EXDATE",)
+        props_to_test = ("DTSTART", "DTEND", "DURATION", "RRULE", "RDATE", "EXDATE", "RECURRENCE-ID",)
         
         for prop in props_to_test:
             # Change => no merge
