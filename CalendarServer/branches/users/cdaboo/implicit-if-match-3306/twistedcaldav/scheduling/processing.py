@@ -331,6 +331,11 @@ class ImplicitProcessor(object):
                         customxml.Update(*update_details),
                     ),
                 )
+                
+                # Refresh from another Attendee should not have Inbox item
+                if hasattr(self.request, "doing_attendee_refresh"):
+                    autoprocessed = True
+
                 result = (True, autoprocessed, changes,)
                 
             else:

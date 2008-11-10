@@ -77,7 +77,7 @@ class ImplicitScheduler(object):
 
         # If action is remove we actually need to get state from the existing scheduling object resource
         if self.action == "remove":
-            # Also make sure that we return the new calendar being be written rather than the old one
+            # Also make sure that we return the new calendar being written rather than the old one
             # when the implicit action is executed
             self.return_calendar = calendar
             self.calendar = resource.iCalendar()
