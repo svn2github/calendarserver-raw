@@ -191,6 +191,11 @@
 			<key>$pathprefix2:</key>
 			<value>/calendars/__uids__/user02</value>
 		</substitution>
+		<!-- relative path to second user calendar home-->
+		<substitution>
+			<key>$calendarpath2:</key>
+			<value>/calendars/__uids__/user02/calendar</value>
+		</substitution>
 		<!-- calendar user address of second user-->
 		<substitution>
 			<key>$cuaddr2:</key>
