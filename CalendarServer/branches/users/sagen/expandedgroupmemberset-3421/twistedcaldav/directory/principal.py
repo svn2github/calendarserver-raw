@@ -525,30 +525,6 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         else:
             return self.record.shortName
 
-    liveProperties = CalendarPrincipalResource.liveProperties + (
-        (customxml.calendarserver_namespace, "expanded-group-member-set"),
-    )
-
-    @inlineCallbacks
-    def readProperty(self, property, request):
-        if type(property) is tuple:
-            qname = property
-        else:
-            qname = property.qname()
-
-        namespace, name = qname
-
-        if namespace == customxml.calendarserver_namespace:
-            if name == "expanded-group-member-set":
-                principals = (yield self.expandedGroupMembers())
-                returnValue(
-                    customxml.ExpandedGroupMemberSet(
-                        *[davxml.HRef(p.principalURL()) for p in principals]
-                    )
-                )
-
-        result = (yield super(DirectoryPrincipalResource, self).readProperty(property, request))
-        returnValue(result)
 
     ##
     # ACL
