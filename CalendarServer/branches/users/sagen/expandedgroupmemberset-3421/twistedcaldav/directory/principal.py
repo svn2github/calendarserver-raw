@@ -525,6 +525,31 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         else:
             return self.record.shortName
 
+    liveProperties = CalendarPrincipalResource.liveProperties + (
+        (customxml.calendarserver_namespace, "expanded-group-member-set"),
+    )
+
+    @inlineCallbacks
+    def readProperty(self, property, request):
+        if type(property) is tuple:
+            qname = property
+        else:
+            qname = property.qname()
+
+        namespace, name = qname
+
+        if namespace == customxml.calendarserver_namespace:
+            if name == "expanded-group-member-set":
+                principals = (yield self.expandedGroupMembers())
+                returnValue(
+                    customxml.ExpandedGroupMemberSet(
+                        *[davxml.HRef(p.principalURL()) for p in principals]
+                    )
+                )
+
+        result = (yield super(DirectoryPrincipalResource, self).readProperty(property, request))
+        returnValue(result)
+
     ##
     # ACL
     ##
@@ -554,7 +579,7 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
     def url(self):
         return self.principalURL()
 
-    def _getRelatives(self, method, record=None, relatives=None, records=None, proxy=None):
+    def _getRelatives(self, method, record=None, relatives=None, records=None, proxy=None, infinity=False):
         if record is None:
             record = self.record
         if relatives is None:
@@ -577,21 +602,26 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
                                 found = found.getChild("calendar-proxy-read")
                         relatives.add(found)
 
-                    self._getRelatives(method, relative, relatives, records)
+                    if infinity:
+                        self._getRelatives(method, relative, relatives, records,
+                            infinity=infinity)
 
         return relatives
 
     def groupMembers(self):
         return succeed(self._getRelatives("members"))
 
+    def expandedGroupMembers(self):
+        return succeed(self._getRelatives("members", infinity=True))
+
     @inlineCallbacks
     def groupMemberships(self):
-        groups = self._getRelatives("groups")
+        groups = self._getRelatives("groups", infinity=True)
 
         if config.EnableProxyPrincipals:
             # Get any directory specified proxies
-            groups.update(self._getRelatives("proxyFor", proxy='read-write'))
-            groups.update(self._getRelatives("readOnlyProxyFor", proxy='read-only'))
+            groups.update(self._getRelatives("proxyFor", proxy='read-write', infinity=True))
+            groups.update(self._getRelatives("readOnlyProxyFor", proxy='read-only', infinity=True))
 
             # Get proxy group UIDs and map to principal resources
             proxies = []
@@ -610,7 +640,7 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         proxyFors = set()
 
         if resolve_memberships:
-            memberships = self._getRelatives("groups")
+            memberships = self._getRelatives("groups", infinity=True)
             for membership in memberships:
                 results = (yield membership.proxyFor(read_write, False))
                 proxyFors.update(results)
@@ -618,9 +648,9 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         if config.EnableProxyPrincipals:
             # Get any directory specified proxies
             if read_write:
-                directoryProxies = self._getRelatives("proxyFor", proxy='read-write')
+                directoryProxies = self._getRelatives("proxyFor", proxy='read-write', infinity=True)
             else:
-                directoryProxies = self._getRelatives("readOnlyProxyFor", proxy='read-only')
+                directoryProxies = self._getRelatives("readOnlyProxyFor", proxy='read-only', infinity=True)
             proxyFors.update([subprincipal.parent for subprincipal in directoryProxies])
 
             # Get proxy group UIDs and map to principal resources
@@ -750,10 +780,10 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             return False
 
     def proxies(self):
-        return self._getRelatives("proxies")
+        return self._getRelatives("proxies", infinity=True)
 
     def readOnlyProxies(self):
-        return self._getRelatives("readOnlyProxies")
+        return self._getRelatives("readOnlyProxies", infinity=True)
 
     def hasEditableProxyMembership(self):
         return self.record.hasEditableProxyMembership()
