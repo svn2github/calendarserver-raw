@@ -378,7 +378,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
             # See if we have a UID match
             if (excludeuid == uid):
                 test_organizer = calendar.getOrganizer()
-                test_principal = calresource.principalForCalendarUserAddress(test_organizer)
+                test_principal = calresource.principalForCalendarUserAddress(test_organizer) if test_organizer else None
                 test_uid = test_principal.principalUID() if test_principal else ""
 
                 # Check that ORGANIZER's match (security requirement)
