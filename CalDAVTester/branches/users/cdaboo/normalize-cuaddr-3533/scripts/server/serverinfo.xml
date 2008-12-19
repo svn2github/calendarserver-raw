@@ -201,6 +201,11 @@
 			<key>$userguid%d:</key>
 			<value>user%02d</value>
 		</substitution>
+		<!-- user guid -->
+		<substitution repeat="10">
+			<key>$username%d:</key>
+			<value>User %02d</value>
+		</substitution>
 		<!-- password -->
 		<substitution repeat="10">
 			<key>$pswd%d:</key>
@@ -254,10 +259,14 @@
 			<key>$calendarpathalt%d:</key>
 			<value>$calendars_users:$userid%d:/$calendar:</value>
 		</substitution>
+		<substitution repeat="10">
+			<key>$email%d:</key>
+			<value>$userid%d:@example.com</value>
+		</substitution>
 		<!-- calendar user address of user-->
 		<substitution repeat="10">
 			<key>$cuaddr%d:</key>
-			<value>mailto:$userid%d:@example.com</value>
+			<value>mailto:$email%d:</value>
 		</substitution>
 		<substitution repeat="10">
 			<key>$cuaddralt%d:</key>
@@ -266,6 +275,10 @@
 		<substitution repeat="10">
 			<key>$cuaddraltnoslash%d:</key>
 			<value>$principals_uids:$userguid%d:</value>
+		</substitution>
+		<substitution repeat="10">
+			<key>$cuaddrurn%d:</key>
+			<value>urn:uuid:$userguid%d:</value>
 		</substitution>
 		
 		<!--  Override some of the above definitions for special cases -->
@@ -285,6 +298,11 @@
 		<substitution>
 			<key>$resourceguid1:</key>
 			<value>resource01</value>
+		</substitution>
+		<!-- resource name-->
+		<substitution>
+			<key>$resourcename1:</key>
+			<value>Resource 01</value>
 		</substitution>
 		<!-- relative path to first resource calendar home-->
 		<substitution>
@@ -318,6 +336,10 @@
 		<substitution>
 			<key>$rcuaddralt1:</key>
 			<value>$rprincipaluri1:</value>
+		</substitution>
+		<substitution>
+			<key>$rcuaddrurn1:</key>
+			<value>urn:uuid:$resourceguid1:</value>
 		</substitution>
 
 		<!-- relative path to disabled group principal resource-->
