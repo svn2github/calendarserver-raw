@@ -37,6 +37,7 @@ limitations under the License.
   </user>
   <user repeat="99">
     <uid>user%02d</uid>
+    <uid>User %02d</uid>
     <guid>user%02d</guid>
     <password>user%02d</password>
     <name>User %02d</name>
