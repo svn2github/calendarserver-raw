@@ -28,6 +28,7 @@ import xattr, itertools, os
 log = Logger()
 
 
+
 #
 # upgrade_to_1
 #
@@ -35,7 +36,6 @@ log = Logger()
 #
 
 def upgrade_to_1(config):
-    log.info("Upgrading to 1")
 
 
     def fixBadQuotes(data):
@@ -82,47 +82,53 @@ def upgrade_to_1(config):
 
 
     def upgradeCalendarCollection(oldCal, newCal, directory):
-        os.rename(oldCal, newCal)
+        os.mkdir(newCal)
 
-        for resource in os.listdir(newCal):
+        for resource in os.listdir(oldCal):
 
             if resource.startswith("."):
                 continue
 
-            resourcePath = os.path.join(newCal, resource)
+            oldRes = os.path.join(oldCal, resource)
+            newRes = os.path.join(newCal, resource)
 
-            log.info("Processing: %s" % (resourcePath,))
-            needsRewrite = False
-            with open(resourcePath) as res:
+            log.info("Processing: %s" % (oldRes,))
+            with open(oldRes) as res:
                 data = res.read()
 
                 try:
                     data, fixed = fixBadQuotes(data)
                     if fixed:
-                        needsRewrite = True
-                        log.info("Fixing bad quotes in %s" % (resourcePath,))
+                        log.info("Fixing bad quotes in %s" % (oldRes,))
                 except Exception, e:
                     log.error("Error while fixing bad quotes in %s: %s" %
-                        (resourcePath, e))
+                        (oldRes, e))
+                    raise
 
                 try:
                     data, fixed = normalizeCUAddrs(data, directory)
                     if fixed:
-                        needsRewrite = True
-                        log.info("Normalized CUAddrs in %s" % (resourcePath,))
-                        print "NORMALIZED TO:\n%s" % (data,)
+                        log.info("Normalized CUAddrs in %s" % (oldRes,))
                 except Exception, e:
                     log.error("Error while normalizing %s: %s" %
-                        (resourcePath, e))
+                        (oldRes, e))
+                    raise
 
-            if needsRewrite:
-                with open(resourcePath, "w") as res:
-                    res.write(data)
+            with open(newRes, "w") as res:
+                res.write(data)
+
+            for attr, value in xattr.xattr(oldRes).iteritems():
+                xattr.setxattr(newRes, attr, value)
+
+        for attr, value in xattr.xattr(oldCal).iteritems():
+            xattr.setxattr(newCal, attr, value)
 
 
     def upgradeCalendarHome(oldHome, newHome, directory):
         try:
             os.makedirs(newHome)
+            for attr, value in xattr.xattr(oldHome).iteritems():
+                xattr.setxattr(newHome, attr, value)
         except:
             log.info("Skipping upgrade of %s because %s already exists" %
                 (oldHome, newHome))
@@ -130,18 +136,38 @@ def upgrade_to_1(config):
 
         log.info("Upgrading calendar home: %s -> %s" % (oldHome, newHome))
 
-        for cal in os.listdir(oldHome):
-            oldCal = os.path.join(oldHome, cal)
+        try:
+            for cal in os.listdir(oldHome):
+                oldCal = os.path.join(oldHome, cal)
+                newCal = os.path.join(newHome, cal)
+                log.info("Upgrading calendar: %s" % (newCal,))
+                upgradeCalendarCollection(oldCal, newCal, directory)
 
-            # xattrs = xattr.xattr(oldCal)
-            # if not xattrs.has_key("WebDAV:{http:%2F%2Fcalendarserver.org%2Fns%2F}getctag"):
-            #     continue
+            # The migration for this calendar home was successful, so now
+            # we can remove the original
+            for cal in os.listdir(oldHome):
+                calPath = os.path.join(oldHome, cal)
+                for child in os.listdir(calPath):
+                    childPath = os.path.join(calPath, child)
+                    os.remove(childPath)
+                os.rmdir(calPath)
+            os.rmdir(oldHome)
 
-            newCal = os.path.join(newHome, cal)
-            log.info("Upgrading calendar: %s" % (newCal,))
-            upgradeCalendarCollection(oldCal, newCal, directory)
-
-        os.rmdir(oldHome)
+        except Exception, e:
+            # A failure means that we are going to throw out everything we
+            # did for this calendar home and leave the original intact
+            log.error("Error while upgrading %s -> %s: %s.  Leaving original intact." % (oldHome, newHome, str(e)))
+            for cal in os.listdir(newHome):
+                calPath = os.path.join(newHome, cal)
+                for child in os.listdir(calPath):
+                    childPath = os.path.join(calPath, child)
+                    os.remove(childPath)
+                os.rmdir(calPath)
+            os.rmdir(newHome)
+            raise UpgradeError(
+                "Upgrade Error: unable to migrate calendar home %s -> %s: %s" %
+                (oldHome, newHome, str(e))
+            )
 
 
 
@@ -241,7 +267,6 @@ def upgrade_to_1(config):
 
 
 
-
 # Each method in this array will upgrade from one version to the next;
 # the index of each method within the array corresponds to the on-disk
 # version number that it upgrades from.  For example, if the on-disk
@@ -276,7 +301,10 @@ def upgradeData(config):
                 (versionFilePath,))
 
     for upgradeVersion in range(onDiskVersion, newestVersion):
+        log.info("Upgrading to version %d" % (upgradeVersion+1,))
         upgradeMethods[upgradeVersion](config)
+        with open(versionFilePath, "w") as verFile:
+            verFile.write(str(upgradeVersion+1))
 
 
 class UpgradeError(RuntimeError):
