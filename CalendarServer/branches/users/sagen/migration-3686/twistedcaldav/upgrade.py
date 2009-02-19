@@ -55,54 +55,21 @@ def upgrade_to_1(config):
 
     def normalizeCUAddrs(data, directory):
         cal = Component.fromString(data)
-        print cal
-        for component in cal.subcomponents():
-            if component.name() != "VTIMEZONE":
-                for prop in itertools.chain(
-                    component.properties("ORGANIZER"),
-                    component.properties("ATTENDEE"),
-                ):
-                    cua = normalizeCUAddr(prop.value())
-                    try:
-                        principal = directory.principalForCalendarUserAddress(cua)
-                    except Exception, e:
-                        # lookup failed
-                        log.debug("Lookup of %s failed: %s" % (cua, e))
-                        principal = None
 
-                    if principal is not None:
-                        prop.setValue("urn:uuid:%s" % (principal.record.guid,))
-                        if principal.record.fullName:
-                            prop.params()["CN"] = [principal.record.fullName,]
-                        else:
-                            try:
-                                del prop.params()["CN"]
-                            except KeyError:
-                                pass
+        def lookupFunction(cuaddr):
+            try:
+                principal = directory.principalForCalendarUserAddress(cuaddr)
+            except Exception, e:
+                log.debug("Lookup of %s failed: %s" % (cuaddr, e))
+                principal = None
 
-                        # Re-write the X-CALENDARSERVER-EMAIL if its value no longer matches
-                        oldEmail = prop.params().get("X-CALENDARSERVER-EMAIL", (None,))[0]
-                        if oldEmail:
-                            oldEmail = "mailto:%s" % (oldEmail,)
+            if principal is None:
+                return (None, None, None)
+            else:
+                return (principal.record.fullName, principal.record.guid,
+                    principal.record.calendarUserAddresses)
 
-                        if oldEmail is None or oldEmail not in principal.record.calendarUserAddresses:
-                            if cua.startswith("mailto:") and cua in principal.record.calendarUserAddresses:
-                                email = cua[7:]
-                            else:
-                                for addr in principal.record.calendarUserAddresses:
-                                    if addr.startswith("mailto:"):
-                                        email = addr[7:]
-                                        break
-                                else:
-                                    email = None
-
-                            if email:
-                                prop.params()["X-CALENDARSERVER-EMAIL"] = [email,]
-                            else:
-                                try:
-                                    del prop.params()["X-CALENDARSERVER-EMAIL"]
-                                except KeyError:
-                                    pass
+        cal.normalizeCalendarUserAddresses(lookupFunction)
 
         newData = str(cal)
         return newData, not newData == data
@@ -112,29 +79,35 @@ def upgrade_to_1(config):
         os.rename(oldCal, newCal)
 
         for resource in os.listdir(newCal):
-            resourcePath = os.path.join(newCal, resource)
 
-            # MOR:  Is this the proper way to tell we have a caldav resource?
-            # (".ics" extension-checking doesn't seem safe)
-            xattrs = xattr.xattr(resourcePath)
-            if not xattrs.has_key("WebDAV:{DAV:}getcontenttype"):
+            if resource.startswith("."):
                 continue
+
+            resourcePath = os.path.join(newCal, resource)
 
             log.info("Processing: %s" % (resourcePath,))
             needsRewrite = False
             with open(resourcePath) as res:
                 data = res.read()
 
-                data, fixed = fixBadQuotes(data)
-                if fixed:
-                    needsRewrite = True
-                    log.info("Fixing bad quotes in %s" % (resourcePath,))
+                try:
+                    data, fixed = fixBadQuotes(data)
+                    if fixed:
+                        needsRewrite = True
+                        log.info("Fixing bad quotes in %s" % (resourcePath,))
+                except Exception, e:
+                    log.error("Error while fixing bad quotes in %s: %s" %
+                        (resourcePath, e))
 
-                data, fixed = normalizeCUAddrs(data, directory)
-                if fixed:
-                    needsRewrite = True
-                    log.info("Normalized CUAddrs in %s" % (resourcePath,))
-                    print "NORMALIZED TO:\n%s" % (data,)
+                try:
+                    data, fixed = normalizeCUAddrs(data, directory)
+                    if fixed:
+                        needsRewrite = True
+                        log.info("Normalized CUAddrs in %s" % (resourcePath,))
+                        print "NORMALIZED TO:\n%s" % (data,)
+                except Exception, e:
+                    log.error("Error while normalizing %s: %s" %
+                        (resourcePath, e))
 
             if needsRewrite:
                 with open(resourcePath, "w") as res:
@@ -226,7 +199,7 @@ class UpgradeTheServer(object):
     # methods 3 through 5 (using 0-based array indexing) will be executed in
     # order.
     upgradeMethods = [
-        upgradeLeopardToSnowLeopard,
+        upgrade_to_1,
     ]
     
     @staticmethod
