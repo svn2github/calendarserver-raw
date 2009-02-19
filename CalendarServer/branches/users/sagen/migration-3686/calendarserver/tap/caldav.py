@@ -324,8 +324,6 @@ class CalDAVServiceMaker (LoggingMixIn):
 
     def makeService(self, options):
 
-        # Now do any on disk upgrades we might need.
-        UpgradeTheServer.doUpgrade()
 
         serviceMethod = getattr(self, "makeService_%s" % (config.ProcessType,), None)
 
@@ -336,6 +334,16 @@ class CalDAVServiceMaker (LoggingMixIn):
                 % (config.ProcessType,)
             )
         else:
+
+            if config.ProcessType in ('Combined', 'Single'):
+
+                # Process localization string files
+                processLocalizationFiles(config.Localization)
+
+                # Now do any on disk upgrades we might need.
+                UpgradeTheServer.doUpgrade(config)
+
+
             service = serviceMethod(options)
 
             #
