@@ -28,6 +28,12 @@ import xattr, itertools, os
 log = Logger()
 
 
+#
+# upgrade_to_1
+#
+# Upconverts data from any calendar server version prior to data format 1
+#
+
 def upgrade_to_1(config):
     log.info("Upgrading to 1")
 
@@ -138,13 +144,63 @@ def upgrade_to_1(config):
         os.rmdir(oldHome)
 
 
-    docRoot = config.DocumentRoot
-    # MOR: Temporary:
-    docRoot = "/Users/morgen/Migration/CalendarServer/Documents"
+
+    def doProxyDatabaseMoveUpgrade(config):
+
+        # See if the old DB is present
+        oldDbPath = os.path.join(config.DocumentRoot, "principals",
+            CalendarUserProxyDatabase.dbOldFilename)
+        if not os.path.exists(oldDbPath):
+            # Nothing to be done
+            return
+
+        # See if the new one is already present
+        newDbPath = os.path.join(config.DataRoot,
+            CalendarUserProxyDatabase.dbFilename)
+        if os.path.exists(newDbPath):
+            # We have a problem - both the old and new ones exist. Stop the server
+            # from starting up and alert the admin to this condition
+            raise UpgradeError(
+                "Upgrade Error: unable to move the old calendar user proxy database at '%s' to '%s' because the new database already exists."
+                % (oldDbPath, newDbPath,)
+            )
+
+        # Now move the old one to the new location
+        try:
+            if not os.path.exists(config.DataRoot):
+                os.makedirs(config.DataRoot)
+            os.rename(oldDbPath, newDbPath)
+        except Exception, e:
+            raise UpgradeError(
+                "Upgrade Error: unable to move the old calendar user proxy database at '%s' to '%s' due to %s."
+                % (oldDbPath, newDbPath, str(e))
+            )
+
+        log.info(
+            "Moved the calendar user proxy database from '%s' to '%s'."
+            % (oldDbPath, newDbPath,)
+        )
+
+
+
 
     directory = getDirectory()
+    docRoot = config.DocumentRoot
 
     if os.path.exists(docRoot):
+
+        # Look for the /principals/ directory on disk
+        oldPrincipals = os.path.join(docRoot, "principals")
+        if os.path.exists(oldPrincipals):
+            # First move the proxy database and rename it
+            doProxyDatabaseMoveUpgrade(config)
+
+            # Now delete the on disk representation of principals
+            rmdir(oldPrincipals)
+            log.info(
+                "Removed the old principal directory at '%s'."
+                % (oldPrincipals,)
+            )
 
         calRoot = os.path.join(docRoot, "calendars")
         if os.path.exists(calRoot):
@@ -185,100 +241,43 @@ def upgrade_to_1(config):
 
 
 
-    
-    # Don't forget to also do this:
 
-    # UpgradeTheServer._doPrincipalCollectionInMemoryUpgrade(config)
+# Each method in this array will upgrade from one version to the next;
+# the index of each method within the array corresponds to the on-disk
+# version number that it upgrades from.  For example, if the on-disk
+# .version file contains a "3", but there are 6 methods in this array,
+# methods 3 through 5 (using 0-based array indexing) will be executed in
+# order.
+upgradeMethods = [
+    upgrade_to_1,
+]
 
-class UpgradeTheServer(object):
+def upgradeData(config):
 
-    # Each method in this array will upgrade from one version to the next;
-    # the index of each method within the array corresponds to the on-disk
-    # version number that it upgrades from.  For example, if the on-disk
-    # .version file contains a "3", but there are 6 methods in this array,
-    # methods 3 through 5 (using 0-based array indexing) will be executed in
-    # order.
-    upgradeMethods = [
-        upgrade_to_1,
-    ]
-    
-    @staticmethod
-    def doUpgrade(config):
-        
-        # import pdb; pdb.set_trace()
+    # MOR: Temporary:
+    # config.DocumentRoot = "/Users/morgen/Migration/CalendarServer/Documents"
+    # config.DataRoot = "/Users/morgen/Migration/CalendarServer/Data"
+    docRoot = config.DocumentRoot
 
-        docRoot = config.DocumentRoot
-        # MOR: Temporary:
-        docRoot = "/Users/morgen/Migration/CalendarServer/Documents"
-        versionFilePath = os.path.join(docRoot, ".calendarserver_version")
+    versionFilePath = os.path.join(docRoot, ".calendarserver_version")
 
-        newestVersion = len(UpgradeTheServer.upgradeMethods)
+    newestVersion = len(upgradeMethods)
 
-        onDiskVersion = 0
-        if os.path.exists(versionFilePath):
-            try:
-                with open(versionFilePath) as versionFile:
-                    onDiskVersion = int(versionFile.read().strip())
-            except IOError, e:
-                log.error("Cannot open %s; skipping migration" %
-                    (versionFilePath,))
-            except ValueError, e:
-                log.error("Invalid version number in %s; skipping migration" %
-                    (versionFilePath,))
-
-        for upgradeVersion in range(onDiskVersion, newestVersion):
-            UpgradeTheServer.upgradeMethods[upgradeVersion](config)
-
-    
-
-    @staticmethod
-    def _doPrincipalCollectionInMemoryUpgrade(config):
-        
-        # Look for the /principals/ directory on disk
-        old_principals = os.path.join(config.DocumentRoot, "principals")
-        if os.path.exists(old_principals):
-            # First move the proxy database and rename it
-            UpgradeTheServer._doProxyDatabaseMoveUpgrade(config)
-        
-            # Now delete the on disk representation of principals
-            rmdir(old_principals)
-            log.info(
-                "Removed the old principal directory at '%s'."
-                % (old_principals,)
-            )
-
-    @staticmethod
-    def _doProxyDatabaseMoveUpgrade(config):
-        
-        # See if the old DB is present
-        old_db_path = os.path.join(config.DocumentRoot, "principals", CalendarUserProxyDatabase.dbOldFilename)
-        if not os.path.exists(old_db_path):
-            # Nothing to be done
-            return
-        
-        # See if the new one is already present
-        new_db_path = os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)
-        if os.path.exists(new_db_path):
-            # We have a problem - both the old and new ones exist. Stop the server from starting
-            # up and alert the admin to this condition
-            raise UpgradeError(
-                "Upgrade Error: unable to move the old calendar user proxy database at '%s' to '%s' because the new database already exists."
-                % (old_db_path, new_db_path,)
-            )
-        
-        # Now move the old one to the new location
+    onDiskVersion = 0
+    if os.path.exists(versionFilePath):
         try:
-            os.rename(old_db_path, new_db_path)
-        except Exception, e:
-            raise UpgradeError(
-                "Upgrade Error: unable to move the old calendar user proxy database at '%s' to '%s' due to %s."
-                % (old_db_path, new_db_path, str(e))
-            )
-            
-        log.info(
-            "Moved the calendar user proxy database from '%s' to '%s'."
-            % (old_db_path, new_db_path,)
-        )
+            with open(versionFilePath) as versionFile:
+                onDiskVersion = int(versionFile.read().strip())
+        except IOError, e:
+            log.error("Cannot open %s; skipping migration" %
+                (versionFilePath,))
+        except ValueError, e:
+            log.error("Invalid version number in %s; skipping migration" %
+                (versionFilePath,))
+
+    for upgradeVersion in range(onDiskVersion, newestVersion):
+        upgradeMethods[upgradeVersion](config)
+
 
 class UpgradeError(RuntimeError):
     """
