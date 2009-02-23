@@ -17,13 +17,18 @@
 from __future__ import with_statement
 
 from twisted.web2.dav.fileop import rmdir
+from twisted.web2.dav import davxml
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.log import Logger
 from twistedcaldav.ical import Component
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
+from twistedcaldav import caldavxml
 from calendarserver.tools.util import getDirectory, dummyDirectoryRecord
-import xattr, itertools, os
+import xattr, itertools, os, zlib
+from zlib import compress, decompress
+from cPickle import loads as unpickle, PicklingError, UnpicklingError
+
 
 log = Logger()
 
@@ -81,19 +86,18 @@ def upgrade_to_1(config):
         return newData, not newData == data
 
 
-    def upgradeCalendarCollection(oldCal, newCal, directory):
-        os.mkdir(newCal)
+    def upgradeCalendarCollection(calPath, directory):
 
-        for resource in os.listdir(oldCal):
+        for resource in os.listdir(calPath):
 
             if resource.startswith("."):
                 continue
 
-            oldRes = os.path.join(oldCal, resource)
-            newRes = os.path.join(newCal, resource)
+            resPath = os.path.join(calPath, resource)
+            resPathTmp = "%s.tmp" % resPath
 
-            log.info("Processing: %s" % (oldRes,))
-            with open(oldRes) as res:
+            log.info("Processing: %s" % (resPath,))
+            with open(resPath) as res:
                 data = res.read()
 
                 try:
@@ -114,60 +118,37 @@ def upgrade_to_1(config):
                         (oldRes, e))
                     raise
 
-            with open(newRes, "w") as res:
+            # Write to a new file, then rename it over the old one
+            with open(resPathTmp, "w") as res:
                 res.write(data)
-
-            for attr, value in xattr.xattr(oldRes).iteritems():
-                xattr.setxattr(newRes, attr, value)
-
-        for attr, value in xattr.xattr(oldCal).iteritems():
-            xattr.setxattr(newCal, attr, value)
+            os.rename(resPathTmp, resPath)
 
 
-    def upgradeCalendarHome(oldHome, newHome, directory):
-        try:
-            os.makedirs(newHome)
-            for attr, value in xattr.xattr(oldHome).iteritems():
-                xattr.setxattr(newHome, attr, value)
-        except:
-            log.info("Skipping upgrade of %s because %s already exists" %
-                (oldHome, newHome))
-            return
+        # Remove the ctag xattr from the calendar collection
+        for attr, value in xattr.xattr(calPath).iteritems():
+            if attr == "WebDAV:{http:%2F%2Fcalendarserver.org%2Fns%2F}getctag":
+                xattr.removexattr(calPath, attr, value)
 
-        log.info("Upgrading calendar home: %s -> %s" % (oldHome, newHome))
 
-        try:
-            for cal in os.listdir(oldHome):
-                oldCal = os.path.join(oldHome, cal)
-                newCal = os.path.join(newHome, cal)
-                log.info("Upgrading calendar: %s" % (newCal,))
-                upgradeCalendarCollection(oldCal, newCal, directory)
+    def upgradeCalendarHome(homePath, directory):
 
-            # The migration for this calendar home was successful, so now
-            # we can remove the original
-            for cal in os.listdir(oldHome):
-                calPath = os.path.join(oldHome, cal)
-                for child in os.listdir(calPath):
-                    childPath = os.path.join(calPath, child)
-                    os.remove(childPath)
-                os.rmdir(calPath)
-            os.rmdir(oldHome)
+        log.info("Upgrading calendar home: %s" % (homePath,))
 
-        except Exception, e:
-            # A failure means that we are going to throw out everything we
-            # did for this calendar home and leave the original intact
-            log.error("Error while upgrading %s -> %s: %s.  Leaving original intact." % (oldHome, newHome, str(e)))
-            for cal in os.listdir(newHome):
-                calPath = os.path.join(newHome, cal)
-                for child in os.listdir(calPath):
-                    childPath = os.path.join(calPath, child)
-                    os.remove(childPath)
-                os.rmdir(calPath)
-            os.rmdir(newHome)
-            raise UpgradeError(
-                "Upgrade Error: unable to migrate calendar home %s -> %s: %s" %
-                (oldHome, newHome, str(e))
-            )
+        for cal in os.listdir(homePath):
+            calPath = os.path.join(homePath, cal)
+            log.info("Upgrading calendar: %s" % (calPath,))
+            upgradeCalendarCollection(calPath, directory)
+
+            # Change the calendar-free-busy-set xattrs of the inbox to the
+            # __uids__/<guid> form
+            if cal == "inbox":
+                for attr, value in xattr.xattr(calPath).iteritems():
+                    if attr == "WebDAV:{urn:ietf:params:xml:ns:caldav}calendar-free-busy-set":
+                        value = updateFreeBusySet(value, directory)
+                        if value is not None:
+                            # Need to write the xattr back to disk
+                            xattr.setxattr(calPath, attr, value)
+
 
 
 
@@ -208,6 +189,15 @@ def upgrade_to_1(config):
         )
 
 
+    def moveCalendarHome(oldHome, newHome):
+        if os.path.exists(newHome):
+            # Both old and new homes exist; stop immediately to let the
+            # administrator fix it
+            raise UpgradeError(
+                "Upgrade Error: calendar home is in two places: %s and %s.  Please remove one of them and restart calendar server."
+                % (oldHome, newHome)
+            )
+
 
 
     directory = getDirectory()
@@ -233,6 +223,8 @@ def upgrade_to_1(config):
 
             uidHomes = os.path.join(calRoot, "__uids__")
 
+            # Move calendar homes to new location:
+
             if os.path.exists(uidHomes):
                 for home in os.listdir(uidHomes):
 
@@ -242,7 +234,7 @@ def upgrade_to_1(config):
 
                     oldHome = os.path.join(uidHomes, home)
                     newHome = os.path.join(uidHomes, home[0:2], home[2:4], home)
-                    upgradeCalendarHome(oldHome, newHome, directory)
+                    moveCalendarHome(oldHome, newHome)
 
             else:
                 os.mkdir(uidHomes)
@@ -263,7 +255,18 @@ def upgrade_to_1(config):
                             oldHome = os.path.join(dirPath, shortName)
                             newHome = os.path.join(uidHomes, uid[0:2], uid[2:4],
                                 uid)
-                            upgradeCalendarHome(oldHome, newHome, directory)
+                            moveCalendarHome(oldHome, newHome)
+
+            # Upgrade calendar homes in the new location:
+            for first in os.listdir(uidHomes):
+                if len(first) == 2:
+                    firstPath = os.path.join(uidHomes, first)
+                    for second in os.listdir(firstPath):
+                        if len(second) == 2:
+                            secondPath = os.path.join(firstPath, second)
+                            for home in os.listdir(secondPath):
+                                homePath = os.path.join(secondPath, home)
+                                upgradeCalendarHome(homePath, directory)
 
 
 
@@ -276,6 +279,7 @@ def upgrade_to_1(config):
 upgradeMethods = [
     upgrade_to_1,
 ]
+# MOR: Change the above to an array of tuples
 
 def upgradeData(config):
 
@@ -312,3 +316,64 @@ class UpgradeError(RuntimeError):
     Generic upgrade error.
     """
     pass
+
+
+#
+# Utility functions
+#
+def updateFreeBusyHref(href, directory):
+    pieces = href.split("/")
+    if pieces[2] == "__uids__":
+        # Already updated
+        return None
+
+    recordType = pieces[2]
+    shortName = pieces[3]
+    record = directory.recordWithShortName(recordType, shortName)
+    if record is None:
+        msg = "Can't update free-busy href; %s is not in the directory" % shortName
+        log.error(msg)
+        raise UpgradeError(msg)
+
+    uid = record.uid
+    newHref = "/calendars/__uids__/%s/%s/" % (uid, pieces[4])
+    return newHref
+
+
+def updateFreeBusySet(value, directory):
+
+    try:
+        value = zlib.decompress(value)
+    except zlib.error:
+        # Legacy data - not zlib compressed
+        pass
+
+    try:
+        doc = davxml.WebDAVDocument.fromString(value)
+        freeBusySet = doc.root_element
+    except ValueError:
+        try:
+            freeBusySet = unpickle(value)
+        except UnpicklingError:
+            log.err("Invalid xattr property value for: %s" % attr)
+            # MOR: continue on?
+            return
+
+    fbset = set()
+    didUpdate = False
+    for href in freeBusySet.children:
+        href = str(href)
+        newHref = updateFreeBusyHref(href, directory)
+        if newHref is None:
+            fbset.add(href)
+        else:
+            didUpdate = True
+            fbset.add(newHref)
+
+    if didUpdate:
+        property = caldavxml.CalendarFreeBusySet(*[davxml.HRef(href)
+            for href in fbset])
+        value = compress(property.toxml())
+        return value
+
+    return None # no update required
