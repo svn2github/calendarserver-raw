@@ -17,7 +17,7 @@
 from twistedcaldav.config import config
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.upgrade import UpgradeError
-from twistedcaldav.upgrade import UpgradeTheServer
+from twistedcaldav.upgrade import upgradeData
 from twistedcaldav.test.util import TestCase
 
 import os
@@ -25,6 +25,10 @@ import os
 class ProxyDBUpgradeTests(TestCase):
     
     def setUpInitialStates(self):
+
+        xmlFile = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+            "directory", "test", "accounts.xml")
+        config.DirectoryService.params.xmlFile = xmlFile
         
         self.setUpOldDocRoot()
         self.setUpOldDocRootWithoutDB()
@@ -104,6 +108,7 @@ class ProxyDBUpgradeTests(TestCase):
 
         config.DocumentRoot = self.olddocroot
         config.DataRoot = self.newdataroot
+
         
         # Check pre-conditions
         self.assertTrue(os.path.exists(os.path.join(config.DocumentRoot, "principals")))
@@ -111,7 +116,7 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertTrue(os.path.exists(os.path.join(config.DocumentRoot, "principals", CalendarUserProxyDatabase.dbOldFilename)))
         self.assertFalse(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
-        UpgradeTheServer.doUpgrade()
+        upgradeData(config)
         
         # Check post-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals",)))
@@ -133,7 +138,7 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals", CalendarUserProxyDatabase.dbOldFilename)))
         self.assertFalse(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
-        UpgradeTheServer.doUpgrade()
+        upgradeData(config)
         
         # Check post-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals",)))
@@ -153,7 +158,7 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals")))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
-        UpgradeTheServer.doUpgrade()
+        upgradeData(config)
         
         # Check post-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals",)))
@@ -175,7 +180,7 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertTrue(os.path.exists(os.path.join(config.DocumentRoot, "principals", CalendarUserProxyDatabase.dbOldFilename)))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
-        self.assertRaises(UpgradeError, UpgradeTheServer.doUpgrade)
+        self.assertRaises(UpgradeError, upgradeData, config)
         
         # Check post-conditions
         self.assertTrue(os.path.exists(os.path.join(config.DocumentRoot, "principals")))
