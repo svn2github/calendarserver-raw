@@ -14,7 +14,10 @@
 # limitations under the License.
 ##
 
+from __future__ import with_statement
+
 import os
+import xattr
 
 from twisted.python.failure import Failure
 from twisted.internet.defer import succeed, fail
@@ -37,6 +40,75 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
         config.DataRoot = dataroot
         config.Memcached.ClientEnabled = False
         config.Memcached.ServerEnabled = False
+
+    def createHierarchy(self, structure):
+        root = self.mktemp()
+        os.mkdir(root)
+
+        def createChildren(parent, subStructure):
+            for childName, childStructure in subStructure.iteritems():
+
+                if childName.startswith("@"):
+                    continue
+
+                childPath = os.path.join(parent, childName)
+                if childStructure.has_key("@contents"):
+                    # This is a file
+                    with open(childPath, "w") as child:
+                        child.write(childStructure["@contents"])
+
+                else:
+                    # This is a directory
+                    os.mkdir(childPath)
+                    createChildren(childPath, childStructure)
+
+                if childStructure.has_key("@xattrs"):
+                    xattrs = childStructure["@xattrs"]
+                    for attr, value in xattrs.iteritems():
+                        xattr.setxattr(childPath, attr, value)
+
+        createChildren(root, structure)
+        return root
+
+    def compareHierarchy(self, root, structure):
+
+        def compareChildren(parent, subStructure):
+
+            for childName, childStructure in subStructure.iteritems():
+
+                if childName.startswith("@"):
+                    continue
+
+                childPath = os.path.join(parent, childName)
+
+                if not os.path.exists(childPath):
+                    return False
+
+                if childStructure.has_key("@contents"):
+                    # This is a file
+                    with open(childPath) as child:
+                        contents = child.read()
+                        if contents != childStructure["@contents"]:
+                            return False
+
+                else:
+                    # This is a directory
+                    if not compareChildren(childPath, childStructure):
+                        return False
+
+                if childStructure.has_key("@xattrs"):
+                    xattrs = childStructure["@xattrs"]
+                    for attr, value in xattrs.iteritems():
+                        try:
+                            if xattr.getxattr(childPath, attr) != value:
+                                return False
+                        except:
+                            return False
+
+            return True
+
+        return compareChildren(root, structure)
+
 
 class InMemoryPropertyStore(object):
     def __init__(self):

@@ -103,19 +103,19 @@ def upgrade_to_1(config):
                 try:
                     data, fixed = fixBadQuotes(data)
                     if fixed:
-                        log.info("Fixing bad quotes in %s" % (oldRes,))
+                        log.info("Fixing bad quotes in %s" % (resPath,))
                 except Exception, e:
                     log.error("Error while fixing bad quotes in %s: %s" %
-                        (oldRes, e))
+                        (resPath, e))
                     raise
 
                 try:
                     data, fixed = normalizeCUAddrs(data, directory)
                     if fixed:
-                        log.info("Normalized CUAddrs in %s" % (oldRes,))
+                        log.info("Normalized CUAddrs in %s" % (resPath,))
                 except Exception, e:
                     log.error("Error while normalizing %s: %s" %
-                        (oldRes, e))
+                        (resPath, e))
                     raise
 
             # Write to a new file, then rename it over the old one
@@ -198,6 +198,9 @@ def upgrade_to_1(config):
                 % (oldHome, newHome)
             )
 
+        os.makedirs(os.path.dirname(newHome.rstrip("/")))
+        os.rename(oldHome, newHome)
+
 
 
     directory = getDirectory()
@@ -270,16 +273,13 @@ def upgrade_to_1(config):
 
 
 
-# Each method in this array will upgrade from one version to the next;
-# the index of each method within the array corresponds to the on-disk
-# version number that it upgrades from.  For example, if the on-disk
-# .version file contains a "3", but there are 6 methods in this array,
-# methods 3 through 5 (using 0-based array indexing) will be executed in
-# order.
+# The on-disk version number (which defaults to zero if .calendarserver_version
+# doesn't exist), is compared with each of the numbers in the upgradeMethods
+# array.  If it is less than the number, the associated method is called.
+
 upgradeMethods = [
-    upgrade_to_1,
+    (1, upgrade_to_1),
 ]
-# MOR: Change the above to an array of tuples
 
 def upgradeData(config):
 
@@ -289,8 +289,6 @@ def upgradeData(config):
     docRoot = config.DocumentRoot
 
     versionFilePath = os.path.join(docRoot, ".calendarserver_version")
-
-    newestVersion = len(upgradeMethods)
 
     onDiskVersion = 0
     if os.path.exists(versionFilePath):
@@ -304,11 +302,12 @@ def upgradeData(config):
             log.error("Invalid version number in %s; skipping migration" %
                 (versionFilePath,))
 
-    for upgradeVersion in range(onDiskVersion, newestVersion):
-        log.info("Upgrading to version %d" % (upgradeVersion+1,))
-        upgradeMethods[upgradeVersion](config)
-        with open(versionFilePath, "w") as verFile:
-            verFile.write(str(upgradeVersion+1))
+    for version, method in upgradeMethods:
+        if onDiskVersion < version:
+            log.info("Upgrading to version %d" % (version,))
+            method(config)
+            with open(versionFilePath, "w") as verFile:
+                verFile.write(str(version))
 
 
 class UpgradeError(RuntimeError):
@@ -357,7 +356,7 @@ def updateFreeBusySet(value, directory):
         except UnpicklingError:
             log.err("Invalid xattr property value for: %s" % attr)
             # MOR: continue on?
-            return
+            return None
 
     fbset = set()
     didUpdate = False

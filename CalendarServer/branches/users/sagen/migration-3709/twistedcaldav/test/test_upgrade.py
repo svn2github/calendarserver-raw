@@ -28,12 +28,15 @@ import os, zlib, cPickle
 
 class ProxyDBUpgradeTests(TestCase):
     
-    def setUpInitialStates(self):
-
+    def setUpXMLDirectory(self):
         xmlFile = os.path.join(os.path.dirname(os.path.dirname(__file__)),
             "directory", "test", "accounts.xml")
         config.DirectoryService.params.xmlFile = xmlFile
-        
+
+
+    def setUpInitialStates(self):
+        self.setUpXMLDirectory()
+
         self.setUpOldDocRoot()
         self.setUpOldDocRootWithoutDB()
         self.setUpNewDocRoot()
@@ -55,7 +58,6 @@ class ProxyDBUpgradeTests(TestCase):
         os.mkdir(os.path.join(principals, "locations"))
         os.mkdir(os.path.join(principals, "resources"))
         os.mkdir(os.path.join(principals, "sudoers"))
-        os.mkdir(os.path.join(self.olddocroot, "calendars"))
 
         proxyDB = CalendarUserProxyDatabase(principals)
         proxyDB._db()
@@ -63,6 +65,7 @@ class ProxyDBUpgradeTests(TestCase):
             os.path.join(principals, CalendarUserProxyDatabase.dbFilename),
             os.path.join(principals, CalendarUserProxyDatabase.dbOldFilename),
         )
+
 
     def setUpOldDocRootWithoutDB(self):
         
@@ -247,4 +250,173 @@ class ProxyDBUpgradeTests(TestCase):
         newValue = updateFreeBusySet(value, directory)
         newValue = zlib.decompress(newValue)
         self.assertEquals(newValue, expected)
+
+
+        #
+        # Shortname not in directory, raise an UpgradeError
+        #
+
+        value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/nonexistent/calendar</href>\r\n</calendar-free-busy-set>\r\n"
+        self.assertRaises(UpgradeError, updateFreeBusySet, value, directory)
+
+    def test_calendarsUpgrade(self):
+
+        self.setUpXMLDirectory()
+        directory = getDirectory()
+
+        fbAttr = "WebDAV:{urn:ietf:params:xml:ns:caldav}calendar-free-busy-set"
+
+        before = {
+            "calendars" :
+            {
+                "users" :
+                {
+                    "wsanchez" :
+                    {
+                        "calendar" :
+                        {
+                            "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                            {
+                                "@contents" : event01_before,
+                            },
+                        },
+                        "inbox" :
+                        {
+                            "@xattrs" :
+                            {
+                                fbAttr : cPickle.dumps(davxml.WebDAVDocument.fromString("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n").root_element),
+                            },
+                        },
+                    },
+                },
+            },
+        }
+
+        after = {
+            ".calendarserver_version" :
+            {
+                "@contents" : "1",
+            },
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
+                            {
+                                "calendar" :
+                                {
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                                    {
+                                        "@contents" : event01_after,
+                                    },
+                                },
+                                "inbox" :
+                                {
+                                    "@xattrs" :
+                                    {
+                                        fbAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+
+        root = self.createHierarchy(before)
+
+        config.DocumentRoot = root
+        config.DataRoot = root
+
+        upgradeData(config)
+        self.assertTrue(self.compareHierarchy(root, after))
+
+
+event01_before = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Apple Inc.//iCal 3.0//EN
+CALSCALE:GREGORIAN
+BEGIN:VTIMEZONE
+TZID:US/Pacific
+BEGIN:DAYLIGHT
+TZOFFSETFROM:-0800
+TZOFFSETTO:-0700
+DTSTART:20070311T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZNAME:PDT
+END:DAYLIGHT
+BEGIN:STANDARD
+TZOFFSETFROM:-0700
+TZOFFSETTO:-0800
+DTSTART:20071104T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZNAME:PST
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+SEQUENCE:2
+TRANSP:OPAQUE
+UID:1E238CA1-3C95-4468-B8CD-C8A399F78C71
+DTSTART;TZID=US/Pacific:20090203T120000
+ORGANIZER;CN="Cyrus":mailto:cdaboo@example.com
+DTSTAMP:20090203T181924Z
+SUMMARY:New Event
+DESCRIPTION:This has \\" Bad Quotes \\" in it
+ATTENDEE;CN="Wilfredo";CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:mailto:wsanchez
+ @example.com
+ATTENDEE;CN="Cyrus";CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;ROLE=REQ-PARTICI
+ PANT:mailto:cdaboo@example.com
+CREATED:20090203T181910Z
+DTEND;TZID=US/Pacific:20090203T130000
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n")
+
+event01_after = """BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+PRODID:-//Apple Inc.//iCal 3.0//EN
+BEGIN:VTIMEZONE
+TZID:US/Pacific
+BEGIN:STANDARD
+DTSTART:20071104T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZNAME:PST
+TZOFFSETFROM:-0700
+TZOFFSETTO:-0800
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:20070311T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZNAME:PDT
+TZOFFSETFROM:-0800
+TZOFFSETTO:-0700
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:1E238CA1-3C95-4468-B8CD-C8A399F78C71
+DTSTART;TZID=US/Pacific:20090203T120000
+DTEND;TZID=US/Pacific:20090203T130000
+ATTENDEE;CN=Wilfredo Sanchez;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;X-CALENDA
+ RSERVER-EMAIL=wsanchez@example.com:urn:uuid:6423F94A-6B76-4A3A-815B-D52CFD
+ 77935D
+ATTENDEE;CN=Cyrus Daboo;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;ROLE=REQ-PARTI
+ CIPANT;X-CALENDARSERVER-EMAIL=cdaboo@example.com:urn:uuid:5A985493-EE2C-46
+ 65-94CF-4DFEA3A89500
+CREATED:20090203T181910Z
+DESCRIPTION:This has " Bad Quotes " in it
+DTSTAMP:20090203T181924Z
+ORGANIZER;CN=Cyrus Daboo;X-CALENDARSERVER-EMAIL=cdaboo@example.com:urn:uui
+ d:5A985493-EE2C-4665-94CF-4DFEA3A89500
+SEQUENCE:2
+SUMMARY:New Event
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n")
 
