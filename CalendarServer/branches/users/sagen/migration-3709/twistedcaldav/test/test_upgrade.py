@@ -16,11 +16,15 @@
 
 from twistedcaldav.config import config
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
-from twistedcaldav.upgrade import UpgradeError
-from twistedcaldav.upgrade import upgradeData
+from twistedcaldav.upgrade import (
+    UpgradeError, upgradeData, updateFreeBusySet, updateFreeBusyHref
+)
 from twistedcaldav.test.util import TestCase
+from calendarserver.tools.util import getDirectory
+from twisted.web2.dav import davxml
 
-import os
+
+import os, zlib, cPickle
 
 class ProxyDBUpgradeTests(TestCase):
     
@@ -188,3 +192,59 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertTrue(os.path.exists(os.path.join(config.DocumentRoot, "principals", CalendarUserProxyDatabase.dbOldFilename)))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
         
+
+    def test_freeBusyUpgrade(self):
+        """
+        Test the updating of calendar-free-busy-set xattrs on inboxes
+        """
+
+        self.setUpInitialStates()
+        directory = getDirectory()
+
+        #
+        # Verify these values require no updating:
+        #
+
+        # Uncompressed XML
+        value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/BB05932F-DCE7-4195-9ED4-0896EAFF3B0B/calendar</href>\r\n</calendar-free-busy-set>\r\n"
+        self.assertEquals(updateFreeBusySet(value, directory), None)
+
+        # Zlib compressed XML
+        value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/BB05932F-DCE7-4195-9ED4-0896EAFF3B0B/calendar</href>\r\n</calendar-free-busy-set>\r\n"
+        value = zlib.compress(value)
+        self.assertEquals(updateFreeBusySet(value, directory), None)
+
+        # Pickled XML
+        value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/BB05932F-DCE7-4195-9ED4-0896EAFF3B0B/calendar</href>\r\n</calendar-free-busy-set>\r\n"
+        doc = davxml.WebDAVDocument.fromString(value)
+        value = cPickle.dumps(doc.root_element)
+        self.assertEquals(updateFreeBusySet(value, directory), None)
+
+
+        #
+        # Verify these values do require updating:
+        #
+
+        expected = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"
+
+        # Uncompressed XML
+        value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n"
+        newValue = updateFreeBusySet(value, directory)
+        newValue = zlib.decompress(newValue)
+        self.assertEquals(newValue, expected)
+
+        # Zlib compressed XML
+        value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n"
+        value = zlib.compress(value)
+        newValue = updateFreeBusySet(value, directory)
+        newValue = zlib.decompress(newValue)
+        self.assertEquals(newValue, expected)
+
+        # Pickled XML
+        value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n"
+        doc = davxml.WebDAVDocument.fromString(value)
+        value = cPickle.dumps(doc.root_element)
+        newValue = updateFreeBusySet(value, directory)
+        newValue = zlib.decompress(newValue)
+        self.assertEquals(newValue, expected)
+
