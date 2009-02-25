@@ -523,6 +523,7 @@ class ProxyDBUpgradeTests(TestCase):
                                     },
                                     "@xattrs" :
                                     {
+                                        "ignore" : "extra",
                                         cTagAttr : "12345",
                                     },
                                 },
@@ -564,6 +565,15 @@ class ProxyDBUpgradeTests(TestCase):
                                     "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
                                     {
                                         "@contents" : event01_after,
+                                        "@xattrs" :
+                                        {
+                                            # No md5 attr
+                                        },
+                                    },
+                                    "@xattrs" :
+                                    {
+                                        "ignore" : "extra",
+                                        # No ctag attr
                                     },
                                 },
                                 "inbox" :
