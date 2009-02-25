@@ -265,9 +265,9 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertRaises(UpgradeError, updateFreeBusySet, value, directory)
 
 
-    def test_calendarsUpgradeWithUsers(self):
+    def test_calendarsUpgradeWithTypes(self):
         """
-        Verify that calendar homes in the /calendars/users/<shortname>/ form
+        Verify that calendar homes in the /calendars/<type>/<shortname>/ form
         are upgraded to /calendars/__uids__/XX/YY/<guid> form
         """
 
@@ -302,6 +302,15 @@ class ProxyDBUpgradeTests(TestCase):
                             {
                                 freeBusyAttr : cPickle.dumps(davxml.WebDAVDocument.fromString("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n").root_element),
                             },
+                        },
+                    },
+                },
+                "groups" :
+                {
+                    "managers" :
+                    {
+                        "calendar" :
+                        {
                         },
                     },
                 },
@@ -351,6 +360,18 @@ class ProxyDBUpgradeTests(TestCase):
                                     {
                                         freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
                                     },
+                                },
+                            },
+                        },
+                    },
+                    "9F" :
+                    {
+                        "F6" :
+                        {
+                            "9FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1" :
+                            {
+                                "calendar" :
+                                {
                                 },
                             },
                         },
