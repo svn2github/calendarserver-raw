@@ -104,11 +104,16 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
                 if childStructure.has_key("@xattrs"):
                     xattrs = childStructure["@xattrs"]
                     for attr, value in xattrs.iteritems():
-                        try:
-                            if xattr.getxattr(childPath, attr) != value:
+                        if isinstance(value, str):
+                            try:
+                                if xattr.getxattr(childPath, attr) != value:
+                                    return False
+                            except:
                                 return False
-                        except:
-                            return False
+                        else: # method
+                            if not value(xattr.getxattr(childPath, attr)):
+                                return False
+
                     for attr, value in xattr.xattr(childPath).iteritems():
                         if attr not in xattrs:
                             return False

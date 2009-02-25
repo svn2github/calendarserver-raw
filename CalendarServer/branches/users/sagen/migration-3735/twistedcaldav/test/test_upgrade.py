@@ -347,12 +347,12 @@ class ProxyDBUpgradeTests(TestCase):
                                         "@contents" : event01_after,
                                         "@xattrs" :
                                         {
-                                            # no md5 attr
+                                            md5Attr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<getcontentmd5 xmlns='http://twistedmatrix.com/xml_namespace/dav/'>967eac8e6cc69b43fb820e8cf438d8e7</getcontentmd5>\r\n"),
                                         },
                                     },
                                     "@xattrs" :
                                     {
-                                        # no CTAG
+                                        cTagAttr : isValidCTag, # method below
                                     },
                                 },
                                 "inbox" :
@@ -462,6 +462,10 @@ class ProxyDBUpgradeTests(TestCase):
                                     {
                                         "@contents" : event01_after,
                                     },
+                                    "@xattrs" :
+                                    {
+                                        cTagAttr : isValidCTag, # method below
+                                    },
                                 },
                                 "inbox" :
                                 {
@@ -570,13 +574,13 @@ class ProxyDBUpgradeTests(TestCase):
                                         "@contents" : event01_after,
                                         "@xattrs" :
                                         {
-                                            # No md5 attr
+                                            md5Attr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<getcontentmd5 xmlns='http://twistedmatrix.com/xml_namespace/dav/'>967eac8e6cc69b43fb820e8cf438d8e7</getcontentmd5>\r\n"),
                                         },
                                     },
                                     "@xattrs" :
                                     {
                                         "ignore" : "extra",
-                                        # No ctag attr
+                                        cTagAttr : isValidCTag, # method below
                                     },
                                 },
                                 "inbox" :
@@ -608,6 +612,120 @@ class ProxyDBUpgradeTests(TestCase):
         # Ensure that repeating the process doesn't change anything
         upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
+
+
+    def test_calendarsUpgradeWithNoChange(self):
+        """
+        Verify that calendar homes in the /calendars/__uids__/XX/YY/<guid>/
+        form which require no changes are untouched
+        """
+
+        self.setUpXMLDirectory()
+        directory = getDirectory()
+
+        before = {
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
+                            {
+                                "calendar" :
+                                {
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                                    {
+                                        "@contents" : event01_after,
+                                        "@xattrs" :
+                                        {
+                                            md5Attr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<getcontentmd5 xmlns='http://twistedmatrix.com/xml_namespace/dav/'>967eac8e6cc69b43fb820e8cf438d8e7</getcontentmd5>\r\n"),
+                                        },
+                                    },
+                                    "@xattrs" :
+                                    {
+                                        "ignore" : "extra",
+                                        cTagAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<getctag xmlns='http://calendarserver.org/ns/'>2009-02-25 14:34:34.703093</getctag>\r\n"),
+                                    },
+                                },
+                                "inbox" :
+                                {
+                                    "@xattrs" :
+                                    {
+                                        # Zlib compressed XML
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : "",
+            }
+        }
+
+        after = {
+            ".calendarserver_version" :
+            {
+                "@contents" : "1",
+            },
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
+                            {
+                                "calendar" :
+                                {
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                                    {
+                                        "@contents" : event01_after,
+                                        "@xattrs" :
+                                        {
+                                            md5Attr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<getcontentmd5 xmlns='http://twistedmatrix.com/xml_namespace/dav/'>967eac8e6cc69b43fb820e8cf438d8e7</getcontentmd5>\r\n"),
+                                        },
+                                    },
+                                    "@xattrs" :
+                                    {
+                                        "ignore" : "extra",
+                                        cTagAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<getctag xmlns='http://calendarserver.org/ns/'>2009-02-25 14:34:34.703093</getctag>\r\n"),
+                                    },
+                                },
+                                "inbox" :
+                                {
+                                    "@xattrs" :
+                                    {
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : "",
+            }
+        }
+
+        root = self.createHierarchy(before)
+
+        config.DocumentRoot = root
+        config.DataRoot = root
+
+        upgradeData(config)
+        self.assertTrue(self.verifyHierarchy(root, after))
+
 
 
 event01_before = """BEGIN:VCALENDAR
@@ -693,3 +811,18 @@ END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n")
 
+
+def isValidCTag(value):
+    """
+    Since ctag is generated from datetime.now(), let's make sure that at
+    least the value is zlib compressed XML
+    """
+    try:
+        value = zlib.decompress(value)
+    except zlib.error:
+        return False
+    try:
+        doc = davxml.WebDAVDocument.fromString(value)
+        return True
+    except ValueError:
+        return False

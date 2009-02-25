@@ -25,7 +25,7 @@ from twistedcaldav.ical import Component
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 from twistedcaldav import caldavxml
 from calendarserver.tools.util import getDirectory, dummyDirectoryRecord
-import xattr, itertools, os, zlib
+import xattr, itertools, os, zlib, hashlib, datetime
 from zlib import compress, decompress
 from cPickle import loads as unpickle, PicklingError, UnpicklingError
 
@@ -88,6 +88,8 @@ def upgrade_to_1(config):
 
     def upgradeCalendarCollection(calPath, directory):
 
+        collectionUpdated = False
+
         for resource in os.listdir(calPath):
 
             if resource.startswith("."):
@@ -99,9 +101,8 @@ def upgrade_to_1(config):
                 # Skip directories
                 continue
 
-            resPathTmp = "%s.tmp" % resPath
-
             log.info("Processing: %s" % (resPath,))
+            needsRewrite = False
             with open(resPath) as res:
                 data = res.read()
 
@@ -109,6 +110,7 @@ def upgrade_to_1(config):
                     data, fixed = fixBadQuotes(data)
                     if fixed:
                         log.info("Fixing bad quotes in %s" % (resPath,))
+                        needsRewrite = True
                 except Exception, e:
                     log.error("Error while fixing bad quotes in %s: %s" %
                         (resPath, e))
@@ -118,21 +120,27 @@ def upgrade_to_1(config):
                     data, fixed = normalizeCUAddrs(data, directory)
                     if fixed:
                         log.info("Normalized CUAddrs in %s" % (resPath,))
+                        needsRewrite = True
                 except Exception, e:
                     log.error("Error while normalizing %s: %s" %
                         (resPath, e))
                     raise
 
-            # Write to a new file, then rename it over the old one
-            with open(resPathTmp, "w") as res:
-                res.write(data)
-            os.rename(resPathTmp, resPath)
+            if needsRewrite:
+                with open(resPath, "w") as res:
+                    res.write(data)
+
+                md5value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<getcontentmd5 xmlns='http://twistedmatrix.com/xml_namespace/dav/'>%s</getcontentmd5>\r\n" % (hashlib.md5(data).hexdigest(),)
+                md5value = zlib.compress(md5value)
+                xattr.setxattr(resPath, "WebDAV:{http:%2F%2Ftwistedmatrix.com%2Fxml_namespace%2Fdav%2F}getcontentmd5", md5value)
+
+                collectionUpdated = True
 
 
-        # Remove the ctag xattr from the calendar collection
-        for attr, value in xattr.xattr(calPath).iteritems():
-            if attr == "WebDAV:{http:%2F%2Fcalendarserver.org%2Fns%2F}getctag":
-                xattr.removexattr(calPath, attr, value)
+        if collectionUpdated:
+            ctagValue = "<?xml version='1.0' encoding='UTF-8'?>\r\n<getctag xmlns='http://calendarserver.org/ns/'>%s</getctag>\r\n" % (str(datetime.datetime.now()),)
+            ctagValue = zlib.compress(ctagValue)
+            xattr.setxattr(calPath, "WebDAV:{http:%2F%2Fcalendarserver.org%2Fns%2F}getctag", ctagValue)
 
 
     def upgradeCalendarHome(homePath, directory):
