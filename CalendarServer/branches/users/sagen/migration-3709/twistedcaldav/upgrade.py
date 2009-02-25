@@ -94,6 +94,11 @@ def upgrade_to_1(config):
                 continue
 
             resPath = os.path.join(calPath, resource)
+
+            if os.path.isdir(resPath):
+                # Skip directories
+                continue
+
             resPathTmp = "%s.tmp" % resPath
 
             log.info("Processing: %s" % (resPath,))
@@ -284,9 +289,6 @@ upgradeMethods = [
 
 def upgradeData(config):
 
-    # MOR: Temporary:
-    # config.DocumentRoot = "/Users/morgen/Migration/CalendarServer/Documents"
-    # config.DataRoot = "/Users/morgen/Migration/CalendarServer/Data"
     docRoot = config.DocumentRoot
 
     versionFilePath = os.path.join(docRoot, ".calendarserver_version")
