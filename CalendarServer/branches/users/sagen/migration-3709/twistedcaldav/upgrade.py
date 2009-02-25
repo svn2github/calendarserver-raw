@@ -259,6 +259,7 @@ def upgrade_to_1(config):
                             newHome = os.path.join(uidHomes, uid[0:2], uid[2:4],
                                 uid)
                             moveCalendarHome(oldHome, newHome)
+                    os.rmdir(dirPath)
 
             # Upgrade calendar homes in the new location:
             for first in os.listdir(uidHomes):

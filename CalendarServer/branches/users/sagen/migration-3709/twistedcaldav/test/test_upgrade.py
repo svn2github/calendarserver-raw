@@ -26,6 +26,11 @@ from twisted.web2.dav import davxml
 
 import os, zlib, cPickle
 
+freeBusyAttr = "WebDAV:{urn:ietf:params:xml:ns:caldav}calendar-free-busy-set"
+cTagAttr = "WebDAV:{http:%2F%2Fcalendarserver.org%2Fns%2F}getctag"
+md5Attr = "WebDAV:{http:%2F%2Ftwistedmatrix.com%2Fxml_namespace%2Fdav%2F}getcontentmd5"
+
+
 class ProxyDBUpgradeTests(TestCase):
     
     def setUpXMLDirectory(self):
@@ -259,12 +264,15 @@ class ProxyDBUpgradeTests(TestCase):
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/nonexistent/calendar</href>\r\n</calendar-free-busy-set>\r\n"
         self.assertRaises(UpgradeError, updateFreeBusySet, value, directory)
 
-    def test_calendarsUpgrade(self):
+
+    def test_calendarsUpgradeWithUsers(self):
+        """
+        Verify that calendar homes in the /calendars/users/<shortname>/ form
+        are upgraded to /calendars/__uids__/XX/YY/<guid> form
+        """
 
         self.setUpXMLDirectory()
         directory = getDirectory()
-
-        fbAttr = "WebDAV:{urn:ietf:params:xml:ns:caldav}calendar-free-busy-set"
 
         before = {
             "calendars" :
@@ -278,18 +286,136 @@ class ProxyDBUpgradeTests(TestCase):
                             "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
                             {
                                 "@contents" : event01_before,
+                                "@xattrs" :
+                                {
+                                    md5Attr : "12345",
+                                },
+                            },
+                            "@xattrs" :
+                            {
+                                cTagAttr : "12345",
                             },
                         },
                         "inbox" :
                         {
                             "@xattrs" :
                             {
-                                fbAttr : cPickle.dumps(davxml.WebDAVDocument.fromString("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n").root_element),
+                                freeBusyAttr : cPickle.dumps(davxml.WebDAVDocument.fromString("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n").root_element),
                             },
                         },
                     },
                 },
             },
+            "principals" :
+            {
+                CalendarUserProxyDatabase.dbOldFilename :
+                {
+                    "@contents" : "",
+                }
+            }
+        }
+
+        after = {
+            ".calendarserver_version" :
+            {
+                "@contents" : "1",
+            },
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
+                            {
+                                "calendar" :
+                                {
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                                    {
+                                        "@contents" : event01_after,
+                                        "@xattrs" :
+                                        {
+                                            # no md5 attr
+                                        },
+                                    },
+                                    "@xattrs" :
+                                    {
+                                        # no CTAG
+                                    },
+                                },
+                                "inbox" :
+                                {
+                                    "@xattrs" :
+                                    {
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : "",
+            }
+        }
+
+        root = self.createHierarchy(before)
+
+        config.DocumentRoot = root
+        config.DataRoot = root
+
+        upgradeData(config)
+        self.assertTrue(self.verifyHierarchy(root, after))
+
+        # Ensure that repeating the process doesn't change anything
+        upgradeData(config)
+        self.assertTrue(self.verifyHierarchy(root, after))
+
+    def test_calendarsUpgradeWithUIDs(self):
+        """
+        Verify that calendar homes in the /calendars/__uids__/<guid>/ form
+        are upgraded to /calendars/__uids__/XX/YY/<guid>/ form
+        """
+
+        self.setUpXMLDirectory()
+        directory = getDirectory()
+
+
+        before = {
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
+                    {
+                        "calendar" :
+                        {
+                            "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                            {
+                                "@contents" : event01_before,
+                            },
+                        },
+                        "inbox" :
+                        {
+                            "@xattrs" :
+                            {
+                                freeBusyAttr : cPickle.dumps(davxml.WebDAVDocument.fromString("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n").root_element),
+                            },
+                        },
+                    },
+                },
+            },
+            "principals" :
+            {
+                CalendarUserProxyDatabase.dbOldFilename :
+                {
+                    "@contents" : "",
+                }
+            }
         }
 
         after = {
@@ -318,7 +444,7 @@ class ProxyDBUpgradeTests(TestCase):
                                 {
                                     "@xattrs" :
                                     {
-                                        fbAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
                                     },
                                 },
                             },
@@ -326,6 +452,10 @@ class ProxyDBUpgradeTests(TestCase):
                     },
                 },
             },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : "",
+            }
         }
 
         root = self.createHierarchy(before)
@@ -334,7 +464,11 @@ class ProxyDBUpgradeTests(TestCase):
         config.DataRoot = root
 
         upgradeData(config)
-        self.assertTrue(self.compareHierarchy(root, after))
+        self.assertTrue(self.verifyHierarchy(root, after))
+
+        # Ensure that repeating the process doesn't change anything
+        upgradeData(config)
+        self.assertTrue(self.verifyHierarchy(root, after))
 
 
 event01_before = """BEGIN:VCALENDAR

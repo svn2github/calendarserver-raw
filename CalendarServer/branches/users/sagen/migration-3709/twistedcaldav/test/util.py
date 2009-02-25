@@ -70,14 +70,19 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
         createChildren(root, structure)
         return root
 
-    def compareHierarchy(self, root, structure):
+    def verifyHierarchy(self, root, structure):
 
-        def compareChildren(parent, subStructure):
+        def verifyChildren(parent, subStructure):
+
+            actual = set([child for child in os.listdir(parent)])
 
             for childName, childStructure in subStructure.iteritems():
 
                 if childName.startswith("@"):
                     continue
+
+                if childName in actual:
+                    actual.remove(childName)
 
                 childPath = os.path.join(parent, childName)
 
@@ -93,7 +98,7 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
 
                 else:
                     # This is a directory
-                    if not compareChildren(childPath, childStructure):
+                    if not verifyChildren(childPath, childStructure):
                         return False
 
                 if childStructure.has_key("@xattrs"):
@@ -104,10 +109,17 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
                                 return False
                         except:
                             return False
+                    for attr, value in xattr.xattr(childPath).iteritems():
+                        if attr not in xattrs:
+                            return False
+
+            if actual:
+                # There are unexpected children
+                return False
 
             return True
 
-        return compareChildren(root, structure)
+        return verifyChildren(root, structure)
 
 
 class InMemoryPropertyStore(object):
