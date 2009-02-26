@@ -25,7 +25,7 @@ from twistedcaldav.ical import Component
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 from twistedcaldav import caldavxml
 from calendarserver.tools.util import getDirectory, dummyDirectoryRecord
-import xattr, itertools, os, zlib, hashlib, datetime
+import xattr, itertools, os, zlib, hashlib, datetime, pwd, grp
 from zlib import compress, decompress
 from cPickle import loads as unpickle, PicklingError, UnpicklingError
 
@@ -165,7 +165,7 @@ def upgrade_to_1(config):
 
 
 
-    def doProxyDatabaseMoveUpgrade(config):
+    def doProxyDatabaseMoveUpgrade(config, uid=-1, gid=-1):
 
         # See if the old DB is present
         oldDbPath = os.path.join(config.DocumentRoot, "principals",
@@ -188,7 +188,7 @@ def upgrade_to_1(config):
         # Now move the old one to the new location
         try:
             if not os.path.exists(config.DataRoot):
-                os.makedirs(config.DataRoot)
+                makeDirsUserGroup(config.DataRoot, uid=uid, gid=gid)
             os.rename(oldDbPath, newDbPath)
         except Exception, e:
             raise UpgradeError(
@@ -202,7 +202,7 @@ def upgrade_to_1(config):
         )
 
 
-    def moveCalendarHome(oldHome, newHome):
+    def moveCalendarHome(oldHome, newHome, uid=-1, gid=-1):
         if os.path.exists(newHome):
             # Both old and new homes exist; stop immediately to let the
             # administrator fix it
@@ -211,7 +211,8 @@ def upgrade_to_1(config):
                 % (oldHome, newHome)
             )
 
-        os.makedirs(os.path.dirname(newHome.rstrip("/")))
+        makeDirsUserGroup(os.path.dirname(newHome.rstrip("/")), uid=uid,
+            gid=gid)
         os.rename(oldHome, newHome)
 
 
@@ -219,13 +220,30 @@ def upgrade_to_1(config):
     directory = getDirectory()
     docRoot = config.DocumentRoot
 
+
+    # Determine uid/gid for ownership of directories we create here
+    uid = -1
+    if config.UserName:
+        try:
+            uid = pwd.getpwnam(config.UserName).pw_uid
+        except KeyError:
+            log.error("User not found: %s" % (config.UserName,))
+
+    gid = -1
+    if config.GroupName:
+        try:
+            gid = grp.getgrnam(config.GroupName).gr_gid
+        except KeyError:
+            log.error("Group not found: %s" % (config.GroupName,))
+
+
     if os.path.exists(docRoot):
 
         # Look for the /principals/ directory on disk
         oldPrincipals = os.path.join(docRoot, "principals")
         if os.path.exists(oldPrincipals):
             # First move the proxy database and rename it
-            doProxyDatabaseMoveUpgrade(config)
+            doProxyDatabaseMoveUpgrade(config, uid=uid, gid=gid)
 
             # Now delete the on disk representation of principals
             rmdir(oldPrincipals)
@@ -250,10 +268,11 @@ def upgrade_to_1(config):
 
                     oldHome = os.path.join(uidHomes, home)
                     newHome = os.path.join(uidHomes, home[0:2], home[2:4], home)
-                    moveCalendarHome(oldHome, newHome)
+                    moveCalendarHome(oldHome, newHome, uid=uid, gid=gid)
 
             else:
                 os.mkdir(uidHomes)
+                os.chown(uidHomes, uid, gid)
 
             for recordType, dirName in (
                 (DirectoryService.recordType_users, "users"),
@@ -267,11 +286,10 @@ def upgrade_to_1(config):
                         record = directory.recordWithShortName(recordType,
                             shortName)
                         if record is not None:
-                            uid = record.uid
                             oldHome = os.path.join(dirPath, shortName)
-                            newHome = os.path.join(uidHomes, uid[0:2], uid[2:4],
-                                uid)
-                            moveCalendarHome(oldHome, newHome)
+                            newHome = os.path.join(uidHomes, record.uid[0:2],
+                                record.uid[2:4], record.uid)
+                            moveCalendarHome(oldHome, newHome, uid=uid, gid=gid)
                     os.rmdir(dirPath)
 
             # Upgrade calendar homes in the new location:
@@ -387,3 +405,19 @@ def updateFreeBusySet(value, directory):
         return value
 
     return None # no update required
+
+
+def makeDirsUserGroup(path, uid=-1, gid=-1):
+    parts = path.split("/")
+    if parts[0] == "": # absolute path
+        parts[0] = "/"
+
+    path = ""
+    for part in parts:
+        if not part:
+            continue
+        path = os.path.join(path, part)
+        if not os.path.exists(path):
+            os.mkdir(path)
+            os.chown(path, uid, gid)
+
