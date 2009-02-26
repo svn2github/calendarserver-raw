@@ -60,6 +60,7 @@ limitations under the License.
   </user>
   <group>
     <uid>managers</uid>
+    <guid>9FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1</guid>
     <password>managers</password>
     <name>Managers</name>
     <members>
