@@ -34,14 +34,18 @@ log = Logger()
 
 
 
+
 #
 # upgrade_to_1
 #
 # Upconverts data from any calendar server version prior to data format 1
 #
+errorOccurred = False
 
 def upgrade_to_1(config):
 
+    global errorOccurred
+    errorOccurred = False
 
     def fixBadQuotes(data):
         if (
@@ -88,6 +92,8 @@ def upgrade_to_1(config):
 
     def upgradeCalendarCollection(calPath, directory):
 
+        global errorOccurred
+
         collectionUpdated = False
 
         for resource in os.listdir(calPath):
@@ -114,7 +120,8 @@ def upgrade_to_1(config):
                 except Exception, e:
                     log.error("Error while fixing bad quotes in %s: %s" %
                         (resPath, e))
-                    raise
+                    errorOccurred = True
+                    continue
 
                 try:
                     data, fixed = normalizeCUAddrs(data, directory)
@@ -124,7 +131,8 @@ def upgrade_to_1(config):
                 except Exception, e:
                     log.error("Error while normalizing %s: %s" %
                         (resPath, e))
-                    raise
+                    errorOccurred = True
+                    continue
 
             if needsRewrite:
                 with open(resPath, "w") as res:
@@ -303,6 +311,8 @@ def upgrade_to_1(config):
                                 homePath = os.path.join(secondPath, home)
                                 upgradeCalendarHome(homePath, directory)
 
+    if errorOccurred:
+        raise UpgradeError("Data upgrade failed, see error.log for details")
 
 
 # The on-disk version number (which defaults to zero if .calendarserver_version

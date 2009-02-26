@@ -728,6 +728,94 @@ class ProxyDBUpgradeTests(TestCase):
 
 
 
+
+    def test_calendarsUpgradeWithError(self):
+        """
+        Verify that a problem with one resource doesn't stop the process, but
+        also doesn't write the new version file
+        """
+
+        self.setUpXMLDirectory()
+        directory = getDirectory()
+
+        before = {
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935E" :
+                            {
+                                "calendar" :
+                                {
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                                    {
+                                        "@contents" : event01_before,
+                                    },
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C73.ics" :
+                                    {
+                                        "@contents" : event02_broken,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : "",
+            }
+        }
+
+
+        after = {
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935E" :
+                            {
+                                "calendar" :
+                                {
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C72.ics" :
+                                    {
+                                        "@contents" : event01_after,
+                                    },
+                                    "1E238CA1-3C95-4468-B8CD-C8A399F78C73.ics" :
+                                    {
+                                        "@contents" : event02_broken,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : "",
+            }
+        }
+
+
+        root = self.createHierarchy(before)
+
+        config.DocumentRoot = root
+        config.DataRoot = root
+
+        self.assertRaises(UpgradeError, upgradeData, config)
+        self.assertTrue(self.verifyHierarchy(root, after))
+
+
+
 event01_before = """BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Apple Inc.//iCal 3.0//EN
@@ -811,6 +899,7 @@ END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n")
 
+event02_broken = "Invalid!"
 
 def isValidCTag(value):
     """
