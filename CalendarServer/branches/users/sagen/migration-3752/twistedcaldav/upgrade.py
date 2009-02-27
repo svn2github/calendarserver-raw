@@ -81,7 +81,8 @@ def upgrade_to_1(config):
             if principal is None:
                 return (None, None, None)
             else:
-                return (principal.record.fullName, principal.record.guid,
+                return (principal.record.fullName.decode("utf-8"),
+                    principal.record.guid,
                     principal.record.calendarUserAddresses)
 
         cal.normalizeCalendarUserAddresses(lookupFunction)
