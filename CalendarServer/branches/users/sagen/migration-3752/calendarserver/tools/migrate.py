@@ -77,7 +77,14 @@ def main():
         usage("Too many arguments: %s" % (" ".join(args),))
 
     config = loadConfig(configFileName)
-    upgradeData(config)
+
+    profiling = False
+
+    if profiling:
+        import cProfile
+        cProfile.runctx("upgradeData(c)", globals(), {"c" : config}, "/tmp/upgrade.prof")
+    else:
+        upgradeData(config)
 
 if __name__ == "__main__":
     main()

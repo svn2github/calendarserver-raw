@@ -73,11 +73,7 @@ def getDirectory():
             return None
 
         def principalForCalendarUserAddress(self, cua):
-            record = self.recordWithCalendarUserAddress(cua)
-            if record is not None:
-                return self.principalCollection.principalForUID(record.uid)
-            else:
-                return None
+            return self.principalCollection.principalForCalendarUserAddress(cua)
 
 
     return MyDirectoryService(**config.DirectoryService.params)

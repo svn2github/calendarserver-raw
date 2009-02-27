@@ -87,6 +87,7 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
                 childPath = os.path.join(parent, childName)
 
                 if not os.path.exists(childPath):
+                    print "Missing:", childPath
                     return False
 
                 if childStructure.has_key("@contents"):
@@ -94,6 +95,8 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
                     with open(childPath) as child:
                         contents = child.read()
                         if contents != childStructure["@contents"]:
+                            print "Contents mismatch:", childPath
+                            print "Expected:\n%s\n\nActual:\n%s\n" % (childStructure["@contents"], contents)
                             return False
 
                 else:
@@ -107,6 +110,7 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
                         if isinstance(value, str):
                             try:
                                 if xattr.getxattr(childPath, attr) != value:
+                                    print "Xattr mismatch:", childPath, attr
                                     return False
                             except:
                                 return False
