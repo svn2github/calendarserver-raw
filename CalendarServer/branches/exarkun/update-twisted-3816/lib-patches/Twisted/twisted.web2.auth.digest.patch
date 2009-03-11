@@ -1,9 +1,9 @@
 Index: twisted/web2/auth/digest.py
 ===================================================================
---- twisted/web2/auth/digest.py	(revision 19773)
+--- twisted/web2/auth/digest.py	(revision 26342)
 +++ twisted/web2/auth/digest.py	(working copy)
-@@ -8,19 +8,28 @@
- import time
+@@ -11,9 +11,14 @@
+ import random
  
  from twisted.cred import credentials, error
 +from twisted.internet.defer import succeed
@@ -14,49 +14,19 @@ Index: twisted/web2/auth/digest.py
 +from twisted.web2.http_headers import Token
 +from twisted.web2.http_headers import split
 +from twisted.web2.http_headers import parseKeyValue
- 
--import md5, sha
-+try:
-+    from hashlib import md5, sha1
-+except ImportError:
-+    import md5.new as md5
-+    import sha.new as sha1
- import random, sys
+ from twisted.python.hashlib import md5, sha1
  
  # The digest math
- 
- algorithms = {
--    'md5': md5.new,
--    'md5-sess': md5.new,
--    'sha': sha.new,
-+    'md5': md5,
-+    'md5-sess': md5,
-+    'sha': sha1,
- }
- 
- # DigestCalcHA1
-@@ -228,9 +237,9 @@
-         # Now, what we do is encode the nonce, client ip and a timestamp
-         # in the opaque value with a suitable digest
+@@ -231,7 +236,7 @@
          key = "%s,%s,%s" % (nonce, clientip, str(int(self._getTime())))
--        digest = md5.new(key + self.privateKey).hexdigest()
-+        digest = md5(key + self.privateKey).hexdigest()
+         digest = md5(key + self.privateKey).hexdigest()
          ekey = key.encode('base64')
 -        return "%s-%s" % (digest, ekey.strip('\n'))
 +        return "%s-%s" % (digest, ekey.replace('\n', ''))
  
      def verifyOpaque(self, opaque, nonce, clientip):
          """
-@@ -274,7 +283,7 @@
-                 'Invalid response, incompatible opaque/nonce too old')
- 
-         # Verify the digest
--        digest = md5.new(key + self.privateKey).hexdigest()
-+        digest = md5(key + self.privateKey).hexdigest()
-         if digest != opaqueParts[0]:
-             raise error.LoginFailed('Invalid response, invalid opaque value')
- 
-@@ -293,11 +302,12 @@
+@@ -295,11 +300,12 @@
          c = self.generateNonce()
          o = self.generateOpaque(c, peer.host)
  
@@ -74,7 +44,7 @@ Index: twisted/web2/auth/digest.py
  
      def decode(self, response, request):
          """
-@@ -315,18 +325,18 @@
+@@ -317,18 +323,18 @@
          @raise: L{error.LoginFailed} if the response does not contain a
              username, a nonce, an opaque, or if the opaque is invalid.
          """
@@ -104,7 +74,7 @@ Index: twisted/web2/auth/digest.py
          username = auth.get('username')
          if not username:
              raise error.LoginFailed('Invalid response, no username given.')
-@@ -342,7 +352,7 @@
+@@ -344,7 +350,7 @@
                               auth.get('nonce'),
                               request.remoteAddr.host):
  
