@@ -1,8 +1,87 @@
-Index: twisted/web2/dav/test/util.py
+Index: util.py
 ===================================================================
---- twisted/web2/dav/test/util.py	(revision 26343)
-+++ twisted/web2/dav/test/util.py	(working copy)
-@@ -197,10 +197,11 @@
+--- util.py	(revision 26346)
++++ util.py	(working copy)
+@@ -117,44 +117,47 @@
+ 
+     grantInherit = staticmethod(grantInherit)
+ 
+-    def _getDocumentRoot(self):
+-        if not hasattr(self, "_docroot"):
+-            log.msg("Setting up docroot for %s" % (self.__class__,))
++    def createDocumentRoot(self):
++        docroot = self.mktemp()
++        os.mkdir(docroot)
++        rootresource = self.resource_class(docroot)
++        rootresource.setAccessControlList(self.grantInherit(davxml.All()))
+ 
+-            docroot = self.mktemp()
+-            os.mkdir(docroot)
+-            rootresource = self.resource_class(docroot)
+-            rootresource.setAccessControlList(self.grantInherit(davxml.All()))
++        dirnames = (
++            os.path.join(docroot, "dir1"),                          # 0
++            os.path.join(docroot, "dir2"),                          # 1
++            os.path.join(docroot, "dir2", "subdir1"),               # 2
++            os.path.join(docroot, "dir3"),                          # 3
++            os.path.join(docroot, "dir4"),                          # 4
++            os.path.join(docroot, "dir4", "subdir1"),               # 5
++            os.path.join(docroot, "dir4", "subdir1", "subsubdir1"), # 6
++            os.path.join(docroot, "dir4", "subdir2"),               # 7
++            os.path.join(docroot, "dir4", "subdir2", "dir1"),       # 8
++            os.path.join(docroot, "dir4", "subdir2", "dir2"),       # 9
++        )
+ 
+-            dirnames = (
+-                os.path.join(docroot, "dir1"),                          # 0
+-                os.path.join(docroot, "dir2"),                          # 1
+-                os.path.join(docroot, "dir2", "subdir1"),               # 2
+-                os.path.join(docroot, "dir3"),                          # 3
+-                os.path.join(docroot, "dir4"),                          # 4
+-                os.path.join(docroot, "dir4", "subdir1"),               # 5
+-                os.path.join(docroot, "dir4", "subdir1", "subsubdir1"), # 6
+-                os.path.join(docroot, "dir4", "subdir2"),               # 7
+-                os.path.join(docroot, "dir4", "subdir2", "dir1"),       # 8
+-                os.path.join(docroot, "dir4", "subdir2", "dir2"),       # 9
+-            )
++        for dir in dirnames:
++            os.mkdir(dir)
+ 
+-            for dir in dirnames:
+-                os.mkdir(dir)
++        src = os.path.dirname(__file__)
++        filenames = [
++            os.path.join(src, f)
++            for f in os.listdir(src)
++            if os.path.isfile(os.path.join(src, f))
++        ]
+ 
+-            src = os.path.dirname(__file__)
+-            filenames = [
+-                os.path.join(src, f)
+-                for f in os.listdir(src)
+-                if os.path.isfile(os.path.join(src, f))
+-            ]
++        for dirname in (docroot,) + dirnames[3:8+1]:
++            for filename in filenames[:5]:
++                copy(filename, dirname)
++        return docroot
+ 
+-            for dirname in (docroot,) + dirnames[3:8+1]:
+-                for filename in filenames[:5]:
+-                    copy(filename, dirname)
+ 
+-            self._docroot = docroot
++    def _getDocumentRoot(self):
++        if not hasattr(self, "_docroot"):
++            log.msg("Setting up docroot for %s" % (self.__class__,))
+ 
++            self._docroot = self.createDocumentRoot()
++
+         return self._docroot
+ 
+     docroot = property(_getDocumentRoot)
+@@ -197,10 +200,11 @@
          d.addCallback(lambda resource: resource.renderHTTP(request))
          d.addCallback(request._cbFinishRender)
  

@@ -12,10 +12,10 @@ Index: twisted/web2/dav/test/test_quota.py
 +# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 +# copies of the Software, and to permit persons to whom the Software is
 +# furnished to do so, subject to the following conditions:
-+# 
++#
 +# The above copyright notice and this permission notice shall be included in all
 +# copies or substantial portions of the Software.
-+# 
++#
 +# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 +# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 +# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -39,28 +39,28 @@ Index: twisted/web2/dav/test/test_quota.py
 +
 +class QuotaBase(twisted.web2.dav.test.util.TestCase):
 +
-+    def setUp(self):
-+        
-+        #super(Quota, self).setUp()
-+        self.docroot = self.mktemp()
-+        os.mkdir(self.docroot)
-+        rootresource = self.resource_class(self.docroot)
++    def createDocumentRoot(self):
++        docroot = self.mktemp()
++        os.mkdir(docroot)
++        rootresource = self.resource_class(docroot)
 +        rootresource.setAccessControlList(self.grantInherit(davxml.All()))
 +        self.site = Site(rootresource)
 +        self.site.resource.setQuotaRoot(None, 100000)
++        return docroot
++
 +
 +    def checkQuota(self, value):
 +        def _defer(quota):
 +            self.assertEqual(quota, value)
-+            
++
 +        d = self.site.resource.currentQuotaUse(None)
 +        d.addCallback(_defer)
 +        return d
-+        
++
 +class QuotaEmpty(QuotaBase):
 +
 +    def test_Empty_Quota(self):
-+        
++
 +        return self.checkQuota(0)
 +
 +class QuotaPUT(QuotaBase):
@@ -77,11 +77,11 @@ Index: twisted/web2/dav/test/test_quota.py
 +            if response.code != responsecode.CREATED:
 +                self.fail("Incorrect response code for PUT (%s != %s)"
 +                          % (response.code, responsecode.CREATED))
-+                
++
 +            return self.checkQuota(100)
 +
 +        request = SimpleRequest(self.site, "PUT", dst_uri)
-+        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))        
++        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))
 +        return self.send(request, checkResult)
 +
 +class QuotaDELETE(QuotaBase):
@@ -98,26 +98,26 @@ Index: twisted/web2/dav/test/test_quota.py
 +            if response.code != responsecode.CREATED:
 +                self.fail("Incorrect response code for PUT (%s != %s)"
 +                          % (response.code, responsecode.CREATED))
-+            
++
 +            def doDelete(_ignore):
 +                def checkDELETEResult(response):
 +                    response = IResponse(response)
-+        
++
 +                    if response.code != responsecode.NO_CONTENT:
 +                        self.fail("Incorrect response code for PUT (%s != %s)"
 +                                  % (response.code, responsecode.NO_CONTENT))
 +
 +                    return self.checkQuota(0)
-+                    
++
 +                request = SimpleRequest(self.site, "DELETE", dst_uri)
 +                return self.send(request, checkDELETEResult)
-+                
++
 +            d = self.checkQuota(100)
 +            d.addCallback(doDelete)
 +            return d
 +
 +        request = SimpleRequest(self.site, "PUT", dst_uri)
-+        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))        
++        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))
 +        return self.send(request, checkPUTResult)
 +
 +class OverQuotaPUT(QuotaBase):
@@ -136,11 +136,11 @@ Index: twisted/web2/dav/test/test_quota.py
 +            if response.code != responsecode.INSUFFICIENT_STORAGE_SPACE:
 +                self.fail("Incorrect response code for PUT (%s != %s)"
 +                          % (response.code, responsecode.INSUFFICIENT_STORAGE_SPACE))
-+                
++
 +            return self.checkQuota(0)
 +
 +        request = SimpleRequest(self.site, "PUT", dst_uri)
-+        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))        
++        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))
 +        return self.send(request, checkResult)
 +
 +class QuotaOKAdjustment(QuotaBase):
@@ -157,21 +157,21 @@ Index: twisted/web2/dav/test/test_quota.py
 +            if response.code != responsecode.CREATED:
 +                self.fail("Incorrect response code for PUT (%s != %s)"
 +                          % (response.code, responsecode.CREATED))
-+            
++
 +            def doOKAdjustment(_ignore):
 +                def checkAdjustmentResult(_ignore):
 +                    return self.checkQuota(10)
-+                
++
 +                d = self.site.resource.quotaSizeAdjust(None, -90)
 +                d.addCallback(checkAdjustmentResult)
 +                return d
-+                
++
 +            d = self.checkQuota(100)
 +            d.addCallback(doOKAdjustment)
 +            return d
 +
 +        request = SimpleRequest(self.site, "PUT", dst_uri)
-+        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))        
++        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))
 +        return self.send(request, checkPUTResult)
 +
 +class QuotaBadAdjustment(QuotaBase):
@@ -188,19 +188,19 @@ Index: twisted/web2/dav/test/test_quota.py
 +            if response.code != responsecode.CREATED:
 +                self.fail("Incorrect response code for PUT (%s != %s)"
 +                          % (response.code, responsecode.CREATED))
-+            
++
 +            def doBadAdjustment(_ignore):
 +                def checkAdjustmentResult(_ignore):
 +                    return self.checkQuota(100)
-+                
++
 +                d = self.site.resource.quotaSizeAdjust(None, -200)
 +                d.addCallback(checkAdjustmentResult)
 +                return d
-+                
++
 +            d = self.checkQuota(100)
 +            d.addCallback(doBadAdjustment)
 +            return d
 +
 +        request = SimpleRequest(self.site, "PUT", dst_uri)
-+        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))        
++        request.stream = FileStream(file(os.path.join(os.path.dirname(__file__), "data", "quota_100.txt"), "rb"))
 +        return self.send(request, checkPUTResult)
