@@ -1,7 +1,7 @@
-Index: util.py
+Index: twisted/web2/dav/test/util.py
 ===================================================================
---- util.py	(revision 26346)
-+++ util.py	(working copy)
+--- twisted/web2/dav/test/util.py	(revision 26346)
++++ twisted/web2/dav/test/util.py	(working copy)
 @@ -117,44 +117,47 @@
  
      grantInherit = staticmethod(grantInherit)
