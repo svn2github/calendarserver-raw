@@ -1,8 +1,8 @@
 Index: twisted/web2/dav/method/report_principal_property_search.py
 ===================================================================
---- twisted/web2/dav/method/report_principal_property_search.py	(revision 19773)
+--- twisted/web2/dav/method/report_principal_property_search.py	(revision 26343)
 +++ twisted/web2/dav/method/report_principal_property_search.py	(working copy)
-@@ -166,7 +166,7 @@
+@@ -161,7 +161,7 @@
                          # Check size of results is within limit
                          matchcount += 1
                          if matchcount > max_number_of_matches:
@@ -11,7 +11,7 @@ Index: twisted/web2/dav/method/report_principal_property_search.py
      
                          d = waitForDeferred(prop_common.responseForHref(
                              request,
-@@ -183,7 +183,7 @@
+@@ -178,7 +178,7 @@
          log.err("Too many matching components in prinicpal-property-search report")
          raise HTTPError(ErrorResponse(
              responsecode.FORBIDDEN,
