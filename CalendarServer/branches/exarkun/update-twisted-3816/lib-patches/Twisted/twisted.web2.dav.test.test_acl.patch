@@ -1,6 +1,6 @@
 Index: twisted/web2/dav/test/test_acl.py
 ===================================================================
---- twisted/web2/dav/test/test_acl.py	(revision 19773)
+--- twisted/web2/dav/test/test_acl.py	(revision 26343)
 +++ twisted/web2/dav/test/test_acl.py	(working copy)
 @@ -30,6 +30,7 @@
  from twisted.web2.auth import basic
@@ -9,8 +9,8 @@ Index: twisted/web2/dav/test/test_acl.py
 +from twisted.web2.dav.resource import DAVPrincipalCollectionResource
  from twisted.web2.dav.util import davXMLFromStream
  from twisted.web2.dav.auth import TwistedPasswordProperty, IPrincipal, DavRealm, TwistedPropertyChecker, AuthenticationWrapper
- 
-@@ -38,6 +39,25 @@
+ from twisted.web2.dav.fileop import rmdir
+@@ -39,6 +40,25 @@
  from twisted.web2.dav.test.util import Site, serialize
  from twisted.web2.dav.test.test_resource import TestResource, TestDAVPrincipalResource
  
@@ -36,32 +36,33 @@ Index: twisted/web2/dav/test/test_acl.py
  class ACL(twisted.web2.dav.test.util.TestCase):
      """
      RFC 3744 (WebDAV ACL) tests.
-@@ -46,8 +66,18 @@
-         if not hasattr(self, "docroot"):
-             self.docroot = self.mktemp()
-             os.mkdir(self.docroot)
--            rootresource = self.resource_class(self.docroot)
+@@ -47,8 +67,19 @@
+         if not hasattr(self, "_docroot"):
+             docroot = self.mktemp()
+             os.mkdir(docroot)
+-            rootresource = self.resource_class(docroot)
  
 +            userResource = TestDAVPrincipalResource("/principals/users/user01")
 +            userResource.writeDeadProperty(TwistedPasswordProperty("user01"))
 +
 +            principalCollection = TestPrincipalsCollection(
-+                "/principals/", 
++                "/principals/",
 +                children={"users": TestPrincipalsCollection(
 +                        "/principals/users/",
 +                        children={"user01": userResource})})
 +
-+            rootResource = self.resource_class(self.docroot, principalCollections=(principalCollection,))
++            rootResource = self.resource_class(
++                docroot, principalCollections=(principalCollection,))
 +
              portal = Portal(DavRealm())
              portal.registerChecker(TwistedPropertyChecker())
  
-@@ -56,26 +86,14 @@
+@@ -57,26 +88,14 @@
              loginInterfaces = (IPrincipal,)
  
              self.site = Site(AuthenticationWrapper(
 -                rootresource, 
-+                rootResource, 
++                rootResource,
                  portal,
                  credentialFactories,
                  loginInterfaces
@@ -82,10 +83,10 @@ Index: twisted/web2/dav/test/test_acl.py
 -                davxml.PrincipalCollectionSet(davxml.HRef("/principals/"))
 -            )
 -
-         for name, acl in (
-             ("none"       , self.grant()),
-             ("read"       , self.grant(davxml.Read())),
-@@ -361,9 +379,7 @@
+             for name, acl in (
+                 ("none"       , self.grant()),
+                 ("read"       , self.grant(davxml.Read())),
+@@ -342,9 +361,7 @@
                  if method == "GET":
                      ok = responsecode.OK
                  elif method == "REPORT":
@@ -96,7 +97,7 @@ Index: twisted/web2/dav/test/test_acl.py
                  else:
                      raise AssertionError("We shouldn't be here.  (method = %r)" % (method,))
  
-@@ -377,6 +393,9 @@
+@@ -358,6 +375,9 @@
                      path = os.path.join(self.docroot, name)
  
                      request = SimpleRequest(self.site, method, "/" + name)
