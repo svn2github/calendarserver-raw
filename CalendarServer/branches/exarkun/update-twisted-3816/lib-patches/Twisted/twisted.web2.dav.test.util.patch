@@ -2,7 +2,7 @@ Index: twisted/web2/dav/test/util.py
 ===================================================================
 --- twisted/web2/dav/test/util.py	(revision 26346)
 +++ twisted/web2/dav/test/util.py	(working copy)
-@@ -117,44 +117,47 @@
+@@ -117,48 +117,54 @@
  
      grantInherit = staticmethod(grantInherit)
  
@@ -80,8 +80,16 @@ Index: twisted/web2/dav/test/util.py
 +
          return self._docroot
  
-     docroot = property(_getDocumentRoot)
-@@ -197,10 +200,11 @@
+-    docroot = property(_getDocumentRoot)
++    def _setDocumentRoot(self, value):
++        self._docroot = value
+ 
++    docroot = property(_getDocumentRoot, _setDocumentRoot)
++
+     def _getSite(self):
+         if not hasattr(self, "_site"):
+             rootresource = self.resource_class(self.docroot)
+@@ -197,10 +203,11 @@
          d.addCallback(lambda resource: resource.renderHTTP(request))
          d.addCallback(request._cbFinishRender)
  
