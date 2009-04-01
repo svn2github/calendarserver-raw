@@ -144,6 +144,30 @@
 		</request>
 		<request end-delete="yes">
 			<method>PUT</method>
+			<ruri>20.ics</ruri>
+			<data>
+				<content-type>text/calendar; charset=utf-8</content-type>
+				<filepath>Resource/reports/put/20.txt</filepath>
+			</data>
+		</request>
+		<request end-delete="yes">
+			<method>PUT</method>
+			<ruri>21.ics</ruri>
+			<data>
+				<content-type>text/calendar; charset=utf-8</content-type>
+				<filepath>Resource/reports/put/21.txt</filepath>
+			</data>
+		</request>
+		<request end-delete="yes">
+			<method>PUT</method>
+			<ruri>22.ics</ruri>
+			<data>
+				<content-type>text/calendar; charset=utf-8</content-type>
+				<filepath>Resource/reports/put/22.txt</filepath>
+			</data>
+		</request>
+		<request end-delete="yes">
+			<method>PUT</method>
 			<ruri>101.ics</ruri>
 			<data>
 				<content-type>text/calendar; charset=utf-8</content-type>
@@ -385,6 +409,9 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -430,6 +457,8 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -454,6 +483,7 @@
 						<value>7.ics</value>
 						<value>8.ics</value>
 						<value>9.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -502,6 +532,9 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -548,6 +581,9 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -595,6 +631,9 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -612,6 +651,7 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>6.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -700,6 +740,9 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
+						<value>22.ics</value>
 						<value>101.ics</value>
 						<value>102.ics</value>
 						<value>103.ics</value>
@@ -728,6 +771,8 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
 						<value>101.ics</value>
 					</arg>
 				</verify>
@@ -777,6 +822,9 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
@@ -1020,6 +1068,20 @@
 				</verify>
 			</request>
 		</test>
+		<test name='12' ignore='no'>
+			<description>query for VEVENTs within time range in distant future</description>
+			<request print-response='no'>
+				<method>REPORT</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/reports/timerangequery/8.txt</filepath>
+				</data>
+				<verify>
+					<callback>multistatusItems</callback>
+				</verify>
+			</request>
+		</test>
 		<test name='13' ignore='no'>
 			<description>query for VEVENTs within time range - no end</description>
 			<request>
@@ -1043,6 +1105,9 @@
 						<value>12.ics</value>
 						<value>13.ics</value>
 						<value>14.ics</value>
+						<value>20.ics</value>
+						<value>21.ics</value>
+						<value>22.ics</value>
 					</arg>
 				</verify>
 			</request>
