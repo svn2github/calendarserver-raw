@@ -393,6 +393,9 @@ class CalDAVFile (CalDAVResource, DAVFile):
         similar = super(CalDAVFile, self).createSimilarFile(path)
 
         if isCalendarCollectionResource(self):
+            #
+            # Override the dead property store
+            #
             superDeadProperties = similar.deadProperties
 
             def deadProperties():
@@ -404,6 +407,20 @@ class CalDAVFile (CalDAVResource, DAVFile):
                 return similar._dead_properties
 
             similar.deadProperties = deadProperties
+
+            #
+            # Override DELETE
+            #
+            superDelete = similar.http_DELETE
+
+            def http_DELETE(request):
+                # Wipe the cache
+                similar.deadProperties().flushCache()
+
+                # Call original delete method
+                return superDelete(request)
+
+            similar.http_DELETE = http_DELETE
 
         return similar
 

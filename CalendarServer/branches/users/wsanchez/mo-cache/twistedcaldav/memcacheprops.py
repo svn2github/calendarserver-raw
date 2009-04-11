@@ -340,6 +340,20 @@ class MemcachePropertyCollection (LoggingMixIn):
             loaded = self._loadCache(childNames=(child.fp.basename(),))
             propertyCache.update(loaded.iteritems())
 
+    def flushCache(self, child):
+        path = child.fp.path
+        key = self._keyForPath(path)
+        propertyCache = self.propertyCache()
+
+        if key in propertyCache:
+            del propertyCache[key]
+
+        client = self.memcacheClient()
+        if client is not None:
+            result = client.delete(key)
+            if not result:
+                raise MemcacheError("Unable to delete property")
+
     def deleteProperty(self, child, qname):
         path = child.fp.path
         key = self._keyForPath(path)
@@ -374,6 +388,9 @@ class MemcachePropertyCollection (LoggingMixIn):
             key = self.parentPropertyCollection._keyForPath(path)
             parentPropertyCache = self.parentPropertyCollection.propertyCache()
             return parentPropertyCache.get(key, ({}, None))[0]
+
+        def flushCache(self):
+            self.parentPropertyCollection.flushCache(self.child)
 
         def get(self, qname, cache=True):
             if cache:
