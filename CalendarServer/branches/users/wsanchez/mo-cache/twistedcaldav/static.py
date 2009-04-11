@@ -39,8 +39,7 @@ import os
 import errno
 from urlparse import urlsplit
 
-from twisted.internet.defer import fail, succeed, inlineCallbacks, returnValue,\
-    maybeDeferred
+from twisted.internet.defer import fail, succeed, inlineCallbacks, returnValue, maybeDeferred
 from twisted.python.failure import Failure
 from twisted.web2 import responsecode, http, http_headers
 from twisted.web2.http import HTTPError, StatusResponse
@@ -57,9 +56,9 @@ from twistedcaldav import caldavxml
 from twistedcaldav import customxml
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
-from twistedcaldav.customxml import TwistedCalendarAccessProperty,\
-    TwistedScheduleMatchETags
-from twistedcaldav.extensions import DAVFile, CachingXattrPropertyStore
+from twistedcaldav.customxml import TwistedCalendarAccessProperty, TwistedScheduleMatchETags
+from twistedcaldav.extensions import DAVFile, CachingPropertyStore
+from twistedcaldav.memcacheprops import MemcachePropertyStore, MemcachePropertyCollection
 from twistedcaldav.freebusyurl import FreeBusyURLResource
 from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
@@ -142,11 +141,6 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
         return super(CalDAVFile, self).checkPreconditions(request)
 
-    def deadProperties(self):
-        if not hasattr(self, "_dead_properties"):
-            self._dead_properties = CachingXattrPropertyStore(self)
-
-        return self._dead_properties
 
     ##
     # CalDAV
@@ -374,6 +368,29 @@ class CalDAVFile (CalDAVResource, DAVFile):
             child for child in super(CalDAVFile, self).listChildren()
             if not child.startswith(".")
         ]
+
+    def propertyCollection(self):
+        if not hasattr(self, "_propertyCollection"):
+            self._propertyCollection = MemcachePropertyCollection(self)
+        return self._propertyCollection
+
+    def createSimilarFile(self, path):
+        if path == self.fp.path:
+            return self
+
+        similar = super(CalDAVFile, self).createSimilarFile(path)
+
+        if isCalendarCollectionResource(self):
+            superDeadProperties = similar.deadProperties
+
+            def deadProperties():
+                if not hasattr(similar, "_dead_properties"):
+                    similar._dead_properties = self.propertyCollection().propertyStoreForChild(similar, superDeadProperties())
+                return similar._dead_properties
+
+            similar.deadProperties = deadProperties
+
+        return similar
 
     def updateCTag(self):
         assert self.isCollection()
