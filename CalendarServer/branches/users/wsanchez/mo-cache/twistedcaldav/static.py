@@ -141,6 +141,18 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
         return super(CalDAVFile, self).checkPreconditions(request)
 
+    def deadProperties(self, caching=True):
+        if not hasattr(self, "_dead_properties"):
+            # Get the property store from super
+            deadProperties = super(CalDAVFile, self).deadProperties()
+
+            if caching:
+                # Wrap the property store in a memory store
+                deadProperties = CachingPropertyStore(deadProperties)
+
+            self._dead_properties = deadProperties
+
+        return self._dead_properties
 
     ##
     # CalDAV
@@ -385,7 +397,10 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
             def deadProperties():
                 if not hasattr(similar, "_dead_properties"):
-                    similar._dead_properties = self.propertyCollection().propertyStoreForChild(similar, superDeadProperties())
+                    similar._dead_properties = self.propertyCollection().propertyStoreForChild(
+                        similar,
+                        superDeadProperties(caching=False)
+                    )
                 return similar._dead_properties
 
             similar.deadProperties = deadProperties
