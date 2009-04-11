@@ -39,7 +39,9 @@ from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.config import config
-from twistedcaldav.log import LoggingMixIn
+from twistedcaldav.log import LoggingMixIn, Logger
+
+log = Logger()
 
 NoValue = ""
 
@@ -54,6 +56,7 @@ class MemcachePropertyStore (LoggingMixIn):
         self.cacheTimeout = cacheTimeout
 
     def _getMemcacheClient(self, refresh=False):
+        raise NotImplementedError()
         if not config.Memcached.ClientEnabled:
             # Not allowed to switch form caching to not caching
             assert not hasattr(self, self._memcacheClient)
@@ -190,28 +193,41 @@ class MemcachePropertyStore (LoggingMixIn):
 
 class MemcachePropertyCollection (LoggingMixIn):
     """
-    Manages a single property store for resources in a collection.
+    Manages a single property store for all resources in a collection.
     """
     def __init__(self, collection, cacheTimeout=0):
         self.collection = collection
         self.cacheTimeout = cacheTimeout
 
-    def _getMemcacheClient(self, refresh=False):
-        if not config.Memcached.ClientEnabled:
-            # Not allowed to switch form caching to not caching
-            assert not hasattr(self, self._memcacheClient)
-            return None
+    @classmethod
+    def memcacheClient(cls, refresh=False):
+        if not hasattr(MemcachePropertyCollection, "_memcacheClient"):
+            if not config.Memcached.ClientEnabled:
+                return None
 
-        if refresh or not hasattr(self, "_memcacheClient"):
-            self._memcacheClient = MemcacheClient(
+            log.info("Instantiating memcache connection for MemcachePropertyCollection")
+            MemcachePropertyCollection._memcacheClient = MemcacheClient(
                 ["%s:%s" % (config.Memcached.BindAddress, config.Memcached.Port)],
                 debug=0,
                 pickleProtocol=2,
             )
-        assert self._memcacheClient is not None
-        return self._memcacheClient
+            assert MemcachePropertyCollection._memcacheClient is not None
+
+        return MemcachePropertyCollection._memcacheClient
 
     def propertyCache(self):
+        # The property cache has this format:
+        #  {
+        #    "/path/to/resource/file":
+        #      (
+        #        {
+        #          (namespace, name): property,
+        #          ...,
+        #        },
+        #        memcache_token,
+        #      ),
+        #    ...,
+        #  }
         if not hasattr(self, "_propertyCache"):
             self._propertyCache = self._loadCache()
         return self._propertyCache
@@ -235,7 +251,7 @@ class MemcachePropertyCollection (LoggingMixIn):
 
         self.log_debug("Loading cache for %s" % (self.collection,))
 
-        client = self._getMemcacheClient()
+        client = self.memcacheClient()
         assert client is not None, "OMG no cache!"
         if client is None:
             return None
@@ -261,10 +277,6 @@ class MemcachePropertyCollection (LoggingMixIn):
 
             result.update(loaded.iteritems())
 
-        print "#"*50, "Result:"
-        print result
-        print "#"*50
-
         return result
 
     def _storeCache(self, cache):
@@ -276,7 +288,7 @@ class MemcachePropertyCollection (LoggingMixIn):
             in cache.iteritems()
         ))
 
-        client = self._getMemcacheClient()
+        client = self.memcacheClient()
         if client is not None:
             client.set_multi(values, time=self.cacheTimeout)
 
@@ -307,28 +319,46 @@ class MemcachePropertyCollection (LoggingMixIn):
     def setProperty(self, child, property):
         path = child.fp.path
         key = self._keyForPath(path)
-        childCache = self.propertyCache().get(key, (None, None))[0]
-
-        print "*"*40
-        print path, key, childCache, self.propertyCache()
-        print "*"*40
+        propertyCache = self.propertyCache()
+        childCache, token = propertyCache.get(key, (None, None))
 
         assert childCache is not None, "No child cache?"
 
-        currentValue, token = childCache.get(property.qname(), (None, None))
-
-        if currentValue == property:
+        if childCache.get(property.qname(), None) == property:
+            # No changes
             return
 
-        client = self._getMemcacheClient()
+        childCache[property.qname()] = property
+
+        client = self.memcacheClient()
         if client is not None:
-            if property is None:
-                client.delete(key)
-            else:
-                result = client.set(key, property, time=self.cacheTimeout, token=token)
-                assert result, "Unable to set property"
-            del self.propertyCache()[path]
-            self._loadCache(childNames=(child.fp.basename(),))
+            result = client.set(key, childCache, time=self.cacheTimeout, token=token)
+            if not result:
+                delattr(self, "_propertyCache")
+                raise MemcacheError("Unable to set property")
+
+            loaded = self._loadCache(childNames=(child.fp.basename(),))
+            propertyCache.update(loaded.iteritems())
+
+    def deleteProperty(self, child, qname):
+        path = child.fp.path
+        key = self._keyForPath(path)
+        propertyCache = self.propertyCache()
+        childCache, token = propertyCache.get(key, (None, None))
+
+        assert childCache is not None, "No child cache?"
+
+        del childCache[qname]
+
+        client = self.memcacheClient()
+        if client is not None:
+            result = client.set(key, childCache, time=self.cacheTimeout, token=token)
+            if not result:
+                delattr(self, "_propertyCache")
+                raise MemcacheError("Unable to delete property")
+
+            loaded = self._loadCache(childNames=(child.fp.basename(),))
+            propertyCache.update(loaded.iteritems())
 
     def propertyStoreForChild(self, child, childPropertyStore):
         return self.ChildPropertyStore(self, child, childPropertyStore)
@@ -342,7 +372,8 @@ class MemcachePropertyCollection (LoggingMixIn):
         def propertyCache(self):
             path = self.child.fp.path
             key = self.parentPropertyCollection._keyForPath(path)
-            return self.parentPropertyCollection.propertyCache().get(key, ({}, None))[0]
+            parentPropertyCache = self.parentPropertyCollection.propertyCache()
+            return parentPropertyCache.get(key, ({}, None))[0]
 
         def get(self, qname, cache=True):
             if cache:
@@ -370,13 +401,13 @@ class MemcachePropertyCollection (LoggingMixIn):
             self.log_debug("Delete for %s on %s"
                            % (qname, self.childPropertyStore.resource.fp.path))
 
-            self.parentPropertyCollection.setProperty(self.child, None)
+            self.parentPropertyCollection.deleteProperty(self.child, qname)
             self.childPropertyStore.delete(qname)
 
         def contains(self, qname, cache=True):
             if cache:
                 propertyCache = self.propertyCache()
-                return qname in propertyCache.keys()
+                return qname in propertyCache
 
             self.log_debug("Contains for %s"
                            % (self.childPropertyStore.resource.fp.path,))
@@ -385,7 +416,7 @@ class MemcachePropertyCollection (LoggingMixIn):
         def list(self, cache=True):
             if cache:
                 propertyCache = self.propertyCache()
-                return propertyCache.keys()
+                return propertyCache.iterkeys()
 
             self.log_debug("List for %s"
                            % (self.childPropertyStore.resource.fp.path,))
