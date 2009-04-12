@@ -280,7 +280,7 @@ class MemcachePropertyCollection (LoggingMixIn):
         return result
 
     def _storeCache(self, cache):
-        self.log_error("Storing cache for %s" % (self.collection,))
+        self.log_debug("Storing cache for %s" % (self.collection,))
 
         values = dict((
             (self._keyForPath(path), props)
