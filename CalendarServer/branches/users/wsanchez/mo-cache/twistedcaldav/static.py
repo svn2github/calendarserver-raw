@@ -409,18 +409,22 @@ class CalDAVFile (CalDAVResource, DAVFile):
             similar.deadProperties = deadProperties
 
             #
-            # Override DELETE
+            # Override DELETE, MOVE
             #
-            superDelete = similar.http_DELETE
+            for method in ("DELETE", "MOVE"):
+                method = "http_" + method
+                original = getattr(similar, method)
 
-            def http_DELETE(request):
-                # Wipe the cache
-                similar.deadProperties().flushCache()
+                def override(request, original=original):
+                    # Call original method
+                    response = original(request)
 
-                # Call original delete method
-                return superDelete(request)
+                    # Wipe the cache
+                    similar.deadProperties().flushCache()
 
-            similar.http_DELETE = http_DELETE
+                    return response
+
+                setattr(similar, method, override)
 
         return similar
 
