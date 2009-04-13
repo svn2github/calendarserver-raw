@@ -32,7 +32,7 @@ try:
 except ImportError:
     from md5 import new as md5
 
-from memcache import Client as MemcacheClient, MemcacheError
+from memcache import ClientFactory as MemcacheClientFactory, MemcacheError
 
 from twisted.python.filepath import FilePath
 from twisted.web2 import responsecode
@@ -202,12 +202,12 @@ class MemcachePropertyCollection (LoggingMixIn):
     @classmethod
     def memcacheClient(cls, refresh=False):
         if not hasattr(MemcachePropertyCollection, "_memcacheClient"):
-            if not config.Memcached.ClientEnabled:
-                return None
+
+            # if not config.Memcached.ClientEnabled:
+            #     return None
 
             log.info("Instantiating memcache connection for MemcachePropertyCollection")
-            MemcachePropertyCollection._memcacheClient = MemcacheClient(
-                ["%s:%s" % (config.Memcached.BindAddress, config.Memcached.Port)],
+            MemcachePropertyCollection._memcacheClient = MemcacheClientFactory.getClient(["%s:%s" % (config.Memcached.BindAddress, config.Memcached.Port)],
                 debug=0,
                 pickleProtocol=2,
             )

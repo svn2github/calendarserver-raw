@@ -49,6 +49,8 @@ import time
 import os
 import re
 import types
+from twistedcaldav.config import config
+
 try:
     import cPickle as pickle
 except ImportError:
@@ -102,6 +104,26 @@ except ImportError:
     # TODO:  add the pure-python local implementation
     class local(object):
         pass
+
+class ClientFactory(object):
+
+    # unit tests should set this to True to enable the fake test cache
+    allowTestCache = False
+
+    @classmethod
+    def getClient(cls, servers, debug=0, pickleProtocol=0,
+                 pickler=pickle.Pickler, unpickler=pickle.Unpickler,
+                 pload=None, pid=None):
+
+        if config.Memcached.ClientEnabled:
+            return Client(servers, debug=debug, pickleProtocol=pickleProtocol,
+                pickler=pickler, unpickler=unpickler, pload=pload, pid=pid)
+        elif cls.allowTestCache:
+            return TestClient(servers, debug=debug,
+                pickleProtocol=pickleProtocol, pickler=pickler,
+                unpickler=unpickler, pload=pload, pid=pid)
+        else:
+            return None
 
 
 class Client(local):
@@ -927,6 +949,157 @@ class Client(local):
             self.debuglog("unknown flags on get: %x\n" % flags)
 
         return val
+
+
+
+class TestClient(Client):
+    """
+    Fake memcache client for unit tests
+
+    """
+
+    def __init__(self, servers, debug=0, pickleProtocol=0,
+                 pickler=pickle.Pickler, unpickler=pickle.Unpickler,
+                 pload=None, pid=None):
+
+        local.__init__(self)
+
+        super(TestClient, self).__init__(servers, debug=debug,
+            pickleProtocol=pickleProtocol, pickler=pickler, unpickler=unpickler,
+            pload=pload, pid=pid)
+
+        self.data = {}
+        self.token = 0
+
+
+
+    def get_stats(self):
+        raise NotImplementedError()
+
+    def get_slabs(self):
+        raise NotImplementedError()
+
+    def flush_all(self):
+        raise NotImplementedError()
+
+    def forget_dead_hosts(self):
+        raise NotImplementedError()
+
+    def delete_multi(self, keys, time=0, key_prefix=''):
+        '''
+        Delete multiple keys in the memcache doing just one query.
+
+        >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
+        >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
+        1
+        >>> mc.delete_multi(['key1', 'key2'])
+        1
+        >>> mc.get_multi(['key1', 'key2']) == {}
+        1
+        '''
+
+        self._statlog('delete_multi')
+        for key in keys:
+            key = key_prefix + key
+            del self.data[key]
+        return 1
+
+    def delete(self, key, time=0):
+        '''Deletes a key from the memcache.
+
+        @return: Nonzero on success.
+        @param time: number of seconds any subsequent set / update commands should fail. Defaults to 0 for no delay.
+        @rtype: int
+        '''
+        check_key(key)
+        del self.data[key]
+        return 1
+
+
+    def incr(self, key, delta=1):
+        raise NotImplementedError()
+
+    def decr(self, key, delta=1):
+        raise NotImplementedError()
+
+    def add(self, key, val, time = 0, min_compress_len = 0):
+        raise NotImplementedError()
+
+    def append(self, key, val, time=0, min_compress_len=0):
+        raise NotImplementedError()
+
+    def prepend(self, key, val, time=0, min_compress_len=0):
+        raise NotImplementedError()
+
+    def replace(self, key, val, time=0, min_compress_len=0):
+        raise NotImplementedError()
+
+    def set(self, key, val, time=0, min_compress_len=0, token=None):
+        self._statlog('set')
+        return self._set("set", key, val, time, min_compress_len, token=token)
+
+    def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):
+        self._statlog('set_multi')
+        for key, val in mapping.iteritems():
+            key = key_prefix + key
+            self._set("set", key, val, time, min_compress_len)
+        return []
+
+    def _set(self, cmd, key, val, time, min_compress_len = 0, token=None):
+        check_key(key)
+        self._statlog(cmd)
+
+        serialized = pickle.dumps(val, pickle.HIGHEST_PROTOCOL)
+
+        if token is not None:
+            if self.data.has_key(key):
+                stored_val, stored_token = self.data[key]
+                if token != stored_token:
+                    return False
+
+        self.data[key] = (serialized, str(self.token))
+        self.token += 1
+
+        return True
+
+    def get(self, key):
+        check_key(key)
+
+        self._statlog('get')
+        if self.data.has_key(key):
+            stored_val, stored_token = self.data[key]
+            val = pickle.loads(stored_val)
+            return val
+        return None
+
+
+    def gets(self, key):
+        check_key(key)
+        if self.data.has_key(key):
+            stored_val, stored_token = self.data[key]
+            val = pickle.loads(stored_val)
+            return (val, stored_token)
+        return (None, None)
+
+    def get_multi(self, keys, key_prefix=''):
+        self._statlog('get_multi')
+
+        results = {}
+        for key in keys:
+            key = key_prefix + key
+            val = self.get(key)
+            results[key] = val
+        return results
+
+    def gets_multi(self, keys, key_prefix=''):
+        self._statlog('gets_multi')
+        results = {}
+        for key in keys:
+            key = key_prefix + key
+            result = self.gets(key)
+            if result[1] is not None:
+                results[key] = result
+        return results
 
 
 class _Host:
