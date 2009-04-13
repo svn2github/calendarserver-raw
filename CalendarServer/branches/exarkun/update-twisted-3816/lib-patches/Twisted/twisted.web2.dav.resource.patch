@@ -290,7 +290,7 @@ Index: twisted/web2/dav/resource.py
 -                    return PrincipalCredentials(principal, principalURI, creds)
 +                    authnPrincipal = IDAVPrincipalResource(details[0])
 +                    authzPrincipal = IDAVPrincipalResource(details[1])
-+                    return PrincipalCredentials(authnPrincipal, authzPrincipa, creds)
++                    return PrincipalCredentials(authnPrincipal, authzPrincipal, creds)
  
                  def login(pcreds):
                      return request.portal.login(pcreds, None,
