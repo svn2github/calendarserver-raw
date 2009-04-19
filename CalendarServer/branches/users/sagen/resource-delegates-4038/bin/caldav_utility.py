@@ -158,15 +158,15 @@ def run(directory, root, optargs):
             result = (yield resource.readProperty((namespace, name)))
             print result.toxml()
 
-        elif opt in ("--list-write-delegates",):
+        elif opt in ("--list-write-delegates", "--list-read-delegates"):
             if resource is None: abort("No current resource.")
 
-            subPrincipal = resource.getChild("calendar-proxy-write")
-            if subPrincipal is None:
-                abort("No proxy subprincipal found for %s" % (resource.resource,))
-            namespace, name = davxml.dav_namespace, "group-member-set"
-            result = (yield subPrincipal.readProperty((namespace, name)))
-            print result.toxml()
+            permission = "write" if "write" in opt else "read"
+            print "Delegates (%s) for %s:" % (permission, resource.resource)
+            paths = (yield resource.getDelegates(permission))
+            for path in paths:
+                delegate = root.getChild(path)
+                print delegate.resource
 
         elif opt in ("--add-write-delegate", "--add-read-delegate"):
             if resource is None: abort("No current resource.")
@@ -264,6 +264,23 @@ class ResourceWrapper(object):
             newProp = davxml.GroupMemberSet(*newChildren)
             result = (yield subPrincipal.writeProperty(newProp))
             returnValue(result)
+
+    @inlineCallbacks
+    def getDelegates(self, permission):
+
+        subPrincipalName = "calendar-proxy-%s" % (permission,)
+        subPrincipal = self.getChild(subPrincipalName)
+        if subPrincipal is None:
+            abort("No proxy subprincipal found for %s" % (self.resource,))
+
+        namespace, name = davxml.dav_namespace, "group-member-set"
+        prop = (yield subPrincipal.readProperty((namespace, name)))
+        result = []
+        for child in prop.children:
+            result.append(str(child))
+        returnValue(result)
+
+
 
     def url(self):
         return self.resource.url()
