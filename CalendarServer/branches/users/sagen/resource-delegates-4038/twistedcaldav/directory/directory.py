@@ -348,7 +348,9 @@ class DirectoryRecord(LoggingMixIn):
         return ()
 
     def hasEditableProxyMembership(self):
-        return self.recordType in (DirectoryService.recordType_users, DirectoryService.recordType_groups)
+        return True
+        # MOR:
+        # return self.recordType in (DirectoryService.recordType_users, DirectoryService.recordType_groups)
 
     def verifyCredentials(self, credentials):
         return False

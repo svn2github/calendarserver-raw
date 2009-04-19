@@ -477,10 +477,12 @@ class OpenDirectoryService(CachingDirectoryService):
     
             elif recordType == DirectoryService.recordType_locations:
                 listRecordTypes.append(dsattributes.kDSStdRecordTypePlaces)
+                # MOR: possibly can be removed
                 attrs.append(dsattributes.kDSNAttrResourceInfo)
             
             elif recordType == DirectoryService.recordType_resources:
                 listRecordTypes.append(dsattributes.kDSStdRecordTypeResources)
+                # MOR: possibly can be removed
                 attrs.append(dsattributes.kDSNAttrResourceInfo)
             
             else:
@@ -657,10 +659,13 @@ class OpenDirectoryService(CachingDirectoryService):
             else:
                 memberGUIDs = ()
 
-            # Special case for resources and locations
             autoSchedule = False
             proxyGUIDs = ()
             readOnlyProxyGUIDs = ()
+
+            # MOR:
+            # Special case for resources and locations
+            """
             if recordType in (self.recordType_resources, self.recordType_locations):
                 resourceInfo = value.get(dsattributes.kDSNAttrResourceInfo)
                 if resourceInfo is not None:
@@ -672,6 +677,7 @@ class OpenDirectoryService(CachingDirectoryService):
                         proxyGUIDs = (proxy,)
                     if read_only_proxy:
                         readOnlyProxyGUIDs = (read_only_proxy,)
+            """
 
             record = OpenDirectoryRecord(
                 service               = self,
