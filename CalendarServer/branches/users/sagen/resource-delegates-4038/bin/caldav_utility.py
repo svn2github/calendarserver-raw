@@ -52,6 +52,7 @@ from twistedcaldav.config import config, defaultConfigFile
 from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
+from twistedcaldav.log import setLogLevelForNamespace
 from twistedcaldav.notify import installNotificationClient
 from twistedcaldav.static import CalendarHomeProvisioningFile
 import itertools
@@ -202,8 +203,7 @@ def run(directory, root, optargs):
             print "Auto-Schedule: %s" % ("True" if result else "False",)
 
 
-    print "Stopping reactor"
-    reactor.callLater(0, reactor.stop)
+    reactor.stop()
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -310,6 +310,8 @@ def abort(msg, errno=1):
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 def setup():
+
+    setLogLevelForNamespace(None, "warn")
 
     directory = getDirectory()
     if config.Memcached["ClientEnabled"]:

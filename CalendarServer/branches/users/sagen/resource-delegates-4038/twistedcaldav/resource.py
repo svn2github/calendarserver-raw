@@ -1066,18 +1066,15 @@ class ResourceInfoDatabase(AbstractSQLDatabase, LoggingMixIn):
     class ResourceInfoDBMemcacher(Memcacher):
 
         def setAutoSchedule(self, guid, autoSchedule):
-            print "Sending to memcache", "1" if autoSchedule else "0"
             return self.set("resourceinfo:%s" % (str(guid),), "1" if autoSchedule else "0")
 
         @inlineCallbacks
         def getAutoSchedule(self, guid):
             result = (yield self.get("resourceinfo:%s" % (str(guid),)))
-            print "Result from memcache is:", result
             if result is not None:
                 autoSchedule = result == "1"
             else:
                 autoSchedule = None
-            print "Therefore, getting back from memcache:", autoSchedule
             returnValue(autoSchedule)
 
     def __init__(self, path):
