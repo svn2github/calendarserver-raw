@@ -695,6 +695,8 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase, LoggingMixIn):
                 """
             )
 
+
+
 ##
 # Utilities
 ##

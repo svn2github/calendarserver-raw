@@ -837,8 +837,9 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
         return addresses
 
-    def autoSchedule(self):
-        return self.record.autoSchedule
+    # MOR:
+    # def autoSchedule(self):
+    #     return self.record.autoSchedule
 
     def enabledAsOrganizer(self):
         if self.record.recordType == DirectoryService.recordType_users:

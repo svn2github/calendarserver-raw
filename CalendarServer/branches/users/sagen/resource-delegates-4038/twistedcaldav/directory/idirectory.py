@@ -101,7 +101,8 @@ class IDirectoryRecord(Interface):
     lastName              = Attribute("The last name of this record.")
     emailAddress          = Attribute("The email address of this record.")
     calendarUserAddresses = Attribute("A set of calendar user addresses for this record.")
-    autoSchedule          = Attribute("Principal identified by this record should automatically accept/deny meetings.")
+    # MOR:
+    # autoSchedule          = Attribute("Principal identified by this record should automatically accept/deny meetings.")
     enabledForCalendaring = Attribute("Determines whether this record should be provisioned with a calendar home.")
 
     def members():

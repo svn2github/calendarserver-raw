@@ -101,6 +101,8 @@ def main():
                 "add-read-delegate=",
                 "add-write-delegate=",
                 "remove-delegate=",
+                "set-auto-schedule=",
+                "get-auto-schedule",
             ],
         )
     except GetoptError, e:
@@ -188,9 +190,20 @@ def run(directory, root, optargs):
             result = (yield resource.removeDelegate(delegate, "read"))
             result = (yield resource.removeDelegate(delegate, "write"))
 
+        elif opt == "--set-auto-schedule":
+            if resource is None: abort("No current resource.")
+
+            result = (yield resource.setAutoSchedule(arg.lower() in ("true", "1")))
+
+        elif opt == "--get-auto-schedule":
+            if resource is None: abort("No current resource.")
+
+            result = (yield resource.getAutoSchedule())
+            print "Auto-Schedule: %s" % ("True" if result else "False",)
+
 
     print "Stopping reactor"
-    reactor.stop()
+    reactor.callLater(0, reactor.stop)
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -200,14 +213,10 @@ class ResourceWrapper(object):
         self.resource = resource
 
     def readProperty(self, prop):
-        # fake a request
-        request = FakeRequest()
-        return self.resource.readProperty(prop, request)
+        return self.resource.readProperty(prop, FakeRequest())
 
     def writeProperty(self, prop):
-        # fake a request
-        request = FakeRequest()
-        return self.resource.writeProperty(prop, request)
+        return self.resource.writeProperty(prop, FakeRequest())
 
     def getChild(self, path):
         resource = self.resource
@@ -280,7 +289,11 @@ class ResourceWrapper(object):
             result.append(str(child))
         returnValue(result)
 
+    def setAutoSchedule(self, autoSchedule):
+        return self.resource.setAutoSchedule(autoSchedule)
 
+    def getAutoSchedule(self):
+        return self.resource.getAutoSchedule()
 
     def url(self):
         return self.resource.url()
@@ -395,7 +408,7 @@ dummyDirectoryRecord = DirectoryRecord(
     shortNames = ("dummy",),
     fullName = "Dummy McDummerson",
     calendarUserAddresses = set(),
-    autoSchedule = False,
+    # autoSchedule = False,
 )
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

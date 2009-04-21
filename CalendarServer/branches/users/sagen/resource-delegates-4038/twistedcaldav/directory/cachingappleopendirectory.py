@@ -659,7 +659,9 @@ class OpenDirectoryService(CachingDirectoryService):
             else:
                 memberGUIDs = ()
 
-            autoSchedule = False
+            # MOR:
+            # autoSchedule = False
+
             proxyGUIDs = ()
             readOnlyProxyGUIDs = ()
 
@@ -691,7 +693,8 @@ class OpenDirectoryService(CachingDirectoryService):
                 lastName              = recordLastName,
                 emailAddresses        = recordEmailAddresses,
                 calendarUserAddresses = calendarUserAddresses,
-                autoSchedule          = autoSchedule,
+                # MOR:
+                # autoSchedule          = autoSchedule,
                 enabledForCalendaring = enabledForCalendaring,
                 memberGUIDs           = memberGUIDs,
                 proxyGUIDs            = proxyGUIDs,
@@ -707,7 +710,10 @@ class OpenDirectoryRecord(CachingDirectoryRecord):
     def __init__(
         self, service, recordType, guid, nodeName, shortNames, authIDs,
         fullName, firstName, lastName, emailAddresses,
-        calendarUserAddresses, autoSchedule, enabledForCalendaring,
+        calendarUserAddresses,
+        # MOR:
+        # autoSchedule,
+        enabledForCalendaring,
         memberGUIDs, proxyGUIDs, readOnlyProxyGUIDs,
     ):
         super(OpenDirectoryRecord, self).__init__(
@@ -721,7 +727,8 @@ class OpenDirectoryRecord(CachingDirectoryRecord):
             lastName              = lastName,
             emailAddresses        = emailAddresses,
             calendarUserAddresses = calendarUserAddresses,
-            autoSchedule          = autoSchedule,
+            # MOR:
+            # autoSchedule          = autoSchedule,
             enabledForCalendaring = enabledForCalendaring,
         )
         self.nodeName = nodeName

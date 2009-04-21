@@ -269,7 +269,10 @@ class DirectoryRecord(LoggingMixIn):
     def __init__(
         self, service, recordType, guid, shortNames=(), authIDs=set(), fullName=None,
         firstName=None, lastName=None, emailAddresses=set(),
-        calendarUserAddresses=set(), autoSchedule=False, enabledForCalendaring=None,
+        calendarUserAddresses=set(),
+        # MOR:
+        # autoSchedule=False,
+        enabledForCalendaring=None,
         uid=None,
     ):
         assert service.realmName is not None
@@ -309,7 +312,8 @@ class DirectoryRecord(LoggingMixIn):
         self.emailAddresses        = emailAddresses
         self.enabledForCalendaring = enabledForCalendaring
         self.calendarUserAddresses = calendarUserAddresses
-        self.autoSchedule          = autoSchedule
+        # MOR:
+        # self.autoSchedule          = autoSchedule
 
     def __cmp__(self, other):
         if not isinstance(other, DirectoryRecord):
