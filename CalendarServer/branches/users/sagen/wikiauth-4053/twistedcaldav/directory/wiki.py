@@ -129,9 +129,18 @@ class WikiDirectoryRecord(DirectoryRecord):
 
 @inlineCallbacks
 def getWikiACL(resource, request):
+    """
+    Ask the wiki server we're paired with what level of access the authnUser has.
 
+    Returns an ACL.
+
+    Wiki authentication is a bit tricky because the end-user accessing a group
+    calendar may not actually be enabled for calendaring.  Therefore in that
+    situation, the authzUser will have been replaced with the wiki principal
+    in locateChild( ), so that any changes the user makes will have the wiki
+    as the originator.  The authnUser will always be the end-user.
+    """
     from twistedcaldav.directory.principal import DirectoryPrincipalResource
-
 
     if (not hasattr(resource, "record") or
         resource.record.recordType != WikiDirectoryService.recordType_wikis):
@@ -164,6 +173,8 @@ def getWikiACL(resource, request):
         log.info("Wiki ACL result: user [%s], wiki [%s], access [%s]" % (userID,
             wikiID, access))
 
+        # The ACL we returns has ACEs for the end-user and the wiki principal
+        # in case authzUser is the wiki principal.
         if access == "read":
             request.wikiACL =   davxml.ACL(
                                     davxml.ACE(
@@ -238,6 +249,7 @@ def getWikiACL(resource, request):
                     "You are not allowed to access this wiki"
                 )
             )
+
 
     except Fault, fault:
 
