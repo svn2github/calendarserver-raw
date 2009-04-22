@@ -130,7 +130,8 @@ class WikiDirectoryRecord(DirectoryRecord):
 @inlineCallbacks
 def getWikiACL(resource, request):
 
-    from twistedcaldav.directory.principal import DirectoryCalendarPrincipalResource
+    from twistedcaldav.directory.principal import DirectoryPrincipalResource
+
 
     if (not hasattr(resource, "record") or
         resource.record.recordType != WikiDirectoryService.recordType_wikis):
@@ -144,9 +145,9 @@ def getWikiACL(resource, request):
     wikiID = resource.record.shortNames[0]
 
     try:
-        url = str(request.authzUser.children[0])
+        url = str(request.authnUser.children[0])
         principal = (yield request.locateResource(url))
-        if isinstance(principal, DirectoryCalendarPrincipalResource):
+        if isinstance(principal, DirectoryPrincipalResource):
             userID = principal.record.guid
     except:
         # TODO: better error handling
@@ -166,7 +167,16 @@ def getWikiACL(resource, request):
         if access == "read":
             request.wikiACL =   davxml.ACL(
                                     davxml.ACE(
-                                        request.authnUser,
+                                        request.authzUser,
+                                        davxml.Grant(
+                                            davxml.Privilege(davxml.Read()),
+                                        ),
+                                        TwistedACLInheritable(),
+                                    ),
+                                    davxml.ACE(
+                                        davxml.Principal(
+                                            davxml.HRef.fromString("/principals/wikis/%s/" % (wikiID,))
+                                        ),
                                         davxml.Grant(
                                             davxml.Privilege(davxml.Read()),
                                         ),
@@ -178,14 +188,32 @@ def getWikiACL(resource, request):
         elif access in ("write", "admin"):
             request.wikiACL =   davxml.ACL(
                                     davxml.ACE(
-                                        request.authnUser,
+                                        request.authzUser,
                                         davxml.Grant(
                                             davxml.Privilege(davxml.Read()),
                                         ),
                                         TwistedACLInheritable(),
                                     ),
                                     davxml.ACE(
-                                        request.authnUser,
+                                        request.authzUser,
+                                        davxml.Grant(
+                                            davxml.Privilege(davxml.Write()),
+                                        ),
+                                        TwistedACLInheritable(),
+                                    ),
+                                    davxml.ACE(
+                                        davxml.Principal(
+                                            davxml.HRef.fromString("/principals/wikis/%s/" % (wikiID,))
+                                        ),
+                                        davxml.Grant(
+                                            davxml.Privilege(davxml.Read()),
+                                        ),
+                                        TwistedACLInheritable(),
+                                    ),
+                                    davxml.ACE(
+                                        davxml.Principal(
+                                            davxml.HRef.fromString("/principals/wikis/%s/" % (wikiID,))
+                                        ),
                                         davxml.Grant(
                                             davxml.Privilege(davxml.Write()),
                                         ),
