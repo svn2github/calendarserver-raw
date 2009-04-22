@@ -203,14 +203,16 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
 
                     if not isinstance(principal, DirectoryCalendarPrincipalResource):
                         # Not enabled for calendaring, so use the wiki principal as authzUser if the resource is within
-                        # a wiki.  Examining the segments to determine this:
-                        if len(segments) > 2 and segments[0] in ("principals", "calendars"):
+                        # a wiki.  Examining the request path to determine this:
+                        path = request.prepath
+                        if len(path) > 2 and path[0] in ("principals", "calendars"):
                             wikiName = None
-                            if segments[1] == "wikis":
-                                wikiName = segments[2]
-                            elif segments[1] == "__uids__" and segments[2].startswith("wiki-"):
-                                wikiName = segments[2][5:]
+                            if path[1] == "wikis":
+                                wikiName = path[2]
+                            elif path[1] == "__uids__" and path[2].startswith("wiki-"):
+                                wikiName = path[2][5:]
                             if wikiName:
+                                log.debug("Using %s wiki as authzUser instead of %s" % (wikiName, username))
                                 request.authzUser = davxml.Principal(
                                     davxml.HRef.fromString("/principals/wikis/%s/" % (wikiName,))
                                 )

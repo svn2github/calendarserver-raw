@@ -167,7 +167,7 @@ def getWikiACL(resource, request):
         if access == "read":
             request.wikiACL =   davxml.ACL(
                                     davxml.ACE(
-                                        request.authzUser,
+                                        request.authnUser,
                                         davxml.Grant(
                                             davxml.Privilege(davxml.Read()),
                                         ),
@@ -188,14 +188,14 @@ def getWikiACL(resource, request):
         elif access in ("write", "admin"):
             request.wikiACL =   davxml.ACL(
                                     davxml.ACE(
-                                        request.authzUser,
+                                        request.authnUser,
                                         davxml.Grant(
                                             davxml.Privilege(davxml.Read()),
                                         ),
                                         TwistedACLInheritable(),
                                     ),
                                     davxml.ACE(
-                                        request.authzUser,
+                                        request.authnUser,
                                         davxml.Grant(
                                             davxml.Privilege(davxml.Write()),
                                         ),
