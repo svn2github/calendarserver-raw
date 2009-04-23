@@ -22,6 +22,22 @@
 	<description>Test proxy user features</description>
 
 	<start>
+		<!-- Remove principal1's read-only proxies -->
+		<request print-response="no">
+			<method>PROPPATCH</method>
+			<ruri>$principal1:calendar-proxy-read/</ruri>
+			<data>
+				<content-type>text/xml; charset=utf-8</content-type>
+				<filepath>Resource/calendaruserproxy/4.xml</filepath>
+			</data>
+			<verify>
+				<callback>propfindItems</callback>
+				<arg>
+					<name>okprops</name>
+					<value>DAV:group-member-set</value>
+				</arg>
+			</verify>
+		</request>
 		<request end-delete="yes">
 			<method>PUT</method>
 			<ruri>$calendarpath1:/1.ics</ruri>
@@ -607,7 +623,8 @@
 				</verify>
 			</request>
 		</test>
-		<test name='25'>
+		<test name='25' ignore='yes'>
+			<!-- memberships are no longer locked -->
 			<description>Verify no change to locked membership</description>
 			<request user="$useradmin:" pswd="$pswdadmin:" print-response="no">
 				<method>PROPPATCH</method>
@@ -627,6 +644,22 @@
 		</test>
 		<test name='26'>
 			<description>Verify group memberships</description>
+			<!-- Add principal1 to resource01's read-write proxies -->
+			<request user="$useradmin:" pswd="$pswdadmin:" print-response="no">
+				<method>PROPPATCH</method>
+				<ruri>$rprincipal1:calendar-proxy-write/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/calendaruserproxy/11.xml</filepath>
+				</data>
+				<verify>
+					<callback>propfindItems</callback>
+					<arg>
+						<name>okprops</name>
+						<value>DAV:group-member-set</value>
+					</arg>
+				</verify>
+			</request>
 			<request print-response="no">
 				<method>PROPFIND</method>
 				<ruri>$rprincipal1:calendar-proxy-write/</ruri>
@@ -672,6 +705,22 @@
 		</test>
 		<test name='28'>
 			<description>Verify read-only group memberships</description>
+			<!-- Add principal1 to resource01's read-write proxies -->
+			<request user="$useradmin:" pswd="$pswdadmin:" print-response="no">
+				<method>PROPPATCH</method>
+				<ruri>$rprincipal1:calendar-proxy-read/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/calendaruserproxy/16.xml</filepath>
+				</data>
+				<verify>
+					<callback>propfindItems</callback>
+					<arg>
+						<name>okprops</name>
+						<value>DAV:group-member-set</value>
+					</arg>
+				</verify>
+			</request>
 			<request print-response="no">
 				<method>PROPFIND</method>
 				<ruri>$rprincipal1:calendar-proxy-read/</ruri>
