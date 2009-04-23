@@ -582,6 +582,9 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         members = (yield self.groupMembers())
         
         memberships = (yield self.groupMemberships())
+
+        proxyFor = (yield self.proxyFor(True))
+        readOnlyProxyFor = (yield self.proxyFor(False))
         
         returnValue("".join((
             """<div class="directory-listing">"""
@@ -607,6 +610,8 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
             """\nAlternate URIs:\n"""          , format_list(format_link(u) for u in self.alternateURIs()),
             """\nGroup members:\n"""           , format_principals(members),
             """\nGroup memberships:\n"""       , format_principals(memberships),
+            """\nRead-write Proxy For:\n"""    , format_principals(proxyFor),
+            """\nRead-only Proxy For:\n"""     , format_principals(readOnlyProxyFor),
             """%s</pre></blockquote></div>"""  % extras,
             output
         )))
@@ -659,27 +664,21 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
     @inlineCallbacks
     def proxyFor(self, read_write, resolve_memberships=True):
         proxyFors = set()
-        print "IN PROXYFOR", self, read_write
 
         if resolve_memberships:
             memberships = self._getRelatives("groups", infinity=True)
             for membership in memberships:
-                print "MEMBERSHIP:", membership
                 results = (yield membership.proxyFor(read_write, False))
-                print "RESULTS", results
                 proxyFors.update(results)
 
         if config.EnableProxyPrincipals:
             # Get proxy group UIDs and map to principal resources
             proxies = []
             memberships = (yield self._calendar_user_proxy_index().getMemberships(self.principalUID()))
-            print "FROM INDEX", memberships
             for uid in memberships:
                 subprincipal = self.parent.principalForUID(uid)
                 if subprincipal:
-                    print "SUBPRINCIPAL", subprincipal
                     if subprincipal.isProxyType(read_write):
-                        print "IS PROXY TYPE", read_write
                         proxies.append(subprincipal.parent)
                 else:
                     yield self._calendar_user_proxy_index().removeGroup(uid)
