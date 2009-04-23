@@ -153,9 +153,16 @@ class MemCachePool(LoggingMixIn):
         self._pendingConnects = 0
         self._commands = []
 
+    def _isIdle(self):
+        return (
+            len(self._busyClients) == 0 and
+            len(self._commands) == 0 and
+            self._pendingConnects == 0
+        )
+
     def _shutdownCallback(self):
         self.shutdown_requested = True
-        if len(self._busyClients) == 0 and len(self._commands) == 0 and self._pendingConnects == 0:
+        if self._isIdle():
             return None
         self.shutdown_deferred = Deferred()
         return self.shutdown_deferred
@@ -236,6 +243,7 @@ class MemCachePool(LoggingMixIn):
 
         @return: A L{Deferred} that fires with the result of the given command.
         """
+
         if len(self._freeClients) > 0:
             client = self._freeClients.pop()
 
@@ -289,9 +297,6 @@ class MemCachePool(LoggingMixIn):
         @param client: An instance of C{self.clientFactory}
         """
 
-        if self.shutdown_deferred and len(self._busyClients) == 0 and len(self._commands) == 0 and self._pendingConnects == 0:
-            self.shutdown_deferred.callback(None)
-
         if client in self._freeClients:
             self._freeClients.remove(client)
 
@@ -312,7 +317,7 @@ class MemCachePool(LoggingMixIn):
 
         self._freeClients.add(client)
 
-        if self.shutdown_deferred and len(self._busyClients) == 0 and len(self._commands) == 0 and self._pendingConnects == 0:
+        if self.shutdown_deferred and self._isIdle():
             self.shutdown_deferred.callback(None)
 
         if len(self._commands) > 0:

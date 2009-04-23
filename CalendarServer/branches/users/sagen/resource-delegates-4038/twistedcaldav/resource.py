@@ -1007,14 +1007,14 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
         return None
 
     def setAutoSchedule(self, autoSchedule):
-        self._index().setAutoSchedule(self.record.guid, autoSchedule)
+        self._resource_info_index().setAutoSchedule(self.record.guid, autoSchedule)
 
     def getAutoSchedule(self):
-        return self._index().getAutoSchedule(self.record.guid)
+        return self._resource_info_index().getAutoSchedule(self.record.guid)
 
-    def _index(self):
+    def _resource_info_index(self):
         """
-        Return the SQL database for this calendar principal.
+        Return the resource info SQL database for this calendar principal.
 
         @return: the L{ResourceInfoDatabase} for the calendar principal.
         """
@@ -1024,6 +1024,20 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
         if not hasattr(self.pcollection, "resource_info_db"):
             setattr(self.pcollection, "resource_info_db", ResourceInfoDatabase(config.DataRoot))
         return self.pcollection.resource_info_db
+
+    def _calendar_user_proxy_index(self):
+        """
+        Return the calendar user proxy SQL database for this calendar principal.
+
+        @return: the L{CalendarUserProxyDatabase} for the calendar principal.
+        """
+
+        # The db is located in the data root
+        self.pcollection = self.parent.parent # MOR: doesn't feel right
+        if not hasattr(self.pcollection, "calendar_user_proxy_db"):
+            setattr(self.pcollection, "calendar_user_proxy_db", CalendarUserProxyDatabase(config.DataRoot))
+        return self.pcollection.calendar_user_proxy_db
+
 
 ##
 # Utilities

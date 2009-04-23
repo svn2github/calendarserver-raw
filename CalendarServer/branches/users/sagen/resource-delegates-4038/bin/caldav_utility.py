@@ -78,6 +78,8 @@ def usage(e=None):
     print "  --add-read-delegate <prinicpal-path>: add argument as a read-only delegate to the current resource"
     print "  --add-write-delegate <prinicpal-path>: add argument as a read-write delegate to the current resource"
     print "  --remove-delegate <prinicpal-path>: strip argument of delegate status for the current resource"
+    print "  --set-auto-schedule [true|false] : determines whether the current resource auto-accepts invitations"
+    print "  --get-auto-schedule : returns the current resource's auto-schedule state"
 
     if e:
         sys.exit(64)
@@ -203,6 +205,7 @@ def run(directory, root, optargs):
             print "Auto-Schedule: %s" % ("True" if result else "False",)
 
 
+    # reactor.callLater(0, reactor.stop)
     reactor.stop()
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

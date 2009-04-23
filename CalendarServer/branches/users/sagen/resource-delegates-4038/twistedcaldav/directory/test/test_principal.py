@@ -204,20 +204,6 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         self.failIf(provisioningResource.principalForCalendarUserAddress("/principals/users/nocalendar/") is not None)
         self.failIf(provisioningResource.principalForCalendarUserAddress("/principals/__uids__/543D28BA-F74F-4D5F-9243-B3E3A61171E5/") is not None)
 
-    def test_autoSchedule(self):
-        """
-        DirectoryPrincipalProvisioningResource.principalForCalendarUserAddress()
-        """
-        for provisioningResource, recordType, recordResource, record in self._allRecords():
-            principal = provisioningResource.principalForRecord(record)
-            self.failIf(principal is None)
-            if record.enabledForCalendaring:
-                self.assertEquals(record.autoSchedule, principal.autoSchedule())
-                if record.shortNames[0] == "gemini":
-                    self.assertTrue(principal.autoSchedule())
-                else:
-                    self.assertFalse(principal.autoSchedule())
-
     def test_enabledForCalendaring(self):
         """
         DirectoryPrincipalProvisioningResource.principalForCalendarUserAddress()
@@ -301,24 +287,6 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         for provisioningResource, recordType, recordResource, record in self._allRecords():
             memberships = yield recordResource.groupMemberships()
             self.failUnless(set(record.groups()).issubset(set(r.record for r in memberships if hasattr(r, "record"))))
-
-    def test_proxies(self):
-        """
-        DirectoryPrincipalResource.proxies()
-        """
-        for provisioningResource, recordType, recordResource, record in self._allRecords():
-            if record.enabledForCalendaring:
-                self.failUnless(set(record.proxies()).issubset(set(r.record for r in recordResource.proxies())))
-                self.assertEqual(record.hasEditableProxyMembership(), recordResource.hasEditableProxyMembership())
-
-    def test_read_only_proxies(self):
-        """
-        DirectoryPrincipalResource.proxies()
-        """
-        for provisioningResource, recordType, recordResource, record in self._allRecords():
-            if record.enabledForCalendaring:
-                self.failUnless(set(record.readOnlyProxies()).issubset(set(r.record for r in recordResource.readOnlyProxies())))
-                self.assertEqual(record.hasEditableProxyMembership(), recordResource.hasEditableProxyMembership())
 
     def test_principalUID(self):
         """

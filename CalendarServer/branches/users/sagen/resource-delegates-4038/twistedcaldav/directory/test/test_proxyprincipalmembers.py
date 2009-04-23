@@ -48,6 +48,7 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
 
         self.principalRootResources[directoryService.__class__.__name__] = provisioningResource
 
+
     def _getPrincipalByShortName(self, type, name):
         provisioningResource = self.principalRootResources[directoryService.__class__.__name__]
         return provisioningResource.principalForShortName(type, name)
@@ -139,59 +140,84 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
             ("Wilfredo Sanchez", "Recursive2 Coasts", "Cyrus Daboo",),
         )
 
+    @inlineCallbacks
     def test_groupMembersProxySingleUser(self):
         """
         DirectoryPrincipalResource.expandedGroupMembers()
         """
-        return self._groupMembersTest(
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "gemini",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_users, "wsanchez",),
+        )
+        self._groupMembersTest(
             DirectoryService.recordType_locations, "gemini", "calendar-proxy-write",
             ("Wilfredo Sanchez",),
         )
 
+    @inlineCallbacks
     def test_groupMembersProxySingleGroup(self):
         """
         DirectoryPrincipalResource.expandedGroupMembers()
         """
-        return self._groupMembersTest(
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "mercury",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_groups, "left_coast",),
+        )
+        self._groupMembersTest(
             DirectoryService.recordType_locations, "mercury", "calendar-proxy-write",
             ("Chris Lecroy", "David Reid", "Wilfredo Sanchez", "West Coast",),
         )
 
+    @inlineCallbacks
     def test_groupMembersProxySingleGroupWithNestedGroups(self):
         """
         DirectoryPrincipalResource.expandedGroupMembers()
         """
-        return self._groupMembersTest(
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "apollo",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_groups, "both_coasts",),
+        )
+        self._groupMembersTest(
             DirectoryService.recordType_locations, "apollo", "calendar-proxy-write",
             ("Chris Lecroy", "David Reid", "Wilfredo Sanchez", "West Coast", "East Coast", "Cyrus Daboo", "Both Coasts",),
         )
 
+    @inlineCallbacks
     def test_groupMembersProxySingleGroupWithNestedRecursiveGroups(self):
         """
         DirectoryPrincipalResource.expandedGroupMembers()
         """
-        return self._groupMembersTest(
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "orion",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_groups, "recursive1_coasts",),
+        )
+        self._groupMembersTest(
             DirectoryService.recordType_locations, "orion", "calendar-proxy-write",
             ("Wilfredo Sanchez", "Cyrus Daboo", "Recursive1 Coasts", "Recursive2 Coasts",),
         )
 
+    @inlineCallbacks
     def test_groupMembersProxySingleGroupWithNonCalendarGroup(self):
         """
         DirectoryPrincipalResource.expandedGroupMembers()
         """
-        ds = []
-
-        ds.append(self._groupMembersTest(
+        yield self._addProxy(
+            (DirectoryService.recordType_resources, "non_calendar_proxy",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_groups, "non_calendar_group",),
+        )
+        yield self._groupMembersTest(
             DirectoryService.recordType_resources, "non_calendar_proxy", "calendar-proxy-write",
             ("Chris Lecroy", "Cyrus Daboo", "Non-calendar group"),
-        ))
-
-        ds.append(self._groupMembershipsTest(
+        )
+        yield self._groupMembershipsTest(
             DirectoryService.recordType_groups, "non_calendar_group", None,
             ("non_calendar_proxy#calendar-proxy-write",),
-        ))
-
-        return DeferredList(ds)
+        )
 
     def test_groupMembersProxyMissingUser(self):
         """
@@ -304,17 +330,46 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
         finally:
             DirectoryPrincipalResource.cacheNotifierFactory = oldCacheNotifier
 
+    @inlineCallbacks
     def test_proxyFor(self):
 
-        return self._proxyForTest(
-            DirectoryService.recordType_users, "wsanchez", 
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "mercury",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_groups, "left_coast",),
+        )
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "gemini",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_users, "wsanchez",),
+        )
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "apollo",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_groups, "both_coasts",),
+        )
+        yield self._addProxy(
+            (DirectoryService.recordType_locations, "orion",),
+            "calendar-proxy-write",
+            (DirectoryService.recordType_groups, "recursive1_coasts",),
+        )
+
+        yield self._proxyForTest(
+            DirectoryService.recordType_users, "wsanchez",
             ("Mecury Seven", "Gemini Twelve", "Apollo Eleven", "Orion", ),
             True
         )
 
+    @inlineCallbacks
     def test_readOnlyProxyFor(self):
 
-        return self._proxyForTest(
+        yield self._addProxy(
+            (DirectoryService.recordType_resources, "non_calendar_proxy",),
+            "calendar-proxy-read",
+            (DirectoryService.recordType_groups, "recursive2_coasts",),
+        )
+
+        yield self._proxyForTest(
             DirectoryService.recordType_users, "wsanchez", 
             ("Non-calendar proxy", ),
             False

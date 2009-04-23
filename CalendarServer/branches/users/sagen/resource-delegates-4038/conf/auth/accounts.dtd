@@ -23,10 +23,10 @@ limitations under the License.
   <!ELEMENT group (uid+, guid, password, name, members, cuaddr*, disable-calendar?)>
     <!ATTLIST group repeat CDATA "1">
 
-  <!ELEMENT resource (uid+, guid, password, name, cuaddr*, auto-schedule?, proxies?, read-only-proxies?)>
+  <!ELEMENT resource (uid+, guid, password, name, cuaddr*)>
     <!ATTLIST resource repeat CDATA "1">
 
-  <!ELEMENT location (uid+, guid, password, name, cuaddr*, auto-schedule?, proxies?, read-only-proxies?)>
+  <!ELEMENT location (uid+, guid, password, name, cuaddr*)>
     <!ATTLIST location repeat CDATA "1">
 
   <!ELEMENT member (#PCDATA)>
@@ -38,8 +38,5 @@ limitations under the License.
   <!ELEMENT name              (#PCDATA)>
   <!ELEMENT cuaddr            (#PCDATA)>
   <!ELEMENT members           (member*)>
-  <!ELEMENT auto-schedule     EMPTY>
   <!ELEMENT disable-calendar  EMPTY>
-  <!ELEMENT proxies           (member*)>
-  <!ELEMENT read-only-proxies (member*)>
 >

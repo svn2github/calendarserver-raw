@@ -42,10 +42,6 @@ limitations under the License.
     <uid>mercury</uid>
     <password>mercury</password>
     <name>Mecury Conference Room, Building 1, 2nd Floor</name>
-    <auto-schedule/>
-    <proxies>
-      <member type="users">test</member>
-    </proxies>
   </location>
 </accounts>
 

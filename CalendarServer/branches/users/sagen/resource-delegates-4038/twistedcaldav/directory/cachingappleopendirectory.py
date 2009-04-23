@@ -659,28 +659,6 @@ class OpenDirectoryService(CachingDirectoryService):
             else:
                 memberGUIDs = ()
 
-            # MOR:
-            # autoSchedule = False
-
-            proxyGUIDs = ()
-            readOnlyProxyGUIDs = ()
-
-            # MOR:
-            # Special case for resources and locations
-            """
-            if recordType in (self.recordType_resources, self.recordType_locations):
-                resourceInfo = value.get(dsattributes.kDSNAttrResourceInfo)
-                if resourceInfo is not None:
-                    try:
-                        autoSchedule, proxy, read_only_proxy = self._parseResourceInfo(resourceInfo, recordGUID, recordType, recordShortName)
-                    except ValueError:
-                        continue
-                    if proxy:
-                        proxyGUIDs = (proxy,)
-                    if read_only_proxy:
-                        readOnlyProxyGUIDs = (read_only_proxy,)
-            """
-
             record = OpenDirectoryRecord(
                 service               = self,
                 recordType            = recordType,
@@ -693,12 +671,8 @@ class OpenDirectoryService(CachingDirectoryService):
                 lastName              = recordLastName,
                 emailAddresses        = recordEmailAddresses,
                 calendarUserAddresses = calendarUserAddresses,
-                # MOR:
-                # autoSchedule          = autoSchedule,
                 enabledForCalendaring = enabledForCalendaring,
                 memberGUIDs           = memberGUIDs,
-                proxyGUIDs            = proxyGUIDs,
-                readOnlyProxyGUIDs    = readOnlyProxyGUIDs,
             )
             self.recordCacheForType(recordType).addRecord(record)
 
@@ -711,10 +685,8 @@ class OpenDirectoryRecord(CachingDirectoryRecord):
         self, service, recordType, guid, nodeName, shortNames, authIDs,
         fullName, firstName, lastName, emailAddresses,
         calendarUserAddresses,
-        # MOR:
-        # autoSchedule,
         enabledForCalendaring,
-        memberGUIDs, proxyGUIDs, readOnlyProxyGUIDs,
+        memberGUIDs,
     ):
         super(OpenDirectoryRecord, self).__init__(
             service               = service,
@@ -727,14 +699,10 @@ class OpenDirectoryRecord(CachingDirectoryRecord):
             lastName              = lastName,
             emailAddresses        = emailAddresses,
             calendarUserAddresses = calendarUserAddresses,
-            # MOR:
-            # autoSchedule          = autoSchedule,
             enabledForCalendaring = enabledForCalendaring,
         )
         self.nodeName = nodeName
         self._memberGUIDs = tuple(memberGUIDs)
-        self._proxyGUIDs = tuple(proxyGUIDs)
-        self._readOnlyProxyGUIDs = tuple(readOnlyProxyGUIDs)
         
         self._groupMembershipGUIDs = None
 
@@ -771,48 +739,6 @@ class OpenDirectoryRecord(CachingDirectoryRecord):
             record = self.service.recordWithGUID(guid)
             if record:
                 yield record
-
-    def proxies(self):
-        if self.recordType not in (self.service.recordType_resources, self.service.recordType_locations):
-            return
-
-        for guid in self._proxyGUIDs:
-            proxyRecord = self.service.recordWithGUID(guid)
-            if proxyRecord is None:
-                self.log_error("No record for proxy in (%s)%s with GUID %s" % (
-                    self.recordType,
-                    self.shortNames[0],
-                    guid,
-                ))
-            else:
-                yield proxyRecord
-
-    def proxyFor(self):
-        result = set()
-        result.update(self.service.proxiesForGUID(self.service.recordType_resources, self.guid))
-        result.update(self.service.proxiesForGUID(self.service.recordType_locations, self.guid))
-        return result
-
-    def readOnlyProxies(self):
-        if self.recordType not in (self.service.recordType_resources, self.service.recordType_locations):
-            return
-
-        for guid in self._readOnlyProxyGUIDs:
-            proxyRecord = self.service.recordWithGUID(guid)
-            if proxyRecord is None:
-                self.log_error("No record for proxy in (%s)%s with GUID %s" % (
-                    self.recordType,
-                    self.shortNames[0],
-                    guid,
-                ))
-            else:
-                yield proxyRecord
-
-    def readOnlyProxyFor(self):
-        result = set()
-        result.update(self.service.readOnlyProxiesForGUID(self.service.recordType_resources, self.guid))
-        result.update(self.service.readOnlyProxiesForGUID(self.service.recordType_locations, self.guid))
-        return result
 
     def verifyCredentials(self, credentials):
         if isinstance(credentials, UsernamePassword):

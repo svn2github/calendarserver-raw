@@ -49,10 +49,7 @@ ELEMENT_EMAIL_ADDRESS     = "email-address"
 ELEMENT_MEMBERS           = "members"
 ELEMENT_MEMBER            = "member"
 ELEMENT_CUADDR            = "cuaddr"
-ELEMENT_AUTOSCHEDULE      = "auto-schedule"
 ELEMENT_DISABLECALENDAR   = "disable-calendar"
-ELEMENT_PROXIES           = "proxies"
-ELEMENT_READ_ONLY_PROXIES = "read-only-proxies"
 
 ATTRIBUTE_REALM           = "realm"
 ATTRIBUTE_REPEAT          = "repeat"
@@ -110,19 +107,6 @@ class XMLAccountsParser(object):
                 if item is not None:
                     item.groups.add(group.shortNames[0])
 
-        def updateProxyFor(proxier):
-            # Update proxy membership
-            for recordType, shortName in proxier.proxies:
-                item = self.items[recordType].get(shortName)
-                if item is not None:
-                    item.proxyFor.add((proxier.recordType, proxier.shortNames[0]))
-
-            # Update read-only proxy membership
-            for recordType, shortName in proxier.readOnlyProxies:
-                item = self.items[recordType].get(shortName)
-                if item is not None:
-                    item.readOnlyProxyFor.add((proxier.recordType, proxier.shortNames[0]))
-
         for child in node._get_childNodes():
             child_name = child._get_localName()
             if child_name is None:
@@ -151,7 +135,6 @@ class XMLAccountsParser(object):
         for records in self.items.itervalues():
             for principal in records.itervalues():
                 updateMembership(principal)
-                updateProxyFor(principal)
                 
 class XMLAccountRecord (object):
     """
@@ -172,15 +155,10 @@ class XMLAccountRecord (object):
         self.members = set()
         self.groups = set()
         self.calendarUserAddresses = set()
-        self.autoSchedule = False
         if recordType == DirectoryService.recordType_groups:
             self.enabledForCalendaring = False
         else:
             self.enabledForCalendaring = True
-        self.proxies = set()
-        self.proxyFor = set()
-        self.readOnlyProxies = set()
-        self.readOnlyProxyFor = set()
 
     def repeat(self, ctr):
         """
@@ -237,10 +215,7 @@ class XMLAccountRecord (object):
         result.emailAddresses = emailAddresses
         result.members = self.members
         result.calendarUserAddresses = calendarUserAddresses
-        result.autoSchedule = self.autoSchedule
         result.enabledForCalendaring = self.enabledForCalendaring
-        result.proxies = self.proxies
-        result.readOnlyProxies = self.readOnlyProxies
         return result
 
     def parseXML(self, node):
@@ -279,27 +254,12 @@ class XMLAccountRecord (object):
             elif child_name == ELEMENT_CUADDR:
                 if child.firstChild is not None:
                     self.calendarUserAddresses.add(child.firstChild.data.encode("utf-8"))
-            elif child_name == ELEMENT_AUTOSCHEDULE:
-                # Only Resources & Locations
-                if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
-                    raise ValueError("<auto-schedule> element only allowed for Resources and Locations: %s" % (child_name,))
-                self.autoSchedule = True
             elif child_name == ELEMENT_DISABLECALENDAR:
                 # FIXME: Not sure I see why this restriction is needed. --wsanchez
                 ## Only Users or Groups
                 #if self.recordType != DirectoryService.recordType_users:
                 #    raise ValueError("<disable-calendar> element only allowed for Users: %s" % (child_name,))
                 self.enabledForCalendaring = False
-            elif child_name == ELEMENT_PROXIES:
-                # Only Resources & Locations
-                if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
-                    raise ValueError("<proxies> element only allowed for Resources and Locations: %s" % (child_name,))
-                self._parseMembers(child, self.proxies)
-            elif child_name == ELEMENT_READ_ONLY_PROXIES:
-                # Only Resources & Locations
-                if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
-                    raise ValueError("<read-only-proxies> element only allowed for Resources and Locations: %s" % (child_name,))
-                self._parseMembers(child, self.readOnlyProxies)
             else:
                 raise RuntimeError("Unknown account attribute: %s" % (child_name,))
 

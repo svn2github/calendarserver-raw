@@ -270,8 +270,6 @@ class DirectoryRecord(LoggingMixIn):
         self, service, recordType, guid, shortNames=(), authIDs=set(), fullName=None,
         firstName=None, lastName=None, emailAddresses=set(),
         calendarUserAddresses=set(),
-        # MOR:
-        # autoSchedule=False,
         enabledForCalendaring=None,
         uid=None,
     ):
@@ -312,8 +310,6 @@ class DirectoryRecord(LoggingMixIn):
         self.emailAddresses        = emailAddresses
         self.enabledForCalendaring = enabledForCalendaring
         self.calendarUserAddresses = calendarUserAddresses
-        # MOR:
-        # self.autoSchedule          = autoSchedule
 
     def __cmp__(self, other):
         if not isinstance(other, DirectoryRecord):
@@ -339,22 +335,8 @@ class DirectoryRecord(LoggingMixIn):
     def groups(self):
         return ()
 
-    def proxies(self):
-        return ()
-
-    def proxyFor(self):
-        return ()
-
-    def readOnlyProxies(self):
-        return ()
-
-    def readOnlyProxyFor(self):
-        return ()
-
     def hasEditableProxyMembership(self):
         return True
-        # MOR:
-        # return self.recordType in (DirectoryService.recordType_users, DirectoryService.recordType_groups)
 
     def verifyCredentials(self, credentials):
         return False
