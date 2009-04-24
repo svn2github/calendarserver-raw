@@ -727,11 +727,6 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         groups = self._getRelatives("groups", infinity=infinity)
 
         if config.EnableProxyPrincipals:
-            # Get any directory specified proxies
-            # MOR:
-            # groups.update(self._getRelatives("proxyFor", proxy='read-write', infinity=infinity))
-            # groups.update(self._getRelatives("readOnlyProxyFor", proxy='read-only', infinity=infinity))
-
             # Get proxy group UIDs and map to principal resources
             proxies = []
             memberships = (yield self._calendar_user_proxy_index().getMemberships(self.principalUID()))

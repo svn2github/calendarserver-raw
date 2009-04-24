@@ -914,7 +914,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
         )
 
         if property.qname() == (caldav_namespace, "auto-schedule"):
-            self.setAutoSchedule(autoSchedule) # MOR: parse the value
+            self.setAutoSchedule(autoSchedule)
 
         return super(CalendarPrincipalResource, self).writeProperty(property, request)
 
@@ -1139,7 +1139,7 @@ class ResourceInfoDatabase(AbstractSQLDatabase, LoggingMixIn):
                 result = (yield self._memcacher.setAutoSchedule(guid, autoSchedule))
             else:
                 # Not in local db
-                # MOR: no value -- what to do, default to False?
+                # Default to False
                 autoSchedule = False
 
         returnValue(autoSchedule)
