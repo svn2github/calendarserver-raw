@@ -1,7 +1,7 @@
-Index: /home/exarkun/Projects/Twisted/branches/dav-take-two-3081-4/twisted/web2/auth/digest.py
+Index: twisted/web2/auth/digest.py
 ===================================================================
---- /home/exarkun/Projects/Twisted/branches/dav-take-two-3081-4/twisted/web2/auth/digest.py	(revision 26741)
-+++ /home/exarkun/Projects/Twisted/branches/dav-take-two-3081-4/twisted/web2/auth/digest.py	(working copy)
+--- twisted/web2/auth/digest.py	(revision 26741)
++++ twisted/web2/auth/digest.py	(working copy)
 @@ -158,6 +158,17 @@
              algo, nonce, nc, cnonce, qop, self.method, uri, None
          )

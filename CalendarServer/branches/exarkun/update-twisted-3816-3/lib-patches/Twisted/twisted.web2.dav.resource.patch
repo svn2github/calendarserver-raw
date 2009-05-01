@@ -1,7 +1,7 @@
-Index: /home/exarkun/Projects/Twisted/branches/dav-take-two-3081-4/twisted/web2/dav/resource.py
+Index: twisted/web2/dav/resource.py
 ===================================================================
---- /home/exarkun/Projects/Twisted/branches/dav-take-two-3081-4/twisted/web2/dav/resource.py	(revision 26741)
-+++ /home/exarkun/Projects/Twisted/branches/dav-take-two-3081-4/twisted/web2/dav/resource.py	(working copy)
+--- twisted/web2/dav/resource.py	(revision 26741)
++++ twisted/web2/dav/resource.py	(working copy)
 @@ -1888,7 +1888,7 @@
          # If this is a collection and the URI doesn't end in "/", redirect.
          #
