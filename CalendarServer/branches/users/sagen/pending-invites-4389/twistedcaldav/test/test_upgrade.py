@@ -23,6 +23,7 @@ from twistedcaldav.upgrade import UpgradeError, upgradeData, updateFreeBusySet
 from twistedcaldav.test.util import TestCase
 from calendarserver.tools.util import getDirectory
 from twisted.web2.dav import davxml
+from twisted.internet.defer import inlineCallbacks
 
 import hashlib
 import os, zlib, cPickle
@@ -112,6 +113,7 @@ class ProxyDBUpgradeTests(TestCase):
         proxyDB = CalendarUserProxyDatabase(self.existingdataroot)
         proxyDB._db()
 
+    @inlineCallbacks
     def test_normalUpgrade(self):
         """
         Test the behavior of normal upgrade from old server to new.
@@ -129,13 +131,14 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertTrue(os.path.exists(os.path.join(config.DocumentRoot, "principals", CalendarUserProxyDatabase.dbOldFilename)))
         self.assertFalse(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
-        upgradeData(config)
+        yield upgradeData(config)
         
         # Check post-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals",)))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
 
+    @inlineCallbacks
     def test_noUpgrade(self):
         """
         Test the behavior of running on a new server (i.e. no upgrade needed).
@@ -150,13 +153,14 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals")))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
-        upgradeData(config)
+        yield upgradeData(config)
         
         # Check post-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals",)))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
 
+    @inlineCallbacks
     def test_freeBusyUpgrade(self):
         """
         Test the updating of calendar-free-busy-set xattrs on inboxes
@@ -220,7 +224,7 @@ class ProxyDBUpgradeTests(TestCase):
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/nonexistent/calendar</href>\r\n</calendar-free-busy-set>\r\n"
         self.assertRaises(UpgradeError, updateFreeBusySet, value, directory)
 
-
+    @inlineCallbacks
     def test_calendarsUpgradeWithTypes(self):
         """
         Verify that calendar homes in the /calendars/<type>/<shortname>/ form
@@ -354,13 +358,14 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
         # Ensure that repeating the process doesn't change anything
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
+    @inlineCallbacks
     def test_calendarsUpgradeWithUIDs(self):
         """
         Verify that calendar homes in the /calendars/__uids__/<guid>/ form
@@ -462,13 +467,14 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
         # Ensure that repeating the process doesn't change anything
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
+    @inlineCallbacks
     def test_calendarsUpgradeWithUIDsMultilevel(self):
         """
         Verify that calendar homes in the /calendars/__uids__/XX/YY/<guid>/
@@ -586,14 +592,15 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
         # Ensure that repeating the process doesn't change anything
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
 
+    @inlineCallbacks
     def test_calendarsUpgradeWithNoChange(self):
         """
         Verify that calendar homes in the /calendars/__uids__/XX/YY/<guid>/
@@ -711,12 +718,13 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
 
 
 
+    @inlineCallbacks
     def test_calendarsUpgradeWithError(self):
         """
         Verify that a problem with one resource doesn't stop the process, but
@@ -810,8 +818,149 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertRaises(UpgradeError, upgradeData, config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
+
+
+    @inlineCallbacks
+    def test_pendingInvitesUpgrade(self):
+        """
+        Verify that pending invites (sitting in inboxes) are processed by
+        the implicit scheduler during upgrade
+        """
+
+        self.setUpXMLDirectory()
+        directory = getDirectory()
+
+        before = {
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
+                            {
+                                "calendar" :
+                                { },
+                                "inbox" :
+                                {
+                                    "b12d602b9f43b53fa4de27d3dea86fcd.ics" :
+                                    {
+                                        "@contents" : event03_inbox,
+                                    },
+                                    "@xattrs" :
+                                    {
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                            "64230DAD-0BDE-4508-8C77-15F0CA5C8DD1" :
+                            {
+                                "calendar" :
+                                {
+                                    "F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6.ics" :
+                                    {
+                                        "@contents" : event03_orig,
+                                    },
+                                },
+                                "inbox" :
+                                {
+                                    "@xattrs" :
+                                    {
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/64230DAD-0BDE-4508-8C77-15F0CA5C8DD1/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : "",
+            }
+        }
+
+
+        after = {
+            "calendars" :
+            {
+                "__uids__" :
+                {
+                    "64" :
+                    {
+                        "23" :
+                        {
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935E" :
+                            {
+                                "calendar" :
+                                {
+                                    "F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6.ics" :
+                                    {
+                                        "@contents" : event03_orig,
+                                    },
+                                },
+                                "inbox" :
+                                {
+                                    "b12d602b9f43b53fa4de27d3dea86fcd.ics" :
+                                    {
+                                        "@contents" : event03_inbox,
+                                    },
+                                    "@xattrs" :
+                                    {
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                            "64230DAD-0BDE-4508-8C77-15F0CA5C8DD1" :
+                            {
+                                "calendar" :
+                                {
+                                    "F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6.ics" :
+                                    {
+                                        "@contents" : event03_orig,
+                                    },
+                                },
+                                "inbox" :
+                                {
+                                    "@xattrs" :
+                                    {
+                                        freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/64230DAD-0BDE-4508-8C77-15F0CA5C8DD1/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            CalendarUserProxyDatabase.dbFilename :
+            {
+                "@contents" : None,
+            },
+            MailGatewayTokensDatabase.dbFilename :
+            {
+                "@contents" : None,
+            },
+            ResourceInfoDatabase.dbFilename :
+            {
+                "@contents" : None,
+            }
+        }
+
+
+        root = self.createHierarchy(before)
+
+        config.DocumentRoot = root
+        config.DataRoot = root
+
+        yield upgradeData(config)
+
+        self.assertTrue(self.verifyHierarchy(root, after))
+
+
+    @inlineCallbacks
     def test_migrateResourceInfo(self):
-        # Fake getResourceInfo( )
 
         assignments = {
             'guid1' : (False, None, None),
@@ -853,7 +1002,7 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
         calendarUserProxyDatabase = CalendarUserProxyDatabase(root)
@@ -966,6 +1115,90 @@ END:VCALENDAR
 event02_broken = "Invalid!"
 
 event01_after_md5 = hashlib.md5(event01_after).hexdigest()
+
+event03_inbox = """BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+METHOD:REQUEST
+PRODID:-//Apple Inc.//iCal 3.0//EN
+BEGIN:VTIMEZONE
+TZID:US/Pacific
+BEGIN:STANDARD
+DTSTART:20071104T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZNAME:PST
+TZOFFSETFROM:-0700
+TZOFFSETTO:-0800
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:20070311T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZNAME:PDT
+TZOFFSETFROM:-0800
+TZOFFSETTO:-0700
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6
+DTSTART;TZID=US/Pacific:20090907T160000
+DTEND;TZID=US/Pacific:20090907T180000
+ATTENDEE;CN=Wilfredo Sanchez;CUTYPE=INDIVIDUAL;EMAIL=wsanchez@example.com;
+ PARTSTAT=NEEDS-ACTION;ROLE=REQ-PARTICIPANT;RSVP=TRUE:urn:uuid:6423F94A-6B7
+ 6-4A3A-815B-D52CFD77935D
+ATTENDEE;CN=Morgen Sagen;EMAIL=sagen@example.com;PARTSTAT=ACCEPTED:urn:uui
+ d:64230DAD-0BDE-4508-8C77-15F0CA5C8DD1
+CREATED:20090514T215838Z
+DTSTAMP:20090514T215856Z
+ORGANIZER;CN=Morgen Sagen;EMAIL=sagen@example.com:urn:uuid:64230DAD-0BDE-4
+ 508-8C77-15F0CA5C8DD1
+SEQUENCE:9
+SUMMARY:Pending Invitation
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n")
+
+event03_orig = """BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+PRODID:-//Apple Inc.//iCal 3.0//EN
+BEGIN:VTIMEZONE
+TZID:US/Pacific
+BEGIN:STANDARD
+DTSTART:20071104T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZNAME:PST
+TZOFFSETFROM:-0700
+TZOFFSETTO:-0800
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:20070311T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZNAME:PDT
+TZOFFSETFROM:-0800
+TZOFFSETTO:-0700
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6
+DTSTART;TZID=US/Pacific:20090907T160000
+DTEND;TZID=US/Pacific:20090907T180000
+ATTENDEE;CN=Wilfredo Sanchez;CUTYPE=INDIVIDUAL;EMAIL=wsanchez@example.com;
+ PARTSTAT=NEEDS-ACTION;ROLE=REQ-PARTICIPANT;RSVP=TRUE:urn:uuid:6423F94A-6B7
+ 6-4A3A-815B-D52CFD77935D
+ATTENDEE;CN=Morgen Sagen;EMAIL=sagen@example.com;PARTSTAT=ACCEPTED:urn:uui
+ d:64230DAD-0BDE-4508-8C77-15F0CA5C8DD1
+CREATED:20090514T215838Z
+DTSTAMP:20090514T215856Z
+ORGANIZER;CN=Morgen Sagen;EMAIL=sagen@example.com:urn:uuid:64230DAD-0BDE-4
+ 508-8C77-15F0CA5C8DD1
+SEQUENCE:9
+SUMMARY:Pending Invitation
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n")
+
 
 def isValidCTag(value):
     """

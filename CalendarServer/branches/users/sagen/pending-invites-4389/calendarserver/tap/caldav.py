@@ -39,7 +39,8 @@ from twisted.python.log import FileLogObserver
 from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedClass
 from twisted.plugin import IPlugin
-from twisted.internet.reactor import callLater
+from twisted.internet.defer import Deferred, inlineCallbacks
+from twisted.internet.reactor import callLater, addSystemEventTrigger
 from twisted.internet.process import ProcessExitedAlready
 from twisted.internet.protocol import Protocol, Factory
 from twisted.internet.address import IPv4Address
@@ -360,17 +361,21 @@ class CalDAVServiceMaker (LoggingMixIn):
 
             if config.ProcessType in ('Combined', 'Single'):
 
-                # Process localization string files
-                processLocalizationFiles(config.Localization)
+                @inlineCallbacks
+                def beforeStartup():
+                    # Process localization string files
+                    processLocalizationFiles(config.Localization)
 
-                # Now do any on disk upgrades we might need.
-                # Memcache isn't running at this point, so temporarily change
-                # the config so nobody tries to talk to it while upgrading
-                memcacheSetting = config.Memcached.ClientEnabled
-                config.Memcached.ClientEnabled = False
-                upgradeData(config)
-                config.Memcached.ClientEnabled = memcacheSetting
+                    # Now do any on disk upgrades we might need.
+                    # Memcache isn't running at this point, so temporarily
+                    # change the config so nobody tries to talk to it while
+                    # upgrading
+                    memcacheSetting = config.Memcached.ClientEnabled
+                    config.Memcached.ClientEnabled = False
+                    yield upgradeData(config)
+                    config.Memcached.ClientEnabled = memcacheSetting
 
+                addSystemEventTrigger('before', 'startup', beforeStartup)
 
             service = serviceMethod(options)
 
@@ -1281,20 +1286,9 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
             )
 
         self.active = 1
-        delay = 0
-
-        if config.MultiProcess.StaggeredStartup.Enabled:
-            delay_interval = config.MultiProcess.StaggeredStartup.Interval
-        else:
-            delay_interval = 0
 
         for name in self.processes.keys():
-            if name.startswith("caldav"):
-                when = delay
-                delay += delay_interval
-            else:
-                when = 0
-            callLater(when, self.startProcess, name)
+            addSystemEventTrigger('after', 'startup', self.startProcess, name)
 
         self.consistency = callLater(
             self.consistencyDelay,

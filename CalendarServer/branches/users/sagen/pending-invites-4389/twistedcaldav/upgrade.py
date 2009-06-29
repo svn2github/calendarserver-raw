@@ -18,6 +18,7 @@ from __future__ import with_statement
 
 from twisted.web2.dav.fileop import rmdir
 from twisted.web2.dav import davxml
+from twisted.internet.defer import inlineCallbacks, returnValue
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.directory.resourceinfo import ResourceInfoDatabase
@@ -25,8 +26,10 @@ from twistedcaldav.mail import MailGatewayTokensDatabase
 from twistedcaldav.log import Logger
 from twistedcaldav.ical import Component
 from twistedcaldav import caldavxml
+from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
+from twistedcaldav.scheduling.scheduler import DirectScheduler
 from calendarserver.tools.util import getDirectory
-import xattr, os, zlib, hashlib, datetime, pwd, grp, shutil
+import xattr, os, zlib, hashlib, datetime, pwd, grp
 from zlib import compress
 from cPickle import loads as unpickle, UnpicklingError
 
@@ -58,6 +61,7 @@ def getCalendarServerIDs(config):
 # Upconverts data from any calendar server version prior to data format 1
 #
 
+@inlineCallbacks
 def upgrade_to_1(config):
 
     errorOccurred = False
@@ -197,6 +201,45 @@ def upgrade_to_1(config):
 
         return errorOccurred
 
+    class fakeRequest(object):
+        pass
+
+    class fakeResource(object):
+        pass
+
+    @inlineCallbacks
+    def processInbox(inboxPath, uuid, directory):
+
+        for ics in os.listdir(inboxPath):
+
+            cua = "urn:uuid:%s" % (uuid,)
+            ownerPrincipal = directory.principalForCalendarUserAddress(cua)
+            owner = LocalCalendarUser(cua, ownerPrincipal)
+
+            icsPath = os.path.join(inboxPath, ics)
+            log.debug("Processing inbox item: %s" % (icsPath,))
+            with open(icsPath) as icsFile:
+                data = icsFile.read()
+                calendar = Component.fromString(data)
+
+                try:
+                    method = calendar.propertyValue("METHOD")
+                except ValueError:
+                    returnValue(None)
+
+                if method == "REPLY":
+                    # originator is attendee sending reply
+                    originator = calendar.getAttendees()
+                else:
+                    # originator is the organizer
+                    originator = calendar.getOrganizer()
+
+            recipients = (owner,)
+            scheduler = DirectScheduler(fakeRequest(), fakeResource())
+            result = (yield scheduler.doSchedulingViaPUT(originator, recipients,
+                calendar, internal_request=False))
+
+        returnValue(None)
 
     def doProxyDatabaseMoveUpgrade(config, uid=-1, gid=-1):
 
@@ -391,6 +434,23 @@ def upgrade_to_1(config):
 
                 log.warn("Done processing calendar homes")
 
+
+            # Process pending invitations
+            for first in os.listdir(uidHomes):
+                if len(first) == 2:
+                    firstPath = os.path.join(uidHomes, first)
+                    for second in os.listdir(firstPath):
+                        if len(second) == 2:
+                            secondPath = os.path.join(firstPath, second)
+                            for home in os.listdir(secondPath):
+                                homePath = os.path.join(secondPath, home)
+                                inboxPath = os.path.join(homePath, "inbox")
+                                if os.path.exists(inboxPath):
+                                    yield processInbox(inboxPath,
+                                        home, directory)
+
+
+
     migrateResourceInfo(config, directory, uid, gid)
     createMailTokensDatabase(config, uid, gid)
 
@@ -406,6 +466,7 @@ upgradeMethods = [
     (1, upgrade_to_1),
 ]
 
+@inlineCallbacks
 def upgradeData(config):
 
     docRoot = config.DocumentRoot
@@ -426,13 +487,15 @@ def upgradeData(config):
 
     uid, gid = getCalendarServerIDs(config)
 
+    log.warn("UpgradeData: calendar data is at version %d" % (onDiskVersion,))
     for version, method in upgradeMethods:
         if onDiskVersion < version:
-            log.warn("Upgrading to version %d" % (version,))
-            method(config)
+            log.warn("UpgradeData: upgrading to version %d" % (version,))
+            yield method(config)
             with open(versionFilePath, "w") as verFile:
                 verFile.write(str(version))
             os.chown(versionFilePath, uid, gid)
+    log.warn("UpgradeData: complete")
 
 
 class UpgradeError(RuntimeError):

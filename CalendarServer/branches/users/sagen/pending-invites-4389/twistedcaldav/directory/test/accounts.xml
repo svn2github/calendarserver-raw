@@ -58,6 +58,14 @@ limitations under the License.
     <cuaddr>mailto:dreid@example.com</cuaddr>
   </user>
   <user>
+    <uid>sagen</uid>
+    <guid>64230DAD-0BDE-4508-8C77-15F0CA5C8DD1</guid>
+    <password>negas</password>
+    <name>Morgen Sagen</name>
+    <email-address>sagen@example.com</email-address>
+    <cuaddr>mailto:sagen@example.com</cuaddr>
+  </user>
+  <user>
     <uid>nocalendar</uid>
     <guid>543D28BA-F74F-4D5F-9243-B3E3A61171E5</guid>
     <password>radnelacon</password>
