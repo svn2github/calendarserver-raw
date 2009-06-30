@@ -18,7 +18,7 @@ from __future__ import with_statement
 
 from twisted.web2.dav.fileop import rmdir
 from twisted.web2.dav import davxml
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.directory.resourceinfo import ResourceInfoDatabase
@@ -28,6 +28,7 @@ from twistedcaldav.ical import Component
 from twistedcaldav import caldavxml
 from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.scheduling.scheduler import DirectScheduler
+from twistedcaldav.static import CalDAVFile
 from calendarserver.tools.util import getDirectory
 import xattr, os, zlib, hashlib, datetime, pwd, grp
 from zlib import compress
@@ -201,11 +202,20 @@ def upgrade_to_1(config):
 
         return errorOccurred
 
-    class fakeRequest(object):
-        pass
+    class FakeRequest(object):
 
-    class fakeResource(object):
-        pass
+        def __init__(self, root):
+            self.root = root
+
+        def locateResource(self, url):
+            url = url.strip("/")
+            return succeed(CalDAVFile(os.path.join(self.root, url)))
+
+        def _rememberResource(self, resource, url):
+            pass
+
+        def urlForResource(self, resource):
+            return resource.url()
 
     @inlineCallbacks
     def processInbox(inboxPath, uuid, directory):
@@ -214,7 +224,8 @@ def upgrade_to_1(config):
 
             cua = "urn:uuid:%s" % (uuid,)
             ownerPrincipal = directory.principalForCalendarUserAddress(cua)
-            owner = LocalCalendarUser(cua, ownerPrincipal)
+            owner = LocalCalendarUser(cua, ownerPrincipal,
+                CalDAVFile(inboxPath), ownerPrincipal.scheduleInboxURL())
 
             icsPath = os.path.join(inboxPath, ics)
             log.debug("Processing inbox item: %s" % (icsPath,))
@@ -235,7 +246,9 @@ def upgrade_to_1(config):
                     originator = calendar.getOrganizer()
 
             recipients = (owner,)
-            scheduler = DirectScheduler(fakeRequest(), fakeResource())
+            resource = CalDAVFile(icsPath)
+            scheduler = DirectScheduler(FakeRequest(config.DocumentRoot),
+                resource)
             result = (yield scheduler.doSchedulingViaPUT(originator, recipients,
                 calendar, internal_request=False))
 
