@@ -31,6 +31,8 @@ import os, zlib, cPickle
 freeBusyAttr = "WebDAV:{urn:ietf:params:xml:ns:caldav}calendar-free-busy-set"
 cTagAttr = "WebDAV:{http:%2F%2Fcalendarserver.org%2Fns%2F}getctag"
 md5Attr = "WebDAV:{http:%2F%2Ftwistedmatrix.com%2Fxml_namespace%2Fdav%2F}getcontentmd5"
+resourceTypeAttr = "WebDAV:{DAV:}resourcetype"
+defaultCalendarAttr = "WebDAV:{urn:ietf:params:xml:ns:caldav}schedule-default-calendar-URL"
 
 
 class ProxyDBUpgradeTests(TestCase):
@@ -842,7 +844,12 @@ class ProxyDBUpgradeTests(TestCase):
                             "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
                             {
                                 "calendar" :
-                                { },
+                                {
+                                    "@xattrs" :
+                                    {
+                                        resourceTypeAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?><resourcetype xmlns='DAV:'><collection/><calendar xmlns='urn:ietf:params:xml:ns:caldav'/></resourcetype>\r\n"),
+                                    },
+                                },
                                 "inbox" :
                                 {
                                     "b12d602b9f43b53fa4de27d3dea86fcd.ics" :
@@ -859,6 +866,10 @@ class ProxyDBUpgradeTests(TestCase):
                             {
                                 "calendar" :
                                 {
+                                    "@xattrs" :
+                                    {
+                                        resourceTypeAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?><resourcetype xmlns='DAV:'><collection/><calendar xmlns='urn:ietf:params:xml:ns:caldav'/></resourcetype>\r\n"),
+                                    },
                                     "F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6.ics" :
                                     {
                                         "@contents" : event03_orig,
@@ -884,6 +895,10 @@ class ProxyDBUpgradeTests(TestCase):
 
 
         after = {
+            ".calendarserver_version" :
+            {
+                "@contents" : "1",
+            },
             "calendars" :
             {
                 "__uids__" :
@@ -892,13 +907,17 @@ class ProxyDBUpgradeTests(TestCase):
                     {
                         "23" :
                         {
-                            "6423F94A-6B76-4A3A-815B-D52CFD77935E" :
+                            "6423F94A-6B76-4A3A-815B-D52CFD77935D" :
                             {
                                 "calendar" :
                                 {
-                                    "F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6.ics" :
+                                    "*.ics" :
                                     {
-                                        "@contents" : event03_orig,
+                                        "@contents" : None,
+                                    },
+                                    ".db.sqlite" :
+                                    {
+                                        "@contents" : None,
                                     },
                                 },
                                 "inbox" :
@@ -910,6 +929,16 @@ class ProxyDBUpgradeTests(TestCase):
                                     "@xattrs" :
                                     {
                                         freeBusyAttr : zlib.compress("<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/6423F94A-6B76-4A3A-815B-D52CFD77935D/calendar/</href>\r\n</calendar-free-busy-set>\r\n"),
+                                        cTagAttr : "*",
+                                        defaultCalendarAttr : "*",
+                                    },
+                                    ".db.sqlite" :
+                                    {
+                                        "@contents" : None,
+                                    },
+                                    "*.ics" :
+                                    {
+                                        "@contents" : None,
                                     },
                                 },
                             },
@@ -954,8 +983,10 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
+        # import pdb; pdb.set_trace()
         yield upgradeData(config)
 
+        # import pdb; pdb.set_trace()
         self.assertTrue(self.verifyHierarchy(root, after))
 
 

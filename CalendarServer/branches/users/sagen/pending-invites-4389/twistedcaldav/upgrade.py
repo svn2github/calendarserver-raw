@@ -18,6 +18,8 @@ from __future__ import with_statement
 
 from twisted.web2.dav.fileop import rmdir
 from twisted.web2.dav import davxml
+from twisted.web2.server import NoURLForResourceError
+from twisted.web2.http_headers import Headers
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
@@ -28,7 +30,7 @@ from twistedcaldav.ical import Component
 from twistedcaldav import caldavxml
 from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.scheduling.scheduler import DirectScheduler
-from twistedcaldav.static import CalDAVFile
+from twistedcaldav.static import ScheduleInboxFile, CalendarHomeUIDProvisioningFile, CalendarHomeProvisioningFile, CalendarHomeFile
 from calendarserver.tools.util import getDirectory
 import xattr, os, zlib, hashlib, datetime, pwd, grp
 from zlib import compress
@@ -204,51 +206,81 @@ def upgrade_to_1(config):
 
     class FakeRequest(object):
 
-        def __init__(self, root):
+        def __init__(self, calendarRootFile, root):
+            self.calendarRootFile = calendarRootFile
             self.root = root
+            self._resourcesByURL = {}
+            self._urlsByResource = {}
+            self.headers = Headers()
 
+
+        @inlineCallbacks
+        def _getChild(self, resource, segments):
+            if not segments:
+                returnValue(resource)
+
+            child, remaining = (yield resource.locateChild(self, segments))
+            returnValue((yield self._getChild(child, remaining)))
+
+        @inlineCallbacks
         def locateResource(self, url):
             url = url.strip("/")
-            return succeed(CalDAVFile(os.path.join(self.root, url)))
+            segments = url.split("/")
+            if segments[0] == "calendars":
+                resource = self.calendarRootFile
+                child = (yield self._getChild(resource, segments[1:]))
+                resource = child
+            else:
+                resource = None
+
+            if resource:
+                self._rememberResource(resource, url)
+            returnValue(resource)
 
         def _rememberResource(self, resource, url):
-            pass
+            self._resourcesByURL[url] = resource
+            self._urlsByResource[resource] = url
+            return resource
 
         def urlForResource(self, resource):
-            return resource.url()
+            url = self._urlsByResource.get(resource, None)
+            if url is None:
+                raise NoURLForResourceError(resource)
+            return url
+
 
     @inlineCallbacks
-    def processInbox(inboxPath, uuid, directory):
+    def processInbox(uidDir, homeFile, inboxFile, uuid, directory):
 
-        for ics in os.listdir(inboxPath):
+        for name in inboxFile.listChildren():
+            icsFile = inboxFile.getChild(name)
 
             cua = "urn:uuid:%s" % (uuid,)
             ownerPrincipal = directory.principalForCalendarUserAddress(cua)
             owner = LocalCalendarUser(cua, ownerPrincipal,
-                CalDAVFile(inboxPath), ownerPrincipal.scheduleInboxURL())
+                inboxFile, ownerPrincipal.scheduleInboxURL())
 
-            icsPath = os.path.join(inboxPath, ics)
-            log.debug("Processing inbox item: %s" % (icsPath,))
-            with open(icsPath) as icsFile:
-                data = icsFile.read()
-                calendar = Component.fromString(data)
+            # icsPath = os.path.join(inboxPath, ics)
+            # log.debug("Processing inbox item: %s" % (icsPath,))
+            data = icsFile.iCalendarText()
+            calendar = Component.fromString(data)
+            try:
+                method = calendar.propertyValue("METHOD")
+            except ValueError:
+                returnValue(None)
 
-                try:
-                    method = calendar.propertyValue("METHOD")
-                except ValueError:
-                    returnValue(None)
-
-                if method == "REPLY":
-                    # originator is attendee sending reply
-                    originator = calendar.getAttendees()
-                else:
-                    # originator is the organizer
-                    originator = calendar.getOrganizer()
+            if method == "REPLY":
+                # originator is attendee sending reply
+                originator = calendar.getAttendees()
+            else:
+                # originator is the organizer
+                originator = calendar.getOrganizer()
+            originatorPrincipal = directory.principalForCalendarUserAddress(originator)
+            originator = LocalCalendarUser(originator, originatorPrincipal)
 
             recipients = (owner,)
-            resource = CalDAVFile(icsPath)
-            scheduler = DirectScheduler(FakeRequest(config.DocumentRoot),
-                resource)
+            scheduler = DirectScheduler(FakeRequest(uidDir.parent, config.DocumentRoot),
+                icsFile)
             result = (yield scheduler.doSchedulingViaPUT(originator, recipients,
                 calendar, internal_request=False))
 
@@ -449,18 +481,31 @@ def upgrade_to_1(config):
 
 
             # Process pending invitations
+            uidDir = CalendarHomeUIDProvisioningFile(uidHomes,
+                CalendarHomeProvisioningFile(calRoot, directory, "/calendars/"))
+
             for first in os.listdir(uidHomes):
                 if len(first) == 2:
                     firstPath = os.path.join(uidHomes, first)
+
                     for second in os.listdir(firstPath):
                         if len(second) == 2:
                             secondPath = os.path.join(firstPath, second)
-                            for home in os.listdir(secondPath):
-                                homePath = os.path.join(secondPath, home)
-                                inboxPath = os.path.join(homePath, "inbox")
-                                if os.path.exists(inboxPath):
-                                    yield processInbox(inboxPath,
-                                        home, directory)
+
+                            for uuid in os.listdir(secondPath):
+                                record = directory.recordWithUID(uuid)
+                                if not record:
+                                    continue
+
+                                homePath = os.path.join(secondPath, uuid)
+                                homeFile = CalendarHomeFile(homePath, uidDir,
+                                    record)
+                                inboxFile = homeFile.getChild("inbox")
+                                if inboxFile:
+                                    # inboxPath = os.path.join(homePath, "inbox")
+                                    # if os.path.exists(inboxPath):
+                                    yield processInbox(uidDir, homeFile, inboxFile, uuid,
+                                        directory)
 
 
 

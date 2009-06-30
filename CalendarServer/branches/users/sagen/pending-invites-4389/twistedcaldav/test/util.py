@@ -79,10 +79,15 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
         def verifyChildren(parent, subStructure):
 
             actual = set([child for child in os.listdir(parent)])
+            wildcards = []
 
             for childName, childStructure in subStructure.iteritems():
 
                 if childName.startswith("@"):
+                    continue
+
+                if childName.startswith("*"):
+                    wildcards.append((childName[1:], childStructure))
                     continue
 
                 if childName in actual:
@@ -116,6 +121,9 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
                     xattrs = childStructure["@xattrs"]
                     for attr, value in xattrs.iteritems():
                         if isinstance(value, str):
+                            if value == "*":
+                                continue
+
                             try:
                                 if xattr.getxattr(childPath, attr) != value:
                                     print "Xattr mismatch:", childPath, attr
@@ -130,6 +138,26 @@ class TestCase(twisted.web2.dav.test.util.TestCase):
                     for attr, value in xattr.xattr(childPath).iteritems():
                         if attr not in xattrs:
                             return False
+
+            if actual:
+                for childName in list(actual):
+                    childPath = os.path.join(parent, childName)
+                    for extension, childStructure in wildcards:
+                        if childName.endswith(extension):
+                            actual.remove(childName)
+                            if childStructure.has_key("@contents"):
+                                # This is a file
+                                if childStructure["@contents"] is None:
+                                    # We don't care about the contents
+                                    pass
+                                else:
+                                    with open(childPath) as child:
+                                        contents = child.read()
+                                        if contents != childStructure["@contents"]:
+                                            print "Contents mismatch:", childPath
+                                            print "Expected:\n%s\n\nActual:\n%s\n" % (childStructure["@contents"], contents)
+                                            return False
+
 
             if actual:
                 # There are unexpected children
