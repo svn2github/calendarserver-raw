@@ -279,10 +279,15 @@ def upgrade_to_1(config):
             originator = LocalCalendarUser(originator, originatorPrincipal)
 
             recipients = (owner,)
-            scheduler = DirectScheduler(FakeRequest(uidDir.parent, config.DocumentRoot),
+            scheduler = DirectScheduler(
+                FakeRequest(uidDir.parent, config.DocumentRoot),
                 icsFile)
             result = (yield scheduler.doSchedulingViaPUT(originator, recipients,
                 calendar, internal_request=False))
+
+            if os.path.exists(icsFile.fp.path):
+                os.remove(icsFile.fp.path)
+
 
         returnValue(None)
 
@@ -480,14 +485,13 @@ def upgrade_to_1(config):
                 log.warn("Done processing calendar homes")
 
 
-            # Process pending invitations
+            # Process pending invitations - unscheduled inbox items
+
             uidDir = CalendarHomeUIDProvisioningFile(uidHomes,
                 CalendarHomeProvisioningFile(calRoot, directory, "/calendars/"))
-
             for first in os.listdir(uidHomes):
                 if len(first) == 2:
                     firstPath = os.path.join(uidHomes, first)
-
                     for second in os.listdir(firstPath):
                         if len(second) == 2:
                             secondPath = os.path.join(firstPath, second)
@@ -504,8 +508,8 @@ def upgrade_to_1(config):
                                 if inboxFile:
                                     # inboxPath = os.path.join(homePath, "inbox")
                                     # if os.path.exists(inboxPath):
-                                    yield processInbox(uidDir, homeFile, inboxFile, uuid,
-                                        directory)
+                                    yield processInbox(uidDir, homeFile,
+                                        inboxFile, uuid, directory)
 
 
 

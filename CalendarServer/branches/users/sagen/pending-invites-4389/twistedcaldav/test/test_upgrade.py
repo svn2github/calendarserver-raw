@@ -162,7 +162,6 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
 
-    @inlineCallbacks
     def test_freeBusyUpgrade(self):
         """
         Test the updating of calendar-free-busy-set xattrs on inboxes
@@ -817,7 +816,15 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        self.assertRaises(UpgradeError, upgradeData, config)
+        try:
+            yield upgradeData(config)
+        except UpgradeError:
+            pass
+        except:
+            self.fail("Didn't raise UpgradeError")
+        else:
+            self.fail("Didn't raise UpgradeError -- or any exception")
+
         self.assertTrue(self.verifyHierarchy(root, after))
 
 
@@ -913,7 +920,7 @@ class ProxyDBUpgradeTests(TestCase):
                                 {
                                     "*.ics" :
                                     {
-                                        "@contents" : None,
+                                        "@contents" : event03_implicit,
                                     },
                                     ".db.sqlite" :
                                     {
@@ -922,7 +929,7 @@ class ProxyDBUpgradeTests(TestCase):
                                 },
                                 "inbox" :
                                 {
-                                    "b12d602b9f43b53fa4de27d3dea86fcd.ics" :
+                                    "*.ics" :
                                     {
                                         "@contents" : event03_inbox,
                                     },
@@ -933,10 +940,6 @@ class ProxyDBUpgradeTests(TestCase):
                                         defaultCalendarAttr : "*",
                                     },
                                     ".db.sqlite" :
-                                    {
-                                        "@contents" : None,
-                                    },
-                                    "*.ics" :
                                     {
                                         "@contents" : None,
                                     },
@@ -983,10 +986,8 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        # import pdb; pdb.set_trace()
         yield upgradeData(config)
 
-        # import pdb; pdb.set_trace()
         self.assertTrue(self.verifyHierarchy(root, after))
 
 
@@ -1230,6 +1231,47 @@ END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n")
 
+event03_implicit = """BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+PRODID:-//Apple Inc.//iCal 3.0//EN
+BEGIN:VTIMEZONE
+TZID:US/Pacific
+BEGIN:STANDARD
+DTSTART:20071104T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZNAME:PST
+TZOFFSETFROM:-0700
+TZOFFSETTO:-0800
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:20070311T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZNAME:PDT
+TZOFFSETFROM:-0800
+TZOFFSETTO:-0700
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:F18BA9DA-B1BA-4C94-9CB7-7E5BB7E30AE6
+DTSTART;TZID=US/Pacific:20090907T160000
+DTEND;TZID=US/Pacific:20090907T180000
+ATTENDEE;CN=Wilfredo Sanchez;CUTYPE=INDIVIDUAL;EMAIL=wsanchez@example.com;
+ PARTSTAT=NEEDS-ACTION;ROLE=REQ-PARTICIPANT;RSVP=TRUE:urn:uuid:6423F94A-6B7
+ 6-4A3A-815B-D52CFD77935D
+ATTENDEE;CN=Morgen Sagen;EMAIL=sagen@example.com;PARTSTAT=ACCEPTED:urn:uui
+ d:64230DAD-0BDE-4508-8C77-15F0CA5C8DD1
+CREATED:20090514T215838Z
+DTSTAMP:20090514T215856Z
+ORGANIZER;CN=Morgen Sagen;EMAIL=sagen@example.com:urn:uuid:64230DAD-0BDE-4
+ 508-8C77-15F0CA5C8DD1
+SEQUENCE:9
+SUMMARY:Pending Invitation
+TRANSP:TRANSPARENT
+X-APPLE-NEEDS-REPLY:TRUE
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n")
 
 def isValidCTag(value):
     """
