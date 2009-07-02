@@ -298,15 +298,8 @@ def upgrade_to_1(config):
             os.mkdir(incomingDir)
         os.chown(incomingDir, uid, gid)
 
-        processingDir = os.path.join(taskDir, "processing")
-        if not os.path.exists(processingDir):
-            os.mkdir(processingDir)
-        os.chown(processingDir, uid, gid)
+        return incomingDir
 
-        # cause inboxes to get processed
-        jobFile = os.path.join(incomingDir, "processinboxes")
-        with open(jobFile, "w") as out:
-            out.write("foo")
 
 
     directory = getDirectory()
@@ -376,8 +369,10 @@ def upgrade_to_1(config):
                     os.rmdir(dirPath)
 
 
-            # Count how many calendar homes we'll be processing
+            # Count how many calendar homes we'll be processing, and build
+            # list of pending inbox items
             total = 0
+            inboxItems = set()
             for first in os.listdir(uidHomes):
                 if len(first) == 2:
                     firstPath = os.path.join(uidHomes, first)
@@ -386,6 +381,20 @@ def upgrade_to_1(config):
                             secondPath = os.path.join(firstPath, second)
                             for home in os.listdir(secondPath):
                                 total += 1
+                                homePath = os.path.join(secondPath, home)
+                                inboxPath = os.path.join(homePath, "inbox")
+                                if os.path.exists(inboxPath):
+                                    for inboxItem in os.listdir(inboxPath):
+                                        if not inboxItem.startswith("."):
+                                            inboxItems.add(os.path.join(inboxPath, inboxItem))
+
+            incomingDir = createTaskServiceDirectory(config, uid, gid)
+            if inboxItems:
+                taskFile = os.path.join(incomingDir, "scheduleinboxes.task")
+                with open(taskFile, "w") as out:
+                    for item in inboxItems:
+                        out.write("%s\n" % (item))
+                os.chown(taskFile, uid, gid)
 
             if total:
                 log.warn("Processing %d calendar homes in %s" % (total, uidHomes))
@@ -415,7 +424,6 @@ def upgrade_to_1(config):
 
     migrateResourceInfo(config, directory, uid, gid)
     createMailTokensDatabase(config, uid, gid)
-    createTaskServiceDirectory(config, uid, gid)
 
     if errorOccurred:
         raise UpgradeError("Data upgrade failed, see error.log for details")

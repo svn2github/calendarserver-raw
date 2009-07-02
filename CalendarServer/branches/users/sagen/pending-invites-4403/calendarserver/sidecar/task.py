@@ -103,7 +103,6 @@ from twistedcaldav.scheduling.scheduler import DirectScheduler
 from twistedcaldav.ical import Component
 from twisted.web2.http_headers import Headers
 
-
 class FakeRequest(object):
 
     def __init__(self, rootResource, method):
@@ -146,9 +145,9 @@ class FakeRequest(object):
         pass
 
 @inlineCallbacks
-def processInbox(rootResource, directory, inboxFile, uuid):
-    print "INSIDE PROCESS INBOX"
-    print rootResource, directory, inboxFile, uuid
+def processInboxItem(rootResource, directory, inboxFile, inboxItemFile, uuid):
+    print "INSIDE PROCESS INBOX ITEM"
+    print rootResource, directory, inboxItemFile, uuid
 
     principals = rootResource.getChild("principals")
     ownerPrincipal = principals.principalForUID(uuid)
@@ -158,64 +157,99 @@ def processInbox(rootResource, directory, inboxFile, uuid):
         inboxFile, ownerPrincipal.scheduleInboxURL())
     print "Owner", owner
 
-    for name in inboxFile.listChildren():
-        icsFile = inboxFile.getChild(name)
-        data = icsFile.iCalendarText()
-        calendar = Component.fromString(data)
-        try:
-            method = calendar.propertyValue("METHOD")
-        except ValueError:
-            returnValue(None)
+    data = inboxItemFile.iCalendarText()
+    calendar = Component.fromString(data)
+    try:
+        method = calendar.propertyValue("METHOD")
+    except ValueError:
+        returnValue(None)
 
-        if method == "REPLY":
-            # originator is attendee sending reply
-            originator = calendar.getAttendees()[0]
-        else:
-            # originator is the organizer
-            originator = calendar.getOrganizer()
+    if method == "REPLY":
+        # originator is attendee sending reply
+        originator = calendar.getAttendees()[0]
+    else:
+        # originator is the organizer
+        originator = calendar.getOrganizer()
 
-        originatorPrincipal = principals.principalForCalendarUserAddress(originator)
-        originator = LocalCalendarUser(originator, originatorPrincipal)
-        recipients = (owner,)
-        scheduler = DirectScheduler(FakeRequest(rootResource, "PUT"), icsFile)
-        result = (yield scheduler.doSchedulingViaPUT(originator, recipients,
-            calendar, internal_request=False))
+    originatorPrincipal = principals.principalForCalendarUserAddress(originator)
+    originator = LocalCalendarUser(originator, originatorPrincipal)
+    recipients = (owner,)
+    scheduler = DirectScheduler(FakeRequest(rootResource, "PUT"), inboxItemFile)
+    result = (yield scheduler.doSchedulingViaPUT(originator, recipients,
+        calendar, internal_request=False))
 
-        if os.path.exists(icsFile.fp.path):
-            os.remove(icsFile.fp.path)
+    if os.path.exists(inboxItemFile.fp.path):
+        os.remove(inboxItemFile.fp.path)
 
 class Task(object):
 
-    def __init__(self, service, taskFile):
+    def __init__(self, service, fileName):
         self.service = service
-        self.taskFile = taskFile
+        self.taskName = fileName.split(".")[0]
+        self.taskFile = os.path.join(self.service.processingDir, fileName)
 
     @inlineCallbacks
     def run(self):
-        log.info("Running task %s" % (self.taskFile))
+        methodName = "task_%s" % (self.taskName,)
+        method = getattr(self, methodName, None)
+        if method:
+            try:
+                log.warn("Running task '%s'" % (self.taskName))
+                yield method()
+                log.warn("Completed task '%s'" % (self.taskName))
+            except Exception, e:
+                log.error("Failed task '%s' (%s)" % (self.taskName, e))
+                os.remove(self.taskFile)
+                raise
+        else:
+            log.error("Unknown task requested: '%s'" % (self.taskName))
+            os.remove(self.taskFile)
+            returnValue(None)
 
-        # Hardcoded task: process pending invites in all inboxes
+    @inlineCallbacks
+    def task_scheduleinboxes(self):
+
         calendars = self.service.root.getChild("calendars")
         uidDir = calendars.getChild("__uids__")
 
-        for first in os.listdir(uidDir.fp.path):
-            if len(first) == 2:
-                firstPath = os.path.join(uidDir.fp.path, first)
-                for second in os.listdir(firstPath):
-                    if len(second) == 2:
-                        secondPath = os.path.join(firstPath, second)
-                        for uuid in os.listdir(secondPath):
-                            homeFile = uidDir.getChild(uuid)
-                            inboxFile = homeFile.getChild("inbox")
-                            if inboxFile:
-                                yield processInbox(
-                                    self.service.root,
-                                    self.service.directory,
-                                    inboxFile,
-                                    uuid
-                                )
+        inboxItems = set()
+        with open(self.taskFile) as input:
+            for inboxItem in input:
+                inboxItem = inboxItem.strip()
+                inboxItems.add(inboxItem)
 
-        os.remove(os.path.join(self.service.processingDir, self.taskFile))
+        for inboxItem in list(inboxItems):
+            log.info("Processing inbox item: %s" % (inboxItem,))
+            ignore, uuid, ignore, fileName = inboxItem.rsplit("/", 3)
+
+            homeFile = uidDir.getChild(uuid)
+            if not homeFile:
+                continue
+
+            inboxFile = homeFile.getChild("inbox")
+            if not inboxFile:
+                continue
+
+            inboxItemFile = inboxFile.getChild(fileName)
+
+            yield processInboxItem(
+                self.service.root,
+                self.service.directory,
+                inboxFile,
+                inboxItemFile,
+                uuid
+            )
+            inboxItems.remove(inboxItem)
+
+            # Rewrite the task file in case we exit before we're done
+            with open(self.taskFile + ".tmp", "w") as output:
+                for inboxItem in inboxItems:
+                    output.write("%s\n" % (inboxItem,))
+            os.rename(self.taskFile + ".tmp", self.taskFile)
+
+        os.remove(self.taskFile)
+
+
 
 class CalDAVTaskService(Service):
 
@@ -246,23 +280,24 @@ class CalDAVTaskService(Service):
         deferreds = []
 
         try:
-            log.info("PERIODIC, first=%s" % (first,))
-
             if first:
                 # check the processing directory to see if there are any tasks
                 # that didn't complete during the last server run; start those
-                for child in os.listdir(self.processingDir):
-                    deferreds.append(Task(self, child).run())
+                for fileName in os.listdir(self.processingDir):
+                    if fileName.endswith(".task"):
+                        deferreds.append(Task(self, fileName).run())
 
-            for child in os.listdir(self.incomingDir):
-                os.rename(os.path.join(self.incomingDir, child),
-                    os.path.join(self.processingDir, child))
-                deferreds.append(Task(self, child).run())
+            for fileName in os.listdir(self.incomingDir):
+                if fileName.endswith(".task"):
+                    os.rename(os.path.join(self.incomingDir, fileName),
+                        os.path.join(self.processingDir, fileName))
+                    deferreds.append(Task(self, fileName).run())
 
         finally:
             callLater(self.seconds, self.periodic)
 
         return DeferredList(deferreds)
+
 
 
 class CalDAVTaskOptions(Options):
@@ -372,7 +407,6 @@ class CalDAVTaskServiceMaker (LoggingMixIn):
 
     def makeService(self, options):
 
-        print "CalDAVTaskServiceMaker -- makeService"
         #
         # Change default log level to "info" as its useful to have
         # that during startup
