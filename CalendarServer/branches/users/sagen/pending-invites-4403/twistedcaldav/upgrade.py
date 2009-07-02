@@ -286,19 +286,19 @@ def upgrade_to_1(config):
         if os.path.exists(dbPath):
             os.chown(dbPath, uid, gid)
 
-    def createUtilityServiceDirectory(config, uid, gid):
+    def createTaskServiceDirectory(config, uid, gid):
 
-        utilityDir = os.path.join(config.DataRoot, "utility")
-        if not os.path.exists(utilityDir):
-            os.mkdir(utilityDir)
-        os.chown(utilityDir, uid, gid)
+        taskDir = os.path.join(config.DataRoot, "tasks")
+        if not os.path.exists(taskDir):
+            os.mkdir(taskDir)
+        os.chown(taskDir, uid, gid)
 
-        incomingDir = os.path.join(utilityDir, "incoming")
+        incomingDir = os.path.join(taskDir, "incoming")
         if not os.path.exists(incomingDir):
             os.mkdir(incomingDir)
         os.chown(incomingDir, uid, gid)
 
-        processingDir = os.path.join(utilityDir, "processing")
+        processingDir = os.path.join(taskDir, "processing")
         if not os.path.exists(processingDir):
             os.mkdir(processingDir)
         os.chown(processingDir, uid, gid)
@@ -415,7 +415,7 @@ def upgrade_to_1(config):
 
     migrateResourceInfo(config, directory, uid, gid)
     createMailTokensDatabase(config, uid, gid)
-    createUtilityServiceDirectory(config, uid, gid)
+    createTaskServiceDirectory(config, uid, gid)
 
     if errorOccurred:
         raise UpgradeError("Data upgrade failed, see error.log for details")
