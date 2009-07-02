@@ -408,6 +408,11 @@ class CalDAVTaskServiceMaker (LoggingMixIn):
     def makeService(self, options):
 
         #
+        # The task sidecar doesn't care about system SACLs
+        #
+        config.EnableSACLs = False
+
+        #
         # Change default log level to "info" as its useful to have
         # that during startup
         #
