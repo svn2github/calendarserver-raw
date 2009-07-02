@@ -206,7 +206,7 @@ class ConfigTests(TestCase):
     def testMergeDefaults(self):
         config.updateDefaults({"MultiProcess": {}})
 
-        self.assertEquals(config._provider.getDefaults()["MultiProcess"]["LoadBalancer"]["Enabled"], True)
+        self.assertEquals(config._provider.getDefaults().MultiProcess.LoadBalancer.Enabled, True)
 
     def testSetDefaults(self):
         config.updateDefaults({"SSLPort": 8443})
