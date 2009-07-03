@@ -31,6 +31,13 @@ class ConfigurationError(RuntimeError):
     """
 
 class ConfigDict(dict):
+    """
+    Dictionary which can be accessed using attribute syntax, because
+    that reads an writes nicer in code.  For example:
+      C{config.Thingo.Tiny.Tweak}
+    instead of:
+      C{config.["Thingo"]["Tiny"]["Tweak"]}
+    """
     def __init__(self, mapping=None):
         if mapping is not None:
             for key, value in mapping.iteritems():
@@ -40,27 +47,36 @@ class ConfigDict(dict):
         return "*" + dict.__repr__(self)
 
     def __setitem__(self, key, value):
+        if key.startswith("_"):
+            # Names beginning with "_" are reserved for real attributes
+            raise KeyError("Keys may not begin with '_': %s" % (key,))
+
         if isinstance(value, dict) and not isinstance(value, self.__class__):
             dict.__setitem__(self, key, self.__class__(value))
         else:
             dict.__setitem__(self, key, value)
 
     def __setattr__(self, attr, value):
-        if attr[0] == "_":
+        if attr.startswith("_"):
             dict.__setattr__(self, attr, value)
         else:
             self[attr] = value
 
     def __getattr__(self, attr):
-        if attr in self:
+        if not attr.startswith("_") and attr in self:
             return self[attr]
         else:
-            return dict.__getattr__(self, attr)
+            return dict.__getattribute__(self, attr)
 
+    def __delattr__(self, attr):
+        if not attr.startswith("_") and attr in self:
+            del self[attr]
+        else:
+            dict.__delattr__(self, attr)
 
 class ConfigProvider(object):
     """Configuration provider, abstraction for config storage/format/defaults"""
-    
+
     def __init__(self, defaults=None):
         """Create configuration provider with given defaults"""
         self._configFileName = None

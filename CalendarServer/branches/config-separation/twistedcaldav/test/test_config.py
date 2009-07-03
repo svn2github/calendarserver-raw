@@ -17,7 +17,7 @@
 from twext.python.plistlib import writePlist
 
 from twistedcaldav.log import logLevelForNamespace
-from twistedcaldav.config import config, ConfigProvider
+from twistedcaldav.config import config, ConfigDict, ConfigProvider
 from twistedcaldav.static import CalDAVFile
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, PListConfigProvider
 from twistedcaldav.test.util import TestCase
@@ -248,3 +248,52 @@ class ConfigTests(TestCase):
 
         self.assertEquals(logLevelForNamespace(None), "warn")
         self.assertEquals(logLevelForNamespace("some.namespace"), "warn")
+
+    def test_ConfigDict(self):
+        configDict = ConfigDict({
+            "a": "A",
+            "b": "B",
+            "c": "C",
+        })
+
+        # Test either syntax inbound
+        configDict["d"] = "D"
+        configDict.e = "E"
+
+        # Test either syntax outbound
+        for key in "abcde":
+            value = key.upper()
+
+            self.assertEquals(configDict[key], value)
+            self.assertEquals(configDict.get(key), value)
+            self.assertEquals(getattr(configDict, key), value)
+
+            self.assertIn(key, configDict)
+            self.assertTrue(hasattr(configDict, key))
+
+        self.assertEquals(configDict.a, "A")
+        self.assertEquals(configDict.d, "D")
+        self.assertEquals(configDict.e, "E")
+
+        # Test either syntax for delete
+        del configDict["d"]
+        delattr(configDict, "e")
+
+        # Test either syntax for absence
+        for key in "de":
+            self.assertNotIn(key, configDict)
+            self.assertFalse(hasattr(configDict, key))
+            self.assertRaises(KeyError, lambda: configDict[key])
+            self.assertRaises(AttributeError, getattr, configDict, key)
+
+        self.assertRaises(AttributeError, lambda: configDict.e)
+        self.assertRaises(AttributeError, lambda: configDict.f)
+
+        # Keys may not begin with "_" in dict syntax
+        def set():
+            configDict["_x"] = "X"
+        self.assertRaises(KeyError, set)
+
+        # But attr syntax is OK
+        configDict._x = "X"
+        self.assertEquals(configDict._x, "X")
