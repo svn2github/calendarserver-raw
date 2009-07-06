@@ -792,6 +792,8 @@ class IScheduleScheduler(Scheduler):
 
 
 class DirectScheduler(Scheduler):
+    """ An implicit scheduler meant for use by local processes which don't
+        need to go through all these checks. """
 
     def checkAuthorization(self):
         pass

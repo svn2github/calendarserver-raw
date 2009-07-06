@@ -1,4 +1,3 @@
-##
 # Copyright (c) 2005-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,88 +19,30 @@ __all__ = [
     "CalDAVServiceMaker",
 ]
 
-import os
-import socket
-import stat
-import sys
+from calendarserver.provision.root import RootResource
 from time import sleep
-
-from tempfile import mkstemp
-from subprocess import Popen, PIPE
-from pwd import getpwnam, getpwuid
-from grp import getgrnam
-from OpenSSL.SSL import Error as SSLError
-import OpenSSL
-
-from zope.interface import implements
-
-from twisted.python.log import FileLogObserver
-from twisted.python.usage import Options, UsageError
-from twisted.python.reflect import namedClass
-from twisted.plugin import IPlugin
+from twisted.application.service import Service, IServiceMaker
+from twisted.internet.address import IPv4Address
 from twisted.internet.defer import DeferredList, succeed, inlineCallbacks, returnValue
 from twisted.internet.reactor import callLater
-from twisted.internet.process import ProcessExitedAlready
-from twisted.internet.protocol import Protocol, Factory
-from twisted.internet.address import IPv4Address
-from twisted.application.internet import TCPServer, SSLServer, UNIXServer
-from twisted.application.service import Service, MultiService, IServiceMaker
-from twisted.scripts.mktap import getid
-from twisted.runner import procmon
-from twisted.cred.portal import Portal
-from twisted.web2.dav import auth
-from twisted.web2.auth.basic import BasicCredentialFactory
-from twisted.web2.server import Site
-from twisted.web2.channel import HTTPFactory
-from twisted.web2.static import File as FileResource
-from twisted.web2.http import Request, RedirectResponse
-
-from twext.internet.ssl import ChainingOpenSSLContextFactory
-from twext.web2.channel.http import HTTP503LoggingFactory
-
+from twisted.plugin import IPlugin
+from twisted.python.reflect import namedClass
+from twisted.python.usage import Options, UsageError
+from twisted.web2.http_headers import Headers
+from twistedcaldav import memcachepool
+from twistedcaldav.config import config, defaultConfig, defaultConfigFile
+from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
+from twistedcaldav.ical import Component
 from twistedcaldav.log import Logger, LoggingMixIn
 from twistedcaldav.log import logLevelForNamespace, setLogLevelForNamespace
-from twistedcaldav.accesslog import DirectoryLogWrapperResource
-from twistedcaldav.accesslog import RotatingFileAccessLoggingObserver
-from twistedcaldav.accesslog import AMPLoggingFactory
-from twistedcaldav.accesslog import AMPCommonAccessLoggingObserver
-from twistedcaldav.config import config, defaultConfig, defaultConfigFile
-from twistedcaldav.config import ConfigurationError
-from twistedcaldav.resource import CalDAVResource, AuthenticationWrapper
-from twistedcaldav.directory.digest import QopDigestCredentialFactory
-from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
-from twistedcaldav.directory.aggregate import AggregateDirectoryService
-from twistedcaldav.directory.sudo import SudoDirectoryService
-from twistedcaldav.directory.util import NotFilePath
-from twistedcaldav.directory.wiki import WikiDirectoryService
-from twistedcaldav.static import CalendarHomeProvisioningFile
-from twistedcaldav.static import IScheduleInboxFile
-from twistedcaldav.static import TimezoneServiceFile
-from twistedcaldav.mail import IMIPReplyInboxResource
-from twistedcaldav.timezones import TimezoneCache
-from twistedcaldav.upgrade import upgradeData
-from twistedcaldav.pdmonster import PDClientAddressWrapper
-from twistedcaldav import memcachepool
 from twistedcaldav.notify import installNotificationClient
-from twistedcaldav.util import getNCPU
-from twistedcaldav.localization import processLocalizationFiles
-
-try:
-    from twistedcaldav.authkerb import NegotiateCredentialFactory
-except ImportError:
-    NegotiateCredentialFactory = None
-
-from calendarserver.provision.root import RootResource
-from calendarserver.webadmin.resource import WebAdminResource
-from calendarserver.webcal.resource import WebCalendarResource
-
-log = Logger()
-
-
 from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.scheduling.scheduler import DirectScheduler
-from twistedcaldav.ical import Component
-from twisted.web2.http_headers import Headers
+from twistedcaldav.static import CalendarHomeProvisioningFile
+from zope.interface import implements
+import os
+
+log = Logger()
 
 class FakeRequest(object):
 
@@ -146,16 +87,13 @@ class FakeRequest(object):
 
 @inlineCallbacks
 def processInboxItem(rootResource, directory, inboxFile, inboxItemFile, uuid):
-    print "INSIDE PROCESS INBOX ITEM"
-    print rootResource, directory, inboxItemFile, uuid
+    log.debug("Processing inbox item %s" % (inboxItemFile,))
 
     principals = rootResource.getChild("principals")
     ownerPrincipal = principals.principalForUID(uuid)
-    print "Owner principal", ownerPrincipal
     cua = "urn:uuid:%s" % (uuid,)
     owner = LocalCalendarUser(cua, ownerPrincipal,
         inboxFile, ownerPrincipal.scheduleInboxURL())
-    print "Owner", owner
 
     data = inboxItemFile.iCalendarText()
     calendar = Component.fromString(data)
@@ -256,7 +194,7 @@ class CalDAVTaskService(Service):
     def __init__(self, root, directory):
         self.root = root
         self.directory = directory
-        self.seconds = 5
+        self.seconds = 30
         self.taskDir = os.path.join(config.DataRoot, "tasks")
         # New task files are placed into "incoming"
         self.incomingDir = os.path.join(self.taskDir, "incoming")
@@ -277,6 +215,8 @@ class CalDAVTaskService(Service):
 
 
     def periodic(self, first=False):
+        log.debug("Checking for tasks")
+
         deferreds = []
 
         try:
@@ -285,10 +225,12 @@ class CalDAVTaskService(Service):
                 # that didn't complete during the last server run; start those
                 for fileName in os.listdir(self.processingDir):
                     if fileName.endswith(".task"):
+                        log.debug("Restarting old task: %s" % (fileName,))
                         deferreds.append(Task(self, fileName).run())
 
             for fileName in os.listdir(self.incomingDir):
                 if fileName.endswith(".task"):
+                    log.debug("Found new task: %s" % (fileName,))
                     os.rename(os.path.join(self.incomingDir, fileName),
                         os.path.join(self.processingDir, fileName))
                     deferreds.append(Task(self, fileName).run())
@@ -399,11 +341,6 @@ class CalDAVTaskServiceMaker (LoggingMixIn):
     rootResourceClass            = RootResource
     principalResourceClass       = DirectoryPrincipalProvisioningResource
     calendarResourceClass        = CalendarHomeProvisioningFile
-    iScheduleResourceClass       = IScheduleInboxFile
-    imipResourceClass            = IMIPReplyInboxResource
-    timezoneServiceResourceClass = TimezoneServiceFile
-    webCalendarResourceClass     = WebCalendarResource
-    webAdminResourceClass        = WebAdminResource
 
     def makeService(self, options):
 
