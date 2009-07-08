@@ -23,6 +23,7 @@ __all__ = [
     "XMLAccountsParser",
 ]
 
+from uuid import UUID
 import xml.dom.minidom
 
 from twisted.python.filepath import FilePath

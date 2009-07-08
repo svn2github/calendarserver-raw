@@ -22,6 +22,7 @@ __all__ = [
     "booleanArgument",
 ]
 
+import sys
 import os
 from time import sleep
 

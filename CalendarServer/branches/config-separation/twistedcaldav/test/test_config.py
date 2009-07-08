@@ -57,8 +57,8 @@ class ConfigTests(TestCase):
         open(self.testConfig, "w").write(testConfig)
 
     def tearDown(self):
-        config.setDefaults(DEFAULT_CONFIG)
-        config.reset()
+        config.setProvider(ConfigProvider(DEFAULT_CONFIG))
+        config.load(None)
 
     def testDefaults(self):
         for key, value in DEFAULT_CONFIG.iteritems():

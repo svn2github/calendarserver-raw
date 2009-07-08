@@ -26,7 +26,7 @@ from twistedcaldav.log import Logger
 from twistedcaldav.ical import Component
 from twistedcaldav import caldavxml
 from calendarserver.tools.util import getDirectory
-import xattr, os, zlib, hashlib, datetime, pwd, grp, shutil
+import xattr, os, zlib, hashlib, datetime, pwd, grp
 from zlib import compress
 from cPickle import loads as unpickle, UnpicklingError
 
@@ -218,13 +218,7 @@ def upgrade_to_1(config):
         try:
             if not os.path.exists(config.DataRoot):
                 makeDirsUserGroup(config.DataRoot, uid=uid, gid=gid)
-            try:
-                os.rename(oldDbPath, newDbPath)
-            except OSError:
-                # Can't rename, must copy/delete
-                shutil.copy2(oldDbPath, newDbPath)
-                os.remove(oldDbPath)
-
+            os.rename(oldDbPath, newDbPath)
         except Exception, e:
             raise UpgradeError(
                 "Upgrade Error: unable to move the old calendar user proxy database at '%s' to '%s' due to %s."
@@ -285,21 +279,6 @@ def upgrade_to_1(config):
         dbPath = os.path.join(config.DataRoot, MailGatewayTokensDatabase.dbFilename)
         if os.path.exists(dbPath):
             os.chown(dbPath, uid, gid)
-
-    def createTaskServiceDirectory(config, uid, gid):
-
-        taskDir = os.path.join(config.DataRoot, "tasks")
-        if not os.path.exists(taskDir):
-            os.mkdir(taskDir)
-        os.chown(taskDir, uid, gid)
-
-        incomingDir = os.path.join(taskDir, "incoming")
-        if not os.path.exists(incomingDir):
-            os.mkdir(incomingDir)
-        os.chown(incomingDir, uid, gid)
-
-        return incomingDir
-
 
 
     directory = getDirectory()
@@ -369,10 +348,8 @@ def upgrade_to_1(config):
                     os.rmdir(dirPath)
 
 
-            # Count how many calendar homes we'll be processing, and build
-            # list of pending inbox items
+            # Count how many calendar homes we'll be processing
             total = 0
-            inboxItems = set()
             for first in os.listdir(uidHomes):
                 if len(first) == 2:
                     firstPath = os.path.join(uidHomes, first)
@@ -381,20 +358,6 @@ def upgrade_to_1(config):
                             secondPath = os.path.join(firstPath, second)
                             for home in os.listdir(secondPath):
                                 total += 1
-                                homePath = os.path.join(secondPath, home)
-                                inboxPath = os.path.join(homePath, "inbox")
-                                if os.path.exists(inboxPath):
-                                    for inboxItem in os.listdir(inboxPath):
-                                        if not inboxItem.startswith("."):
-                                            inboxItems.add(os.path.join(inboxPath, inboxItem))
-
-            incomingDir = createTaskServiceDirectory(config, uid, gid)
-            if inboxItems:
-                taskFile = os.path.join(incomingDir, "scheduleinboxes.task")
-                with open(taskFile, "w") as out:
-                    for item in inboxItems:
-                        out.write("%s\n" % (item))
-                os.chown(taskFile, uid, gid)
 
             if total:
                 log.warn("Processing %d calendar homes in %s" % (total, uidHomes))

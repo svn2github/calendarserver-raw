@@ -168,7 +168,7 @@ class DeleteResource(object):
                 yield parent.updateCTag()
     
                 # Do scheduling
-                if scheduler and not self.internal_request:
+                if scheduler:
                     yield scheduler.doImplicitScheduling()
     
         except MemcacheLockTimeoutError:

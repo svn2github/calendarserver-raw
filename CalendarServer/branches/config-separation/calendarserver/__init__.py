@@ -17,8 +17,3 @@
 """
 CalendarServer application code.
 """
-
-# setuptools is annoying
-from warnings import filterwarnings
-filterwarnings("ignore", "Module (.*) was already imported (.*)")
-del filterwarnings

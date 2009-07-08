@@ -207,7 +207,7 @@ class BaseServiceMakerTests(TestCase):
 
     def tearDown(self):
         config.setDefaults(DEFAULT_CONFIG)
-        config.reset()
+        config.reload()
 
     def writeConfig(self):
         """
