@@ -16,7 +16,7 @@
 
 from twext.web2.dav.davxml import ErrorResponse
 
-from twisted.internet.defer import inlineCallbacks, returnValue, succeed
+from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.util import joinURL
@@ -35,6 +35,7 @@ from twistedcaldav.scheduling.cuaddress import InvalidCalendarUser,\
 from twistedcaldav.scheduling.icaldiff import iCalDiff
 from twistedcaldav.scheduling.itip import iTipGenerator
 from twistedcaldav.scheduling.scheduler import CalDAVScheduler
+from twistedcaldav.scheduling.utils import getCalendarObjectForPrincipals
 
 __all__ = [
     "ImplicitScheduler",
@@ -53,6 +54,7 @@ class ImplicitScheduler(object):
     # Return Status codes
     STATUS_OK                       = 0
     STATUS_ORPHANED_CANCELLED_EVENT = 1
+    STATUS_ORPHANED_EVENT           = 2
 
     def __init__(self):
         
@@ -88,7 +90,7 @@ class ImplicitScheduler(object):
             yield self.checkImplicitState()
         
         # Attendees are not allowed to overwrite one type with another
-        if self.state == "attendee" and (existing_type != new_type) and existing_resource:
+        if not self.internal_request and self.state == "attendee" and (existing_type != new_type) and existing_resource:
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-attendee-change")))
 
         returnValue((self.action != "none", new_type == "schedule",))
@@ -501,6 +503,11 @@ class ImplicitScheduler(object):
         elif self.action == "create":
             log.debug("Implicit - organizer '%s' is creating UID: '%s'" % (self.organizer, self.uid))
             
+        # Always set RSVP=TRUE for any NEEDS-ACTION
+        for attendee in self.calendar.getAllAttendeeProperties():
+            if attendee.params().get("PARTSTAT", ["NEEDS-ACTION"])[0] == "NEEDS-ACTION":
+                attendee.params()["RSVP"] = ["TRUE",]
+
         yield self.scheduleWithAttendees()
         
         # Always clear SCHEDULE-FORCE-SEND from all attendees after scheduling
@@ -791,8 +798,9 @@ class ImplicitScheduler(object):
                     self.return_status = ImplicitScheduler.STATUS_ORPHANED_CANCELLED_EVENT
                     returnValue(None)
                 else:
-                    log.debug("Attendee '%s' is not allowed to update UID: '%s' - missing organizer copy" % (self.attendee, self.uid,))
-                    raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-attendee-change")))
+                    log.debug("Attendee '%s' is not allowed to update UID: '%s' - missing organizer copy - removing entire event" % (self.attendee, self.uid,))
+                    self.return_status = ImplicitScheduler.STATUS_ORPHANED_EVENT
+                    returnValue(None)
             elif isinstance(self.organizerAddress, InvalidCalendarUser):
                 log.debug("Attendee '%s' is not allowed to update UID: '%s' with invalid organizer '%s'" % (self.attendee, self.uid, self.organizer))
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-attendee-change")))
@@ -817,28 +825,10 @@ class ImplicitScheduler(object):
         """
         
         self.organizer_calendar = None
-        if self.organizerPrincipal:
-            # Get Organizer's calendar-home
-            calendar_home = self.organizerPrincipal.calendarHome()
-            
-            # FIXME: because of the URL->resource request mapping thing, we have to force the request
-            # to recognize this resource
-            self.request._rememberResource(calendar_home, calendar_home.url())
-    
-            # Run a UID query against the UID
-
-            def queryCalendarCollection(collection, uri):
-                rname = collection.index().resourceNameForUID(self.uid)
-                if rname:
-                    self.organizer_calendar = collection.iCalendar(rname)
-                    return succeed(False)
-                else:
-                    return succeed(True)
-            
-            # NB We are by-passing privilege checking here. That should be OK as the data found is not
-            # exposed to the user.
-            yield report_common.applyToCalendarCollections(calendar_home, self.request, calendar_home.url(), "infinity", queryCalendarCollection, None)
-    
+        calendar_resource, _ignore_name, _ignore_collection, _ignore_uri = (yield getCalendarObjectForPrincipals(self.request, self.organizerPrincipal, self.uid))
+        if calendar_resource:
+            self.organizer_calendar = calendar_resource.iCalendar()
+        
     def isAttendeeChangeInsignificant(self):
         """
         Check whether the change is significant (PARTSTAT) or allowed
