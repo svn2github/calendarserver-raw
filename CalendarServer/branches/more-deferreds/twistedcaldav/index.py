@@ -42,7 +42,7 @@ except ImportError:
 
 from vobject.icalendar import utc
 
-from twisted.internet.defer import maybeDeferred, succeed
+from twisted.internet.defer import maybeDeferred, succeed, returnValue
 
 from twistedcaldav.ical import Component
 from twistedcaldav.query import calendarquery
@@ -191,7 +191,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
             assert result is None, "More than one resource with UID %s in calendar collection %r" % (uid, self)
             result = name
 
-        return result
+        return succeed(result)
 
     def resourceUIDForName(self, name):
         """
@@ -218,7 +218,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         oldUID = self.resourceUIDForName(name)
         if oldUID is not None:
             self._delete_from_db(name, oldUID)
-        self._add_to_db(name, calendar, reCreate=reCreate)
+        self._add_to_db(name, calendar)
         if not fast:
             self._db_commit()
 
@@ -454,10 +454,12 @@ class CalendarIndex (AbstractCalendarIndex):
         Given a resource name, remove it from the database and re-add it
         with a longer expansion.
         """
-        calendar = self.resource.getChild(name).iCalendar()
-        self._add_to_db(name, calendar, expand_until=expand_until, reCreate=True)
-        self._db_commit()
-
+        d = self.resource.getChild(name).iCalendar()
+        def _gotCalendar(calendar):
+            self._add_to_db(name, calendar, expand_until=expand_until, reCreate=True)
+            self._db_commit()
+        return d.addCallback(_gotCalendar)
+        
     def _add_to_db(self, name, calendar, cursor = None, expand_until=None, reCreate=False):
         """
         Records the given calendar resource in the index with the given name.
@@ -742,8 +744,8 @@ class Index (CalendarIndex):
         @return: True if the UID is not in the index and is not reserved,
             False otherwise.
         """
-        rname = self.resourceNameForUID(uid)
-        return (rname is None or rname in names)
+        rname = yield self.resourceNameForUID(uid) # TODO: Check in callers to isAllowedUID, change this to an inlineCallBack
+        returnValue(rname is None or rname in names)
 
     def _db_type(self):
         """

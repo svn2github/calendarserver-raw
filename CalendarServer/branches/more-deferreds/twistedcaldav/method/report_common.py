@@ -253,9 +253,9 @@ def _namedPropertiesForResource(request, props, resource, calendar=None, timezon
                 access = None
 
             if calendar:
-                propvalue = property.elementFromCalendarWithAccessRestrictions(calendar, access, timezone)
+                propvalue = yield property.elementFromCalendarWithAccessRestrictions(calendar, access, timezone)
             else:
-                propvalue = property.elementFromResourceWithAccessRestrictions(resource, access, timezone)
+                propvalue = yield property.elementFromResourceWithAccessRestrictions(resource, access, timezone)
             if propvalue is None:
                 raise ValueError("Invalid CalDAV:calendar-data for request: %r" % (property,))
             properties_by_status[responsecode.OK].append(propvalue)

@@ -17,7 +17,7 @@
 import os
 
 from twisted.cred.credentials import UsernamePassword
-from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import inlineCallbacks, gatherResults
 from twisted.web2.dav import davxml
 from twisted.web2.dav.fileop import rmdir
 from twisted.web2.dav.resource import AccessDeniedError
@@ -331,12 +331,15 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         DirectoryPrincipalResource.scheduleInboxURL(),
         DirectoryPrincipalResource.scheduleOutboxURL()
         """
+        ds = []
         # No calendar home provisioner should result in no calendar homes.
         for provisioningResource, recordType, recordResource, record in self._allRecords():
             if record.enabledForCalendaring:
-                self.failIf(tuple(recordResource.calendarHomeURLs()))
-                self.failIf(recordResource.scheduleInboxURL())
-                self.failIf(recordResource.scheduleOutboxURL())
+                d = recordResource.calendarHomeURLs()
+                d.addCallback(lambda u: self.assertEqual(len(u), 0))
+                ds.append(d)
+                ds.append(recordResource.scheduleInboxURL().addCallback(self.failIf))
+                ds.append(recordResource.scheduleOutboxURL().addCallback(self.failIf))
 
         # Need to create a calendar home provisioner for each service.
         calendarRootResources = {}
@@ -356,32 +359,31 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         # Calendar home provisioners should result in calendar homes.
         for provisioningResource, recordType, recordResource, record in self._allRecords():
             if record.enabledForCalendaring:
-                homeURLs = tuple(recordResource.calendarHomeURLs())
-                self.failUnless(homeURLs)
+                d = gatherResults([recordResource.calendarHomeURLs(),
+                                  recordResource.scheduleInboxURL(),
+                                  recordResource.scheduleOutboxURL()])
+                def _gotURLs(homeURLs, inboxURL, outboxURL):
+                    calendarRootURL = calendarRootResources[record.service.__class__.__name__].url()
 
-                calendarRootURL = calendarRootResources[record.service.__class__.__name__].url()
+                    self.failUnless(inboxURL)
+                    self.failUnless(outboxURL)
 
-                inboxURL = recordResource.scheduleInboxURL()
-                outboxURL = recordResource.scheduleOutboxURL()
+                    for homeURL in homeURLs:
+                        self.failUnless(homeURL.startswith(calendarRootURL))
 
-                self.failUnless(inboxURL)
-                self.failUnless(outboxURL)
+                        if inboxURL and inboxURL.startswith(homeURL):
+                            self.failUnless(len(inboxURL) > len(homeURL))
+                            self.failUnless(inboxURL.endswith("/"))
+                            inboxURL = None
 
-                for homeURL in homeURLs:
-                    self.failUnless(homeURL.startswith(calendarRootURL))
+                        if outboxURL and outboxURL.startswith(homeURL):
+                            self.failUnless(len(outboxURL) > len(homeURL))
+                            self.failUnless(outboxURL.endswith("/"))
+                            outboxURL = None
 
-                    if inboxURL and inboxURL.startswith(homeURL):
-                        self.failUnless(len(inboxURL) > len(homeURL))
-                        self.failUnless(inboxURL.endswith("/"))
-                        inboxURL = None
-
-                    if outboxURL and outboxURL.startswith(homeURL):
-                        self.failUnless(len(outboxURL) > len(homeURL))
-                        self.failUnless(outboxURL.endswith("/"))
-                        outboxURL = None
-
-                self.failIf(inboxURL)
-                self.failIf(outboxURL)
+                    self.failIf(inboxURL)
+                    self.failIf(outboxURL)
+        return gatherResults(ds)
 
     @inlineCallbacks
     def test_defaultAccessControlList_principals(self):

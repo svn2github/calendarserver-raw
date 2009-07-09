@@ -838,10 +838,13 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         returnValue(result)
 
     def extraDirectoryBodyItems(self, request):
-        return "".join((
-            """\nCalendar homes:\n"""          , format_list(format_link(u) for u in self.calendarHomeURLs()),
-            """\nCalendar user addresses:\n""" , format_list(format_link(a) for a in self.calendarUserAddresses()),
-        ))
+        d = self.calendarHomeURLs()
+        def _gotURLs(homeURLs):
+            return "".join((
+                    """\nCalendar homes:\n"""          , format_list(format_link(u) for u in homeURLs),
+                    """\nCalendar user addresses:\n""" , format_list(format_link(a) for a in self.calendarUserAddresses()),
+                    ))
+        return d.addCallbacks(_gotURLs)
 
     ##
     # CalDAV
@@ -877,22 +880,22 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             return False
 
     def scheduleInbox(self, request):
-        home = self.calendarHome()
-        if home is None:
-            return succeed(None)
+        d = self.calendarHome()
+        def _gotHome(home):
+            if home is None:
+                return None
+            return home.getChild("inbox")
 
-        inbox = home.getChild("inbox")
-        if inbox is None:
-            return succeed(None)
-
-        return succeed(inbox)
+        return d.addCallback(_gotHome)
 
     def calendarHomeURLs(self):
-        home = self.calendarHome()
-        if home is None:
-            return ()
-        else:
-            return (home.url(),)
+        d = self.calendarHome()
+        def _gotHome(home):
+            if home is None:
+                return ()
+            else:
+                return (home.url(),)
+        return d.addCallback(_gotHome)
 
     def scheduleInboxURL(self):
         return self._homeChildURL("inbox/")
@@ -907,11 +910,13 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             return None
 
     def _homeChildURL(self, name):
-        home = self.calendarHome()
-        if home is None:
-            return None
-        else:
-            return joinURL(home.url(), name)
+        d = self.calendarHome()
+        def _gotHome(home):
+            if home is None:
+                return None
+            else:
+                return joinURL(home.url(), name)
+        return d.addCallback(_gotHome)
 
     def calendarHome(self):
         # FIXME: self.record.service.calendarHomesCollection smells like a hack
@@ -920,7 +925,7 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         if hasattr(service, "calendarHomesCollection"):
             return service.calendarHomesCollection.homeForDirectoryRecord(self.record)
         else:
-            return None
+            return succeed(None)
 
 
     ##
