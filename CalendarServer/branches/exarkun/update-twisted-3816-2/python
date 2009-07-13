@@ -1,7 +1,0 @@
-#!/bin/sh
-
-wd="$(cd "$(dirname "$0")" && pwd)";
-
-export PYTHONPATH="$("${wd}/run" -p)";
-
-python "$@";
