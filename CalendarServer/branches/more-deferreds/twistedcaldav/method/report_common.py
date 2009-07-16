@@ -349,24 +349,20 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
     filteredaces = (yield calresource.inheritedACEsforChildren(request))
 
     try:
-        resources = calresource.index().indexedSearch(filter)
+        resources = yield calresource.index().indexedSearch(filter)
     except IndexedSearchException:
-        resources = calresource.index().bruteForceSearch()
+        resources = yield calresource.index().bruteForceSearch()
 
     for name, uid, type in resources: #@UnusedVariable
-
         # Check privileges - must have at least CalDAV:read-free-busy
         child = (yield request.locateChildResource(calresource, name))
-
         # TODO: for server-to-server we bypass this right now as we have no way to authorize external users.
         if not servertoserver:
             try:
                 yield child.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), inherited_aces=filteredaces)
             except AccessDeniedError:
                 continue
-
-        calendar = calresource.iCalendar(name)
-        
+        calendar = yield calresource.iCalendar(name)
         # The calendar may come back as None if the resource is being changed, or was deleted
         # between our initial index query and getting here. For now we will ignore this error, but in
         # the longer term we need to implement some form of locking, perhaps.

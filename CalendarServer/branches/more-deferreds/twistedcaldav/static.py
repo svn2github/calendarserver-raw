@@ -387,10 +387,9 @@ class CalDAVFile (CalDAVResource, DAVFile):
     ##
 
     def listChildren(self):
-        return [
-            child for child in super(CalDAVFile, self).listChildren()
-            if not child.startswith(".")
-        ]
+        return super(CalDAVFile, self).listChildren().addCallback(
+            lambda children: [child for child in children
+                              if not child.startswith(".")])
 
     def propertyCollection(self):
         if not hasattr(self, "_propertyCollection"):
@@ -550,12 +549,13 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
 class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
     def provision(self):
-        return self.provisionFile()
-
+        d = self.provisionFile()
+        super(AutoProvisioningFileMixIn, self).provision()
+        return d
 
     def provisionFile(self, request=None):
         if hasattr(self, "_provisioned_file"):
-            return False
+            return succeed(False)
         else:
             self._provisioned_file = True
 

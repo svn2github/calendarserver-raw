@@ -205,8 +205,9 @@ class DeleteResource(object):
 
         errors = ResponseQueue(deluri, "DELETE", responsecode.NO_CONTENT)
 
-        for childname in delresource.listChildren():
+        children = yield delresource.listChildren()
 
+        for childname in children:
             childurl = joinURL(deluri, childname)
             child = (yield self.request.locateChildResource(delresource, childname))
 

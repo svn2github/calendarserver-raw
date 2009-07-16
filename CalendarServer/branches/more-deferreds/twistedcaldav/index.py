@@ -305,15 +305,16 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
             rowiter = self._db_execute("select DISTINCT RESOURCE.NAME, RESOURCE.UID, RESOURCE.TYPE" + qualifiers[0], *qualifiers[1])
 
         # Check result for missing resources
-
+        rows = []
         for row in rowiter:
             name = row[0]
             if self.resource.getChild(name.encode("utf-8")):
-                yield row
+                rows.append(row)
             else:
                 log.err("Calendar resource %s is missing from %s. Removing from index."
                         % (name, self.resource))
                 self.deleteResource(name)
+        return succeed(rows)
 
     def bruteForceSearch(self):
         """
@@ -324,16 +325,16 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         rowiter = self._db_execute("select NAME, UID, TYPE from RESOURCE")
 
         # Check result for missing resources:
-
+        rows = []
         for row in rowiter:
             name = row[0]
             if self.resource.getChild(name.encode("utf-8")):
-                yield row
+                rows.append(row)
             else:
                 log.err("Calendar resource %s is missing from %s. Removing from index."
                         % (name, self.resource))
                 self.deleteResource(name)
-
+        return succeed(rows)
 
     def _db_version(self):
         """
@@ -744,8 +745,8 @@ class Index (CalendarIndex):
         @return: True if the UID is not in the index and is not reserved,
             False otherwise.
         """
-        rname = yield self.resourceNameForUID(uid) # TODO: Check in callers to isAllowedUID, change this to an inlineCallBack
-        returnValue(rname is None or rname in names)
+        return self.resourceNameForUID(uid).addCallback(
+            lambda rname: rname is None or rname in names)
 
     def _db_type(self):
         """
@@ -856,7 +857,7 @@ class IndexSchedule (CalendarIndex):
         """
 
         # iTIP does not require unique UIDs
-        return True
+        return succeed(True)
 
     def _db_type(self):
         """

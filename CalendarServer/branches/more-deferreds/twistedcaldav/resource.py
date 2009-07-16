@@ -501,18 +501,18 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
             ca.addCallback(lambda ign: child)
             return ca
 
-        def gotChild(child, childpath):
+        def gotChild(child, childpath, children):
             if child.isCalendarCollection():
                 callback(child, childpath)
             elif child.isCollection():
                 if depth == "infinity":
                     fc = child.findCalendarCollections(depth, request, callback, privileges)
-                    fc.addCallback(lambda x: reactor.callLater(0, getChild))
+                    fc.addCallback(lambda x: reactor.callLater(0, getChild, children))
                     return fc
 
-            reactor.callLater(0, getChild)
+            reactor.callLater(0, getChild, children)
 
-        def getChild():
+        def getChild(children):
             try:
                 childname = children.pop()
             except IndexError:
@@ -521,15 +521,14 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
                 childpath = joinURL(basepath, childname)
                 child = request.locateResource(childpath)
                 child.addCallback(checkPrivileges)
-                child.addCallbacks(gotChild, checkPrivilegesError, (childpath,))
+                child.addCallbacks(gotChild, checkPrivilegesError, (childpath,), children)
                 child.addErrback(completionDeferred.errback)
 
         completionDeferred = Deferred()
 
         if depth != "0" and self.isCollection():
             basepath = request.urlForResource(self)
-            children = self.listChildren()
-            getChild()
+            self.listChildren().addCallback(getChild)
         else:
             completionDeferred.callback(None)
 

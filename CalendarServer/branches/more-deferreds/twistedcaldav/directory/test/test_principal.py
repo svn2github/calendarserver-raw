@@ -105,33 +105,38 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
             principalCollections = provisioningResource.principalCollections()
             self.assertEquals(set((provisioningURL,)), set(pc.principalCollectionURL() for pc in principalCollections))
 
-            recordTypes = set(provisioningResource.listChildren())
-            self.assertEquals(recordTypes, set(directory.recordTypes()))
+            d = provisioningResource.listChildren()
+            def _gotProvisioningChildren(children):
+                recordTypes = set(children)
+                self.assertEquals(recordTypes, set(directory.recordTypes()))
 
-            for recordType in recordTypes:
-                #print "   -> %s" % (recordType,)
-                typeResource = provisioningResource.getChild(recordType)
-                self.failUnless(isinstance(typeResource, DirectoryPrincipalTypeProvisioningResource))
+                for recordType in recordTypes:
+                    #print "   -> %s" % (recordType,)
+                    typeResource = provisioningResource.getChild(recordType)
+                    self.failUnless(isinstance(typeResource, DirectoryPrincipalTypeProvisioningResource))
 
-                typeURL = provisioningURL + recordType + "/"
-                self.assertEquals(typeURL, typeResource.principalCollectionURL())
+                    typeURL = provisioningURL + recordType + "/"
+                    self.assertEquals(typeURL, typeResource.principalCollectionURL())
 
-                principalCollections = typeResource.principalCollections()
-                self.assertEquals(set((provisioningURL,)), set(pc.principalCollectionURL() for pc in principalCollections))
-
-                shortNames = set(typeResource.listChildren())
-                self.assertEquals(shortNames, set(r.shortNames[0] for r in directory.listRecords(recordType)))
-
-                for shortName in shortNames:
-                    #print "     -> %s" % (shortName,)
-                    recordResource = typeResource.getChild(shortName)
-                    self.failUnless(isinstance(recordResource, DirectoryPrincipalResource))
-
-                    recordURL = typeURL + shortName + "/"
-                    self.assertIn(recordURL, (recordResource.principalURL(),) + tuple(recordResource.alternateURIs()))
-
-                    principalCollections = recordResource.principalCollections()
+                    principalCollections = typeResource.principalCollections()
                     self.assertEquals(set((provisioningURL,)), set(pc.principalCollectionURL() for pc in principalCollections))
+                    d = typeResource.listChildren()
+                    def _gotTypeChildren(children):
+                        shortNames = set(children)
+                        self.assertEquals(shortNames, set(r.shortNames[0] for r in directory.listRecords(recordType)))
+
+                        for shortName in shortNames:
+                            #print "     -> %s" % (shortName,)
+                            recordResource = typeResource.getChild(shortName)
+                            self.failUnless(isinstance(recordResource, DirectoryPrincipalResource))
+
+                            recordURL = typeURL + shortName + "/"
+                            self.assertIn(recordURL, (recordResource.principalURL(),) + tuple(recordResource.alternateURIs()))
+
+                            principalCollections = recordResource.principalCollections()
+                            self.assertEquals(set((provisioningURL,)), set(pc.principalCollectionURL() for pc in principalCollections))
+                    
+            return d.addCallback(_gotProvisioningChildren)
 
     def test_allRecords(self):
         """
@@ -405,8 +410,8 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
 
             for args in _authReadOnlyPrivileges(self, provisioningResource, provisioningResource.principalCollectionURL()):
                 yield self._checkPrivileges(*args)
-
-            for recordType in provisioningResource.listChildren():
+            children = yield provisioningResource.listChildren()
+            for recordType in children:
                 #print "   -> %s" % (recordType,)
                 typeResource = provisioningResource.getChild(recordType)
 

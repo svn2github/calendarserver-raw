@@ -37,7 +37,7 @@ from urlparse import urlparse
 from twisted.cred.credentials import UsernamePassword
 from twisted.python.failure import Failure
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet.defer import succeed
+from twisted.internet.defer import succeed, fail
 from twisted.web2.auth.digest import DigestedCredentials
 from twisted.web2 import responsecode
 from twisted.web2.http import HTTPError
@@ -348,7 +348,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
             return self.putChildren.get(name, None)
 
     def listChildren(self):
-        return self.directory.recordTypes()
+        return succeed(self.directory.recordTypes())
 
     ##
     # ACL
@@ -405,10 +405,10 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
                     for shortName in record.shortNames:
                         yield shortName
 
-            return _recordShortnameExpand()
+            return succeed(_recordShortnameExpand())
         else:
             # Not a listable collection
-            raise HTTPError(responsecode.FORBIDDEN)
+            return fail(HTTPError(responsecode.FORBIDDEN))
 
     ##
     # ACL
@@ -479,7 +479,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
 
     def listChildren(self):
         # Not a listable collection
-        raise HTTPError(responsecode.FORBIDDEN)
+        return fail(HTTPError(responsecode.FORBIDDEN))
 
     ##
     # ACL
@@ -811,7 +811,7 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         return None
 
     def listChildren(self):
-        return ()
+        return succeed(())
 
 
 class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPrincipalResource):
@@ -943,10 +943,9 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def listChildren(self):
         if config.EnableProxyPrincipals:
-            return ("calendar-proxy-read", "calendar-proxy-write")
+            return succeed(("calendar-proxy-read", "calendar-proxy-write"))
         else:
-            return ()
-
+            return succeed(())
 ##
 # Utilities
 ##

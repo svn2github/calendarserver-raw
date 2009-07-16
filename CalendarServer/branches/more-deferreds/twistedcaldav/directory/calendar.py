@@ -102,7 +102,7 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
         return self.putChildren.get(name, None)
 
     def listChildren(self):
-        return self.directory.recordTypes()
+        return succeed(self.directory.recordTypes())
 
     def principalCollections(self):
         # FIXME: directory.principalCollection smells like a hack
@@ -172,10 +172,10 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
                         for shortName in record.shortNames:
                             yield shortName
 
-            return _recordShortnameExpand()
+            return succeed(_recordShortnameExpand())
         else:
             # Not a listable collection
-            raise HTTPError(responsecode.FORBIDDEN)
+            return fail(HTTPError(responsecode.FORBIDDEN))
 
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
@@ -227,7 +227,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
 
     def listChildren(self):
         # Not a listable collection
-        raise HTTPError(responsecode.FORBIDDEN)
+        return fail(HTTPError(responsecode.FORBIDDEN))
 
     ##
     # DAV
