@@ -595,7 +595,8 @@ class StoreCalendarObjectResource(object):
 
         # UID must be unique
         index = self.destinationparent.index()
-        if not index.isAllowedUID(uid, oldname, self.destination.fp.basename()):
+        isAllowed = yield index.isAllowedUID(uid, oldname, self.destination.fp.basename())
+        if not isAllowed:
             rname = yield index.resourceNameForUID(uid)
             # This can happen if two simultaneous PUTs occur with the same UID.
             # i.e. one PUT has reserved the UID but has not yet written the resource,
