@@ -58,7 +58,7 @@
 +                    return self.listChildren().addCallback(
 +                         lambda children: dirlist.DirectoryLister(
 +                          self.fp.path,
-+                          self.listChildren(),
++                          children,
 +                          self.contentTypes,
 +                          self.contentEncodings,
 +                          self.defaultType
