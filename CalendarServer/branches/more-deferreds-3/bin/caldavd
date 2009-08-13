@@ -120,4 +120,4 @@ export PYTHONPATH
 
 echo exec "${python}" "${twistdpath}" "${twistd_reactor}" ${daemonize} ${username} ${groupname} "${plugin_name}" ${configfile} ${service_type} ${profile} "${child_reactor}";
 
-exec "${python}" "${twistdpath}" ${twistd_reactor} ${daemonize} ${username} ${groupname} "${plugin_name}" ${configfile} ${service_type} ${profile} ${child_reactor};
+exec "${python}" "${twistdpath}" ${twistd_reactor}  ${daemonize} ${username} ${groupname} "${plugin_name}" ${configfile} ${service_type} ${profile} ${child_reactor};

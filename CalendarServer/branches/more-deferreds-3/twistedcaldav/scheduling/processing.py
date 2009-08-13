@@ -687,7 +687,7 @@ class ImplicitProcessor(object):
         calendar_resource, _ignore_name, _ignore_collection, _ignore_uri = (yield getCalendarObjectForPrincipals(self.request, self.originator.principal, self.uid))
         if not calendar_resource:
             raise ImplicitProcessorException("5.1;Service unavailable")
-        originator_calendar = calendar_resource.iCalendar()
+        originator_calendar = yield calendar_resource.iCalendar()
 
         # Get attendee's view of that
         originator_calendar.attendeesView((self.recipient.cuaddr,))

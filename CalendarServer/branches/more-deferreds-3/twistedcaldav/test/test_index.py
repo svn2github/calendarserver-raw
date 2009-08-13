@@ -426,13 +426,15 @@ END:VCALENDAR
                    )
               )
 
-            resources = self.db.indexedSearch(filter, fbtype=True)
-            index_results = set()
-            for _ignore_name, _ignore_uid, type, test_organizer, float, start, end, fbtype in resources:
-                self.assertEqual(test_organizer, organizer, msg=description)
-                index_results.add((float, start, end, fbtype,))
+            d = self.db.indexedSearch(filter, fbtype=True)
+            def _gotSearchResults(resources):
+                index_results = set()
+                for _ignore_name, _ignore_uid, type, test_organizer, float, start, end, fbtype in resources:
+                    self.assertEqual(test_organizer, organizer, msg=description)
+                    index_results.add((float, start, end, fbtype,))
 
-            self.assertEqual(set(instances), index_results, msg=description)
+                self.assertEqual(set(instances), index_results, msg=description)
+            return d.addCallback(_gotSearchResults)
 
 class SQLIndexUpgradeTests (twistedcaldav.test.util.TestCase):
     """

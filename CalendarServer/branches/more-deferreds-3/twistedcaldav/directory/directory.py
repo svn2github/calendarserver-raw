@@ -35,7 +35,7 @@ from zope.interface import implements
 from twisted.cred.error import UnauthorizedLogin
 from twisted.cred.checkers import ICredentialsChecker
 from twisted.web2.dav.auth import IPrincipalCredentials
-from twisted.internet.defer import succeed
+from twisted.internet.defer import succeed, maybeDeferred
 
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.directory.idirectory import IDirectoryService, IDirectoryRecord
@@ -107,13 +107,16 @@ class DirectoryService(LoggingMixIn):
                 credentials.authzPrincipal.principalURL(),
             )
         else:
-            if credentials.authnPrincipal.record.verifyCredentials(credentials.credentials):
-                return (
-                    credentials.authnPrincipal.principalURL(),
-                    credentials.authzPrincipal.principalURL(),
-                )
-            else:
-                raise UnauthorizedLogin("Incorrect credentials for %s" % (credentials.credentials.username,)) 
+            d = maybeDeferred(credentials.authnPrincipal.record.verifyCredentials, credentials.credentials)
+            def _verify(authed):
+                if authed:
+                    return (
+                        credentials.authnPrincipal.principalURL(),
+                        credentials.authzPrincipal.principalURL(),
+                        )
+                else:
+                    raise UnauthorizedLogin("Incorrect credentials for %s" % (credentials.credentials.username,)) 
+            return d.addCallback(_verify)
 
     def recordTypes(self):
         raise NotImplementedError("Subclass must implement recordTypes()")
