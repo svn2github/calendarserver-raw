@@ -907,7 +907,7 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         if config.EnableDropBox:
             return self._homeChildURL("dropbox/")
         else:
-            return None
+            return succeed(None)
 
     def _homeChildURL(self, name):
         d = self.calendarHome()

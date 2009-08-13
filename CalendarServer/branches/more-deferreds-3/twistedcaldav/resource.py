@@ -887,7 +887,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
 
         elif namespace == calendarserver_namespace:
             if name == "dropbox-home-URL" and config.EnableDropBox:
-                url = self.dropboxURL()
+                url = yield self.dropboxURL()
                 if url is None:
                     returnValue(None)
                 else:

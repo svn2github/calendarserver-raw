@@ -27,7 +27,7 @@ __all__ = [
     "DirectoryCalendarHomeResource",
 ]
 
-from twisted.internet.defer import succeed, inlineCallbacks, returnValue, gatherResults
+from twisted.internet.defer import succeed, fail, inlineCallbacks, returnValue, gatherResults
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.http import HTTPError
