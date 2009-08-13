@@ -632,7 +632,7 @@ class ImplicitProcessor(object):
         """
         
         from twistedcaldav.method.delete_common import DeleteResource
-        delchild = collection.getChild(name)
+        delchild = yield collection.getChild(name)
         childURL = joinURL(collURL, name)
         self.request._rememberResource(delchild, childURL)
 
