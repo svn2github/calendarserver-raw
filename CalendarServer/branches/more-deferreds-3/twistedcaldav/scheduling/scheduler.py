@@ -564,17 +564,18 @@ class CalDAVScheduler(Scheduler):
     
         # Attendee's Outbox MUST be the request URI
         attendeePrincipal = self.resource.principalForCalendarUserAddress(attendee)
-        d = attendeePrincipal.scheduleOutboxURL()
-        def _gotOutboxURL(outboxURL):
-            if attendeePrincipal:
+        if attendeePrincipal:
+            d = attendeePrincipal.scheduleOutboxURL()
+            def _gotOutboxURL(outboxURL):
                 if self.doingPOST and outboxURL != self.request.uri:
                     log.err("ATTENDEE in calendar data does not match owner of Outbox: %s" % (self.calendar,))
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
-            else:
-                log.err("Unknown ATTENDEE in calendar data: %s" % (self.calendar,))
-                raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
+
+            return d.addCallback(_gotOutboxURL)
+        else:
+            log.err("Unknown ATTENDEE in calendar data: %s" % (self.calendar,))
+            return fail(HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed"))))
     
-        return d.addCallback(_gotOutboxURL)
 
     def securityChecks(self):
         """

@@ -485,7 +485,8 @@ class CalendarIndex (AbstractCalendarIndex):
         Given a resource name, remove it from the database and re-add it
         with a longer expansion.
         """
-        d = self.resource.getChild(name).iCalendar()
+        d = self.resource.getChild(name)
+        d.addCallback(lambda r: r.iCalendar())
         def _gotCalendar(calendar):
             self._add_to_db(name, calendar, expand_until=expand_until, reCreate=True)
             self._db_commit()

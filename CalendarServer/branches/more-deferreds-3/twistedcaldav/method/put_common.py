@@ -703,10 +703,9 @@ class StoreCalendarObjectResource(object):
             if old_has_private_comments and not new_has_private_comments:
                 # Transfer old comments to new calendar
                 log.debug("Private Comments properties were entirely removed by the client. Restoring existing properties.")
-                self.destination.iCalendar().addCallback(
-                    lambda _: self.calendar.transferProperties(
-                        "X-CALENDARSERVER-PRIVATE-COMMENT",
-                        "X-CALENDARSERVER-ATTENDEE-COMMENT"))
+                self.destination.iCalendar().addCallback(self.calendar.transferProperties,
+                                                         ("X-CALENDARSERVER-PRIVATE-COMMENT",
+                                                          "X-CALENDARSERVER-ATTENDEE-COMMENT"))
                 self.calendardata = None
         
         return new_has_private_comments
