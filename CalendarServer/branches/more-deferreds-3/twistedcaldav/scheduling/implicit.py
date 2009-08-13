@@ -767,7 +767,7 @@ class ImplicitScheduler(object):
         else:
             # Make sure ORGANIZER is not changed
             if self.resource.exists():
-                self.oldcalendar = self.resource.iCalendar()
+                self.oldcalendar = yield self.resource.iCalendar()
                 oldOrganizer = self.oldcalendar.getOrganizer()
                 newOrganizer = self.calendar.getOrganizer()
                 if oldOrganizer != newOrganizer:

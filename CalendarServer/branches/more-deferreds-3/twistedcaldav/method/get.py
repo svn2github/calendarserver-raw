@@ -1,4 +1,4 @@
-##
+\##
 # Copyright (c) 2005-2008 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,8 +53,8 @@ def http_GET(self, request):
             if not isowner:
                 # Now "filter" the resource calendar data through the CALDAV:calendar-data element and apply
                 # access restrictions to the data.
-                caldata = caldavxml.CalendarData().elementFromResourceWithAccessRestrictions(self, access).calendarData()
-
+                el = yield caldavxml.CalendarData().elementFromResourceWithAccessRestrictions(self, access)
+                caldata = el.calendarData()
                 response = Response()
                 response.stream = MemoryStream(caldata)
                 response.headers.setHeader("content-type", MimeType.fromString("text/calendar; charset=utf-8"))

@@ -251,6 +251,34 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
     """
     Calendar home collection resource.
     """
+    @classmethod
+    def fetch(cls, *a, **kw):
+        d = super(DirectoryCalendarHomeResource, cls).fetch(*a, **kw)
+        def _populateChildren(self):
+            # Cache children which must be of a specific type
+            childlist = (
+                ("inbox" , ScheduleInboxResource ),
+                ("outbox", ScheduleOutboxResource),
+            )
+            if config.EnableDropBox:
+                childlist += (
+                    ("dropbox", DropBoxHomeResource),
+                )
+            if config.FreeBusyURL.Enabled:
+                childlist += (
+                    ("freebusy", FreeBusyURLResource),
+                )
+            ds = []
+            for name, cls in childlist:
+                d = self.provisionChild(name)
+                def _newChild(child):
+                    assert isinstance(child, cls), "Child %r is not a %s: %r" % (name, cls.__name__, child)
+                    self.putChild(name, child)
+                d.addCallback(_newChild)
+                ds.append(d)
+            return gatherResults(ds).addCallback(lambda _: self)
+
+        return d.addCallback(_populateChildren)
 
     def __init__(self, parent, record):
         """
@@ -263,6 +291,7 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
 
         self.record = record
         self.parent = parent
+
 
     def provisionDefaultCalendars(self):
 

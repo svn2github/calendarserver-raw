@@ -417,7 +417,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
                     fbinfo[fbtype_index_mapper.get(fbtype, 0)].append(clipped)
                 
         else:
-            calendar = yield ncalresource.iCalendar(name)
+            calendar = yield calresource.iCalendar(name)
             
             # The calendar may come back as None if the resource is being changed, or was deleted
             # between our initial index query and getting here. For now we will ignore this error, but in

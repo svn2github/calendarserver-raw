@@ -316,8 +316,8 @@ class CalDAVFile (CalDAVResource, DAVFile):
             if not isowner:
                 # Now "filter" the resource calendar data through the CALDAV:calendar-data element and apply
                 # access restrictions to the data.
-                return caldavxml.CalendarData().elementFromResourceWithAccessRestrictions(self, access).calendarData()
-
+                d = caldavxml.CalendarData().elementFromResourceWithAccessRestrictions(self, access)
+                return d.addCallback(lambda el: el.calendarData())
         return self.iCalendarText()
 
     def iCalendarText(self, name=None):

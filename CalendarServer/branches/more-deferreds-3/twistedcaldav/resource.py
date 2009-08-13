@@ -488,10 +488,10 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         """
         assert depth in ("0", "1", "infinity"), "Invalid depth: %s" % (depth,)
 
-        def checkPrivilegesError(failure):
+        def checkPrivilegesError(failure, children):
             failure.trap(AccessDeniedError)
 
-            reactor.callLater(0, getChild)
+            reactor.callLater(0, getChild, children)
 
         def checkPrivileges(child):
             if privileges is None:
@@ -521,7 +521,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
                 childpath = joinURL(basepath, childname)
                 child = request.locateResource(childpath)
                 child.addCallback(checkPrivileges)
-                child.addCallbacks(gotChild, checkPrivilegesError, (childpath, children))
+                child.addCallbacks(gotChild, checkPrivilegesError, (childpath, children), None, (children,))
                 child.addErrback(completionDeferred.errback)
 
         completionDeferred = Deferred()

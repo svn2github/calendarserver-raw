@@ -132,7 +132,7 @@ class ImplicitProcessor(object):
         self.recipient_calendar_name = None
         calendar_resource, resource_name, calendar_collection, calendar_collection_uri = (yield getCalendarObjectForPrincipals(self.request, self.recipient.principal, self.uid))
         if calendar_resource:
-            self.recipient_calendar = calendar_resource.iCalendar()
+            self.recipient_calendar = yield calendar_resource.iCalendar()
             self.recipient_calendar_collection = calendar_collection
             self.recipient_calendar_collection_uri = calendar_collection_uri
             self.recipient_calendar_name = resource_name

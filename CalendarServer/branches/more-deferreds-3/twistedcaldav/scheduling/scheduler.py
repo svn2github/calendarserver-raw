@@ -564,7 +564,7 @@ class CalDAVScheduler(Scheduler):
     
         # Attendee's Outbox MUST be the request URI
         attendeePrincipal = self.resource.principalForCalendarUserAddress(attendee)
-        d = attendeePrincipal.scheduleOutboxURL(self.request)
+        d = attendeePrincipal.scheduleOutboxURL()
         def _gotOutboxURL(outboxURL):
             if attendeePrincipal:
                 if self.doingPOST and outboxURL != self.request.uri:
