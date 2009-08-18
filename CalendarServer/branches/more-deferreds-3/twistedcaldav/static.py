@@ -87,6 +87,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
     """
     CalDAV-accessible L{DAVFile} resource.
     """
+    propertyStore = CachingPropertyStore
 
     @classmethod
     def fetch(cls, request, path, *args, **kwargs):
