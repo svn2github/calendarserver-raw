@@ -245,7 +245,7 @@ class IMIPInboxResource(CalDAVFile):
         return None
 
     def checkPreconditions(self, request):
-        return None
+        return succeed(None)
 
     def render(self, request):
         output = """<html>

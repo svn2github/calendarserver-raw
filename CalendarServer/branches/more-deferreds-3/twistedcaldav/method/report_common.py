@@ -246,7 +246,7 @@ def _namedPropertiesForResource(request, props, resource, calendar=None, timezon
             # Handle private events access restrictions
             if not isowner:
                 try:
-                    access = resource.readDeadProperty(TwistedCalendarAccessProperty)
+                    access = (yield resource.readDeadProperty(TwistedCalendarAccessProperty))
                 except HTTPError:
                     access = None
             else:

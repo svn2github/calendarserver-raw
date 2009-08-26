@@ -1,0 +1,81 @@
+Index: twisted/web2/dav/test/test_mkcol.py
+===================================================================
+--- twisted/web2/dav/test/test_mkcol.py	(revision 26969)
++++ twisted/web2/dav/test/test_mkcol.py	(working copy)
+@@ -24,6 +24,7 @@
+ 
+ import os
+ 
++from twisted.internet.defer import waitForDeferred, deferredGenerator
+ from twisted.web2 import responsecode
+ from twisted.web2.iweb import IResponse
+ from twisted.web2.stream import MemoryStream
+@@ -35,6 +36,7 @@
+     """
+     MKCOL request
+     """
++
+     # FIXME:
+     # Try in nonexistant parent collection.
+     # Try on existing resource.
+@@ -43,7 +45,9 @@
+         """
+         MKCOL request
+         """
+-        path, uri = self.mkdtemp("collection")
++        d = waitForDeferred(self.mkdtemp("collection"))
++        yield d
++        path, uri = d.getResult()
+ 
+         rmdir(path)
+ 
+@@ -56,17 +60,28 @@
+             if not os.path.isdir(path):
+                 self.fail("MKCOL did not create directory %s" % (path,))
+ 
+-        request = SimpleRequest(self.site, "MKCOL", uri)
++        site = waitForDeferred(self.site)
++        yield site
++        site = site.getResult()
+ 
+-        return self.send(request, check_result)
++        request = SimpleRequest(site, "MKCOL", uri)
+ 
++        d = waitForDeferred(self.send(request, check_result))
++        yield d
++        d = d.getResult()
++        yield d
++
++    test_MKCOL = deferredGenerator(test_MKCOL)
++
+     def test_MKCOL_invalid_body(self):
+         """
+         MKCOL request with invalid request body
+         (Any body at all is invalid in our implementation; there is no
+         such thing as a valid body.)
+         """
+-        path, uri = self.mkdtemp("collection")
++        d = waitForDeferred(self.mkdtemp("collection"))
++        yield d
++        path, uri = d.getResult()
+ 
+         rmdir(path)
+ 
+@@ -79,7 +94,15 @@
+             if os.path.isdir(path):
+                 self.fail("MKCOL incorrectly created directory %s" % (path,))
+ 
+-        request = SimpleRequest(self.site, "MKCOL", uri)
++        site = waitForDeferred(self.site)
++        yield site
++        site = site.getResult()
++        request = SimpleRequest(site, "MKCOL", uri)
+         request.stream = MemoryStream("This is not a valid MKCOL request body.")
+ 
+-        return self.send(request, check_result)
++        d = waitForDeferred(self.send(request, check_result))
++        yield d
++        d = d.getResult()
++        yield d
++
++    test_MKCOL_invalid_body = deferredGenerator(test_MKCOL_invalid_body)

@@ -1,7 +1,40 @@
-=== modified file 'twisted/web2/dav/test/test_resource.py'
---- twisted/web2/dav/test/test_resource.py	2009-05-07 20:35:07 +0000
-+++ twisted/web2/dav/test/test_resource.py	2009-07-15 23:30:18 +0000
-@@ -376,7 +376,7 @@
+Index: twisted/web2/dav/test/test_resource.py
+===================================================================
+--- twisted/web2/dav/test/test_resource.py	(revision 26969)
++++ twisted/web2/dav/test/test_resource.py	(working copy)
+@@ -39,7 +39,13 @@
+     def setUp(self):
+         twisted.web2.dav.test.util.TestCase.setUp(self)
+         TestResource._cachedPropertyStores = {}
++        # Pre-fetch site, so the rest of the test doesn't have to defer
++        self._getSite()
+ 
++    def _getStoredSite(self):
++        return self._site
++    site = property(_getStoredSite)
++
+ class GenericDAVResource(TestCase):
+     def setUp(self):
+         TestCase.setUp(self)
+@@ -60,7 +66,7 @@
+             })
+         })
+ 
+-        self.site = Site(rootresource)
++        self._site = Site(rootresource)
+ 
+     def test_findChildren(self):
+         """
+@@ -234,7 +240,7 @@
+         loginInterfaces = (IPrincipal,)
+ 
+         self.rootresource = rootresource
+-        self.site = Site(AuthenticationWrapper(
++        self._site = Site(AuthenticationWrapper(
+             self.rootresource,
+             portal,
+             credentialFactories,
+@@ -376,7 +382,7 @@
          return self.children is not None
  
      def listChildren(self):
@@ -10,4 +43,11 @@
  
      def supportedPrivileges(self, request):
          return succeed(davPrivilegeSet)
-
+@@ -398,6 +404,7 @@
+ 
+     def setAccessControlList(self, acl):
+         self.acl = acl
++        return succeed(self.acl)
+ 
+     def accessControlList(self, request, **kwargs):
+         return succeed(self.acl)

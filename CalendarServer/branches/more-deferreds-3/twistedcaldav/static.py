@@ -107,6 +107,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
             return False
         return self.fp.path == other.fp.path
 
+    @inlineCallbacks
     def checkPreconditions(self, request):
         """
         We override the base class to handle the special implicit scheduling weak ETag behavior
@@ -115,8 +116,8 @@ class CalDAVFile (CalDAVResource, DAVFile):
         
         if config.Scheduling.CalDAV.ScheduleTagCompatibility:
             
-            if self.exists() and self.hasDeadProperty(TwistedScheduleMatchETags):
-                etags = self.readDeadProperty(TwistedScheduleMatchETags).children
+            if self.exists() and (yield self.hasDeadProperty(TwistedScheduleMatchETags)):
+                etags = (yield self.readDeadProperty(TwistedScheduleMatchETags)).children
                 if len(etags) > 1:
                     # This is almost verbatim from twisted.web2.static.checkPreconditions
                     if request.method not in ("GET", "HEAD"):
@@ -144,13 +145,12 @@ class CalDAVFile (CalDAVResource, DAVFile):
                     # Check per-method preconditions
                     method = getattr(self, "preconditions_" + request.method, None)
                     if method:
-                        response = maybeDeferred(method, request)
-                        response.addCallback(lambda _: request)
-                        return response
+                        response = yield(method(request))
+                        returnValue(response)
                     else:
-                        return None
+                        returnValue(None)
 
-        return super(CalDAVFile, self).checkPreconditions(request)
+        returnValue((yield super(CalDAVFile, self).checkPreconditions(request)))
 
     def deadProperties(self, caching=True):
         if not hasattr(self, "_dead_properties"):
@@ -208,28 +208,24 @@ class CalDAVFile (CalDAVResource, DAVFile):
         parent.addCallback(_defer)
         return parent
 
+    @inlineCallbacks
     def createCalendarCollection(self):
         #
         # Create the collection once we know it is safe to do so
         #
-        def onCalendarCollection(status):
-            if status != responsecode.CREATED:
-                raise HTTPError(status)
+        status = (yield self.createSpecialCollection(davxml.ResourceType.calendar))
+        if status != responsecode.CREATED:
+            raise HTTPError(status)
 
-            # Initialize CTag on the calendar collection
-            d1 = self.updateCTag()
+        # Initialize CTag on the calendar collection
+        yield self.updateCTag()
 
-            # Calendar is initially transparent to freebusy
-            self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Transparent()))
+        # Calendar is initially transparent to freebusy
+        yield self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Transparent()))
 
-            # Create the index so its ready when the first PUTs come in
-            d1.addCallback(lambda _: self.index().create())
-            d1.addCallback(lambda _: status)
-            return d1
-
-        d = self.createSpecialCollection(davxml.ResourceType.calendar)
-        d.addCallback(onCalendarCollection)
-        return d
+        # Create the index so its ready when the first PUTs come in
+        self.index().create()
+        returnValue(status)
 
     def createSpecialCollection(self, resourceType=None):
         #
@@ -239,8 +235,9 @@ class CalDAVFile (CalDAVResource, DAVFile):
             if status != responsecode.CREATED:
                 raise HTTPError(status)
 
-            self.writeDeadProperty(resourceType)
-            return status
+            d = self.writeDeadProperty(resourceType)
+            d.addCallback(lambda _: status)
+            return d
 
         def onError(f):
             try:
@@ -306,9 +303,10 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
         raise HTTPError(ErrorResponse(responsecode.BAD_REQUEST))
 
+    @inlineCallbacks
     def iCalendarTextFiltered(self, isowner):
         try:
-            access = self.readDeadProperty(TwistedCalendarAccessProperty)
+            access = (yield self.readDeadProperty(TwistedCalendarAccessProperty))
         except HTTPError:
             access = None
 
@@ -317,9 +315,9 @@ class CalDAVFile (CalDAVResource, DAVFile):
             if not isowner:
                 # Now "filter" the resource calendar data through the CALDAV:calendar-data element and apply
                 # access restrictions to the data.
-                d = caldavxml.CalendarData().elementFromResourceWithAccessRestrictions(self, access)
-                return d.addCallback(lambda el: el.calendarData())
-        return self.iCalendarText()
+                el = (yield caldavxml.CalendarData().elementFromResourceWithAccessRestrictions(self, access))
+                returnValue(el.calendarData())
+        returnValue((yield self.iCalendarText()))
 
     def iCalendarText(self, name=None):
         if self.isPseudoCalendarCollection():
@@ -417,7 +415,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
                         response = (yield original(request))
 
                         # Wipe the cache
-                        similar.deadProperties().flushCache()
+                        yield similar.deadProperties().flushCache()
 
                         returnValue(response)
 
@@ -426,13 +424,15 @@ class CalDAVFile (CalDAVResource, DAVFile):
             return similar
         return d.addCallback(_gotFile)
 
+    @inlineCallbacks
     def updateCTag(self):
         assert self.isCollection()
         try:
-            self.writeDeadProperty(customxml.GETCTag(
+            yield self.writeDeadProperty(customxml.GETCTag(
                     str(datetime.datetime.now())))
         except:
-            return fail(Failure())
+            # MOR: was: return fail(Failure())
+            raise Failure()
 
         if hasattr(self, 'clientNotifier'):
             self.clientNotifier.notify(op="update")
@@ -441,12 +441,12 @@ class CalDAVFile (CalDAVResource, DAVFile):
                       % (self,))
 
         if hasattr(self, 'cacheNotifier'):
-            return self.cacheNotifier.changed()
+            returnValue(self.cacheNotifier.changed())
         else:
             log.debug("%r does not have a cacheNotifier but the CTag changed"
                       % (self,))
 
-        return succeed(True)
+        returnValue(True)
 
     ##
     # Quota
@@ -950,10 +950,10 @@ class IScheduleInboxFile (IScheduleInboxResource, CalDAVFile):
         return self._dead_properties
 
     def etag(self):
-        return None
+        return succeed(None)
 
     def checkPreconditions(self, request):
-        return None
+        return succeed(None)
 
     ##
     # ACL
@@ -1075,10 +1075,10 @@ class TimezoneServiceFile (TimezoneServiceResource, CalDAVFile):
         return self._dead_properties
 
     def etag(self):
-        return None
+        return succeed(None)
 
     def checkPreconditions(self, request):
-        return None
+        return succeed(None)
 
     def checkPrivileges(self, request, privileges, recurse=False, principal=None, inherited_aces=None):
         return succeed(None)

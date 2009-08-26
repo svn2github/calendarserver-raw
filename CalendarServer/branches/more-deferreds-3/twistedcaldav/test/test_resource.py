@@ -31,8 +31,9 @@ class CalDAVResourceTests(TestCase):
         self.resource = CalDAVResource()
         self.resource._dead_properties = InMemoryPropertyStore()
 
+    @inlineCallbacks
     def test_writeDeadPropertyWritesProperty(self):
         prop = StubProperty()
-        self.resource.writeDeadProperty(prop)
-        self.assertEquals(self.resource._dead_properties.get("StubQname"),
+        yield self.resource.writeDeadProperty(prop)
+        self.assertEquals((yield self.resource._dead_properties.get("StubQname")),
                           prop)

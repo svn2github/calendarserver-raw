@@ -1,16 +1,88 @@
-=== modified file 'twisted/web2/static.py'
---- twisted/web2/static.py	2009-04-20 17:38:06 +0000
-+++ twisted/web2/static.py	2009-07-15 23:30:18 +0000
+Index: twisted/web2/static.py
+===================================================================
+--- twisted/web2/static.py	(revision 26969)
++++ twisted/web2/static.py	(working copy)
 @@ -16,7 +16,7 @@
  
  # Twisted Imports
  from twisted.python import filepath
 -from twisted.internet.defer import maybeDeferred
-+from twisted.internet.defer import maybeDeferred, succeed
++from twisted.internet.defer import maybeDeferred, succeed, deferredGenerator, waitForDeferred
  from zope.interface import implements
  
  class MetaDataMixin(object):
-@@ -291,12 +291,13 @@
+@@ -28,7 +28,7 @@
+         """
+         @return: The current etag for the resource if available, None otherwise.
+         """
+-        return None
++        return succeed(None)
+ 
+     def lastModified(self):
+         """
+@@ -76,18 +76,26 @@
+     def checkPreconditions(self, request):
+         # This code replaces the code in resource.RenderMixin
+         if request.method not in ("GET", "HEAD"):
++            etag = waitForDeferred(self.etag())
++            yield etag
++            etag = etag.getResult()
+             http.checkPreconditions(
+                 request,
+                 entityExists = self.exists(),
+-                etag = self.etag(),
++                etag = etag,
+                 lastModified = self.lastModified(),
+             )
+ 
+         # Check per-method preconditions
+         method = getattr(self, "preconditions_" + request.method, None)
+         if method:
+-            return method(request)
++            result = waitForDeferred(method(request))
++            yield result
++            result = result.getResult()
++            yield result
+ 
++    checkPreconditions = deferredGenerator(checkPreconditions)
++
+     def renderHTTP(self, request):
+         """
+         See L{resource.RenderMixIn.renderHTTP}.
+@@ -132,8 +140,8 @@
+ 
+     def etag(self):
+         lastModified = self.lastModified()
+-        return http_headers.ETag("%X-%X" % (lastModified, hash(self.data)),
+-                                 weak=(time.time() - lastModified <= 1))
++        return succeed(http_headers.ETag("%X-%X" % (lastModified, hash(self.data)),
++                                 weak=(time.time() - lastModified <= 1)))
+ 
+     def lastModified(self):
+         return self.creationDate()
+@@ -217,7 +225,7 @@
+         return self.fp.exists()
+ 
+     def etag(self):
+-        if not self.fp.exists(): return None
++        if not self.fp.exists(): return succeed(None)
+ 
+         st = self.fp.statinfo
+ 
+@@ -228,10 +236,10 @@
+         #
+         weak = (time.time() - st.st_mtime <= 1)
+ 
+-        return http_headers.ETag(
++        return succeed(http_headers.ETag(
+             "%X-%X-%X" % (st.st_ino, st.st_size, st.st_mtime),
+             weak=weak
+-        )
++        ))
+ 
+     def lastModified(self):
+         if self.fp.exists():
+@@ -291,12 +299,13 @@
          self.ignoredExts.append(ext)
  
      def directoryListing(self):
@@ -30,7 +102,7 @@
      def putChild(self, name, child):
          """
          Register a child with the given name with this resource.
-@@ -329,7 +330,7 @@
+@@ -329,7 +338,7 @@
          children = self.putChildren.keys()
          if self.fp.isdir():
              children += [c for c in self.fp.listdir() if c not in children]
@@ -39,7 +111,7 @@
  
      def locateChild(self, req, segments):
          """
-@@ -387,17 +388,17 @@
+@@ -387,17 +396,17 @@
                  ifp = self.fp.childSearchPreauth(*self.indexNames)
                  if ifp:
                      # Render from the index file
@@ -66,4 +138,3 @@
  
          try:
              f = self.fp.open()
-

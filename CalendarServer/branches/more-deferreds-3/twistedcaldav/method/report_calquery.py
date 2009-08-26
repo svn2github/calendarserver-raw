@@ -116,6 +116,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
         @param uri: the uri for the calendar collecton resource.
         """
         
+        @inlineCallbacks
         def queryCalendarObjectResource(resource, uri, name, calendar, timezone, query_ok=False, isowner=True):
             """
             Run a query on the specified calendar.
@@ -128,7 +129,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
             # Handle private events access restrictions
             if not isowner:
                 try:
-                    access = resource.readDeadProperty(TwistedCalendarAccessProperty)
+                    access = (yield resource.readDeadProperty(TwistedCalendarAccessProperty))
                 except HTTPError:
                     access = None
             else:
@@ -145,9 +146,9 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
                 else:
                     href = davxml.HRef.fromString(uri)
             
-                return report_common.responseForHref(request, responses, href, resource, calendar, timezone, propertiesForResource, query, isowner)
+                returnValue(report_common.responseForHref(request, responses, href, resource, calendar, timezone, propertiesForResource, query, isowner))
             else:
-                return succeed(None)
+                returnValue(None)
     
         # Check whether supplied resource is a calendar or a calendar object resource
         if calresource.isPseudoCalendarCollection():

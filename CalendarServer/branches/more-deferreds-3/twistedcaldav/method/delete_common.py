@@ -52,6 +52,7 @@ class DeleteResource(object):
         self.depth = depth
         self.internal_request = internal_request
 
+    @inlineCallbacks
     def validIfScheduleMatch(self):
         """
         Check for If-ScheduleTag-Match header behavior.
@@ -63,8 +64,8 @@ class DeleteResource(object):
             if header:
                 # Do "precondition" test
                 matched = False
-                if self.resource.exists() and self.resource.hasDeadProperty(ScheduleTag):
-                    scheduletag = self.resource.readDeadProperty(ScheduleTag)
+                if self.resource.exists() and (yield self.resource.hasDeadProperty(ScheduleTag)):
+                    scheduletag = (yield self.resource.readDeadProperty(ScheduleTag))
                     matched = (scheduletag == header)
                 if not matched:
                     log.debug("If-Schedule-Tag-Match: header value '%s' does not match resource value '%s'" % (header, scheduletag,))
@@ -130,7 +131,7 @@ class DeleteResource(object):
         # as the iTIP operation may fail and may need to prevent the delete from happening.
     
         # Do If-Schedule-Tag-Match behavior first
-        self.validIfScheduleMatch()
+        yield self.validIfScheduleMatch()
 
         # Do quota checks before we start deleting things
         myquota = (yield delresource.quota(self.request))

@@ -281,7 +281,7 @@ class StoreCalendarObjectResource(object):
 
         # Basic validation
         yield self.validCopyMoveOperation()
-        self.validIfScheduleMatch()
+        yield self.validIfScheduleMatch()
 
         if self.destinationcal:
             # Valid resource name check
@@ -393,6 +393,7 @@ class StoreCalendarObjectResource(object):
                     log.debug(msg)
                     raise HTTPError(StatusResponse(responsecode.FORBIDDEN, msg))
 
+    @inlineCallbacks
     def validIfScheduleMatch(self):
         """
         Check for If-ScheduleTag-Match header behavior.
@@ -404,12 +405,14 @@ class StoreCalendarObjectResource(object):
             header = self.request.headers.getHeader("If-Schedule-Tag-Match")
             if header:
                 # Do "precondition" test
-                
-                # If COPY/MOVE get Schedule-Tag on source, else use destination
-                def _getScheduleTag(resource):
-                    return resource.readDeadProperty(ScheduleTag) if resource.exists() and resource.hasDeadProperty(ScheduleTag) else None
 
-                scheduletag = _getScheduleTag(self.source if self.source else self.destination)
+                # If COPY/MOVE get Schedule-Tag on source, else use destination
+                resource = self.source if self.source else self.destination
+                if resource.exists() and (yield resource.hasDeadProperty(ScheduleTag)):
+                    scheduletag = (yield resource.readDeadProperty(ScheduleTag))
+                else:
+                    scheduletag = None
+
                 if scheduletag != header:
                     log.debug("If-Schedule-Tag-Match: header value '%s' does not match resource value '%s'" % (header, scheduletag,))
                     raise HTTPError(responsecode.PRECONDITION_FAILED)
@@ -539,6 +542,7 @@ class StoreCalendarObjectResource(object):
 
         return result, message
 
+    @inlineCallbacks
     def validAccess(self):
         """
         Make sure that the X-CALENDARSERVER-ACCESS property is properly dealt with.
@@ -553,25 +557,19 @@ class StoreCalendarObjectResource(object):
                 
             # Only DAV:owner is able to set the property to other than PUBLIC
             if not self.internal_request:
-                def _callback(parent_owner):
-                    
-                    authz = self.destinationparent.currentPrincipal(self.request)
-                    if davxml.Principal(parent_owner) != authz and self.access != Component.ACCESS_PUBLIC:
-                        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (calendarserver_namespace, "valid-access-restriction-change")))
-                    
-                    return None
-    
-                d = self.destinationparent.owner(self.request)
-                d.addCallback(_callback)
-                return d
+                parentOwner = (yield self.destinationparent.owner(self.request))
+                authz = self.destinationparent.currentPrincipal(self.request)
+                if davxml.Principal(parentOwner) != authz and self.access != Component.ACCESS_PUBLIC:
+                    raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (calendarserver_namespace, "valid-access-restriction-change")))
+
         else:
             # Check whether an access property was present before and write that into the calendar data
-            if not self.source and self.destination.exists() and self.destination.hasDeadProperty(TwistedCalendarAccessProperty):
-                old_access = str(self.destination.readDeadProperty(TwistedCalendarAccessProperty))
+            if not self.source and self.destination.exists() and (yield self.destination.hasDeadProperty(TwistedCalendarAccessProperty)):
+                old_access = str((yield self.destination.readDeadProperty(TwistedCalendarAccessProperty)))
                 self.calendar.addProperty(Property(name=Component.ACCESS_PROPERTY, value=old_access))
                 self.calendardata = str(self.calendar)
                 
-        return succeed(None)
+        returnValue(None)
 
     @inlineCallbacks
     def noUIDConflict(self, uid):
@@ -687,6 +685,7 @@ class StoreCalendarObjectResource(object):
         else:
             return False
 
+    @inlineCallbacks
     def preservePrivateComments(self):
         # Check for private comments on the old resource and the new resource and re-insert
         # ones that are lost.
@@ -695,7 +694,7 @@ class StoreCalendarObjectResource(object):
         # the X- property is missing.
         new_has_private_comments = False
         if config.Scheduling.CalDAV.get("EnablePrivateComments", True) and self.calendar is not None:
-            old_has_private_comments = self.destination.exists() and self.destinationcal and self.destination.hasDeadProperty(TwistedCalendarHasPrivateCommentsProperty)
+            old_has_private_comments = self.destination.exists() and self.destinationcal and (yield self.destination.hasDeadProperty(TwistedCalendarHasPrivateCommentsProperty))
             new_has_private_comments = self.calendar.hasPropertyInAnyComponent((
                 "X-CALENDARSERVER-PRIVATE-COMMENT",
                 "X-CALENDARSERVER-ATTENDEE-COMMENT",
@@ -704,19 +703,23 @@ class StoreCalendarObjectResource(object):
             if old_has_private_comments and not new_has_private_comments:
                 # Transfer old comments to new calendar
                 log.debug("Private Comments properties were entirely removed by the client. Restoring existing properties.")
-                self.destination.iCalendar().addCallback(self.calendar.transferProperties,
-                                                         ("X-CALENDARSERVER-PRIVATE-COMMENT",
-                                                          "X-CALENDARSERVER-ATTENDEE-COMMENT"))
+                old_calendar = (yield self.destination.iCalendar())
+                self.calendar.transferProperties(old_calendar,
+                    (
+                        "X-CALENDARSERVER-PRIVATE-COMMENT",
+                        "X-CALENDARSERVER-ATTENDEE-COMMENT",
+                    )
+                )
                 self.calendardata = None
         
-        return new_has_private_comments
+        returnValue(new_has_private_comments)
 
     @inlineCallbacks
     def doImplicitScheduling(self):
 
         # Get any existing schedule-tag property on the resource
-        if self.destination.exists() and self.destination.hasDeadProperty(ScheduleTag):
-            self.scheduletag = self.destination.readDeadProperty(ScheduleTag)
+        if self.destination.exists() and (yield self.destination.hasDeadProperty(ScheduleTag)):
+            self.scheduletag = (yield self.destination.readDeadProperty(ScheduleTag))
             if self.scheduletag:
                 self.scheduletag = str(self.scheduletag)
         else:
@@ -795,13 +798,13 @@ class StoreCalendarObjectResource(object):
     
         # Update calendar-access property value on the resource
         if self.access:
-            self.destination.writeDeadProperty(TwistedCalendarAccessProperty(self.access))
+            (yield self.destination.writeDeadProperty(TwistedCalendarAccessProperty(self.access)))
             
         # Do not remove the property if access was not specified and we are storing in a calendar.
         # This ensure that clients that do not preserve the iCalendar property do not cause access
         # restrictions to be lost.
         elif not self.destinationcal:
-            self.destination.removeDeadProperty(TwistedCalendarAccessProperty)                
+            (yield self.destination.removeDeadProperty(TwistedCalendarAccessProperty))
 
         returnValue(IResponse(response))
 
@@ -816,7 +819,7 @@ class StoreCalendarObjectResource(object):
         # Finish MD5 calculation and write dead property
         md5.close()
         md5 = md5.getMD5()
-        self.destination.writeDeadProperty(TwistedGETContentMD5.fromString(md5))
+        yield self.destination.writeDeadProperty(TwistedGETContentMD5.fromString(md5))
 
         returnValue(response)
 
@@ -880,6 +883,7 @@ class StoreCalendarObjectResource(object):
                 ))
             return None
 
+    @inlineCallbacks
     def doDestinationIndex(self, caltoindex):
         """
         Do destination resource indexing, replacing any index previous stored.
@@ -908,10 +912,10 @@ class StoreCalendarObjectResource(object):
 
         content_type = self.request.headers.getHeader("content-type")
         if not self.internal_request and content_type is not None:
-            self.destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(content_type)))
+            yield self.destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(content_type)))
         else:
-            self.destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(MimeType("text", "calendar", params={"charset":"utf-8"}))))
-        return None
+            yield self.destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(MimeType("text", "calendar", params={"charset":"utf-8"}))))
+        returnValue(None)
 
     def doRemoveDestinationIndex(self):
         """
@@ -962,7 +966,7 @@ class StoreCalendarObjectResource(object):
             rruleChanged = self.truncateRecurrence()
 
             # Preserve private comments
-            new_has_private_comments = self.preservePrivateComments()
+            new_has_private_comments = (yield self.preservePrivateComments())
     
             # Do scheduling
             implicit_result = (yield self.doImplicitScheduling())
@@ -1021,7 +1025,7 @@ class StoreCalendarObjectResource(object):
 
             # Check for scheduling object resource and write property
             if is_scheduling_resource:
-                self.destination.writeDeadProperty(TwistedSchedulingObjectResource.fromString("true"))
+                yield self.destination.writeDeadProperty(TwistedSchedulingObjectResource.fromString("true"))
 
                 # Need to figure out when to change the schedule tag:
                 #
@@ -1043,7 +1047,7 @@ class StoreCalendarObjectResource(object):
 
                 if change_scheduletag or self.scheduletag is None:
                     self.scheduletag = str(uuid.uuid4())
-                self.destination.writeDeadProperty(ScheduleTag.fromString(self.scheduletag))
+                yield self.destination.writeDeadProperty(ScheduleTag.fromString(self.scheduletag))
 
                 # Add a response header
                 response.headers.setHeader("Schedule-Tag", self.scheduletag)                
@@ -1056,25 +1060,25 @@ class StoreCalendarObjectResource(object):
                     else:
                         # Schedule-Tag did not change => add current ETag to list of those that can
                         # be used in a weak pre-condition test
-                        if self.destination.hasDeadProperty(TwistedScheduleMatchETags):
-                            etags = self.destination.readDeadProperty(TwistedScheduleMatchETags).children
+                        if (yield self.destination.hasDeadProperty(TwistedScheduleMatchETags)):
+                            etags = (yield self.destination.readDeadProperty(TwistedScheduleMatchETags)).children
                         else:
                             etags = ()
                     etags += (davxml.GETETag.fromString(self.destination.etag().tag),)
-                    self.destination.writeDeadProperty(TwistedScheduleMatchETags(*etags))
+                    yield self.destination.writeDeadProperty(TwistedScheduleMatchETags(*etags))
                 else:
-                    self.destination.removeDeadProperty(TwistedScheduleMatchETags)                
+                    yield self.destination.removeDeadProperty(TwistedScheduleMatchETags)                
             else:
-                self.destination.writeDeadProperty(TwistedSchedulingObjectResource.fromString("false"))                
-                self.destination.removeDeadProperty(ScheduleTag)                
-                self.destination.removeDeadProperty(TwistedScheduleMatchETags)                
+                yield self.destination.writeDeadProperty(TwistedSchedulingObjectResource.fromString("false"))                
+                yield self.destination.removeDeadProperty(ScheduleTag)                
+                yield self.destination.removeDeadProperty(TwistedScheduleMatchETags)                
 
             # Check for existence of private comments and write property
             if config.Scheduling.CalDAV.get("EnablePrivateComments", True):
                 if new_has_private_comments:
-                    self.destination.writeDeadProperty(TwistedCalendarHasPrivateCommentsProperty())
+                    yield self.destination.writeDeadProperty(TwistedCalendarHasPrivateCommentsProperty())
                 elif not self.destinationcal:
-                    self.destination.removeDeadProperty(TwistedCalendarHasPrivateCommentsProperty)                
+                    yield self.destination.removeDeadProperty(TwistedCalendarHasPrivateCommentsProperty)                
 
             # Delete the original source if needed.
             if self.deletesource:
@@ -1082,7 +1086,7 @@ class StoreCalendarObjectResource(object):
     
             # Index the new resource if storing to a calendar.
             if self.destinationcal:
-                result = self.doDestinationIndex(self.calendar)
+                result = (yield self.doDestinationIndex(self.calendar))
                 if result is not None:
                     self.rollback.Rollback()
                     returnValue(result)

@@ -1,0 +1,136 @@
+Index: twisted/web2/dav/test/test_copy.py
+===================================================================
+--- twisted/web2/dav/test/test_copy.py	(revision 26969)
++++ twisted/web2/dav/test/test_copy.py	(working copy)
+@@ -26,6 +26,7 @@
+ import os
+ import urllib
+ 
++from twisted.internet.defer import waitForDeferred, deferredGenerator
+ import twisted.web2.dav.test.util
+ from twisted.web2 import responsecode
+ from twisted.web2.test.test_server import SimpleRequest
+@@ -78,8 +79,17 @@
+                 self.fail("Source %s is neither a file nor a directory"
+                           % (path,))
+ 
+-        return serialize(self.send, work(self, test))
++        d = waitForDeferred(work(self, test))
++        yield d
++        d = d.getResult( )
+ 
++        d = waitForDeferred(serialize(self.send, iter(d)))
++        yield d
++        d = d.getResult()
++        yield d
++
++    test_COPY_create = deferredGenerator(test_COPY_create)
++
+     def test_COPY_exists(self):
+         """
+         COPY to existing resource.
+@@ -92,8 +102,18 @@
+                 # FIXME: Check XML error code (2518bis)
+                 pass
+ 
+-        return serialize(self.send, work(self, test, overwrite=False))
++        d = waitForDeferred(work(self, test, overwrite=False))
++        yield d
++        d = d.getResult( )
+ 
++        d = waitForDeferred(serialize(self.send, iter(d)))
++        yield d
++        d = d.getResult()
++        yield d
++
++    test_COPY_exists = deferredGenerator(test_COPY_exists)
++
++
+     def test_COPY_overwrite(self):
+         """
+         COPY to existing resource with overwrite header.
+@@ -108,8 +128,17 @@
+ 
+             self.failUnless(os.path.exists(dst_path), "COPY didn't produce file: %s" % (dst_path,))
+ 
+-        return serialize(self.send, work(self, test, overwrite=True))
++        d = waitForDeferred(work(self, test, overwrite=True))
++        yield d
++        d = d.getResult( )
+ 
++        d = waitForDeferred(serialize(self.send, iter(d)))
++        yield d
++        d = d.getResult()
++        yield d
++
++    test_COPY_overwrite = deferredGenerator(test_COPY_overwrite)
++
+     def test_COPY_no_parent(self):
+         """
+         COPY to resource with no parent.
+@@ -122,18 +151,35 @@
+                 # FIXME: Check XML error code (2518bis)
+                 pass
+ 
+-        return serialize(self.send, work(self, test, dst=os.path.join(self.docroot, "elvislives!")))
++        docroot = waitForDeferred(self.docroot)
++        yield docroot
++        docroot = docroot.getResult()
+ 
++        d = waitForDeferred(work(self, test, dst=os.path.join(docroot, "elvislives!")))
++        yield d
++        results = d.getResult()
++
++        d = waitForDeferred(serialize(self.send, iter(results)))
++        yield d
++        d = d.getResult()
++        yield d
++
++    test_COPY_no_parent = deferredGenerator(test_COPY_no_parent)
++
+ def work(self, test, overwrite=None, dst=None, depths=("0", "infinity", None)):
++    docroot = waitForDeferred(self.docroot)
++    yield docroot
++    docroot = docroot.getResult()
++    results = []
+     if dst is None:
+-        dst = os.path.join(self.docroot, "dst")
++        dst = os.path.join(docroot, "dst")
+         os.mkdir(dst)
+ 
+-    for basename in os.listdir(self.docroot):
++    for basename in os.listdir(docroot):
+         if basename == "dst": continue
+ 
+         uri = urllib.quote("/" + basename)
+-        path = os.path.join(self.docroot, basename)
++        path = os.path.join(docroot, basename)
+         isfile = os.path.isfile(path)
+         sum = sumFile(path)
+         dst_path = os.path.join(dst, basename)
+@@ -151,15 +197,23 @@
+             def do_test(response, path=path, isfile=isfile, sum=sum, uri=uri, depth=depth, dst_path=dst_path):
+                 test(response, path, isfile, sum, uri, depth, dst_path)
+ 
+-            request = SimpleRequest(self.site, self.__class__.__name__, uri)
++            site = waitForDeferred(self.site)
++            yield site
++            site = site.getResult()
++            request = SimpleRequest(site, self.__class__.__name__, uri)
+             request.headers.setHeader("destination", dst_uri)
+             if depth is not None:
+                 request.headers.setHeader("depth", depth)
+             if overwrite is not None:
+                 request.headers.setHeader("overwrite", overwrite)
+ 
+-            yield (request, do_test)
++            results.append((request, do_test))
+ 
++    yield results
++
++work = deferredGenerator(work)
++
++
+ def sumFile(path):
+     m = md5()
+ 

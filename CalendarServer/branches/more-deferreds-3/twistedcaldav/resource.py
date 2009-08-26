@@ -230,8 +230,8 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         elif namespace == caldav_namespace:
             if name == "supported-calendar-component-set":
                 # CalDAV-access-09, section 5.2.3
-                if self.hasDeadProperty(qname):
-                    returnValue(self.readDeadProperty(qname))
+                if (yield self.hasDeadProperty(qname)):
+                    returnValue((yield self.readDeadProperty(qname)))
                 returnValue(self.supportedCalendarComponentSet)
             elif name == "supported-calendar-data":
                 # CalDAV-access-09, section 5.2.4
@@ -258,13 +258,13 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
             elif name == "schedule-calendar-transp":
                 # For backwards compatibility, if the property does not exist we need to create
                 # it and default to the old free-busy-set value.
-                if self.isCalendarCollection() and not self.hasDeadProperty(property):
+                if self.isCalendarCollection() and not (yield self.hasDeadProperty(property)):
                     # For backwards compatibility we need to sync this up with the calendar-free-busy-set on the inbox
                     principal = (yield self.ownerPrincipal(request))
                     fbset = (yield principal.calendarFreeBusyURIs(request))
                     url = (yield self.canonicalURL(request))
                     opaque = url in fbset
-                    self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque() if opaque else caldavxml.Transparent()))
+                    (yield self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque()) if opaque else caldavxml.Transparent()))
 
         result = (yield super(CalDAVResource, self).readProperty(property, request))
         returnValue(result)
@@ -325,11 +325,6 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         result = (yield super(CalDAVResource, self).writeProperty(property, request))
         returnValue(result)
 
-    def writeDeadProperty(self, property):
-        val = super(CalDAVResource, self).writeDeadProperty(property)
-
-        return val
-
 
     ##
     # ACL
@@ -341,8 +336,8 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         acls = (yield super(CalDAVResource, self).accessControlList(request, *args, **kwargs))
 
         # Look for private events access classification
-        if self.hasDeadProperty(TwistedCalendarAccessProperty):
-            access = self.readDeadProperty(TwistedCalendarAccessProperty)
+        if (yield self.hasDeadProperty(TwistedCalendarAccessProperty)):
+            access = (yield self.readDeadProperty(TwistedCalendarAccessProperty))
             if access.getValue() in (Component.ACCESS_PRIVATE, Component.ACCESS_CONFIDENTIAL, Component.ACCESS_RESTRICTED,):
                 # Need to insert ACE to prevent non-owner principals from seeing this resource
                 owner = (yield self.owner(request))
@@ -461,20 +456,21 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         """
         return self.isSpecialCollection(caldavxml.Calendar)
 
+    @inlineCallbacks
     def isSpecialCollection(self, collectiontype):
         """
         See L{ICalDAVResource.isSpecialCollection}.
         """
-        if not self.isCollection(): return False
+        if not self.isCollection(): returnValue(False)
 
         try:
-            resourcetype = self.readDeadProperty((dav_namespace, "resourcetype"))
+            resourcetype = (yield self.readDeadProperty((dav_namespace, "resourcetype")))
         except HTTPError, e:
             assert e.response.code == responsecode.NOT_FOUND, (
                 "Unexpected response code: %s" % (e.response.code,)
             )
-            return False
-        return bool(resourcetype.childrenOfType(collectiontype))
+            returnValue(False)
+        returnValue(bool(resourcetype.childrenOfType(collectiontype)))
 
     def isPseudoCalendarCollection(self):
         """
@@ -572,21 +568,22 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
 
             inbox = (yield request.locateResource(inboxURL))
             inbox.processFreeBusyCalendar(request.path, False)
-            inbox.processFreeBusyCalendar(destination_uri, destination.isCalendarOpaque())
+            inbox.processFreeBusyCalendar(destination_uri, (yield destination.isCalendarOpaque()))
             
             # Adjust the default calendar setting if necessary
             if defaultCalendar:
                 yield inbox.writeProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(destination_path)), request)               
 
+    @inlineCallbacks
     def isCalendarOpaque(self):
         
         assert self.isCalendarCollection()
         
-        if self.hasDeadProperty((caldav_namespace, "schedule-calendar-transp")):
-            property = self.readDeadProperty((caldav_namespace, "schedule-calendar-transp"))
-            return property.children[0] == caldavxml.Opaque()
+        if (yield self.hasDeadProperty((caldav_namespace, "schedule-calendar-transp"))):
+            property = (yield self.readDeadProperty((caldav_namespace, "schedule-calendar-transp")))
+            returnValue(property.children[0] == caldavxml.Opaque())
         else:
-            return False
+            returnValue(False)
 
     @inlineCallbacks
     def isDefaultCalendar(self, request):
@@ -922,20 +919,22 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
 
         return super(CalendarPrincipalResource, self).writeProperty(property, request)
 
+    @inlineCallbacks
     def calendarHomeURLs(self):
-        if self.hasDeadProperty((caldav_namespace, "calendar-home-set")):
-            home_set = self.readDeadProperty((caldav_namespace, "calendar-home-set"))
-            return [str(h) for h in home_set.children]
+        if (yield self.hasDeadProperty((caldav_namespace, "calendar-home-set"))):
+            home_set = (yield self.readDeadProperty((caldav_namespace, "calendar-home-set")))
+            returnValue([str(h) for h in home_set.children])
         else:
-            return ()
+            returnValue(())
 
+    @inlineCallbacks
     def calendarUserAddresses(self):
-        if self.hasDeadProperty((caldav_namespace, "calendar-user-address-set")):
-            addresses = self.readDeadProperty((caldav_namespace, "calendar-user-address-set"))
-            return [str(h) for h in addresses.children]
+        if (yield self.hasDeadProperty((caldav_namespace, "calendar-user-address-set"))):
+            addresses = (yield self.readDeadProperty((caldav_namespace, "calendar-user-address-set")))
+            returnValue([str(h) for h in addresses.children])
         else:
             # Must have a valid address of some kind so use the principal uri
-            return (self.principalURL(),)
+            returnValue((self.principalURL(),))
 
     def calendarFreeBusyURIs(self, request):
         def gotInbox(inbox):
@@ -967,32 +966,35 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
         """
         return self.scheduleInboxURL().addCallback(request.locateResource)
 
+    @inlineCallbacks
     def scheduleInboxURL(self):
-        if self.hasDeadProperty((caldav_namespace, "schedule-inbox-URL")):
-            inbox = self.readDeadProperty((caldav_namespace, "schedule-inbox-URL"))
-            return succeed(str(inbox.children[0]))
+        if (yield self.hasDeadProperty((caldav_namespace, "schedule-inbox-URL"))):
+            inbox = (yield self.readDeadProperty((caldav_namespace, "schedule-inbox-URL")))
+            returnValue(str(inbox.children[0]))
         else:
-            return succeed(None)
+            returnValue(None)
 
+    @inlineCallbacks
     def scheduleOutboxURL(self):
         """
         @return: the schedule outbox URL for this principal.
         """
-        if self.hasDeadProperty((caldav_namespace, "schedule-outbox-URL")):
-            outbox = self.readDeadProperty((caldav_namespace, "schedule-outbox-URL"))
-            return succeed(str(outbox.children[0]))
+        if (yield self.hasDeadProperty((caldav_namespace, "schedule-outbox-URL"))):
+            outbox = (yield self.readDeadProperty((caldav_namespace, "schedule-outbox-URL")))
+            returnValue(str(outbox.children[0]))
         else:
-            return succeed(None)
+            returnValue(None)
 
+    @inlineCallbacks
     def dropboxURL(self):
         """
         @return: the drop box home collection URL for this principal.
         """
-        if self.hasDeadProperty((calendarserver_namespace, "dropbox-home-URL")):
-            inbox = self.readDeadProperty((caldav_namespace, "dropbox-home-URL"))
-            return succeed(str(inbox.children[0]))
+        if (yield self.hasDeadProperty((calendarserver_namespace, "dropbox-home-URL"))):
+            inbox = (yield self.readDeadProperty((caldav_namespace, "dropbox-home-URL")))
+            returnValue(str(inbox.children[0]))
         else:
-            return succeed(None)
+            returnValue(None)
 
     ##
     # Quota

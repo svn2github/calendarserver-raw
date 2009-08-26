@@ -299,9 +299,10 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
         if hasattr(self, "clientNotifier"):
             self.clientNotifier.disableNotify()
 
+        @inlineCallbacks
         def setupFreeBusy(_, child):
             # Default calendar is initially opaque to freebusy
-            child.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque()))
+            yield child.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque()))
 
             # FIXME: Shouldn't have to call provision() on another resource
             # We cheat here because while inbox will auto-provision itself when located,
@@ -314,9 +315,9 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
             inbox.processFreeBusyCalendar(childURL, True)
 
             # Default calendar is marked as the default for scheduling
-            inbox.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(childURL)))
+            yield inbox.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(childURL)))
 
-            return self
+            returnValue(self)
 
         try:
             d = self.provision()
