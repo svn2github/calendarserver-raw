@@ -31,7 +31,7 @@ from calendarserver.tools.principals import principalForPrincipalID, proxySubpri
 from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile, ReadOnlyResourceMixIn
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twisted.web2.http import Response
 from twisted.web2.http_headers import MimeType
 from twisted.web2.stream import MemoryStream
@@ -74,7 +74,7 @@ class WebAdminResource (ReadOnlyResourceMixIn, DAVFile):
         return None
 
     def createSimilarFile(self, path):
-        return DAVFile(path, principalCollections=self.principalCollections())
+        return succeed(DAVFile(path, principalCollections=self.principalCollections()))
 
     def directoryStyleSheet(self):
         return (

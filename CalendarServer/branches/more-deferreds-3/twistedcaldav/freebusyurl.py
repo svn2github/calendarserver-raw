@@ -22,7 +22,7 @@ __all__ = [
     "FreeBusyURLResource",
 ]
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twisted.python import log
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
@@ -96,16 +96,16 @@ class FreeBusyURLResource (CalDAVResource):
         return davxml.ACL(*aces)
 
     def resourceType(self):
-        return davxml.ResourceType.freebusyurl
+        return succeed(davxml.ResourceType.freebusyurl)
 
     def isCollection(self):
         return False
 
     def isCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def isPseudoCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def render(self, request):
         output = """<html>
@@ -203,7 +203,7 @@ class FreeBusyURLResource (CalDAVResource):
         
         # Pick the first mailto cu address or the first other type
         cuaddr = None
-        for item in principal.calendarUserAddresses():
+        for item in (yield principal.calendarUserAddresses()):
             if cuaddr is None:
                 cuaddr = item
             if item.startswith("mailto"):

@@ -10,23 +10,16 @@ Index: twisted/web2/dav/test/test_delete.py
  from twisted.web2 import responsecode
  from twisted.web2.iweb import IResponse
  from twisted.web2.test.test_server import SimpleRequest
-@@ -54,8 +55,13 @@
+@@ -54,6 +55,8 @@
                  self.fail("DELETE did not remove path %s" % (path,))
  
          def work():
--            for filename in os.listdir(self.docroot):
--                path = os.path.join(self.docroot, filename)
-+            docroot = waitForDeferred(self.docroot)
-+            yield docroot
-+            docroot = docroot.getResult()
 +            results = []
 +
-+            for filename in os.listdir(docroot):
-+                path = os.path.join(docroot, filename)
+             for filename in os.listdir(self.docroot):
+                 path = os.path.join(self.docroot, filename)
                  uri = urllib.quote("/" + filename)
- 
-                 if os.path.isdir(path): uri = uri + "/"
-@@ -63,12 +69,26 @@
+@@ -63,12 +66,26 @@
                  def do_test(response, path=path):
                      return check_result(response, path)
  

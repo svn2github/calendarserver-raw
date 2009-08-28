@@ -48,9 +48,46 @@ Index: twisted/web2/dav/static.py
      def davComplianceClasses(self):
          return ("1", "access-control") # Add "2" when we have locking
  
-@@ -192,7 +214,7 @@
-         return (self.createSimilarFile(self.fp.child(path).path), segments[1:])
+@@ -169,9 +191,12 @@
+         """
+         # If getChild() finds a child resource, return it
+         try:
+-            child = self.getChild(segments[0])
++            child = waitForDeferred(self.getChild(segments[0]))
++            yield child
++            child = child.getResult()
+             if child is not None:
+-                return (child, segments[1:])
++                yield (child, segments[1:])
++                return
+         except InsecurePath:
+             raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Invalid URL path"))
+         
+@@ -180,19 +205,26 @@
+         # that the request wants created.
+         self.fp.restat(False)
+         if self.fp.exists() and not self.fp.isdir():
+-            return (None, ())
++            yield (None, ())
++            return
  
+         # OK, we need to return a child corresponding to the first segment
+         path = segments[0]
+         
+         if path == "":
+             # Request is for a directory (collection) resource
+-            return (self, ())
++            yield (self, ())
++            return
+ 
+-        return (self.createSimilarFile(self.fp.child(path).path), segments[1:])
++        result = waitForDeferred(self.createSimilarFile(self.fp.child(path).path))
++        yield result
++        result = result.getResult()
++        yield (result, segments[1:])
+ 
++    locateChild = deferredGenerator(locateChild)
++
      def createSimilarFile(self, path):
 -        return self.__class__(
 +        return self.__class__.fetch(None, 

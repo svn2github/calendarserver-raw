@@ -700,7 +700,7 @@ class DAVPrincipalResource (DirectoryPrincipalPropertySearchMixIn, SuperDAVPrinc
 
         if namespace == dav_namespace:
             if name == "resourcetype":
-                returnValue(self.resourceType())
+                returnValue((yield self.resourceType()))
 
         elif namespace == calendarserver_namespace:
             if name == "expanded-group-member-set":
@@ -741,14 +741,15 @@ class DAVPrincipalResource (DirectoryPrincipalPropertySearchMixIn, SuperDAVPrinc
     def expandedGroupMemberships(self):
         return succeed(())
 
+    @inlineCallbacks
     def resourceType(self):
         # Allow live property to be overridden by dead property
-        if self.deadProperties().contains((dav_namespace, "resourcetype")):
-            return self.deadProperties().get((dav_namespace, "resourcetype"))
+        if (yield self.deadProperties().contains((dav_namespace, "resourcetype"))):
+            returnValue((yield self.deadProperties().get((dav_namespace, "resourcetype"))))
         if self.isCollection():
-            return davxml.ResourceType(davxml.Collection(), davxml.Principal())
+            returnValue(davxml.ResourceType(davxml.Collection(), davxml.Principal()))
         else:
-            return davxml.ResourceType(davxml.Principal())
+            returnValue(davxml.ResourceType(davxml.Principal()))
 
 
 class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
@@ -762,17 +763,18 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
             qname = property.qname()
 
         if qname == (dav_namespace, "resourcetype"):
-            return succeed(self.resourceType())
+            return self.resourceType()
 
         return super(DAVFile, self).readProperty(property, request)
 
+    @inlineCallbacks
     def resourceType(self):
         # Allow live property to be overridden by dead property
-        if self.deadProperties().contains((dav_namespace, "resourcetype")):
-            return self.deadProperties().get((dav_namespace, "resourcetype"))
+        if (yield self.deadProperties().contains((dav_namespace, "resourcetype"))):
+            returnValue((yield self.deadProperties().get((dav_namespace, "resourcetype"))))
         if self.isCollection():
-            return davxml.ResourceType.collection
-        return davxml.ResourceType.empty
+            returnValue(davxml.ResourceType.collection)
+        returnValue(davxml.ResourceType.empty)
 
     def render(self, request):
         if not self.fp.exists():
@@ -783,6 +785,9 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
                 # Redirect to include trailing '/' in URI
                 return RedirectResponse(request.unparseURL(path=urllib.quote(urllib.unquote(request.path), safe=':/')+'/'))
             else:
+                # MOR: Not sure what to do here -- it may be that render( )
+                # can't easily be deferred, in which case createSimilarFile( )
+                # will be a problem...
                 ifp = self.fp.childSearchPreauth(*self.indexNames)
                 if ifp:
                     # Render from the index file
@@ -1091,52 +1096,55 @@ class CachingPropertyStore (LoggingMixIn):
         self.propertyStore = propertyStore
         self.resource = propertyStore.resource
 
+    @inlineCallbacks
     def get(self, qname):
         #self.log_debug("Get: %r, %r" % (self.resource.fp.path, qname))
 
-        cache = self._cache()
+        cache = (yield self._cache())
 
         if qname in cache:
             property = cache.get(qname, None)
             if property is None:
                 self.log_debug("Cache miss: %r, %r, %r" % (self, self.resource.fp.path, qname))
                 try:
-                    property = self.propertyStore.get(qname)
+                    property = (yield self.propertyStore.get(qname))
                 except HTTPError:
                     del cache[qname]
                     raise PropertyNotFoundError(qname)
                 cache[qname] = property
 
-            return property
+            returnValue(property)
         else:
             raise PropertyNotFoundError(qname)
 
+    @inlineCallbacks
     def set(self, property):
         #self.log_debug("Set: %r, %r" % (self.resource.fp.path, property))
 
-        cache = self._cache()
+        cache = (yield self._cache())
 
         cache[property.qname()] = None
-        self.propertyStore.set(property)
+        yield self.propertyStore.set(property)
         cache[property.qname()] = property
-        return succeed(None)
+        returnValue(None)
 
+    @inlineCallbacks
     def contains(self, qname):
         #self.log_debug("Contains: %r, %r" % (self.resource.fp.path, qname))
 
         try:
-            cache = self._cache()
+            cache = (yield self._cache())
         except HTTPError, e:
             if e.response.code == responsecode.NOT_FOUND:
-                return False
+                returnValue(False)
             else:
                 raise
 
         if qname in cache:
             #self.log_debug("Contains cache hit: %r, %r, %r" % (self, self.resource.fp.path, qname))
-            return True
+            returnValue(True)
         else:
-            return False
+            returnValue(False)
 
     def delete(self, qname):
         #self.log_debug("Delete: %r, %r" % (self.resource.fp.path, qname))
@@ -1146,18 +1154,21 @@ class CachingPropertyStore (LoggingMixIn):
 
         self.propertyStore.delete(qname)
 
+    @inlineCallbacks
     def list(self):
         #self.log_debug("List: %r" % (self.resource.fp.path,))
-        return self._cache().iterkeys()
+        cache = (yield self._cache())
+        returnValue(cache.iterkeys())
 
+    @inlineCallbacks
     def _cache(self):
         if not hasattr(self, "_data"):
             #self.log_debug("Cache init: %r" % (self.resource.fp.path,))
             self._data = dict(
                 (name, None)
-                for name in self.propertyStore.list()
+                for name in (yield self.propertyStore.list())
             )
-        return self._data
+        returnValue(self._data)
 
 
     def flushCache(self):

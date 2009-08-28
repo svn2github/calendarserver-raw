@@ -68,19 +68,15 @@ Index: twisted/web2/dav/test/test_copy.py
      def test_COPY_no_parent(self):
          """
          COPY to resource with no parent.
-@@ -122,18 +151,35 @@
+@@ -122,9 +151,19 @@
                  # FIXME: Check XML error code (2518bis)
                  pass
  
 -        return serialize(self.send, work(self, test, dst=os.path.join(self.docroot, "elvislives!")))
-+        docroot = waitForDeferred(self.docroot)
-+        yield docroot
-+        docroot = docroot.getResult()
- 
-+        d = waitForDeferred(work(self, test, dst=os.path.join(docroot, "elvislives!")))
++        d = waitForDeferred(work(self, test, dst=os.path.join(self.docroot, "elvislives!")))
 +        yield d
 +        results = d.getResult()
-+
+ 
 +        d = waitForDeferred(serialize(self.send, iter(results)))
 +        yield d
 +        d = d.getResult()
@@ -89,37 +85,11 @@ Index: twisted/web2/dav/test/test_copy.py
 +    test_COPY_no_parent = deferredGenerator(test_COPY_no_parent)
 +
  def work(self, test, overwrite=None, dst=None, depths=("0", "infinity", None)):
-+    docroot = waitForDeferred(self.docroot)
-+    yield docroot
-+    docroot = docroot.getResult()
 +    results = []
      if dst is None:
--        dst = os.path.join(self.docroot, "dst")
-+        dst = os.path.join(docroot, "dst")
+         dst = os.path.join(self.docroot, "dst")
          os.mkdir(dst)
- 
--    for basename in os.listdir(self.docroot):
-+    for basename in os.listdir(docroot):
-         if basename == "dst": continue
- 
-         uri = urllib.quote("/" + basename)
--        path = os.path.join(self.docroot, basename)
-+        path = os.path.join(docroot, basename)
-         isfile = os.path.isfile(path)
-         sum = sumFile(path)
-         dst_path = os.path.join(dst, basename)
-@@ -151,15 +197,23 @@
-             def do_test(response, path=path, isfile=isfile, sum=sum, uri=uri, depth=depth, dst_path=dst_path):
-                 test(response, path, isfile, sum, uri, depth, dst_path)
- 
--            request = SimpleRequest(self.site, self.__class__.__name__, uri)
-+            site = waitForDeferred(self.site)
-+            yield site
-+            site = site.getResult()
-+            request = SimpleRequest(site, self.__class__.__name__, uri)
-             request.headers.setHeader("destination", dst_uri)
-             if depth is not None:
-                 request.headers.setHeader("depth", depth)
+@@ -158,8 +197,13 @@
              if overwrite is not None:
                  request.headers.setHeader("overwrite", overwrite)
  

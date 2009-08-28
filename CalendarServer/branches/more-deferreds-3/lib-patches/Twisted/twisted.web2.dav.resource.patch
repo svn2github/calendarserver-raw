@@ -330,7 +330,18 @@ Index: twisted/web2/dav/resource.py
  
      def mergeAccessControlList(self, new_acl, request):
          """
-@@ -1089,7 +1142,9 @@
+@@ -926,7 +979,9 @@
+         # FIXME: verify acl is self-consistent
+ 
+         # Step 11
+-        self.writeNewACEs(new_set)
++        d = waitForDeferred(self.writeNewACEs(new_set))
++        yield d
++        d.getResult()
+         yield None
+ 
+     mergeAccessControlList = deferredGenerator(mergeAccessControlList)
+@@ -1089,7 +1144,9 @@
              return url
  
          try:
@@ -341,7 +352,7 @@ Index: twisted/web2/dav/resource.py
          except HTTPError, e:
              assert e.response.code == responsecode.NOT_FOUND, (
                  "Expected %s response from readDeadProperty() exception, not %s"
-@@ -1635,7 +1690,9 @@
+@@ -1635,7 +1692,9 @@
  
          # Check this resource first
          if self.isCollection():
@@ -352,7 +363,15 @@ Index: twisted/web2/dav/resource.py
              if qroot is not None:
                  used = waitForDeferred(self.currentQuotaUse(request))
                  yield used
-@@ -1673,7 +1730,10 @@
+@@ -1666,14 +1725,17 @@
+ 
+     def hasQuota(self, request):
+         """
+-        Check whether this resource is undre quota control by checking each parent to see if
++        Check whether this resource is under quota control by checking each parent to see if
+         it has a quota root.
+         
+         @return: C{True} if under quota control, C{False} if not.
          """
          
          # Check this one first
@@ -364,7 +383,7 @@ Index: twisted/web2/dav/resource.py
              yield True
              return
          
-@@ -1705,10 +1765,19 @@
+@@ -1705,10 +1767,19 @@
          @return: a C{int} containing the maximum allowed bytes if this collection
              is quota-controlled, or C{None} if not quota controlled.
          """
@@ -387,7 +406,7 @@ Index: twisted/web2/dav/resource.py
      
      def quotaRootParent(self, request):
          """
-@@ -1724,7 +1793,10 @@
+@@ -1724,7 +1795,10 @@
              parent = waitForDeferred(request.locateResource(url))
              yield parent
              parent = parent.getResult()
@@ -399,7 +418,7 @@ Index: twisted/web2/dav/resource.py
                  yield parent
                  return
  
-@@ -1741,11 +1813,19 @@
+@@ -1741,11 +1815,19 @@
          assert maxsize is None or isinstance(maxsize, int), "maxsize must be an int or None"
          
          if maxsize is not None:
@@ -422,7 +441,7 @@ Index: twisted/web2/dav/resource.py
      
      def quotaSize(self, request):
          """
-@@ -1795,7 +1875,10 @@
+@@ -1795,7 +1877,10 @@
          
          # Check this resource first
          if self.isCollection():
@@ -434,7 +453,7 @@ Index: twisted/web2/dav/resource.py
                  d = waitForDeferred(self.updateQuotaUse(request, adjust))
                  yield d
                  d.getResult()
-@@ -1825,20 +1908,34 @@
+@@ -1825,20 +1910,34 @@
              is quota-controlled, or C{None} if not quota controlled.
          """
          assert self.isCollection(), "Only collections can have a quota root"
@@ -478,7 +497,7 @@ Index: twisted/web2/dav/resource.py
      def updateQuotaUse(self, request, adjust):
          """
          Update the quota used value on this resource.
-@@ -1848,25 +1945,32 @@
+@@ -1848,25 +1947,32 @@
          @return: an L{Deferred} with a C{int} result containing the current used byte if this collection
              is quota-controlled, or C{None} if not quota controlled.
          """
@@ -528,7 +547,7 @@ Index: twisted/web2/dav/resource.py
      ##
      # HTTP
      ##
-@@ -1880,7 +1984,7 @@
+@@ -1880,7 +1986,7 @@
          # If this is a collection and the URI doesn't end in "/", redirect.
          #
          if self.isCollection() and request.path[-1:] != "/":

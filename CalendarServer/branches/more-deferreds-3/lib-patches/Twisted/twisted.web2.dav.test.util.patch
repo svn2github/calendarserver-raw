@@ -50,7 +50,7 @@ Index: twisted/web2/dav/test/util.py
  
          dirnames = (
              os.path.join(docroot, "dir1"),                          # 0
-@@ -149,17 +153,23 @@
+@@ -149,37 +153,56 @@
          for dirname in (docroot,) + dirnames[3:8+1]:
              for filename in filenames[:5]:
                  copy(filename, dirname)
@@ -69,45 +69,46 @@ Index: twisted/web2/dav/test/util.py
 +            yield d
 +            self._docroot = d.getResult()
  
--        return self._docroot
 +        yield self._docroot
- 
++
 +    _getDocumentRoot = deferredGenerator(_getDocumentRoot)
 +
++    def _getStoredDocumentRoot(self):
+         return self._docroot
+ 
      def _setDocumentRoot(self, value):
          self._docroot = value
  
-@@ -167,10 +177,13 @@
+-    docroot = property(_getDocumentRoot, _setDocumentRoot)
++    docroot = property(_getStoredDocumentRoot, _setDocumentRoot)
  
      def _getSite(self):
          if not hasattr(self, "_site"):
--            rootresource = self.resource_class(self.docroot)
-+            d = waitForDeferred(self.docroot)
+             rootresource = self.resource_class(self.docroot)
+-            rootresource.setAccessControlList(self.grantInherit(davxml.All()))
++            d = waitForDeferred(rootresource.setAccessControlList(self.grantInherit(davxml.All())))
 +            yield d
-+            rootresource = self.resource_class(d.getResult())
-             rootresource.setAccessControlList(self.grantInherit(davxml.All()))
++            d.getResult()
              self._site = Site(rootresource)
--        return self._site
 +        yield self._site
 +    _getSite = deferredGenerator(_getSite)
++
++    def _getStoredSite(self):
+         return self._site
  
      def _setSite(self, site):
          self._site = site
-@@ -191,11 +204,15 @@
-         Creates a new directory in the document root and returns its path and
-         URI.
-         """
--        path = mkdtemp(prefix=prefix + "_", dir=self.docroot)
-+        d = waitForDeferred(self.docroot)
-+        yield d
-+        path = mkdtemp(prefix=prefix + "_", dir=d.getResult())
-         uri  = joinURL("/", url_quote(os.path.basename(path))) + "/"
  
--        return (path, uri)
-+        yield (path, uri)
+-    site = property(_getSite, _setSite)
++    site = property(_getStoredSite, _setSite)
  
-+    mkdtemp = deferredGenerator(mkdtemp)
-+
-     def send(self, request, callback):
-         log.msg("Sending %s request for URI %s" % (request.method, request.uri))
+     def setUp(self):
+         unittest.TestCase.setUp(self)
+         TestFile._cachedPropertyStores = {}
++        d = self._getDocumentRoot()
++        d.addCallback(lambda _: self._getSite())
++        return d
++        # self._getSite()
  
+     def tearDown(self):
+         unittest.TestCase.tearDown(self)

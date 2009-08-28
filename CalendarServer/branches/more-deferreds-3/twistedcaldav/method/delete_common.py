@@ -105,7 +105,7 @@ class DeleteResource(object):
             yield delresource.quotaSizeAdjust(self.request, -old_size)
 
         if response == responsecode.NO_CONTENT:
-            if isPseudoCalendarCollectionResource(parent):
+            if (yield isPseudoCalendarCollectionResource(parent)):
                 index = parent.index()
                 index.deleteResource(delresource.fp.basename())
 
@@ -278,10 +278,10 @@ class DeleteResource(object):
     @inlineCallbacks
     def run(self):
 
-        if isCalendarCollectionResource(self.parent):
+        if (yield isCalendarCollectionResource(self.parent)):
             response = (yield self.deleteCalendarResource(self.resource, self.resource_uri, self.parent))
             
-        elif isCalendarCollectionResource(self.resource):
+        elif (yield isCalendarCollectionResource(self.resource)):
             response = (yield self.deleteCalendar(self.resource, self.resource_uri, self.parent))
         
         elif self.resource.isCollection():

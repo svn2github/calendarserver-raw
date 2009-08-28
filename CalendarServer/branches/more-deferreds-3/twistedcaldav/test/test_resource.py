@@ -15,6 +15,7 @@
 ##
 
 from twistedcaldav.resource import CalDAVResource
+from twisted.internet.defer import inlineCallbacks
 
 from twistedcaldav.test.util import InMemoryPropertyStore
 from twistedcaldav.test.util import TestCase

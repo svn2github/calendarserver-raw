@@ -742,6 +742,7 @@ class Index (CalendarIndex):
             index. C{resource} must be a calendar collection (i.e.
             C{resource.isPseudoCalendarCollection()} returns C{True}.)
         """
+        # MOR: isCalendarCollection( ) is now deferred.  What to do here?
         assert resource.isCalendarCollection(), "non-calendar collection resource %s has no index." % (resource,)
         super(Index, self).__init__(resource)
 
@@ -844,6 +845,7 @@ class IndexSchedule (CalendarIndex):
             index. C{resource} must be a calendar collection (i.e.
             C{resource.isPseudoCalendarCollection()} returns C{True}.)
         """
+        # MOR: isCalendarCollection( ) is now deferred.  What to do here?
         assert resource.isPseudoCalendarCollection() and not resource.isCalendarCollection(), "non-calendar collection resource %s has no index." % (resource,)
         super(IndexSchedule, self).__init__(resource)
 

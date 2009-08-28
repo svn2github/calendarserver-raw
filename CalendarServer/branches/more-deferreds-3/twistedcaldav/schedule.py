@@ -26,7 +26,7 @@ __all__ = [
 
 from twext.web2.dav.davxml import ErrorResponse
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.dav.util import joinURL, normalizeURL
@@ -63,10 +63,10 @@ class CalendarSchedulingCollectionResource (CalDAVResource):
         return True
 
     def isCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def isPseudoCalendarCollection(self):
-        return True
+        return succeed(True)
 
     def supportedReports(self):
         result = super(CalDAVResource, self).supportedReports()
@@ -88,7 +88,7 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
     )
 
     def resourceType(self):
-        return davxml.ResourceType.scheduleInbox
+        return succeed(davxml.ResourceType.scheduleInbox)
 
     def defaultAccessControlList(self):
         
@@ -115,18 +115,18 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
 
         if qname == (caldav_namespace, "calendar-free-busy-set"):
             # Always return at least an empty list
-            if not self.hasDeadProperty(property):
+            if not (yield self.hasDeadProperty(property)):
                 returnValue(caldavxml.CalendarFreeBusySet())
         elif qname == (caldav_namespace, "schedule-default-calendar-URL"):
             # Must have a valid default
             try:
-                defaultCalendarProperty = self.readDeadProperty(property)
+                defaultCalendarProperty = (yield self.readDeadProperty(property))
             except HTTPError:
                 defaultCalendarProperty = None
             if defaultCalendarProperty and len(defaultCalendarProperty.children) == 1:
                 defaultCalendar = str(defaultCalendarProperty.children[0])
                 cal = (yield request.locateResource(str(defaultCalendar)))
-                if cal is not None and cal.exists() and isCalendarCollectionResource(cal):
+                if cal is not None and cal.exists() and (yield isCalendarCollectionResource(cal)):
                     returnValue(defaultCalendarProperty) 
             
             # Default is not valid - we have to try to pick one
@@ -157,14 +157,14 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
             # whether existing items in the property are still valid - only new ones.
             property.children = [davxml.HRef(normalizeURL(str(href))) for href in property.children]
             new_calendars = set([str(href) for href in property.children])
-            if not self.hasDeadProperty(property):
+            if not (yield self.hasDeadProperty(property)):
                 old_calendars = set()
             else:
-                old_calendars = set([str(href) for href in self.readDeadProperty(property).children])
+                old_calendars = set([str(href) for href in (yield self.readDeadProperty(property)).children])
             added_calendars = new_calendars.difference(old_calendars)
             for href in added_calendars:
                 cal = (yield request.locateResource(str(href)))
-                if cal is None or not cal.exists() or not isCalendarCollectionResource(cal):
+                if cal is None or not cal.exists() or not (yield isCalendarCollectionResource(cal)):
                     # Validate that href's point to a valid calendar.
                     raise HTTPError(ErrorResponse(
                         responsecode.CONFLICT,
@@ -180,7 +180,7 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
                 calURI = str(new_calendar[0])
                 cal = (yield request.locateResource(str(new_calendar[0])))
             # TODO: check that owner of the new calendar is the same as owner of this inbox
-            if cal is None or not cal.exists() or not isCalendarCollectionResource(cal):
+            if cal is None or not cal.exists() or not (yield isCalendarCollectionResource(cal)):
                 # Validate that href's point to a valid calendar.
                 raise HTTPError(ErrorResponse(
                     responsecode.CONFLICT,
@@ -193,21 +193,22 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
 
         yield super(ScheduleInboxResource, self).writeProperty(property, request)
 
+    @inlineCallbacks
     def processFreeBusyCalendar(self, uri, addit):
         uri = normalizeURL(uri)
 
-        if not self.hasDeadProperty((caldav_namespace, "calendar-free-busy-set")):
+        if not (yield self.hasDeadProperty((caldav_namespace, "calendar-free-busy-set"))):
             fbset = set()
         else:
-            fbset = set([normalizeURL(str(href)) for href in self.readDeadProperty((caldav_namespace, "calendar-free-busy-set")).children])
+            fbset = set([normalizeURL(str(href)) for href in (yield self.readDeadProperty((caldav_namespace, "calendar-free-busy-set"))).children])
         if addit:
             if uri not in fbset:
                 fbset.add(uri)
-                self.writeDeadProperty(caldavxml.CalendarFreeBusySet(*[davxml.HRef(url) for url in fbset]))
+                yield self.writeDeadProperty(caldavxml.CalendarFreeBusySet(*[davxml.HRef(url) for url in fbset]))
         else:
             if uri in fbset:
                 fbset.remove(uri)
-                self.writeDeadProperty(caldavxml.CalendarFreeBusySet(*[davxml.HRef(url) for url in fbset]))
+                yield self.writeDeadProperty(caldavxml.CalendarFreeBusySet(*[davxml.HRef(url) for url in fbset]))
 
     @inlineCallbacks
     def pickNewDefaultCalendar(self, request):
@@ -222,7 +223,7 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
         if defaultCalendar is None or not defaultCalendar.exists():
             self.parent.provisionDefaultCalendars()
         else:
-            self.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(defaultCalendarURL)))
+            yield self.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(defaultCalendarURL)))
         returnValue(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(defaultCalendarURL)))
 
 class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
@@ -254,7 +255,7 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
             return super(ScheduleOutboxResource, self).defaultAccessControlList()
 
     def resourceType(self):
-        return davxml.ResourceType.scheduleOutbox
+        return succeed(davxml.ResourceType.scheduleOutbox)
 
     @inlineCallbacks
     def http_POST(self, request):
@@ -311,16 +312,16 @@ class IScheduleInboxResource (CalDAVResource):
         )
 
     def resourceType(self):
-        return davxml.ResourceType.ischeduleinbox
+        return succeed(davxml.ResourceType.ischeduleinbox)
 
     def isCollection(self):
         return False
 
     def isCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def isPseudoCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def render(self, request):
         output = """<html>

@@ -179,7 +179,7 @@ class ImplicitScheduler(object):
         
         if resource and resource.exists():
             try:
-                implicit = resource.readDeadProperty(TwistedSchedulingObjectResource)
+                implicit = (yield resource.readDeadProperty(TwistedSchedulingObjectResource))
             except HTTPError:
                 implicit = None
             if implicit is not None:
@@ -193,7 +193,7 @@ class ImplicitScheduler(object):
                     # We have different ORGANIZERs in the same iCalendar object - this is an error
                     returnValue(False)
                 organizerPrincipal = resource.principalForCalendarUserAddress(organizer) if organizer else None
-                resource.writeDeadProperty(TwistedSchedulingObjectResource("true" if organizerPrincipal != None else "false"))
+                yield resource.writeDeadProperty(TwistedSchedulingObjectResource("true" if organizerPrincipal != None else "false"))
                 log.debug("Implicit - checked scheduling object resource state for UID: '%s', result: %s" % (
                     calendar.resourceUID(),
                     "true" if organizerPrincipal != None else "false",
@@ -335,7 +335,7 @@ class ImplicitScheduler(object):
                 self.originatorPrincipal = (yield self.request.locateResource(originatorPrincipalURL))
                 if self.originatorPrincipal:
                     # Pick the first mailto cu address or the first other type
-                    for item in self.originatorPrincipal.calendarUserAddresses():
+                    for item in (yield self.originatorPrincipal.calendarUserAddresses()):
                         if not self.originator:
                             self.originator = item
                         if item.startswith("mailto:"):
@@ -667,7 +667,7 @@ class ImplicitScheduler(object):
         for attendee, rids in aggregated.iteritems():
             
             # Don't send message back to the ORGANIZER
-            if attendee in self.organizerPrincipal.calendarUserAddresses():
+            if attendee in (yield self.organizerPrincipal.calendarUserAddresses()):
                 continue
 
             # Generate an iTIP CANCEL message for this attendee, cancelling
@@ -705,7 +705,7 @@ class ImplicitScheduler(object):
         for attendee in self.attendees:
 
             # Don't send message back to the ORGANIZER
-            if attendee in self.organizerPrincipal.calendarUserAddresses():
+            if attendee in (yield self.organizerPrincipal.calendarUserAddresses()):
                 continue
 
             # Don't send message to specified attendees

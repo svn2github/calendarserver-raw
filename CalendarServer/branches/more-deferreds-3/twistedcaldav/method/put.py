@@ -39,7 +39,7 @@ def http_PUT(self, request):
     parentURL = parentForURL(request.uri)
     parent = (yield request.locateResource(parentURL))
 
-    if isPseudoCalendarCollectionResource(parent):
+    if (yield isPseudoCalendarCollectionResource(parent)):
         self.fp.restat(False)
 
         # Content-type check

@@ -151,17 +151,18 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
     def url(self):
         return joinURL(self._parent.url(), self.recordType)
 
+    @inlineCallbacks
     def getChild(self, name, record=None):
-        self.provision()
+        yield self.provision()
         if name == "":
-            return self
+            returnValue(self)
 
         if record is None:
             record = self.directory.recordWithShortName(self.recordType, name)
             if record is None:
-                return None
+                returnValue(None)
 
-        return self._parent.homeForDirectoryRecord(record)
+        returnValue((yield self._parent.homeForDirectoryRecord(record)))
 
     def listChildren(self):
         if config.EnablePrincipalListings:
@@ -213,17 +214,18 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
     def url(self):
         return joinURL(self.parent.url(), uidsResourceName)
 
+    @inlineCallbacks
     def getChild(self, name, record=None):
-        self.provision()
+        yield self.provision()
         if name == "":
-            return self
+            returnValue(self)
 
         if record is None:
             record = self.directory.recordWithUID(name)
             if record is None:
-                return None
+                returnValue(None)
 
-        return self.provisionChild(name)
+        returnValue((yield self.provisionChild(name)))
 
     def listChildren(self):
         # Not a listable collection
@@ -311,8 +313,8 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
 
             # Set calendar-free-busy-set on inbox
             inbox = self.getChild("inbox")
-            inbox.provision()
-            inbox.processFreeBusyCalendar(childURL, True)
+            yield inbox.provision()
+            yield inbox.processFreeBusyCalendar(childURL, True)
 
             # Default calendar is marked as the default for scheduling
             yield inbox.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(childURL)))
@@ -455,7 +457,7 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
 
         @return: a C{True} if this resource has quota root, C{False} otherwise.
         """
-        return config.UserQuota != 0
+        return succeed(config.UserQuota != 0)
     
     def quotaRoot(self, request):
         """

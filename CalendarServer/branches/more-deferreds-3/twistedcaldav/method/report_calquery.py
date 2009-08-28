@@ -58,7 +58,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
 
     if not self.isCollection():
         parent = (yield self.locateParent(request, request.uri))
-        if not parent.isPseudoCalendarCollection():
+        if not (yield parent.isPseudoCalendarCollection()):
             log.err("calendar-query report is not allowed on a resource outside of a calendar collection %s" % (self,))
             raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Must be calendar collection or calendar resource"))
 
@@ -146,12 +146,12 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
                 else:
                     href = davxml.HRef.fromString(uri)
             
-                returnValue(report_common.responseForHref(request, responses, href, resource, calendar, timezone, propertiesForResource, query, isowner))
+                returnValue((yield report_common.responseForHref(request, responses, href, resource, calendar, timezone, propertiesForResource, query, isowner)))
             else:
                 returnValue(None)
     
         # Check whether supplied resource is a calendar or a calendar object resource
-        if calresource.isPseudoCalendarCollection():
+        if (yield calresource.isPseudoCalendarCollection()):
             # Get the timezone property from the collection if one was not set in the query,
             # and store in the query filter for later use
             has_prop = (yield calresource.hasProperty((caldav_namespace, "calendar-timezone"), request))
@@ -174,11 +174,11 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
                 try:
                     # Get list of children that match the search and have read
                     # access
-                    results = yield calresource.index().indexedSearch(filter)
+                    results = (yield calresource.index().indexedSearch(filter))
                     names = [name for name, ignore_uid, ignore_type
                         in results]
                 except IndexedSearchException:
-                    results = yield calresource.index().bruteForceSearch()
+                    results = (yield calresource.index().bruteForceSearch())
                     names = [name for name, ignore_uid, ignore_type
                         in results]
                     index_query_ok = False
@@ -203,7 +203,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
                     child_path_name = urllib.unquote(child_uri_name)
                     
                     if generate_calendar_data or not index_query_ok:
-                        calendar = yield calresource.iCalendar(child_path_name)
+                        calendar = (yield calresource.iCalendar(child_path_name))
                         assert calendar is not None, "Calendar %s is missing from calendar collection %r" % (child_uri_name, self)
                     else:
                         calendar = None
@@ -216,7 +216,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
             if query_tz is None:
 
                 parent = (yield calresource.locateParent(request, uri))
-                assert parent is not None and parent.isPseudoCalendarCollection()
+                assert parent is not None and (yield parent.isPseudoCalendarCollection())
 
                 has_prop = (yield parent.hasProperty((caldav_namespace, "calendar-timezone"), request))
                 if has_prop:
@@ -227,7 +227,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_
             # Check private events access status
             isowner = (yield calresource.isOwner(request, adminprincipals=True, readprincipals=True))
 
-            calendar = yield calresource.iCalendar()
+            calendar = (yield calresource.iCalendar())
             yield queryCalendarObjectResource(calresource, uri, None, calendar, timezone)
 
         returnValue(True)

@@ -283,7 +283,7 @@ class MemcachePropertyCollection (LoggingMixIn):
             path = self.child.fp.path
             key = self.parentPropertyCollection._keyForPath(path)
             parentPropertyCache = (yield self.parentPropertyCollection.propertyCache())
-            returnValue(parentPropertyCache.get(key, ({}, None))[0])
+            returnValue((yield parentPropertyCache.get(key, ({}, None)))[0])
 
         def flushCache(self):
             self.parentPropertyCollection.flushCache(self.child)
@@ -304,21 +304,23 @@ class MemcachePropertyCollection (LoggingMixIn):
                            % (qname, self.childPropertyStore.resource.fp.path))
             returnValue((yield self.childPropertyStore.get(qname)))
 
+        @inlineCallbacks
         def set(self, property):
             self.log_debug("Write for %s on %s"
                            % (property.qname(), self.childPropertyStore.resource.fp.path))
 
-            self.parentPropertyCollection.setProperty(self.child, property)
-            self.childPropertyStore.set(property)
-            return succeed(None)
+            yield self.parentPropertyCollection.setProperty(self.child, property)
+            yield self.childPropertyStore.set(property)
+            returnValue(None)
 
+        @inlineCallbacks
         def delete(self, qname):
             self.log_debug("Delete for %s on %s"
                            % (qname, self.childPropertyStore.resource.fp.path))
 
-            self.parentPropertyCollection.deleteProperty(self.child, qname)
-            self.childPropertyStore.delete(qname)
-            return succeed(None)
+            yield self.parentPropertyCollection.deleteProperty(self.child, qname)
+            yield self.childPropertyStore.delete(qname)
+            returnValue(None)
 
         @inlineCallbacks
         def contains(self, qname, cache=True):
@@ -328,7 +330,7 @@ class MemcachePropertyCollection (LoggingMixIn):
 
             self.log_debug("Contains for %s"
                            % (self.childPropertyStore.resource.fp.path,))
-            returnValue(self.childPropertyStore.contains(qname))
+            returnValue((yield self.childPropertyStore.contains(qname)))
 
         @inlineCallbacks
         def list(self, cache=True):
@@ -338,4 +340,4 @@ class MemcachePropertyCollection (LoggingMixIn):
 
             self.log_debug("List for %s"
                            % (self.childPropertyStore.resource.fp.path,))
-            returnValue(self.childPropertyStore.list())
+            returnValue((yield self.childPropertyStore.list()))

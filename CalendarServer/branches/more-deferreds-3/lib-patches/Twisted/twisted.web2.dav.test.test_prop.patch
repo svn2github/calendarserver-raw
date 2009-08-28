@@ -10,18 +10,10 @@ Index: twisted/web2/dav/test/test_prop.py
  from twisted.trial.unittest import SkipTest
  from twisted.web2 import responsecode
  from twisted.web2.iweb import IResponse
-@@ -57,6 +58,15 @@
+@@ -57,6 +58,7 @@
      PROPFIND, PROPPATCH requests
      """
  
-+    def setUp(self):
-+        # Pre-fetch site, so the rest of the test doesn't have to defer
-+        twisted.web2.dav.test.util.TestCase.setUp(self)
-+        self._getSite()
-+
-+    def _getStoredSite(self):
-+        return self._site
-+    site = property(_getStoredSite)
 +
      def liveProperties(self):
          return [lookupElement(qname)() for qname in self.resource_class.liveProperties if (qname[0] == dav_namespace) and qname not in dynamicLiveProperties]

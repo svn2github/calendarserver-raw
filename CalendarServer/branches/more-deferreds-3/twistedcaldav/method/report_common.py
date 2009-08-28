@@ -85,7 +85,7 @@ def applyToCalendarCollections(resource, request, request_uri, depth, apply, pri
             return
 
     # When scanning we only go down as far as a calendar collection - not into one
-    if resource.isPseudoCalendarCollection():
+    if (yield resource.isPseudoCalendarCollection()):
         resources = [(resource, request_uri)]
     elif not resource.isCollection():
         resources = [(resource, request_uri)]

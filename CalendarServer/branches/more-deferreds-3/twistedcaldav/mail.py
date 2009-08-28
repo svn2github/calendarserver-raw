@@ -225,16 +225,16 @@ class IMIPInboxResource(CalDAVFile):
         return succeed(self.iMIPACL)
 
     def resourceType(self):
-        return davxml.ResourceType.ischeduleinbox
+        return succeed(davxml.ResourceType.ischeduleinbox)
 
     def isCollection(self):
         return False
 
     def isCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def isPseudoCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def deadProperties(self):
         if not hasattr(self, "_dead_properties"):

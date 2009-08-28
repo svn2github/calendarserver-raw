@@ -24,6 +24,7 @@ __all__ = [
 
 from twext.web2.dav.davxml import ErrorResponse
 
+from twisted.internet.defer import succeed
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
 from twisted.web2.http import HTTPError
@@ -73,16 +74,16 @@ class TimezoneServiceResource (CalDAVResource):
         )
 
     def resourceType(self):
-        return davxml.ResourceType.timezones
+        return succeed(davxml.ResourceType.timezones)
 
     def isCollection(self):
         return False
 
     def isCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def isPseudoCalendarCollection(self):
-        return False
+        return succeed(False)
 
     def render(self, request):
         output = """<html>

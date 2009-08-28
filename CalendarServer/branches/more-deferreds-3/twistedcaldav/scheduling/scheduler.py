@@ -164,7 +164,7 @@ class Scheduler(object):
                 originatorPrincipal = (yield self.request.locateResource(originatorPrincipalURL))
                 if originatorPrincipal:
                     # Pick the first mailto cu address or the first other type
-                    for item in originatorPrincipal.calendarUserAddresses():
+                    for item in (yield originatorPrincipal.calendarUserAddresses()):
                         if not originator:
                             originator = item
                         if item.startswith("mailto:"):

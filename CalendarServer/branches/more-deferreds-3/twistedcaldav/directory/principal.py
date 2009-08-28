@@ -837,14 +837,14 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             result = (yield CalendarPrincipalResource.readProperty(self, property, request))
         returnValue(result)
 
+    @inlineCallbacks
     def extraDirectoryBodyItems(self, request):
-        d = self.calendarHomeURLs()
-        def _gotURLs(homeURLs):
-            return "".join((
-                    """\nCalendar homes:\n"""          , format_list(format_link(u) for u in homeURLs),
-                    """\nCalendar user addresses:\n""" , format_list(format_link(a) for a in self.calendarUserAddresses()),
-                    ))
-        return d.addCallbacks(_gotURLs)
+        homeURLs = (yield self.calendarHomeURLs())
+        cuas = (yield self.calendarUserAddresses())
+        returnValue( "".join((
+            """\nCalendar homes:\n"""          , format_list(format_link(u) for u in homeURLs),
+            """\nCalendar user addresses:\n""" , format_list(format_link(a) for a in cuas),
+        )))
 
     ##
     # CalDAV
@@ -865,7 +865,7 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         # Add a UUID URI based on the record's GUID to the list.
         addresses.add("urn:uuid:%s" % (self.record.guid,))
 
-        return addresses
+        return succeed(addresses)
 
     def enabledAsOrganizer(self):
         if self.record.recordType == DirectoryService.recordType_users:

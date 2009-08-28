@@ -10,14 +10,11 @@ Index: twisted/web2/dav/test/test_move.py
  import twisted.web2.dav.test.util
  import twisted.web2.dav.test.test_copy
  from twisted.web2 import responsecode
-@@ -60,8 +61,21 @@
+@@ -60,8 +61,18 @@
                  if sum != sumFile(dst_path):
                      self.fail("isdir %s produced different directory" % (uri,))
  
 -        return serialize(self.send, work(self, test))
-+        docroot = waitForDeferred(self.docroot)
-+        yield docroot
-+        docroot = docroot.getResult()
  
 +        d = waitForDeferred(work(self, test))
 +        yield d
@@ -33,19 +30,15 @@ Index: twisted/web2/dav/test/test_move.py
      def test_MOVE_exists(self):
          """
          MOVE to existing resource.
-@@ -74,8 +88,21 @@
+@@ -74,8 +85,17 @@
                  # FIXME: Check XML error code (2518bis)
                  pass
  
 -        return serialize(self.send, work(self, test, overwrite=False))
-+        docroot = waitForDeferred(self.docroot)
-+        yield docroot
-+        docroot = docroot.getResult()
- 
 +        d = waitForDeferred(work(self, test, overwrite=False))
 +        yield d
 +        d = d.getResult()
-+
+ 
 +        d = waitForDeferred(serialize(self.send, iter(d)))
 +        yield d
 +        d = d.getResult( )
@@ -56,19 +49,15 @@ Index: twisted/web2/dav/test/test_move.py
      def test_MOVE_overwrite(self):
          """
          MOVE to existing resource with overwrite header.
-@@ -88,8 +115,21 @@
+@@ -88,8 +108,17 @@
                  # FIXME: Check XML error code (2518bis)
                  pass
  
 -        return serialize(self.send, work(self, test, overwrite=True))
-+        docroot = waitForDeferred(self.docroot)
-+        yield docroot
-+        docroot = docroot.getResult()
- 
 +        d = waitForDeferred(work(self, test, overwrite=True))
 +        yield d
 +        d = d.getResult()
-+
+ 
 +        d = waitForDeferred(serialize(self.send, iter(d)))
 +        yield d
 +        d = d.getResult( )
@@ -79,16 +68,13 @@ Index: twisted/web2/dav/test/test_move.py
      def test_MOVE_no_parent(self):
          """
          MOVE to resource with no parent.
-@@ -102,7 +142,20 @@
+@@ -102,7 +131,17 @@
                  # FIXME: Check XML error code (2518bis)
                  pass
  
 -        return serialize(self.send, work(self, test, dst=os.path.join(self.docroot, "elvislives!")))
-+        docroot = waitForDeferred(self.docroot)
-+        yield docroot
-+        docroot = docroot.getResult()
  
-+        d = waitForDeferred(work(self, test, dst=os.path.join(docroot, "elvislives!")))
++        d = waitForDeferred(work(self, test, dst=os.path.join(self.docroot, "elvislives!")))
 +        yield d
 +        d = d.getResult()
 +

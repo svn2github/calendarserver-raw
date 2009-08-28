@@ -10,49 +10,41 @@ Index: twisted/web2/dav/test/test_put.py
  from twisted.web2 import responsecode
  from twisted.web2.iweb import IResponse
  from twisted.web2.stream import FileStream
-@@ -42,27 +43,38 @@
+@@ -44,25 +45,31 @@
          """
-         PUT request
-         """
--        dst_path = os.path.join(self.docroot, "dst")
-+        docroot = waitForDeferred(self.docroot)
-+        yield docroot
-+        docroot = docroot.getResult()
+         dst_path = os.path.join(self.docroot, "dst")
  
 -        def checkResult(response, path):
 -            response = IResponse(response)
-+        dst_path = os.path.join(docroot, "dst")
++        def makeClosure(path):
  
 -            if response.code not in (
 -                responsecode.CREATED,
 -                responsecode.NO_CONTENT
 -            ):
 -                self.fail("PUT failed: %s" % (response.code,))
-+        def makeClosure(path):
++            # Return a function with 'path' closed
  
 -            if not os.path.isfile(dst_path):
 -                self.fail("PUT failed to create file %s." % (dst_path,))
-+            # Return a function with 'path' closed
- 
--            if not filecmp.cmp(path, dst_path):
--                self.fail("PUT failed to preserve data for file %s in file %s." % (path, dst_path))
 +            def checkResult(response):
 +                response = IResponse(response)
  
--            etag = response.headers.getHeader("etag")
--            if not etag:
--                self.fail("No etag header in PUT response %r." % (response,))
+-            if not filecmp.cmp(path, dst_path):
+-                self.fail("PUT failed to preserve data for file %s in file %s." % (path, dst_path))
 +                if response.code not in (
 +                    responsecode.CREATED,
 +                    responsecode.NO_CONTENT
 +                ):
 +                    self.fail("PUT failed: %s" % (response.code,))
  
+-            etag = response.headers.getHeader("etag")
+-            if not etag:
+-                self.fail("No etag header in PUT response %r." % (response,))
 +                if not os.path.isfile(dst_path):
 +                    self.fail("PUT failed to create file %s." % (dst_path,))
-+
+ 
 +                if not filecmp.cmp(path, dst_path):
-+                    import pdb; pdb.set_trace()
 +
 +                    self.fail("PUT failed to preserve data for file %s in file %s." % (path, dst_path))
 +
@@ -64,31 +56,23 @@ Index: twisted/web2/dav/test/test_put.py
          #
          # We need to serialize these request & test iterations because they can
          # interfere with each other.
-@@ -70,52 +82,79 @@
+@@ -70,6 +77,7 @@
          def work():
              dst_uri = "/dst"
  
--            for name in os.listdir(self.docroot):
 +            results = []
-+            for name in os.listdir(docroot):
+             for name in os.listdir(self.docroot):
                  if name == "dst":
                      continue
- 
--                path = os.path.join(self.docroot, name)
-+                path = os.path.join(docroot, name)
+@@ -78,38 +86,53 @@
  
                  # Can't really PUT something you can't read
                  if not os.path.isfile(path): continue
 -    
 -                def do_test(response): checkResult(response, path)
 -    
--                request = SimpleRequest(self.site, "PUT", dst_uri)
 +
-+                site = waitForDeferred(self.site)
-+                yield site
-+                site = site.getResult()
-+
-+                request = SimpleRequest(site, "PUT", dst_uri)
+                 request = SimpleRequest(self.site, "PUT", dst_uri)
                  request.stream = FileStream(file(path, "rb"))
 -    
 -                yield (request, do_test)
@@ -116,12 +100,8 @@ Index: twisted/web2/dav/test/test_put.py
          """
          PUT on existing resource with If-None-Match header
          """
--        dst_path = os.path.join(self.docroot, "dst")
-+        docroot = waitForDeferred(self.docroot)
-+        yield docroot
-+        docroot = docroot.getResult()
 +
-+        dst_path = os.path.join(docroot, "dst")
+         dst_path = os.path.join(self.docroot, "dst")
          dst_uri = "/dst"
  
          def work():
@@ -150,18 +130,7 @@ Index: twisted/web2/dav/test/test_put.py
  
                  def onError(f):
                      f.trap(HTTPError)
-                     return checkResult(f.value.response)
- 
--                request = SimpleRequest(self.site, "PUT", dst_uri)
-+                site = waitForDeferred(self.site)
-+                yield site
-+                site = site.getResult()
-+
-+                request = SimpleRequest(site, "PUT", dst_uri)
-                 request.stream = FileStream(file(__file__, "rb"))
-     
-                 if code == responsecode.CREATED:
-@@ -125,10 +164,23 @@
+@@ -125,10 +148,23 @@
                  elif code == responsecode.PRECONDITION_FAILED:
                      request.headers.setHeader("if-none-match", ("*",))
      
@@ -187,16 +156,8 @@ Index: twisted/web2/dav/test/test_put.py
      def test_PUT_no_parent(self):
          """
          PUT with no parent
-@@ -142,7 +194,16 @@
-                 self.fail("Incorrect response code for PUT with no parent (%s != %s)"
-                           % (response.code, responsecode.CONFLICT))
- 
--        request = SimpleRequest(self.site, "PUT", dst_uri)
-+        site = waitForDeferred(self.site)
-+        yield site
-+        site = site.getResult()
-+
-+        request = SimpleRequest(site, "PUT", dst_uri)
+@@ -145,4 +181,9 @@
+         request = SimpleRequest(self.site, "PUT", dst_uri)
          request.stream = FileStream(file(__file__, "rb"))
  
 -        return self.send(request, checkResult)

@@ -24,6 +24,7 @@ __all__ = [
     "DropBoxChildResource",
 ]
 
+from twisted.internet.defer import succeed
 from twext.web2.dav.davxml import ErrorResponse
 from twisted.web2 import responsecode
 from twisted.web2.dav import davxml
@@ -39,7 +40,7 @@ class DropBoxHomeResource (DAVResource):
     Drop box collection resource.
     """
     def resourceType(self):
-        return davxml.ResourceType.dropboxhome
+        return succeed(davxml.ResourceType.dropboxhome)
 
     def isCollection(self):
         return True
@@ -52,7 +53,7 @@ class DropBoxCollectionResource (DAVResource):
     Drop box resource.
     """
     def resourceType(self):
-        return davxml.ResourceType.dropbox
+        return succeed(davxml.ResourceType.dropbox)
 
     def isCollection(self):
         return True

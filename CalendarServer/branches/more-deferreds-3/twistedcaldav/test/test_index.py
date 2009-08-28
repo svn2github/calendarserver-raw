@@ -16,6 +16,7 @@
 
 from twisted.internet import reactor
 from twisted.internet.task import deferLater
+from twisted.internet.defer import succeed
 
 from twistedcaldav.ical import Component
 from twistedcaldav.index import Index, default_future_expansion_duration,\
@@ -40,7 +41,7 @@ class SQLIndexTests (twistedcaldav.test.util.TestCase):
 
     def setUp(self):
         super(SQLIndexTests, self).setUp()
-        self.site.resource.isCalendarCollection = lambda: True
+        self.site.resource.isCalendarCollection = lambda: succeed(True)
         self.db = Index(self.site.resource)
 
 

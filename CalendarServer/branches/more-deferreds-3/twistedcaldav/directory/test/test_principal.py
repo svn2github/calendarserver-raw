@@ -317,6 +317,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         for provisioningResource, recordType, recordResource, record in self._allRecords():
             self.assertEquals(record.guid, recordResource.principalUID())
 
+    @inlineCallbacks
     def test_calendarUserAddresses(self):
         """
         DirectoryPrincipalResource.calendarUserAddresses()
@@ -327,7 +328,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
                     (
                         set((recordResource.principalURL(),)) |
                         set(record.calendarUserAddresses)
-                    ).issubset(set(recordResource.calendarUserAddresses()))
+                    ).issubset(set((yield recordResource.calendarUserAddresses())))
                 )
 
     def test_calendarHomeURLs(self):

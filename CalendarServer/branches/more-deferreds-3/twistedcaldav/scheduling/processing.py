@@ -508,7 +508,7 @@ class ImplicitProcessor(object):
         all_declined = not any(instance_states.itervalues())
 
         # Do the simple case of all accepted or decline separately
-        cuas = self.recipient.principal.calendarUserAddresses()
+        cuas = (yield self.recipient.principal.calendarUserAddresses())
         if all_accepted or all_declined:
             # Extract the ATTENDEE property matching current recipient from the calendar data
             attendeeProps = calendar.getAttendeeProperties(cuas)
