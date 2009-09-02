@@ -30,7 +30,8 @@ class OverloadedLoggingServerProtocol(protocol.Protocol):
         self.outstandingRequests = outstandingRequests
 
     def connectionMade(self):
-        log.msg(overloaded=self)
+        if config.MoreAccessLogData:
+            log.msg(overloaded=self)
 
         retryAfter = randint(int(config.HTTPRetryAfter * 1/2), int(config.HTTPRetryAfter * 3/2))
 

@@ -164,8 +164,8 @@ defaultConfig = {
     "ErrorLogFile"   : "/var/log/caldavd/error.log",   # Server activity log
     "ServerStatsFile": "/var/run/caldavd/stats.plist",
     "PIDFile"        : "/var/run/caldavd.pid",
-    "RotateAccessLog"         : False,
-    "EnableExtendedAccessLog" : True,
+    "RotateAccessLog"   : False,
+    "MoreAccessLogData" : True,
     "DefaultLogLevel"   : "",
     "LogLevels"         : {},
 

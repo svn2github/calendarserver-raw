@@ -78,22 +78,7 @@ def http_REPORT(self, request):
     namespace = doc.root_element.namespace
     name = doc.root_element.name
 
-    if namespace:
-        if namespace == davxml.dav_namespace:
-            request.submethod = "DAV:" + name
-        elif namespace == caldavxml.caldav_namespace:
-            request.submethod = "CalDAV:" + name
-        else:
-            request.submethod = "{%s}%s" % (namespace, name)
-    else:
-        request.submethod = name
-
-    def to_method(namespace, name):
-        if namespace:
-            s = "_".join((namespace, name))
-        else:
-            s = name
-
+    def to_method(s):
         ok = string.ascii_letters + string.digits + "_"
         out = []
         for c in s:
@@ -103,7 +88,10 @@ def http_REPORT(self, request):
                 out.append("_")
         return "report_" + "".join(out)
 
-    method_name = to_method(namespace, name)
+    if namespace:
+        method_name = to_method(namespace + "_" + name)
+    else:
+        method_name = to_method(name)
 
     try:
         method = getattr(self, method_name)

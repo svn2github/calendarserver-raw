@@ -61,16 +61,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
 
     propertyreq = multiget.property
     resources  = multiget.resources
-
-    if not hasattr(request, "extendedLogItems"):
-        request.extendedLogItems = {}
-    request.extendedLogItems["rcount"] = len(resources)
     
-    # Check size of results is within limit
-    if len(resources) > max_number_of_multigets:
-        log.err("Too many results in multiget report: %d" % len(resources))
-        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, davxml.NumberOfMatchesWithinLimits()))
-
     if propertyreq.qname() == ("DAV:", "allprop"):
         propertiesForResource = report_common.allPropertiesForResource
 
@@ -87,6 +78,11 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
     else:
         raise AssertionError("We shouldn't be here")
+
+    # Check size of results is within limit
+    if len(resources) > max_number_of_multigets:
+        log.err("Too many results in multiget report: %d" % len(resources))
+        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "number-of-matches-within-limits")))
 
     """
     Three possibilities exist:
