@@ -253,9 +253,9 @@ def _namedPropertiesForResource(request, props, resource, calendar=None, timezon
                 access = None
 
             if calendar:
-                propvalue = yield property.elementFromCalendarWithAccessRestrictions(calendar, access, timezone)
+                propvalue = (yield property.elementFromCalendarWithAccessRestrictions(calendar, access, timezone))
             else:
-                propvalue = yield property.elementFromResourceWithAccessRestrictions(resource, access, timezone)
+                propvalue = (yield property.elementFromResourceWithAccessRestrictions(resource, access, timezone))
             if propvalue is None:
                 raise ValueError("Invalid CalDAV:calendar-data for request: %r" % (property,))
             properties_by_status[responsecode.OK].append(propvalue)
@@ -318,7 +318,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
             returnValue(matchtotal)
 
     # May need organizer principal
-    organizer_principal = calresource.principalForCalendarUserAddress(organizer) if organizer else None
+    organizer_principal = (yield calresource.principalForCalendarUserAddress(organizer)) if organizer else None
     organizer_uid = organizer_principal.principalUID() if organizer_principal else ""
 
     #
@@ -352,9 +352,9 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
     filteredaces = (yield calresource.inheritedACEsforChildren(request))
 
     try:
-        resources = yield calresource.index().indexedSearch(filter, fbtype=True)
+        resources = (yield calresource.index().indexedSearch(filter, fbtype=True))
     except IndexedSearchException:
-        resources = yield calresource.index().bruteForceSearch()
+        resources = (yield calresource.index().bruteForceSearch())
 
     # We care about separate instances for VEVENTs only
     aggregated_resources = {}
@@ -387,7 +387,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
                 if excludeuid:
                     # See if we have a UID match
                     if (excludeuid == uid):
-                        test_principal = calresource.principalForCalendarUserAddress(test_organizer) if test_organizer else None
+                        test_principal = (yield calresource.principalForCalendarUserAddress(test_organizer)) if test_organizer else None
                         test_uid = test_principal.principalUID() if test_principal else ""
 
                         # Check that ORGANIZER's match (security requirement)
@@ -417,7 +417,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
                     fbinfo[fbtype_index_mapper.get(fbtype, 0)].append(clipped)
                 
         else:
-            calendar = yield calresource.iCalendar(name)
+            calendar = (yield calresource.iCalendar(name))
             
             # The calendar may come back as None if the resource is being changed, or was deleted
             # between our initial index query and getting here. For now we will ignore this error, but in
@@ -431,7 +431,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
                 # See if we have a UID match
                 if (excludeuid == uid):
                     test_organizer = calendar.getOrganizer()
-                    test_principal = calresource.principalForCalendarUserAddress(test_organizer) if test_organizer else None
+                    test_principal = (yield calresource.principalForCalendarUserAddress(test_organizer)) if test_organizer else None
                     test_uid = test_principal.principalUID() if test_principal else ""
     
                     # Check that ORGANIZER's match (security requirement)

@@ -58,13 +58,32 @@ class DirectoryCalendarProvisioningResource (
     DAVResource,
 ):
     def defaultAccessControlList(self):
-        return config.ProvisioningResourceACL
+        return succeed(config.ProvisioningResourceACL)
 
 
 class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningResource):
     """
     Resource which provisions calendar home collections as needed.    
     """
+
+    @classmethod
+    @inlineCallbacks
+    def fetch(cls, *a, **kw):
+        self = (yield super(DirectoryCalendarHomeProvisioningResource, cls).fetch(*a, **kw))
+        #
+        # Create children
+        #
+
+        @inlineCallbacks
+        def _provisionChild(name):
+            self.putChild(name, (yield self.provisionChild(name)))
+
+        for recordType in self.directory.recordTypes():
+            (yield _provisionChild(recordType))
+
+        (yield _provisionChild(uidsResourceName))
+        returnValue(self)
+
     def __init__(self, directory, url):
         """
         @param directory: an L{IDirectoryService} to provision calendars from.
@@ -81,16 +100,6 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
         # FIXME: Smells like a hack
         directory.calendarHomesCollection = self
 
-        #
-        # Create children
-        #
-        def provisionChild(name):
-            self.putChild(name, self.provisionChild(name))
-
-        for recordType in self.directory.recordTypes():
-            provisionChild(recordType)
-
-        provisionChild(uidsResourceName)
 
     def provisionChild(self, recordType):
         raise NotImplementedError("Subclass must implement provisionChild()")
@@ -99,7 +108,7 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
         return self._url
 
     def getChild(self, name):
-        return self.putChildren.get(name, None)
+        return succeed(self.putChildren.get(name, None))
 
     def listChildren(self):
         return succeed(self.directory.recordTypes())
@@ -109,17 +118,19 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
         # See DirectoryPrincipalProvisioningResource.__init__()
         return self.directory.principalCollection.principalCollections()
 
+    # Deferred
     def principalForRecord(self, record):
         # FIXME: directory.principalCollection smells like a hack
         # See DirectoryPrincipalProvisioningResource.__init__()
         return self.directory.principalCollection.principalForRecord(record)
 
+    @inlineCallbacks
     def homeForDirectoryRecord(self, record):
-        uidResource = self.getChild(uidsResourceName)
+        uidResource = (yield self.getChild(uidsResourceName))
         if uidResource is None:
-            return succeed(None)
+            returnValue(None)
         else:
-            return uidResource.getChild(record.uid)
+            returnValue((yield uidResource.getChild(record.uid)))
 
     ##
     # DAV
@@ -158,25 +169,26 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
             returnValue(self)
 
         if record is None:
-            record = self.directory.recordWithShortName(self.recordType, name)
+            record = (yield self.directory.recordWithShortName(self.recordType, name))
             if record is None:
                 returnValue(None)
 
         returnValue((yield self._parent.homeForDirectoryRecord(record)))
 
+    @inlineCallbacks
     def listChildren(self):
         if config.EnablePrincipalListings:
 
-            def _recordShortnameExpand():
-                for record in self.directory.listRecords(self.recordType):
-                    if record.enabledForCalendaring:
-                        for shortName in record.shortNames:
-                            yield shortName
+            results = []
+            for record in (yield self.directory.listRecords(self.recordType)):
+                if record.enabledForCalendaring:
+                    for shortName in record.shortNames:
+                        results.append(shortName)
 
-            return succeed(_recordShortnameExpand())
+            returnValue(results)
         else:
             # Not a listable collection
-            return fail(HTTPError(responsecode.FORBIDDEN))
+            raise HTTPError(responsecode.FORBIDDEN)
 
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
@@ -195,6 +207,7 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
     def principalCollections(self):
         return self._parent.principalCollections()
 
+    # Deferred
     def principalForRecord(self, record):
         return self._parent.principalForRecord(record)
 
@@ -221,7 +234,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
             returnValue(self)
 
         if record is None:
-            record = self.directory.recordWithUID(name)
+            record = (yield self.directory.recordWithUID(name))
             if record is None:
                 returnValue(None)
 
@@ -245,6 +258,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
     def principalCollections(self):
         return self.parent.principalCollections()
 
+    # Deferred
     def principalForRecord(self, record):
         return self.parent.principalForRecord(record)
 
@@ -295,15 +309,22 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
         self.parent = parent
 
 
+    @inlineCallbacks
     def provisionDefaultCalendars(self):
 
         # Disable notifications during provisioning
         if hasattr(self, "clientNotifier"):
             self.clientNotifier.disableNotify()
 
-        @inlineCallbacks
-        def setupFreeBusy(_, child):
-            # Default calendar is initially opaque to freebusy
+        try:
+            yield self.provision()
+
+            childName = "calendar"
+            childURL = joinURL(self.url(), childName)
+            child = (yield self.provisionChild(childName))
+            
+            assert isinstance(child, CalDAVResource), "Child %r is not a %s: %r" % (childName, CalDAVResource.__name__, child)
+            yield child.createCalendarCollection()
             yield child.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque()))
 
             # FIXME: Shouldn't have to call provision() on another resource
@@ -312,40 +333,17 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
             # This will go away once we remove the free-busy-set property on inbox.
 
             # Set calendar-free-busy-set on inbox
-            inbox = self.getChild("inbox")
+            inbox = (yield self.getChild("inbox"))
             yield inbox.provision()
             yield inbox.processFreeBusyCalendar(childURL, True)
 
             # Default calendar is marked as the default for scheduling
             yield inbox.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(childURL)))
 
-            returnValue(self)
-
-        try:
-            d = self.provision()
-
-            childName = "calendar"
-            childURL = joinURL(self.url(), childName)
-            d.addCallback(lambda _: self.provisionChild(childName))
-            
-            def _makeChild(child):
-                assert isinstance(child, CalDAVResource), "Child %r is not a %s: %r" % (childName, CalDAVResource.__name__, child)
-                return child.createCalendarCollection().addCallback(setupFreeBusy, child)
-
-            d.addCallback(_makeChild)
-        except:
-            # We want to make sure to re-enable notifications, so do so
-            # if there is an immediate exception above, or via errback, below
+        finally:
             if hasattr(self, "clientNotifier"):
                 self.clientNotifier.enableNotify(None)
-            raise
 
-        # Re-enable notifications
-        if hasattr(self, "clientNotifier"):
-            d.addCallback(self.clientNotifier.enableNotify)
-            d.addErrback(self.clientNotifier.enableNotify)
-
-        return d
 
     def provisionChild(self, name):
         raise NotImplementedError("Subclass must implement provisionChild()")
@@ -370,14 +368,18 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
     # ACL
     ##
 
+    @inlineCallbacks
     def owner(self, request):
-        return succeed(davxml.HRef(self.principalForRecord().principalURL()))
+        principal = (yield self.principalForRecord())
+        returnValue(davxml.HRef(principal.principalURL()))
 
+    # Deferred
     def ownerPrincipal(self, request):
-        return succeed(self.principalForRecord())
+        return self.principalForRecord()
 
+    @inlineCallbacks
     def defaultAccessControlList(self):
-        myPrincipal = self.principalForRecord()
+        myPrincipal = (yield self.principalForRecord())
 
         aces = (
             # Inheritable DAV:all access for the resource's associated principal.
@@ -426,7 +428,7 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
                 ),
             )
 
-        return davxml.ACL(*aces)
+        returnValue(davxml.ACL(*aces))
 
     @inlineCallbacks
     def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
@@ -439,11 +441,12 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
         else:
             # ...otherwise permissions are fixed, and are not subject to
             # inheritance rules, etc.
-            returnValue(self.defaultAccessControlList())
+            returnValue((yield self.defaultAccessControlList()))
 
     def principalCollections(self):
         return self.parent.principalCollections()
 
+    # Deferred
     def principalForRecord(self):
         return self.parent.principalForRecord(self.record)
 

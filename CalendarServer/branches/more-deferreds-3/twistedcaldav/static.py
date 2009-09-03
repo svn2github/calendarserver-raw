@@ -97,7 +97,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
         return succeed(cls(path, *args, **kwargs))
 
     def __repr__(self):
-        # MOR: I don't think we can defer __repr__ even though isCalendarCollection( ) now is
+        # MOR: I don't think we can defer __repr__, can we? Problem is, isCalendarCollection( ) now is deferred
         if False and self.isCalendarCollection():
             return "<%s (calendar collection): %s>" % (self.__class__.__name__, self.fp.path)
         else:
@@ -555,11 +555,10 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
 class AutoProvisioningFileMixIn (AutoProvisioningResourceMixIn):
 
+    @inlineCallbacks
     def provision(self):
-        # MOR: Double check this:
-        d = self.provisionFile()
-        d.addCallback(super(AutoProvisioningFileMixIn, self).provision)
-        return d
+        yield self.provisionFile()
+        returnValue((yield super(AutoProvisioningFileMixIn, self).provision()))
 
     @inlineCallbacks
     def provisionFile(self, request=None):
@@ -644,7 +643,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
 
     @inlineCallbacks
     def provisionChild(self, name):
-        record = self.directory.recordWithUID(name)
+        record = (yield self.directory.recordWithUID(name))
 
         if record is None:
             log.msg("No directory record with GUID %r" % (name,))
@@ -668,7 +667,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
                 # Pre 2.0: All in one directory
                 self.fp.child(name),
                 # Pre 1.2: In types hierarchy instead of the GUID hierarchy
-                (yield self.parent.getChild(record.recordType).fp.child(record.shortNames[0])),
+                (yield (yield self.parent.getChild(record.recordType)).fp.child(record.shortNames[0])),
             ):
                 if oldPath.exists():
                     # The child exists at an old location.  Move to new location.

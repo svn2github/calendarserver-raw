@@ -192,7 +192,7 @@ class ImplicitScheduler(object):
                 except ValueError:
                     # We have different ORGANIZERs in the same iCalendar object - this is an error
                     returnValue(False)
-                organizerPrincipal = resource.principalForCalendarUserAddress(organizer) if organizer else None
+                organizerPrincipal = (yield resource.principalForCalendarUserAddress(organizer)) if organizer else None
                 yield resource.writeDeadProperty(TwistedSchedulingObjectResource("true" if organizerPrincipal != None else "false"))
                 log.debug("Implicit - checked scheduling object resource state for UID: '%s', result: %s" % (
                     calendar.resourceUID(),
@@ -274,7 +274,7 @@ class ImplicitScheduler(object):
         
         # Get some useful information from the calendar
         yield self.extractCalendarData()
-        self.organizerPrincipal = self.resource.principalForCalendarUserAddress(self.organizer)
+        self.organizerPrincipal = (yield self.resource.principalForCalendarUserAddress(self.organizer))
         self.organizerAddress = (yield addressmapping.mapper.getCalendarUser(self.organizer, self.organizerPrincipal))
 
         # Originator is the organizer in this case
@@ -418,7 +418,7 @@ class ImplicitScheduler(object):
             returnValue(False)
         
         # Organizer must map to a valid principal
-        self.organizerPrincipal = self.resource.principalForCalendarUserAddress(self.organizer)
+        self.organizerPrincipal = (yield self.resource.principalForCalendarUserAddress(self.organizer))
         self.organizerAddress = (yield addressmapping.mapper.getCalendarUser(self.organizer, self.organizerPrincipal))
         if not self.organizerPrincipal:
             returnValue(False)
@@ -429,21 +429,22 @@ class ImplicitScheduler(object):
 
         returnValue(True)
 
+    @inlineCallbacks
     def isAttendeeScheduling(self):
         
         # First must have organizer property
         if not self.organizer:
-            return False
+            returnValue(False)
         
         # Check to see whether any attendee is the owner
         for attendee in self.attendees:
-            attendeePrincipal = self.resource.principalForCalendarUserAddress(attendee)
+            attendeePrincipal = (yield self.resource.principalForCalendarUserAddress(attendee))
             if attendeePrincipal and attendeePrincipal.principalURL() == str(self.calendar_owner):
                 self.attendee = attendee
                 self.attendeePrincipal = attendeePrincipal
-                return True
+                returnValue(True)
         
-        return False
+        returnValue(False)
 
     @inlineCallbacks
     def doAccessControl(self, principal, is_organizer):

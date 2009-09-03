@@ -92,7 +92,7 @@ def processInboxItem(rootResource, directory, inboxFile, inboxItemFile, uuid):
     log.debug("Processing inbox item %s" % (inboxItemFile,))
 
     principals = rootResource.getChild("principals")
-    ownerPrincipal = principals.principalForUID(uuid)
+    ownerPrincipal = (yield principals.principalForUID(uuid))
     cua = "urn:uuid:%s" % (uuid,)
     owner = LocalCalendarUser(cua, ownerPrincipal,
         inboxFile, ownerPrincipal.scheduleInboxURL())
@@ -111,7 +111,7 @@ def processInboxItem(rootResource, directory, inboxFile, inboxItemFile, uuid):
         # originator is the organizer
         originator = calendar.getOrganizer()
 
-    originatorPrincipal = principals.principalForCalendarUserAddress(originator)
+    originatorPrincipal = (yield principals.principalForCalendarUserAddress(originator))
     originator = LocalCalendarUser(originator, originatorPrincipal)
     recipients = (owner,)
     scheduler = DirectScheduler(FakeRequest(rootResource, "PUT"), inboxItemFile)

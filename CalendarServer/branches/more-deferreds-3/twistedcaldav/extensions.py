@@ -163,6 +163,7 @@ class SudoSACLMixin (object):
             request.authzUser = davxml.Principal(davxml.Unauthenticated())
             returnValue((request.authnUser, request.authzUser,))
 
+    @inlineCallbacks
     def principalsForAuthID(self, request, creds):
         """
         Return authentication and authorization prinicipal identifiers
@@ -180,17 +181,17 @@ class SudoSACLMixin (object):
             HTTPError(responsecode.FORBIDDEN) if the principal isn't
             found.
         """
-        authnPrincipal = self.findPrincipalForAuthID(creds)
+        authnPrincipal = (yield self.findPrincipalForAuthID(creds))
 
         if authnPrincipal is None:
             log.info("Could not find the principal resource for user id: %s"
                      % (creds.username,))
             raise HTTPError(responsecode.FORBIDDEN)
 
-        d = self.authorizationPrincipal(request, creds.username, authnPrincipal)
-        d.addCallback(lambda authzPrincipal: (authnPrincipal, authzPrincipal))
-        return d
+        authzPrincipal = (yield self.authorizationPrincipal(request, creds.username, authnPrincipal))
+        returnValue((authnPrincipal, authzPrincipal))
 
+    @inlineCallbacks
     def findPrincipalForAuthID(self, creds):
         """
         Return an authentication and authorization principal
@@ -198,20 +199,20 @@ class SudoSACLMixin (object):
         Check for sudo users before regular users.
         """
         if type(creds) is str:
-            return super(SudoSACLMixin, self).findPrincipalForAuthID(creds)
+            returnValue((yield super(SudoSACLMixin, self).findPrincipalForAuthID(creds)))
 
         for collection in self.principalCollections():
-            principal = collection.principalForShortName(
+            principal = (yield collection.principalForShortName(
                 SudoDirectoryService.recordType_sudoers, 
-                creds.username)
+                creds.username))
             if principal is not None:
-                return principal
+                returnValue(principal)
 
         for collection in self.principalCollections():
-            principal = collection.principalForAuthID(creds)
+            principal = (yield collection.principalForAuthID(creds))
             if principal is not None:
-                return principal
-        return None
+                returnValue(principal)
+        returnValue(None)
 
     @inlineCallbacks
     def authorizationPrincipal(self, request, authID, authnPrincipal):
@@ -238,31 +239,33 @@ class SudoSACLMixin (object):
             # Substitute the authz value for principal look up
             authz = authz[0]
 
+        @inlineCallbacks
         def getPrincipalForType(type, name):
             for collection in self.principalCollections():
-                principal = collection.principalForShortName(type, name)
+                principal = (yield collection.principalForShortName(type, name))
                 if principal:
-                    return principal
+                    returnValue(principal)
 
+        @inlineCallbacks
         def isSudoUser(authzID):
-            if getPrincipalForType(SudoDirectoryService.recordType_sudoers, authzID):
-                return True
-            return False
+            if (yield getPrincipalForType(SudoDirectoryService.recordType_sudoers, authzID)):
+                returnValue(True)
+            returnValue(False)
 
         if (
             hasattr(authnPrincipal, "record") and
             authnPrincipal.record.recordType == SudoDirectoryService.recordType_sudoers
         ):
             if authz:
-                if isSudoUser(authz):
+                if (yield isSudoUser(authz)):
                     log.info("Cannot proxy as another proxy: user %r as user %r"
                              % (authID, authz))
                     raise HTTPError(responsecode.FORBIDDEN)
                 else:
-                    authzPrincipal = getPrincipalForType(DirectoryService.recordType_users, authz)
+                    authzPrincipal = (yield getPrincipalForType(DirectoryService.recordType_users, authz))
 
                     if not authzPrincipal:
-                        authzPrincipal = self.findPrincipalForAuthID(authz)
+                        authzPrincipal = (yield self.findPrincipalForAuthID(authz))
 
                     if authzPrincipal is not None:
                         log.info("Allow proxy: user %r as %r"
@@ -436,7 +439,7 @@ class DirectoryPrincipalPropertySearchMixIn(object):
                 operand=operand, cuType=cuType))
 
             for record in records:
-                resource = principalCollection.principalForRecord(record)
+                resource = (yield principalCollection.principalForRecord(record))
                 matchingResources.append(resource)
 
                 # We've determined this is a matching resource
@@ -1076,7 +1079,7 @@ class ReadOnlyResourceMixIn (ReadOnlyWritePropertiesResourceMixIn):
     ):
         # Permissions here are fixed, and are not subject to                    
         # inheritance rules, etc.                                               
-        return succeed(self.defaultAccessControlList())
+        return self.defaultAccessControlList()
 
 class PropertyNotFoundError (HTTPError):
     def __init__(self, qname):

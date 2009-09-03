@@ -138,7 +138,7 @@ def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multig
             for href in resources:
                 resource_uri = str(href)
                 name = unquote(resource_uri[resource_uri.rfind("/") + 1:])
-                if not self._isChildURI(request, resource_uri) or self.getChild(name) is None:
+                if not self._isChildURI(request, resource_uri) or (yield self.getChild(name)) is None:
                     responses.append(davxml.StatusResponse(href, davxml.Status.fromResponseCode(responsecode.NOT_FOUND)))
                 else:
                     valid_names.append(name)

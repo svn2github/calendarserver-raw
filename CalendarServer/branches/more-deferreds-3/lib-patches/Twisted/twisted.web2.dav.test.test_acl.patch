@@ -6,11 +6,20 @@ Index: twisted/web2/dav/test/test_acl.py
  
  from twisted.cred.portal import Portal
  
-+from twisted.internet.defer import waitForDeferred, deferredGenerator
++from twisted.internet.defer import waitForDeferred, deferredGenerator, succeed
 +
  from twisted.web2 import responsecode
  from twisted.web2.auth import basic
  from twisted.web2.stream import MemoryStream
+@@ -57,7 +59,7 @@
+         if typeResource:
+             user = typeResource.children.get(shortName, None)
+ 
+-        return user
++        return succeed(user)
+ 
+ class ACL(twisted.web2.dav.test.util.TestCase):
+     """
 @@ -68,7 +70,9 @@
          os.mkdir(docroot)
  

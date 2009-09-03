@@ -20,6 +20,7 @@ except ImportError:
     pass
 else:
     import twisted.web2.auth.digest
+    from twisted.internet.defer import inlineCallbacks
     import twistedcaldav.directory.test.util
     from twistedcaldav.directory.directory import DirectoryService
     from twistedcaldav.directory.appleopendirectory import OpenDirectoryRecord
@@ -78,6 +79,7 @@ else:
             )
             self.assertEquals(record.fullName, "")
 
+        @inlineCallbacks
         def test_invalidODDigest(self):
             record = OpenDirectoryRecord(
                 service               = self.service(),
@@ -98,7 +100,7 @@ else:
             digestFields = {}
             digested = twisted.web2.auth.digest.DigestedCredentials("user", "GET", "example.com", digestFields, None)
 
-            self.assertFalse(record.verifyCredentials(digested))
+            self.assertFalse((yield record.verifyCredentials(digested)))
 
         def test_validODDigest(self):
             record = OpenDirectoryRecord(
@@ -146,6 +148,7 @@ else:
 
             self.assertTrue(record.verifyCredentials(digested))
 
+        @inlineCallbacks
         def test_queryDirectorySingleGUID(self):
             """ Test for lookup on existing and non-existing GUIDs """
 
@@ -165,11 +168,12 @@ else:
                 return results
 
             recordTypes = [DirectoryService.recordType_users, DirectoryService.recordType_groups, DirectoryService.recordType_locations, DirectoryService.recordType_resources]
-            self.service().queryDirectory(recordTypes, self.service().INDEX_TYPE_GUID, "1234567890", lookupMethod=lookupMethod)
-            self.assertTrue(self.service().recordWithGUID("1234567890"))
-            self.assertFalse(self.service().recordWithGUID("987654321"))
+            yield self.service().queryDirectory(recordTypes, self.service().INDEX_TYPE_GUID, "1234567890", lookupMethod=lookupMethod)
+            self.assertTrue((yield self.service().recordWithGUID("1234567890")))
+            self.assertFalse((yield self.service().recordWithGUID("987654321")))
 
 
+        @inlineCallbacks
         def test_queryDirectoryDuplicateGUIDs(self):
             """ Test for lookup on duplicate GUIDs, ensuring they don't get
                 faulted in """
@@ -195,5 +199,5 @@ else:
                 return results
 
             recordTypes = [DirectoryService.recordType_users, DirectoryService.recordType_groups, DirectoryService.recordType_locations, DirectoryService.recordType_resources]
-            self.service().queryDirectory(recordTypes, self.service().INDEX_TYPE_GUID, "1234567890", lookupMethod=lookupMethod)
-            self.assertFalse(self.service().recordWithGUID("1234567890"))
+            yield self.service().queryDirectory(recordTypes, self.service().INDEX_TYPE_GUID, "1234567890", lookupMethod=lookupMethod)
+            self.assertFalse((yield self.service().recordWithGUID("1234567890")))

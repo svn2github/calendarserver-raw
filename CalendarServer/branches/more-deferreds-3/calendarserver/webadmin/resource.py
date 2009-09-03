@@ -48,7 +48,7 @@ class WebAdminResource (ReadOnlyResourceMixIn, DAVFile):
 
     # Only allow administrators to access
     def defaultAccessControlList(self):
-        return davxml.ACL(*config.AdminACEs)
+        return succeed(davxml.ACL(*config.AdminACEs))
     
     def etag(self):
         # Can't be calculated here
@@ -149,7 +149,7 @@ class WebAdminResource (ReadOnlyResourceMixIn, DAVFile):
         # Add details if a resource has been selected.
         if resourceId:
         
-            principal = self.getResourceById(request, resourceId)
+            principal = (yield self.getResourceById(request, resourceId))
     
             # Update the auto-schedule value if specified.
             if autoSchedule is not None and (autoSchedule == "true" or autoSchedule == "false"):
@@ -158,15 +158,15 @@ class WebAdminResource (ReadOnlyResourceMixIn, DAVFile):
 
             # Update the proxies if specified.
             for proxyId in removeProxies:
-                proxy = self.getResourceById(request, proxyId)
+                proxy = (yield self.getResourceById(request, proxyId))
                 (yield action_removeProxyPrincipal(principal, proxy, proxyTypes=["read", "write"]))
 
             for proxyId in makeReadProxies:
-                proxy = self.getResourceById(request, proxyId)
+                proxy = (yield self.getResourceById(request, proxyId))
                 (yield action_addProxyPrincipal(principal, "read", proxy))
 
             for proxyId in makeWriteProxies:
-                proxy = self.getResourceById(request, proxyId)
+                proxy = (yield self.getResourceById(request, proxyId))
                 (yield action_addProxyPrincipal(principal, "write", proxy))
                 
             # Add the detailed content
@@ -435,6 +435,7 @@ class WebAdminResource (ReadOnlyResourceMixIn, DAVFile):
         htmlContent.addCallback(_defer)
         return htmlContent
 
+    # Deferred
     def getResourceById(self, request, resourceId):
         if resourceId.startswith("/"):
             return request.locateResource(resourceId)

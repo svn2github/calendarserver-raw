@@ -32,6 +32,7 @@ class ProvisionedCalendars (twistedcaldav.test.util.TestCase):
     """
     Directory service provisioned principals.
     """
+    @inlineCallbacks
     def setUp(self):
         super(ProvisionedCalendars, self).setUp()
         
@@ -48,18 +49,20 @@ class ProvisionedCalendars (twistedcaldav.test.util.TestCase):
 
         provisioningResource = DirectoryPrincipalProvisioningResource(url, self.directoryService)
 
-        self.site.resource.putChild("principals", provisioningResource)
+        yield self.site.resource.putChild("principals", provisioningResource)
 
-        self.setupCalendars()
+        yield self.setupCalendars()
 
         self.site.resource.setAccessControlList(davxml.ACL())
 
+    @inlineCallbacks
     def setupCalendars(self):
-        calendarCollection = CalendarHomeProvisioningFile(
+        calendarCollection = (yield CalendarHomeProvisioningFile.fetch(
+            None,
             os.path.join(self.docroot, "calendars"),
             self.directoryService,
             "/calendars/"
-        )
+        ))
         self.site.resource.putChild("calendars", calendarCollection)
 
     def test_NonExistentCalendarHome(self):

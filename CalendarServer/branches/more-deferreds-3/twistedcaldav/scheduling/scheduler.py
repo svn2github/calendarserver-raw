@@ -436,20 +436,21 @@ class CalDAVScheduler(Scheduler):
             log.err("Unauthenticated originators not allowed: %s" % (self.originator,))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "originator-allowed")))
 
+    @inlineCallbacks
     def checkOriginator(self):
         """
         Check the validity of the Originator header. Extract the corresponding principal.
         """
     
         # Verify that Originator is a valid calendar user
-        originatorPrincipal = self.resource.principalForCalendarUserAddress(self.originator)
+        originatorPrincipal = (yield self.resource.principalForCalendarUserAddress(self.originator))
         if originatorPrincipal is None:
             # Local requests MUST have a principal.
             log.err("Could not find principal for originator: %s" % (self.originator,))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "originator-allowed")))
         else:
             # Must have a valid Inbox.
-            inboxURL = originatorPrincipal.scheduleInboxURL()
+            inboxURL = (yield originatorPrincipal.scheduleInboxURL())
             if inboxURL is None:
                 log.err("Could not find inbox for originator: %s" % (self.originator,))
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "originator-allowed")))
@@ -474,7 +475,7 @@ class CalDAVScheduler(Scheduler):
         results = []
         for recipient in self.recipients:
             # Get the principal resource for this recipient
-            principal = self.resource.principalForCalendarUserAddress(recipient)
+            principal = (yield self.resource.principalForCalendarUserAddress(recipient))
             
             # If no principal we may have a remote recipient but we should check whether
             # the address is one that ought to be on our server and treat that as a missing
@@ -487,7 +488,7 @@ class CalDAVScheduler(Scheduler):
             else:
                 # Map recipient to their inbox
                 inbox = None
-                inboxURL = yield principal.scheduleInboxURL()
+                inboxURL = (yield principal.scheduleInboxURL())
                 if inboxURL:
                     inbox = (yield self.request.locateResource(inboxURL))
 
@@ -508,7 +509,7 @@ class CalDAVScheduler(Scheduler):
         # Verify that the ORGANIZER's cu address maps to a valid user
         organizer = self.calendar.getOrganizer()
         if organizer:
-            organizerPrincipal = yield self.resource.principalForCalendarUserAddress(organizer)
+            organizerPrincipal = (yield self.resource.principalForCalendarUserAddress(organizer))
             if organizerPrincipal:
                 outboxURL = organizerPrincipal.scheduleOutboxURL()
                 if outboxURL:
@@ -547,6 +548,7 @@ class CalDAVScheduler(Scheduler):
         if self.doingPOST:
             return self.organizer.principal.scheduleOutboxURL().addCallback(_checkoutboxurl) 
 
+    @inlineCallbacks
     def checkAttendeeAsOriginator(self):
         """
         Check the validity of the ATTENDEE value as this is the originator of the iTIP message.
@@ -559,22 +561,20 @@ class CalDAVScheduler(Scheduler):
         # Must have only one
         if len(attendees) != 1:
             log.err("Wrong number of ATTENDEEs in calendar data: %s" % (self.calendar,))
-            return fail(HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed"))))
+            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
         attendee = attendees[0]
     
         # Attendee's Outbox MUST be the request URI
-        attendeePrincipal = self.resource.principalForCalendarUserAddress(attendee)
+        attendeePrincipal = (yield self.resource.principalForCalendarUserAddress(attendee))
         if attendeePrincipal:
-            d = attendeePrincipal.scheduleOutboxURL()
-            def _gotOutboxURL(outboxURL):
-                if self.doingPOST and outboxURL != self.request.uri:
-                    log.err("ATTENDEE in calendar data does not match owner of Outbox: %s" % (self.calendar,))
-                    raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
+            outboxURL = (yield attendeePrincipal.scheduleOutboxURL())
+            if self.doingPOST and outboxURL != self.request.uri:
+                log.err("ATTENDEE in calendar data does not match owner of Outbox: %s" % (self.calendar,))
+                raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
 
-            return d.addCallback(_gotOutboxURL)
         else:
             log.err("Unknown ATTENDEE in calendar data: %s" % (self.calendar,))
-            return fail(HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed"))))
+            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
     
 
     def securityChecks(self):
@@ -635,7 +635,7 @@ class IScheduleScheduler(Scheduler):
         """
     
         # For remote requests we do not allow the originator to be a local user or one within our domain.
-        originatorPrincipal = self.resource.principalForCalendarUserAddress(self.originator)
+        originatorPrincipal = (yield self.resource.principalForCalendarUserAddress(self.originator))
         localUser = (yield addressmapping.mapper.isCalendarUserInMyDomain(self.originator))
         if originatorPrincipal or localUser:
             log.err("Cannot use originator that is on this server: %s" % (self.originator,))
@@ -696,7 +696,7 @@ class IScheduleScheduler(Scheduler):
         results = []
         for recipient in self.recipients:
             # Get the principal resource for this recipient
-            principal = self.resource.principalForCalendarUserAddress(recipient)
+            principal = (yield self.resource.principalForCalendarUserAddress(recipient))
             
             # If no principal we may have a remote recipient but we should check whether
             # the address is one that ought to be on our server and treat that as a missing
@@ -711,7 +711,7 @@ class IScheduleScheduler(Scheduler):
             else:
                 # Map recipient to their inbox
                 inbox = None
-                inboxURL = yield principal.scheduleInboxURL()
+                inboxURL = (yield principal.scheduleInboxURL())
                 if inboxURL:
                     inbox = (yield self.request.locateResource(inboxURL))
 
@@ -738,7 +738,7 @@ class IScheduleScheduler(Scheduler):
         # Verify that the ORGANIZER's cu address does not map to a valid user
         organizer = self.calendar.getOrganizer()
         if organizer:
-            organizerPrincipal = self.resource.principalForCalendarUserAddress(organizer)
+            organizerPrincipal = (yield self.resource.principalForCalendarUserAddress(organizer))
             if organizerPrincipal:
                 log.err("Invalid ORGANIZER in calendar data: %s" % (self.calendar,))
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "organizer-allowed")))
@@ -770,7 +770,7 @@ class IScheduleScheduler(Scheduler):
         attendee = attendees[0]
     
         # Attendee cannot be local.
-        attendeePrincipal = self.resource.principalForCalendarUserAddress(attendee)
+        attendeePrincipal = (yield self.resource.principalForCalendarUserAddress(attendee))
         if attendeePrincipal:
             log.err("Invalid ATTENDEE in calendar data: %s" % (self.calendar,))
             raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
@@ -865,7 +865,7 @@ class IMIPScheduler(Scheduler):
         """
     
         # For remote requests we do not allow the originator to be a local user or one within our domain.
-        originatorPrincipal = self.resource.principalForCalendarUserAddress(self.originator)
+        originatorPrincipal = (yield self.resource.principalForCalendarUserAddress(self.originator))
         localUser = (yield addressmapping.mapper.isCalendarUserInMyDomain(self.originator))
         if originatorPrincipal or localUser:
             log.err("Cannot use originator that is on this server: %s" % (self.originator,))
@@ -883,7 +883,7 @@ class IMIPScheduler(Scheduler):
         results = []
         for recipient in self.recipients:
             # Get the principal resource for this recipient
-            principal = self.resource.principalForCalendarUserAddress(recipient)
+            principal = (yield self.resource.principalForCalendarUserAddress(recipient))
             
             # If no principal we may have a remote recipient but we should check whether
             # the address is one that ought to be on our server and treat that as a missing
@@ -898,7 +898,7 @@ class IMIPScheduler(Scheduler):
             else:
                 # Map recipient to their inbox
                 inbox = None
-                inboxURL = yield principal.scheduleInboxURL()
+                inboxURL = (yield principal.scheduleInboxURL())
                 if inboxURL:
                     inbox = (yield self.request.locateResource(inboxURL))
 

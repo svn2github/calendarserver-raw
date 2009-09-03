@@ -98,12 +98,14 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
         if config.Scheduling.CalDAV.OldDraftCompatibility:
             privs += (davxml.Privilege(caldavxml.Schedule()),)
 
-        return davxml.ACL(
-            # CalDAV:schedule-deliver for any authenticated user
-            davxml.ACE(
-                davxml.Principal(davxml.Authenticated()),
-                davxml.Grant(*privs),
-            ),
+        return succeed(
+            davxml.ACL(
+                # CalDAV:schedule-deliver for any authenticated user
+                davxml.ACE(
+                    davxml.Principal(davxml.Authenticated()),
+                    davxml.Grant(*privs),
+                ),
+            )
         )
 
     @inlineCallbacks
@@ -221,7 +223,7 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
         defaultCalendarURL = (yield joinURL(calendarHomeURL, "calendar"))
         defaultCalendar = (yield request.locateResource(defaultCalendarURL))
         if defaultCalendar is None or not defaultCalendar.exists():
-            self.parent.provisionDefaultCalendars()
+            yield self.parent.provisionDefaultCalendars()
         else:
             yield self.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(defaultCalendarURL)))
         returnValue(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(defaultCalendarURL)))
@@ -233,9 +235,10 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
     Extends L{DAVResource} to provide CalDAV functionality.
     """
 
+    @inlineCallbacks
     def defaultAccessControlList(self):
         if config.EnableProxyPrincipals:
-            myPrincipal = self.parent.principalForRecord()
+            myPrincipal = (yield self.parent.principalForRecord())
     
             privs = (
                 davxml.Privilege(caldavxml.ScheduleSend()),
@@ -243,16 +246,16 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
             if config.Scheduling.CalDAV.OldDraftCompatibility:
                 privs += (davxml.Privilege(caldavxml.Schedule()),)
     
-            return davxml.ACL(
+            returnValue(davxml.ACL(
                 # CalDAV:schedule for associated write proxies
                 davxml.ACE(
                     davxml.Principal(davxml.HRef(joinURL(myPrincipal.principalURL(), "calendar-proxy-write"))),
                     davxml.Grant(*privs),
                     davxml.Protected(),
                 ),
-            )
+            ))
         else:
-            return super(ScheduleOutboxResource, self).defaultAccessControlList()
+            returnValue((yield super(ScheduleOutboxResource, self).defaultAccessControlList()))
 
     def resourceType(self):
         return succeed(davxml.ResourceType.scheduleOutbox)
@@ -302,13 +305,15 @@ class IScheduleInboxResource (CalDAVResource):
         if config.Scheduling.CalDAV.OldDraftCompatibility:
             privs += (davxml.Privilege(caldavxml.Schedule()),)
 
-        return davxml.ACL(
-            # DAV:Read, CalDAV:schedule-deliver for all principals (includes anonymous)
-            davxml.ACE(
-                davxml.Principal(davxml.All()),
-                davxml.Grant(*privs),
-                davxml.Protected(),
-            ),
+        return succeed(
+            davxml.ACL(
+                # DAV:Read, CalDAV:schedule-deliver for all principals (includes anonymous)
+                davxml.ACE(
+                    davxml.Principal(davxml.All()),
+                    davxml.Grant(*privs),
+                    davxml.Protected(),
+                ),
+            )
         )
 
     def resourceType(self):

@@ -86,24 +86,25 @@ def upgrade_to_1(config):
     def normalizeCUAddrs(data, directory):
         cal = Component.fromString(data)
 
+        @inlineCallbacks
         def lookupFunction(cuaddr):
             try:
-                principal = directory.principalForCalendarUserAddress(cuaddr)
+                principal = (yield directory.principalForCalendarUserAddress(cuaddr))
             except Exception, e:
                 log.debug("Lookup of %s failed: %s" % (cuaddr, e))
                 principal = None
 
             if principal is None:
-                return (None, None, None)
+                returnValue((None, None, None))
             else:
-                return (principal.record.fullName.decode("utf-8"),
+                returnValue((principal.record.fullName.decode("utf-8"),
                     principal.record.guid,
-                    principal.record.calendarUserAddresses)
+                    principal.record.calendarUserAddresses))
 
-        cal.normalizeCalendarUserAddresses(lookupFunction)
+        yield cal.normalizeCalendarUserAddresses(lookupFunction)
 
         newData = str(cal)
-        return newData, not newData == data
+        returnValue((newData, not newData == data))
 
 
     def upgradeCalendarCollection(calPath, directory):

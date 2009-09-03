@@ -34,6 +34,7 @@ from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord, DirectoryError
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
 
 class RecordTypeCache(object):
@@ -72,6 +73,7 @@ class DictRecordTypeCache(RecordTypeCache, LoggingMixIn):
             CachingDirectoryService.INDEX_TYPE_AUTHID   : {},
         }
 
+    # MOR: Defer this
     def addRecord(self, record, indexType, indexKey, useMemcache=True,
         neverExpire=False):
 
@@ -94,7 +96,9 @@ class DictRecordTypeCache(RecordTypeCache, LoggingMixIn):
                 self.log_debug("Memcache: storing %s" % (key,))
                 self.directoryService.memcacheSet(key, record)
 
+        return succeed(None) # MOR: Remove this when really deferred
 
+    # MOR: Defer this
     def removeRecord(self, record):
         if record in self.records:
             self.records.remove(record)
@@ -113,6 +117,8 @@ class DictRecordTypeCache(RecordTypeCache, LoggingMixIn):
                             self.log_debug("Missing record index item; type: %s, item: %s" % (indexType, item))
                 else:
                     raise AssertionError("Data from record attribute must be str, list or tuple")
+
+        return succeed(None) # MOR: Remove this when really deferred
         
     def findRecord(self, indexType, indexKey):
         return self.recordsIndexedBy[indexType].get(indexKey)
@@ -158,6 +164,8 @@ class CachingDirectoryService(DirectoryService):
                 debug=0, pickleProtocol=2)
         return self.memcacheClient
 
+
+    @inlineCallbacks
     def memcacheSet(self, key, record):
 
         hideService = isinstance(record, DirectoryRecord)
@@ -167,12 +175,12 @@ class CachingDirectoryService(DirectoryService):
                 record.service = None # so we don't pickle service
 
             key = base64.b64encode(key)
-            if not self._getMemcacheClient().set(key, record, time=self.cacheTimeout):
+            if not (yield self._getMemcacheClient().set(key, record, time=self.cacheTimeout)):
                 self.log_error("Could not write to memcache, retrying")
-                if not self._getMemcacheClient(refresh=True).set(
+                if not (yield self._getMemcacheClient(refresh=True).set(
                     key, record,
                     time=self.cacheTimeout
-                ):
+                )):
                     self.log_error("Could not write to memcache again, giving up")
                     del self.memcacheClient
                     raise DirectoryMemcacheError("Failed to write to memcache")
@@ -180,22 +188,23 @@ class CachingDirectoryService(DirectoryService):
             if hideService:
                 record.service = self
 
+    @inlineCallbacks
     def memcacheGet(self, key):
 
         key = base64.b64encode(key)
         try:
-            record = self._getMemcacheClient().get(key)
+            record = (yield self._getMemcacheClient().get(key))
             if record is not None and isinstance(record, DirectoryRecord):
                 record.service = self
         except memcacheclient.MemcacheError:
             self.log_error("Could not read from memcache, retrying")
             try:
-                record = self._getMemcacheClient(refresh=True).get(key)
+                record = (yield self._getMemcacheClient(refresh=True).get(key))
             except memcacheclient.MemcacheError:
                 self.log_error("Could not read from memcache again, giving up")
                 del self.memcacheClient
                 raise DirectoryMemcacheError("Failed to read from memcache")
-        return record
+        returnValue(record)
 
     def _initCaches(self, cacheClass):
         self._recordCaches = dict([
@@ -223,16 +232,17 @@ class CachingDirectoryService(DirectoryService):
     def recordWithShortName(self, recordType, shortName):
         return self._lookupRecord((recordType,), CachingDirectoryService.INDEX_TYPE_SHORTNAME, shortName)
 
+    @inlineCallbacks
     def recordWithCalendarUserAddress(self, address):
         address = normalizeCUAddr(address)
         record = None
         if address.startswith("urn:uuid:"):
             guid = address[9:]
-            record = self.recordWithGUID(guid)
+            record = (yield self.recordWithGUID(guid))
         elif address.startswith("mailto:"):
-            record = self._lookupRecord(None, CachingDirectoryService.INDEX_TYPE_CUA, address)
+            record = (yield self._lookupRecord(None, CachingDirectoryService.INDEX_TYPE_CUA, address))
 
-        return record if record and record.enabledForCalendaring else None
+        returnValue(record if record and record.enabledForCalendaring else None)
 
     def recordWithAuthID(self, authID):
         return self._lookupRecord(None, CachingDirectoryService.INDEX_TYPE_AUTHID, authID)
@@ -242,6 +252,7 @@ class CachingDirectoryService(DirectoryService):
 
     recordWithUID = recordWithGUID
 
+    @inlineCallbacks
     def _lookupRecord(self, recordTypes, indexType, indexKey, cacheOnMiss=True):
 
         if recordTypes is None:
@@ -254,9 +265,10 @@ class CachingDirectoryService(DirectoryService):
                 if recordType in supportedRecordTypes:
                     typesToQuery.append(recordType)
             if not typesToQuery:
-                return None
+                returnValue(None)
             recordTypes = typesToQuery
 
+        @inlineCallbacks
         def lookup():
             for recordType in recordTypes:
                 record = self.recordCacheForType(recordType).findRecord(indexType, indexKey)
@@ -266,16 +278,16 @@ class CachingDirectoryService(DirectoryService):
                         record.cachedTime != 0 and
                         time.time() - record.cachedTime > self.cacheTimeout
                     ):
-                        self.recordCacheForType(recordType).removeRecord(record)
-                        return None
+                        yield self.recordCacheForType(recordType).removeRecord(record)
+                        returnValue(None)
                     else:
-                        return record
+                        returnValue(record)
             else:
-                return None
+                returnValue(None)
 
-        record = lookup()
+        record = (yield lookup())
         if record:
-            return record
+            returnValue(record)
 
         if cacheOnMiss:
             
@@ -283,38 +295,38 @@ class CachingDirectoryService(DirectoryService):
             try:
                 disabledTime = self._disabledKeys[indexType][indexKey]
                 if time.time() - disabledTime < self.cacheTimeout:
-                    return None
+                    returnValue(None)
             except KeyError:
                 pass
             
             # Check memcache
             if config.Memcached.ClientEnabled:
                 key = "dir|%s|%s" % (indexType, indexKey)
-                record = self.memcacheGet(key)
+                record = (yield self.memcacheGet(key))
                 self.log_debug("Memcache: checking %s" % (key,))
                 if record is None:
                     self.log_debug("Memcache: miss %s" % (key,))
                 else:
                     self.log_debug("Memcache: hit %s" % (key,))
-                    self.recordCacheForType(record.recordType).addRecord(record, indexType, indexKey, useMemcache=False)
-                    return record
+                    yield self.recordCacheForType(record.recordType).addRecord(record, indexType, indexKey, useMemcache=False)
+                    returnValue(record)
 
                 # Check negative memcache
-                val = self.memcacheGet("-%s" % (key,))
+                val = (yield self.memcacheGet("-%s" % (key,)))
                 if val == 1:
                     self.log_debug("Memcache: negative %s" % (key,))
                     self._disabledKeys[indexType][indexKey] = time.time()
-                    return None
+                    returnValue(None)
 
             # Try query
             self.log_debug("Faulting record for attribute '%s' with value '%s'" % (indexType, indexKey,))
-            self.queryDirectory(recordTypes, indexType, indexKey)
+            yield self.queryDirectory(recordTypes, indexType, indexKey)
             
             # Now try again from cache
-            record = lookup()
+            record = (yield lookup())
             if record:
                 self.log_debug("Found record for attribute '%s' with value '%s'" % (indexType, indexKey,))
-                return record
+                returnValue(record)
 
 
             # Add to negative cache with timestamp
@@ -323,9 +335,9 @@ class CachingDirectoryService(DirectoryService):
 
             if config.Memcached.ClientEnabled:
                 self.log_debug("Memcache: storing (negative) %s" % (key,))
-                self.memcacheSet("-%s" % (key,), 1)
+                yield self.memcacheSet("-%s" % (key,), 1)
 
-        return None
+        returnValue(None)
 
     def queryDirectory(self, recordTypes, indexType, indexKey):
         raise NotImplementedError()

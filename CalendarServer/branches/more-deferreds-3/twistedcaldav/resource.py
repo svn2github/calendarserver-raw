@@ -262,7 +262,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
                     fbset = (yield principal.calendarFreeBusyURIs(request))
                     url = (yield self.canonicalURL(request))
                     opaque = url in fbset
-                    (yield self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque()) if opaque else caldavxml.Transparent()))
+                    yield self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque() if opaque else caldavxml.Transparent()))
 
         result = (yield super(CalDAVResource, self).readProperty(property, request))
         returnValue(result)
@@ -671,6 +671,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         """
         return self.iCalendar(name).addCallback(caldavxml.CalendarData.fromCalendar)
 
+    # Deferred
     def iCalendarAddressDoNormalization(self, ical):
         """
         Normalize calendar user addresses in the supplied iCalendar object into their
@@ -680,24 +681,26 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         @type ical: L{Component}
         """
 
+        @inlineCallbacks
         def lookupFunction(cuaddr):
-            principal = self.principalForCalendarUserAddress(cuaddr)
+            principal = (yield self.principalForCalendarUserAddress(cuaddr))
             if principal is None:
-                return (None, None, None)
+                returnValue((None, None, None))
             else:
-                return (principal.record.fullName.decode("utf-8"),
+                returnValue((principal.record.fullName.decode("utf-8"),
                     principal.record.guid,
-                    principal.record.calendarUserAddresses)
+                    principal.record.calendarUserAddresses))
 
-        ical.normalizeCalendarUserAddresses(lookupFunction)
+        return ical.normalizeCalendarUserAddresses(lookupFunction)
 
 
+    @inlineCallbacks
     def principalForCalendarUserAddress(self, address):
         for principalCollection in self.principalCollections():
-            principal = principalCollection.principalForCalendarUserAddress(address)
+            principal = (yield principalCollection.principalForCalendarUserAddress(address))
             if principal is not None:
-                return principal
-        return None
+                returnValue(principal)
+        returnValue(None)
 
     def supportedReports(self):
         result = super(CalDAVResource, self).supportedReports()
@@ -794,7 +797,7 @@ class CalendarPrincipalCollectionResource (DAVPrincipalCollectionResource, CalDA
         return succeed(False)
 
     def principalForCalendarUserAddress(self, address):
-        return None
+        return succeed(None)
 
     def supportedReports(self):
         """

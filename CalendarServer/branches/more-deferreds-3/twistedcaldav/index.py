@@ -846,7 +846,7 @@ class IndexSchedule (CalendarIndex):
             C{resource.isPseudoCalendarCollection()} returns C{True}.)
         """
         # MOR: isCalendarCollection( ) is now deferred.  What to do here?
-        assert resource.isPseudoCalendarCollection() and not resource.isCalendarCollection(), "non-calendar collection resource %s has no index." % (resource,)
+        # assert resource.isPseudoCalendarCollection() and not resource.isCalendarCollection(), "non-calendar collection resource %s has no index." % (resource,)
         super(IndexSchedule, self).__init__(resource)
 
     def reserveUID(self, uid): #@UnusedVariable
