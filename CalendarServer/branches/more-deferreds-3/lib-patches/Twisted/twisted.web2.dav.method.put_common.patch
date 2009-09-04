@@ -33,7 +33,7 @@ Index: twisted/web2/dav/method/put_common.py
              content_type = request.headers.getHeader("content-type")
              if content_type is not None:
 -                destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(content_type)))
-+                ignore = destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(content_type)))
++                ignore = waitForDeferred(destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(content_type))))
 +                yield ignore
 +                ignore = ignore.getResult( )
  
