@@ -42,7 +42,7 @@ except ImportError:
 
 from vobject.icalendar import utc
 
-from twisted.internet.defer import maybeDeferred, succeed, returnValue
+from twisted.internet.defer import maybeDeferred, succeed, returnValue, inlineCallbacks
 
 from twistedcaldav.ical import Component
 from twistedcaldav.query import calendarquery
@@ -162,6 +162,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         """
         raise NotImplementedError
 
+    @inlineCallbacks
     def resourceNamesForUID(self, uid):
         """
         Looks up the names of the resources with the given UID.
@@ -177,7 +178,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         resources = []
         for name in names:
             name_utf8 = name.encode("utf-8")
-            if name is not None and self.resource.getChild(name_utf8) is None:
+            if name is not None and (yield self.resource.getChild(name_utf8)) is None:
                 # Clean up
                 log.err("Stale resource record found for child %s with UID %s in %s" % (name, uid, self.resource))
                 self._delete_from_db(name, uid)
@@ -185,8 +186,9 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
             else:
                 resources.append(name)
 
-        return resources
+        returnValue(resources)
 
+    @inlineCallbacks
     def resourceNameForUID(self, uid):
         """
         Looks up the name of the resource with the given UID.
@@ -195,11 +197,11 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         """
         result = None
 
-        for name in self.resourceNamesForUID(uid):
+        for name in (yield self.resourceNamesForUID(uid)):
             assert result is None, "More than one resource with UID %s in calendar collection %r" % (uid, self)
             result = name
 
-        return succeed(result)
+        returnValue(result)
 
     def resourceUIDForName(self, name):
         """
@@ -274,6 +276,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
             self.log_info("Search falls outside range of index for %s %s" % (name, minDate))
             self.reExpandResource(name, minDate)
 
+    @inlineCallbacks
     def indexedSearch(self, filter, fbtype=False):
         """
         Finds resources matching the given qualifiers.
@@ -324,14 +327,15 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         rows = []
         for row in rowiter:
             name = row[0]
-            if self.resource.getChild(name.encode("utf-8")):
+            if (yield self.resource.getChild(name.encode("utf-8"))):
                 rows.append(row)
             else:
                 log.err("Calendar resource %s is missing from %s. Removing from index."
                         % (name, self.resource))
                 self.deleteResource(name)
-        return succeed(rows)
+        returnValue(rows)
 
+    @inlineCallbacks
     def bruteForceSearch(self):
         """
         List the whole index and tests for existence, updating the index
@@ -344,13 +348,13 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         rows = []
         for row in rowiter:
             name = row[0]
-            if self.resource.getChild(name.encode("utf-8")):
+            if (yield self.resource.getChild(name.encode("utf-8"))):
                 rows.append(row)
             else:
                 log.err("Calendar resource %s is missing from %s. Removing from index."
                         % (name, self.resource))
                 self.deleteResource(name)
-        return succeed(rows)
+        returnValue(rows)
 
     def _db_version(self):
         """

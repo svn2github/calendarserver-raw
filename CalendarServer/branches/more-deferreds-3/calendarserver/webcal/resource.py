@@ -69,7 +69,7 @@ class WebCalendarResource (ReadOnlyResourceMixIn, DAVFile):
         return True
 
     def displayName(self):
-        return "Web Calendar"
+        return succeed("Web Calendar")
 
     def contentType(self):
         return MimeType.fromString("text/html; charset=utf-8");

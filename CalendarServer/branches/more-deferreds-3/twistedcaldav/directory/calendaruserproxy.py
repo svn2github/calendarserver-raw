@@ -276,7 +276,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
     ##
 
     def displayName(self):
-        return self.proxyType
+        return succeed(self.proxyType)
 
     ##
     # ACL

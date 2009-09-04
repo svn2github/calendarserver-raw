@@ -1145,7 +1145,7 @@ class ProxyDBUpgradeTests(TestCase):
             results = []
             for guid, info in assignments.iteritems():
                 results.append( (guid, info[0], info[1], info[2]) )
-            return results
+            return succeed(results)
 
         self.setUpInitialStates()
         # Override the normal getResourceInfo method with our own:

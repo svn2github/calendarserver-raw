@@ -60,7 +60,7 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
             principal = (yield principal.getChild(subPrincipalName))
 
         members = (yield principal.expandedGroupMembers())
-        memberNames = set([p.displayName() for p in members])
+        memberNames = set([(yield p.displayName()) for p in members])
         self.assertEquals(memberNames, set(expectedMembers))
 
     @inlineCallbacks

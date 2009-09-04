@@ -52,7 +52,7 @@ class WebAdminResource (ReadOnlyResourceMixIn, DAVFile):
     
     def etag(self):
         # Can't be calculated here
-        return None
+        return succeed(None)
 
     def contentLength(self):
         # Can't be calculated here
@@ -65,7 +65,7 @@ class WebAdminResource (ReadOnlyResourceMixIn, DAVFile):
         return True
 
     def displayName(self):
-        return "Web Admin"
+        return succeed("Web Admin")
 
     def contentType(self):
         return MimeType.fromString("text/html; charset=utf-8");

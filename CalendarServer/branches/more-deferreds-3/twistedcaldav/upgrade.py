@@ -83,6 +83,7 @@ def upgrade_to_1(config):
 
 
 
+    @inlineCallbacks
     def normalizeCUAddrs(data, directory):
         cal = Component.fromString(data)
 
@@ -140,6 +141,7 @@ def upgrade_to_1(config):
                     continue
 
                 try:
+                    # MOR: Defer this:
                     data, fixed = normalizeCUAddrs(data, directory)
                     if fixed:
                         log.debug("Normalized CUAddrs in %s" % (resPath,))
@@ -252,11 +254,12 @@ def upgrade_to_1(config):
         os.rename(oldHome, newHome)
 
 
+    @inlineCallbacks
     def migrateResourceInfo(config, directory, uid, gid):
         log.info("Fetching delegate assignments and auto-schedule settings from directory")
         resourceInfoDatabase = ResourceInfoDatabase(config.DataRoot)
         calendarUserProxyDatabase = CalendarUserProxyDatabase(config.DataRoot)
-        resourceInfo = directory.getResourceInfo()
+        resourceInfo = (yield directory.getResourceInfo())
         for guid, autoSchedule, proxy, readOnlyProxy in resourceInfo:
             resourceInfoDatabase.setAutoScheduleInDatabase(guid, autoSchedule)
             if proxy:

@@ -102,6 +102,7 @@ else:
 
             self.assertFalse((yield record.verifyCredentials(digested)))
 
+        @inlineCallbacks
         def test_validODDigest(self):
             record = OpenDirectoryRecord(
                 service               = self.service(),
@@ -141,12 +142,12 @@ else:
             record.digestcache["/"] = response
             digested = twisted.web2.auth.digest.DigestedCredentials("user", "GET", "example.com", digestFields, None)
 
-            self.assertTrue(record.verifyCredentials(digested))
+            self.assertTrue((yield record.verifyCredentials(digested)))
 
             # This should be defaulted
             del digestFields["algorithm"]
 
-            self.assertTrue(record.verifyCredentials(digested))
+            self.assertTrue((yield record.verifyCredentials(digested)))
 
         @inlineCallbacks
         def test_queryDirectorySingleGUID(self):

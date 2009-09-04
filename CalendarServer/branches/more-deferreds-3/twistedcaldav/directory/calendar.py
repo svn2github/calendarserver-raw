@@ -469,4 +469,4 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
         @return: a C{int} containing the maximum allowed bytes if this collection
             is quota-controlled, or C{None} if not quota controlled.
         """
-        return config.UserQuota if config.UserQuota != 0 else None
+        return succeed(config.UserQuota if config.UserQuota != 0 else None)

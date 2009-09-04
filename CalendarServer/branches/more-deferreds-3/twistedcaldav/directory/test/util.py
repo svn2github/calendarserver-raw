@@ -120,6 +120,7 @@ class DirectoryTestCase (TestCase):
         if record is None:
             raise SkipTest("No calendar user addresses provided to test")
 
+    @inlineCallbacks
     def test_groupMembers(self):
         """
         IDirectoryRecord.members()
@@ -131,13 +132,14 @@ class DirectoryTestCase (TestCase):
         for group, info in self.groups.iteritems():
             prefix = info.get("prefix", "")
             groupRecord = (yield service.recordWithShortName(prefix + DirectoryService.recordType_groups, group))
-            result = set((m.recordType, prefix + m.shortNames[0]) for m in groupRecord.members())
+            result = set((m.recordType, prefix + m.shortNames[0]) for m in (yield groupRecord.members()))
             expected = set(self.groups[group]["members"])
             self.assertEquals(
                 result, expected,
                 "Wrong membership for group %r: %s != %s" % (group, result, expected)
             )
 
+    @inlineCallbacks
     def test_groupMemberships(self):
         """
         IDirectoryRecord.groups()
@@ -155,7 +157,7 @@ class DirectoryTestCase (TestCase):
             for shortName, info in data.iteritems():
                 prefix = info.get("prefix", "")
                 record = (yield service.recordWithShortName(prefix + recordType, shortName))
-                result = set(prefix + g.shortNames[0] for g in record.groups())
+                result = set(prefix + g.shortNames[0] for g in (yield record.groups()))
                 expected = set(g for g in self.groups if (record.recordType, shortName) in self.groups[g]["members"])
                 self.assertEquals(
                     result, expected,

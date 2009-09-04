@@ -410,18 +410,19 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
         else:
             return self.principalForShortName(self.recordType, name)
 
+    @inlineCallbacks
     def listChildren(self):
         if config.EnablePrincipalListings:
+            results = []
+            for record in (yield self.directory.listRecords(self.recordType)):
+                for shortName in record.shortNames:
+                    results.append(shortName)
+            returnValue(results)
 
-            def _recordShortnameExpand():
-                for record in self.directory.listRecords(self.recordType):
-                    for shortName in record.shortNames:
-                        yield shortName
-
-            return succeed(_recordShortnameExpand())
+            # return succeed(_recordShortnameExpand())
         else:
             # Not a listable collection
-            return fail(HTTPError(responsecode.FORBIDDEN))
+            raise HTTPError(responsecode.FORBIDDEN)
 
     ##
     # ACL
@@ -645,9 +646,9 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
 
     def displayName(self):
         if self.record.fullName:
-            return self.record.fullName
+            return succeed(self.record.fullName)
         else:
-            return self.record.shortNames[0]
+            return succeed(self.record.shortNames[0])
 
     ##
     # ACL

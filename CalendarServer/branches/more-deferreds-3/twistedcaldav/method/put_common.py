@@ -644,6 +644,7 @@ class StoreCalendarObjectResource(object):
 
         returnValue(None)
 
+    @inlineCallbacks
     def setupRollback(self):
         """
         We may need to restore the original resource data if the PUT/COPY/MOVE fails,
@@ -659,7 +660,7 @@ class StoreCalendarObjectResource(object):
         self.overwrite = self.destination.exists()
         if self.overwrite:
             self.rollback.destination_copy = FilePath(_createRollbackPath(self.destination.fp.path))
-            copyToWithXAttrs(self.destination.fp, self.rollback.destination_copy)
+            yield copyToWithXAttrs(self.destination.fp, self.rollback.destination_copy)
             log.debug("Rollback: backing up destination %s to %s" % (self.destination.fp.path, self.rollback.destination_copy.path))
         else:
             self.rollback.destination_created = True
@@ -667,7 +668,7 @@ class StoreCalendarObjectResource(object):
 
         if self.deletesource:
             self.rollback.source_copy = FilePath(_createRollbackPath(self.source.fp.path))
-            copyToWithXAttrs(self.source.fp, self.rollback.source_copy)
+            yield copyToWithXAttrs(self.source.fp, self.rollback.source_copy)
             log.debug("Rollback: backing up source %s to %s" % (self.source.fp.path, self.rollback.source_copy.path))
 
     def truncateRecurrence(self):
@@ -995,7 +996,7 @@ class StoreCalendarObjectResource(object):
                 is_scheduling_resource, data_changed, did_implicit_action = implicit_result
 
             # Initialize the rollback system
-            self.setupRollback()
+            yield self.setupRollback()
 
             """
             Handle actual store operations here.
@@ -1064,7 +1065,7 @@ class StoreCalendarObjectResource(object):
                             etags = (yield self.destination.readDeadProperty(TwistedScheduleMatchETags)).children
                         else:
                             etags = ()
-                    etags += (davxml.GETETag.fromString(self.destination.etag().tag),)
+                    etags += (davxml.GETETag.fromString((yield self.destination.etag()).tag),)
                     yield self.destination.writeDeadProperty(TwistedScheduleMatchETags(*etags))
                 else:
                     yield self.destination.removeDeadProperty(TwistedScheduleMatchETags)                

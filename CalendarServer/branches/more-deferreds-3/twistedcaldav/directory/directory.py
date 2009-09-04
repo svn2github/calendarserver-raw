@@ -82,6 +82,7 @@ class DirectoryService(LoggingMixIn):
     # For ICredentialsChecker
     credentialInterfaces = (IPrincipalCredentials,)
 
+    # called using maybeDeferred...
     def requestAvatarId(self, credentials):
         credentials = IPrincipalCredentials(credentials)
 

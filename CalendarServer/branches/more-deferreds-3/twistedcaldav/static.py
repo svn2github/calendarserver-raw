@@ -756,7 +756,7 @@ class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, Directory
     def getChild(self, name):
         # This avoids finding case variants of put children on case-insensitive filesystems.
         if name not in self.putChildren and name.lower() in (x.lower() for x in self.putChildren):
-            returnValue(None)
+            return succeed(None)
 
         return super(CalendarHomeFile, self).getChild(name)
 

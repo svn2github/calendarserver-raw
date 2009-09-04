@@ -212,7 +212,7 @@ class ImplicitScheduler(object):
         organizer_scheduling = (yield self.isOrganizerScheduling())
         if organizer_scheduling:
             self.state = "organizer"
-        elif self.isAttendeeScheduling():
+        elif (yield self.isAttendeeScheduling()):
             self.state = "attendee"
         else:
             self.state = None

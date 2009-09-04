@@ -896,7 +896,7 @@ class OpenDirectoryRecord(CachingDirectoryRecord):
     @inlineCallbacks
     def groups(self):
         if self._groupMembershipGUIDs is None:
-            self._groupMembershipGUIDs = self.service.groupsForGUID(self.guid)
+            self._groupMembershipGUIDs = (yield self.service.groupsForGUID(self.guid))
 
         results = []
         for guid in self._groupMembershipGUIDs:

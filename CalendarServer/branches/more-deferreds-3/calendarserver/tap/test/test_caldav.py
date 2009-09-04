@@ -21,6 +21,7 @@ from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedAny
 from twisted.application.service import IService
 from twisted.application import internet
+from twisted.internet.defer import inlineCallbacks
 
 from twisted.web2.dav import auth
 from twisted.web2.log import LogWrapperResource
@@ -533,6 +534,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
 
         self.failUnless(isinstance(root, CalDAVServiceMaker.rootResourceClass))
 
+    @inlineCallbacks
     def test_principalResource(self):
         """
         Test the principal resource
@@ -541,10 +543,11 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         root = site.resource.resource.resource
 
         self.failUnless(isinstance(
-            root.getChild("principals"),
+            (yield root.getChild("principals")),
             CalDAVServiceMaker.principalResourceClass
         ))
 
+    @inlineCallbacks
     def test_calendarResource(self):
         """
         Test the calendar resource
@@ -553,7 +556,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         root = site.resource.resource.resource
 
         self.failUnless(isinstance(
-            root.getChild("calendars"),
+            (yield root.getChild("calendars")),
             CalDAVServiceMaker.calendarResourceClass
         ))
 
@@ -582,28 +585,31 @@ class DirectoryServiceTest(BaseServiceMakerTests):
 
     configOptions = {"HTTPPort": 8008}
 
+    @inlineCallbacks
     def test_sameDirectory(self):
         """
         Test that the principal hierarchy has a reference
         to the same DirectoryService as the calendar hierarchy
         """
         site = self.getSite()
-        principals = site.resource.resource.resource.getChild("principals")
-        calendars = site.resource.resource.resource.getChild("calendars")
+        principals = (yield site.resource.resource.resource.getChild("principals"))
+        calendars = (yield site.resource.resource.resource.getChild("calendars"))
 
         self.assertEquals(principals.directory, calendars.directory)
 
+    @inlineCallbacks
     def test_aggregateDirectory(self):
         """
         Assert that the base directory service is actually
         an AggregateDirectoryService
         """
         site = self.getSite()
-        principals = site.resource.resource.resource.getChild("principals")
+        principals = (yield site.resource.resource.resource.getChild("principals"))
         directory = principals.directory
 
         self.failUnless(isinstance(directory, AggregateDirectoryService))
 
+    @inlineCallbacks
     def test_sudoDirectoryService(self):
         """
         Test that a sudo directory service is available if the
@@ -616,7 +622,7 @@ class DirectoryServiceTest(BaseServiceMakerTests):
         open(self.config.SudoersFile, "w").write(sudoersFile)
 
         site = self.getSite()
-        principals = site.resource.resource.resource.getChild("principals")
+        principals = (yield site.resource.resource.resource.getChild("principals"))
         directory = principals.directory
 
         self.failUnless(self.config.SudoersFile)
@@ -632,6 +638,7 @@ class DirectoryServiceTest(BaseServiceMakerTests):
             in directory.userRecordTypes
         )
 
+    @inlineCallbacks
     def test_sudoDirectoryServiceNoFile(self):
         """
         Test that there is no SudoDirectoryService if
@@ -641,7 +648,7 @@ class DirectoryServiceTest(BaseServiceMakerTests):
 
         self.writeConfig()
         site = self.getSite()
-        principals = site.resource.resource.resource.getChild("principals")
+        principals = (yield site.resource.resource.resource.getChild("principals"))
         directory = principals.directory
 
         self.failUnless(self.config.SudoersFile)
@@ -652,13 +659,14 @@ class DirectoryServiceTest(BaseServiceMakerTests):
             SudoDirectoryService.recordType_sudoers
         )
 
+    @inlineCallbacks
     def test_sudoDirectoryServiceNotConfigured(self):
         """
         Test that there is no SudoDirectoryService if
         the SudoersFile is not configured
         """
         site = self.getSite()
-        principals = site.resource.resource.resource.getChild("principals")
+        principals = (yield site.resource.resource.resource.getChild("principals"))
         directory = principals.directory
 
         self.failIf(self.config.SudoersFile)
@@ -669,13 +677,14 @@ class DirectoryServiceTest(BaseServiceMakerTests):
             SudoDirectoryService.recordType_sudoers
         )
 
+    @inlineCallbacks
     def test_configuredDirectoryService(self):
         """
         Test that the real directory service is the directory service
         set in the configuration file.
         """
         site = self.getSite()
-        principals = site.resource.resource.resource.getChild("principals")
+        principals = (yield site.resource.resource.resource.getChild("principals"))
         directory = principals.directory
 
         realDirectory = directory.serviceForRecordType("users")

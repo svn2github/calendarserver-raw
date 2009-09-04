@@ -436,9 +436,9 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
     def displayName(self):
         if 'record' in dir(self):
             if self.record.fullName:
-                return self.record.fullName
+                return succeed(self.record.fullName)
             elif self.record.shortNames:
-                return self.record.shortNames[0]
+                return succeed(self.record.shortNames[0])
             else:
                 return super(DAVResource, self).displayName()
         else:
@@ -510,16 +510,6 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
             d.addCallback(isCalCallback)
             return d
 
-            """ MOR: Remove
-            if child.isCalendarCollection():
-                callback(child, childpath)
-            elif child.isCollection():
-                if depth == "infinity":
-                    fc = child.findCalendarCollections(depth, request, callback, privileges)
-                    fc.addCallback(lambda x: reactor.callLater(0, getChild, children))
-                    return fc
-            reactor.callLater(0, getChild, children)
-            """
 
         def getChild(children):
             try:
@@ -671,7 +661,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
         """
         return self.iCalendar(name).addCallback(caldavxml.CalendarData.fromCalendar)
 
-    # Deferred
+    # Deferred, because the lookup function has to be
     def iCalendarAddressDoNormalization(self, ical):
         """
         Normalize calendar user addresses in the supplied iCalendar object into their
@@ -1026,7 +1016,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
         """
         Quota root only ever set on calendar homes.
         """
-        return None
+        return succeed(None)
 
 
 class AuthenticationWrapper(SuperAuthenticationWrapper):

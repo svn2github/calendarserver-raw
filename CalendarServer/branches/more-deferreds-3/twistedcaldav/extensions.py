@@ -779,14 +779,15 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
             returnValue(davxml.ResourceType.collection)
         returnValue(davxml.ResourceType.empty)
 
+    @inlineCallbacks
     def render(self, request):
         if not self.fp.exists():
-            return responsecode.NOT_FOUND
+            returnValue(responsecode.NOT_FOUND)
 
         if self.fp.isdir():
             if request.path[-1] != "/":
                 # Redirect to include trailing '/' in URI
-                return RedirectResponse(request.unparseURL(path=urllib.quote(urllib.unquote(request.path), safe=':/')+'/'))
+                returnValue(RedirectResponse(request.unparseURL(path=urllib.quote(urllib.unquote(request.path), safe=':/')+'/')))
             else:
                 # MOR: Not sure what to do here -- it may be that render( )
                 # can't easily be deferred, in which case createSimilarFile( )
@@ -794,18 +795,19 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
                 ifp = self.fp.childSearchPreauth(*self.indexNames)
                 if ifp:
                     # Render from the index file
-                    return self.createSimilarFile(ifp.path).render(request)
+                    returnValue((yield self.createSimilarFile(ifp.path).render(request)))
 
-                return self.renderDirectory(request)
+                # MOR: is renderDirectory deferred?
+                returnValue(self.renderDirectory(request))
 
         try:
             f = self.fp.open()
         except IOError, e:
             import errno
             if e[0] == errno.EACCES:
-                return responsecode.FORBIDDEN
+                returnValue(responsecode.FORBIDDEN)
             elif e[0] == errno.ENOENT:
-                return responsecode.NOT_FOUND
+                returnValue(responsecode.NOT_FOUND)
             else:
                 raise
 
@@ -813,13 +815,13 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
         response.stream = FileStream(f, 0, self.fp.getsize())
 
         for (header, value) in (
-            ("content-type", self.contentType()),
+            ("content-type", (yield self.contentType())),
             ("content-encoding", self.contentEncoding()),
         ):
             if value is not None:
                 response.headers.setHeader(header, value)
 
-        return response
+        returnValue(response)
 
     def directoryStyleSheet(self):
         return (
@@ -875,6 +877,7 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
         d.addCallback(gotBody)
         return d
 
+    # MOR: This is not working at the moment -- gotValues( ) isn't getting a sequence
     @printTracebacks
     def renderDirectoryBody(self, request):
         """
@@ -889,9 +892,11 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
 
         even = Alternator()
         d = self.listChildren()
+
+        @inlineCallbacks
         def _gotChildren(children):
             for name in sorted(children):
-                child = self.getChild(name)
+                child = (yield self.getChild(name))
 
                 url, name, size, lastModified, contentType = self.getChildDirectoryEntry(child, name)
 

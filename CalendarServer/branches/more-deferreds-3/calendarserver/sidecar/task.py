@@ -91,7 +91,7 @@ class FakeRequest(object):
 def processInboxItem(rootResource, directory, inboxFile, inboxItemFile, uuid):
     log.debug("Processing inbox item %s" % (inboxItemFile,))
 
-    principals = rootResource.getChild("principals")
+    principals = (yield rootResource.getChild("principals"))
     ownerPrincipal = (yield principals.principalForUID(uuid))
     cua = "urn:uuid:%s" % (uuid,)
     owner = LocalCalendarUser(cua, ownerPrincipal,
@@ -151,8 +151,8 @@ class Task(object):
     @inlineCallbacks
     def task_scheduleinboxes(self):
 
-        calendars = self.service.root.getChild("calendars")
-        uidDir = calendars.getChild("__uids__")
+        calendars = (yield self.service.root.getChild("calendars"))
+        uidDir = (yield calendars.getChild("__uids__"))
 
         inboxItems = set()
         with open(self.taskFile) as input:
@@ -164,15 +164,15 @@ class Task(object):
             log.info("Processing inbox item: %s" % (inboxItem,))
             ignore, uuid, ignore, fileName = inboxItem.rsplit("/", 3)
 
-            homeFile = uidDir.getChild(uuid)
+            homeFile = (yield uidDir.getChild(uuid))
             if not homeFile:
                 continue
 
-            inboxFile = homeFile.getChild("inbox")
+            inboxFile = (yield homeFile.getChild("inbox"))
             if not inboxFile:
                 continue
 
-            inboxItemFile = inboxFile.getChild(fileName)
+            inboxItemFile = (yield inboxFile.getChild(fileName))
 
             yield processInboxItem(
                 self.service.root,

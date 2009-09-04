@@ -20,6 +20,15 @@ Index: twisted/web2/static.py
  
      def lastModified(self):
          """
+@@ -64,7 +64,7 @@
+         """
+         @return: The display name of the resource if available, None otherwise.
+         """
+-        return None
++        return succeed(None)
+ 
+     def exists(self):
+         """
 @@ -76,18 +76,26 @@
      def checkPreconditions(self, request):
          # This code replaces the code in resource.RenderMixin
@@ -115,6 +124,18 @@ Index: twisted/web2/static.py
  
      def lastModified(self):
          if self.fp.exists():
+@@ -279,9 +294,9 @@
+ 
+     def displayName(self):
+         if self.fp.exists():
+-            return self.fp.basename()
++            return succeed(self.fp.basename())
+         else:
+-            return None
++            return succeed(None)
+ 
+     def ignoreExt(self, ext):
+         """Ignore the given extension.
 @@ -291,12 +306,13 @@
          self.ignoredExts.append(ext)
  
