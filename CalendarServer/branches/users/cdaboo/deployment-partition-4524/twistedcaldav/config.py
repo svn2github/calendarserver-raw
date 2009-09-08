@@ -23,7 +23,6 @@ __all__ = [
     "config",
 ]
 
-import os
 import copy
 import re
 
@@ -33,6 +32,7 @@ from twisted.web2.dav.resource import TwistedACLInheritable
 from twistedcaldav.py.plistlib import readPlist
 from twistedcaldav.log import Logger
 from twistedcaldav.log import clearLogLevels, setLogLevelForNamespace, InvalidLogLevelError
+from twistedcaldav.partitions import partitions
 
 log = Logger()
 
@@ -71,10 +71,19 @@ serviceDefaultParams = {
     },
     "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
         "node": "/Search",
-        "requireComputerRecord": True,
         "cacheTimeout": 30,
     },
 }
+
+augmentDefaultParams = {
+    "twistedcaldav.directory.augment.AugmentXMLDB": {
+        "xmlFiles": ["/etc/caldavd/augments.xml",],
+    },
+    "twistedcaldav.directory.augment.AugmentSqliteDB": {
+        "dbpath": "/etc/caldavd/augments.sqlite",
+    },
+}
+
 
 defaultConfig = {
     # Note: Don't use None values below; that confuses the command-line parser.
@@ -119,6 +128,23 @@ defaultConfig = {
         "type": "twistedcaldav.directory.xmlfile.XMLDirectoryService",
         "params": serviceDefaultParams["twistedcaldav.directory.xmlfile.XMLDirectoryService"],
     },
+
+    #
+    # Augment service
+    #
+    #    Augments for the directory service records to add calendar specific attributes.
+    #
+    "AugmentService": {
+        "type": "twistedcaldav.directory.augment.AugmentXMLDB",
+        "params": augmentDefaultParams["twistedcaldav.directory.augment.AugmentXMLDB"],
+    },
+
+    #
+    # Proxy loader
+    #
+    #    Allows for initialization of the proxy database from an XML file.
+    #
+    "ProxyLoadFromFile": "",
 
     #
     # Special principals
@@ -254,6 +280,13 @@ defaultConfig = {
     },
 
     #
+    # Partitioning
+    #
+    "EnablePartitions":    False,   # Partitioning enabled or not
+    "ServerPartitionID":   "",      # Unique ID for this server's partition instance.
+    "PartitionConfigFile": "/etc/caldavd/partitions.plist", # File path for partition information
+
+    #
     # Performance tuning
     #
 
@@ -351,6 +384,7 @@ class Config (object):
             self.updateDropBox,
             self.updateLogLevels,
             self.updateNotifications,
+            self.updatePartitions,
         ]
 
     def __str__(self):
@@ -407,6 +441,12 @@ class Config (object):
             for param in tuple(self._data.DirectoryService.params):
                 if param not in serviceDefaultParams[self._data.DirectoryService.type]:
                     del self._data.DirectoryService.params[param]
+
+        if self._data.AugmentService.type in augmentDefaultParams:
+            for param in tuple(self._data.AugmentService.params):
+                if param not in augmentDefaultParams[self._data.AugmentService.type]:
+                    log.warn("Parameter %s is not supported by service %s" % (param, self._data.AugmentService.type))
+                    del self._data.AugmentService.params[param]
 
     @staticmethod
     def updateACLs(self, items):
@@ -517,6 +557,19 @@ class Config (object):
 
         except InvalidLogLevelError, e:
             raise ConfigurationError("Invalid log level: %s" % (e.level))
+
+    @staticmethod
+    def updatePartitions(self, items):
+        #
+        # Partitions
+        #
+    
+        if "EnablePartitions" in items:
+            if items["EnablePartitions"]:
+                partitions.setSelfPartition(items.get("ServerPartitionID", ""))
+                partitions.readConfig(items.get("PartitionConfigFile", ""))
+            else:
+                partitions.clear()
 
     def updateDefaults(self, items):
         _mergeData(self._defaults, items)

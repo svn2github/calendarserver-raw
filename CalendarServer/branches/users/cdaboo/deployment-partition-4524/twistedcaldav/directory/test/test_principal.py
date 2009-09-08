@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,19 +16,19 @@
 
 import os
 
+from twisted.cred.credentials import UsernamePassword
 from twisted.internet.defer import inlineCallbacks
 from twisted.web2.dav import davxml
 from twisted.web2.dav.fileop import rmdir
 from twisted.web2.dav.resource import AccessDeniedError
 from twisted.web2.test.test_server import SimpleRequest
-from twisted.web2.dav.test.util import serialize
 
 from twistedcaldav.static import CalendarHomeProvisioningFile
-from twistedcaldav.directory.apache import BasicDirectoryService, DigestDirectoryService
+from twistedcaldav.config import config
+from twistedcaldav.directory import augment
 from twistedcaldav.directory.directory import DirectoryService
-from twistedcaldav.directory.test.test_apache import basicUserFile, digestUserFile, groupFile, digestRealm
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
-from twistedcaldav.directory.test.test_xmlfile import xmlFile
+from twistedcaldav.directory.test.test_xmlfile import xmlFile, augmentsFile
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.principal import DirectoryPrincipalTypeProvisioningResource
 from twistedcaldav.directory.principal import DirectoryPrincipalResource
@@ -38,11 +38,6 @@ from twistedcaldav.cache import DisabledCacheNotifier
 
 import twistedcaldav.test.util
 
-directoryServices = (
-    BasicDirectoryService(digestRealm, basicUserFile, groupFile),
-    DigestDirectoryService(digestRealm, digestUserFile, groupFile),
-    XMLDirectoryService(xmlFile),
-)
 
 class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
     """
@@ -51,9 +46,13 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
     def setUp(self):
         super(ProvisionedPrincipals, self).setUp()
 
+        self.directoryServices = (
+            XMLDirectoryService(xmlFile=xmlFile),
+        )
+
         # Set up a principals hierarchy for each service we're testing with
         self.principalRootResources = {}
-        for directory in directoryServices:
+        for directory in self.directoryServices:
             name = directory.__class__.__name__
             url = "/" + name + "/"
 
@@ -62,6 +61,8 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
             self.site.resource.putChild(name, provisioningResource)
 
             self.principalRootResources[directory.__class__.__name__] = provisioningResource
+
+        augment.AugmentService = augment.AugmentXMLDB(xmlFiles=(augmentsFile.path,))
 
     def test_hierarchy(self):
         """
@@ -77,7 +78,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
 
         DirectoryPrincipalResource.principalURL(),
         """
-        for directory in directoryServices:
+        for directory in self.directoryServices:
             #print "\n -> %s" % (directory.__class__.__name__,)
             provisioningResource = self.principalRootResources[directory.__class__.__name__]
 
@@ -139,7 +140,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         """
         DirectoryPrincipalProvisioningResource.principalForUser()
         """
-        for directory in directoryServices:
+        for directory in self.directoryServices:
             provisioningResource = self.principalRootResources[directory.__class__.__name__]
 
             for user in directory.listRecords(DirectoryService.recordType_users):
@@ -162,7 +163,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         """
         for provisioningResource, recordType, recordResource, record in self._allRecords():
             principal = provisioningResource.principalForRecord(record)
-            self.failIf(principal is None)
+            self.failIf(principal is None, msg=str(record))
             self.assertEquals(record, principal.record)
 
     def test_principalForCalendarUserAddress(self):
@@ -183,6 +184,13 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
                     self.assertEquals(record, principal.record)
                 else:
                     self.failIf(principal is not None)
+
+        # Explicitly check the disabled record
+        provisioningResource = self.principalRootResources['XMLDirectoryService']
+        self.failIf(provisioningResource.principalForCalendarUserAddress("mailto:nocalendar@example.com") is not None)
+        self.failIf(provisioningResource.principalForCalendarUserAddress("urn:uuid:543D28BA-F74F-4D5F-9243-B3E3A61171E5") is not None)
+        self.failIf(provisioningResource.principalForCalendarUserAddress("/principals/users/nocalendar/") is not None)
+        self.failIf(provisioningResource.principalForCalendarUserAddress("/principals/__uids__/543D28BA-F74F-4D5F-9243-B3E3A61171E5/") is not None)
 
     def test_autoSchedule(self):
         """
@@ -251,24 +259,6 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
             memberships = yield recordResource.groupMemberships()
             self.failUnless(set(record.groups()).issubset(set(r.record for r in memberships if hasattr(r, "record"))))
 
-    def test_proxies(self):
-        """
-        DirectoryPrincipalResource.proxies()
-        """
-        for provisioningResource, recordType, recordResource, record in self._allRecords():
-            if record.enabledForCalendaring:
-                self.failUnless(set(record.proxies()).issubset(set(r.record for r in recordResource.proxies())))
-                self.assertEqual(record.hasEditableProxyMembership(), recordResource.hasEditableProxyMembership())
-
-    def test_read_only_proxies(self):
-        """
-        DirectoryPrincipalResource.proxies()
-        """
-        for provisioningResource, recordType, recordResource, record in self._allRecords():
-            if record.enabledForCalendaring:
-                self.failUnless(set(record.readOnlyProxies()).issubset(set(r.record for r in recordResource.readOnlyProxies())))
-                self.assertEqual(record.hasEditableProxyMembership(), recordResource.hasEditableProxyMembership())
-
     def test_principalUID(self):
         """
         DirectoryPrincipalResource.principalUID()
@@ -305,7 +295,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         # Need to create a calendar home provisioner for each service.
         calendarRootResources = {}
 
-        for directory in directoryServices:
+        for directory in self.directoryServices:
             url = "/homes_" + directory.__class__.__name__ + "/"
             path = os.path.join(self.docroot, url[1:])
 
@@ -352,36 +342,28 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         """
         Default access controls for principals.
         """
-        def work():
-            for provisioningResource, recordType, recordResource, record in self._allRecords():
-                for args in _authReadOnlyPrivileges(recordResource, recordResource.principalURL()):
-                    yield args
-
-        for args in work():
-            yield self._checkPrivileges(*args)
+        for provisioningResource, recordType, recordResource, record in self._allRecords():
+            for args in _authReadOnlyPrivileges(self, recordResource, recordResource.principalURL()):
+                yield self._checkPrivileges(*args)
 
     @inlineCallbacks
     def test_defaultAccessControlList_provisioners(self):
         """
         Default access controls for principal provisioning resources.
         """
-        def work():
-            for directory in directoryServices:
-                #print "\n -> %s" % (directory.__class__.__name__,)
-                provisioningResource = self.principalRootResources[directory.__class__.__name__]
+        for directory in self.directoryServices:
+            #print "\n -> %s" % (directory.__class__.__name__,)
+            provisioningResource = self.principalRootResources[directory.__class__.__name__]
 
-                for args in _authReadOnlyPrivileges(provisioningResource, provisioningResource.principalCollectionURL()):
-                    yield args
+            for args in _authReadOnlyPrivileges(self, provisioningResource, provisioningResource.principalCollectionURL()):
+                yield self._checkPrivileges(*args)
 
-                for recordType in provisioningResource.listChildren():
-                    #print "   -> %s" % (recordType,)
-                    typeResource = provisioningResource.getChild(recordType)
+            for recordType in provisioningResource.listChildren():
+                #print "   -> %s" % (recordType,)
+                typeResource = provisioningResource.getChild(recordType)
 
-                    for args in _authReadOnlyPrivileges(typeResource, typeResource.principalCollectionURL()):
-                        yield args
-
-        for args in work():
-            yield self._checkPrivileges(*args)
+                for args in _authReadOnlyPrivileges(self, typeResource, typeResource.principalCollectionURL()):
+                    yield self._checkPrivileges(*args)
 
     def _allRecords(self):
         """
@@ -393,7 +375,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
             C{record} is the directory service record
             for each record in each directory in C{directoryServices}.
         """
-        for directory in directoryServices:
+        for directory in self.directoryServices:
             provisioningResource = self.principalRootResources[directory.__class__.__name__]
             for recordType in directory.recordTypes():
                 for record in directory.listRecords(recordType):
@@ -425,13 +407,17 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         d.addCallback(gotResource)
         return d
 
-def _authReadOnlyPrivileges(resource, url):
-    for principal, privilege, allowed in (
-        ( davxml.All()             , davxml.Read()  , False ),
-        ( davxml.All()             , davxml.Write() , False ),
-        ( davxml.Unauthenticated() , davxml.Read()  , False ),
-        ( davxml.Unauthenticated() , davxml.Write() , False ),
-        ( davxml.Authenticated()   , davxml.Read()  , True  ),
-        ( davxml.Authenticated()   , davxml.Write() , False ),
-    ):
+def _authReadOnlyPrivileges(self, resource, url):
+    items = []
+    for provisioningResource, recordType, recordResource, record in self._allRecords():
+        if recordResource == resource:
+            items.append(( davxml.HRef().fromString(recordResource.principalURL()), davxml.Read()  , True ))
+            items.append(( davxml.HRef().fromString(recordResource.principalURL()), davxml.Write() , True ))
+        else:
+            items.append(( davxml.HRef().fromString(recordResource.principalURL()), davxml.Read()  , True ))
+            items.append(( davxml.HRef().fromString(recordResource.principalURL()), davxml.Write() , False ))
+    items.append(( davxml.Unauthenticated() , davxml.Read()  , False ))
+    items.append(( davxml.Unauthenticated() , davxml.Write() , False ))
+            
+    for principal, privilege, allowed in items:
         yield resource, url, principal, privilege, allowed

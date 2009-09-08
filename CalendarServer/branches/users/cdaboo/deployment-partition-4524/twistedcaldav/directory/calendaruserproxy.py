@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,9 +38,11 @@ from twistedcaldav.memcacher import Memcacher
 from twistedcaldav.resource import CalDAVComplianceMixIn
 from twistedcaldav.directory.util import NotFilePath
 from twistedcaldav.sql import AbstractSQLDatabase
+from twistedcaldav.log import LoggingMixIn
 
 import itertools
 import os
+import time
 
 class PermissionsMixIn (ReadOnlyWritePropertiesResourceMixIn):
     def defaultAccessControlList(self):
@@ -69,7 +71,7 @@ class PermissionsMixIn (ReadOnlyWritePropertiesResourceMixIn):
         return davxml.ACL(*aces)
 
     def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
-        # Permissions here are fixed, and are not subject to inherritance rules, etc.
+        # Permissions here are fixed, and are not subject to inheritance rules, etc.
         return succeed(self.defaultAccessControlList())
 
 class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixIn, DAVPrincipalResource, DAVFile):
@@ -156,15 +158,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
         assert isinstance(property, davxml.WebDAVElement)
 
         if property.qname() == (dav_namespace, "group-member-set"):
-            if self.hasEditableMembership():
-                return self.setGroupMemberSet(property, request)
-            else:
-                raise HTTPError(
-                    StatusResponse(
-                        responsecode.FORBIDDEN,
-                        "Proxies cannot be changed."
-                    )
-                )
+            return self.setGroupMemberSet(property, request)
 
         return super(CalendarUserProxyPrincipalResource, self).writeProperty(property, request)
 
@@ -182,8 +176,9 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
         # Break out the list into a set of URIs.
         members = [str(h) for h in new_members.children]
 
-        # Map the URIs to principals.
+        # Map the URIs to principals and a set of UIDs.
         principals = []
+        newUIDs = set()
         for uri in members:
             principal = self.pcollection._principalForURI(uri)
             # Invalid principals MUST result in an error.
@@ -193,14 +188,31 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
                     "Attempt to use a non-existent principal %s as a group member of %s." % (uri, self.principalURL(),)
                 ))
             principals.append(principal)
-            yield principal.cacheNotifier.changed()
+            newUIDs.add(principal.principalUID())
 
+        # Get the old set of UIDs
+        oldUIDs = (yield self._index().getMembers(self.uid))
+        
+        # Change membership
+        yield self.setGroupMemberSetPrincipals(principals)
+        
+        # Invalidate the primary principal's cache, and any principal's whose
+        # membership status changed
+        yield self.parent.cacheNotifier.changed()
+        
+        changedUIDs = newUIDs.symmetric_difference(oldUIDs)
+        for uid in changedUIDs:
+            principal = self.pcollection.principalForUID(uid)
+            if principal:
+                yield principal.cacheNotifier.changed()
+            
+        returnValue(True)
+
+    @inlineCallbacks
+    def setGroupMemberSetPrincipals(self, principals):
         # Map the principals to UIDs.
         uids = [p.principalUID() for p in principals]
-
         yield self._index().setGroupMembers(self.uid, uids)
-        yield self.parent.cacheNotifier.changed()
-        returnValue(True)
 
     ##
     # HTTP
@@ -246,8 +258,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
                 """Principal UID: %s\n"""          % (self.principalUID(),),
                 """Principal URL: %s\n"""          % (format_link(self.principalURL()),),
                 """\nAlternate URIs:\n"""          , format_list(format_link(u) for u in self.alternateURIs()),
-                """\nGroup members (%s):\n""" % ({False:"Locked", True:"Editable"}[self.hasEditableMembership()])
-                                                   , format_principals(closure["members"]),
+                """\nGroup members:\n"""           , format_principals(closure["members"]),
                 """\nGroup memberships:\n"""       , format_principals(closure["memberships"]),
                 """</pre></blockquote></div>""",
                 closure["output"]
@@ -307,16 +318,28 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
 
     @inlineCallbacks
     def _directGroupMembers(self):
-        if self.hasEditableMembership():
-            # Get member UIDs from database and map to principal resources
-            members = yield self._index().getMembers(self.uid)
-            returnValue([p for p in [self.pcollection.principalForUID(uid) for uid in members] if p])
-        else:
-            # Fixed proxies
-            if self.proxyType == "calendar-proxy-write":
-                returnValue(self.parent.proxies())
+        # Get member UIDs from database and map to principal resources
+        members = yield self._index().getMembers(self.uid)
+        found = []
+        missing = []
+        for uid in members:
+            p = self.pcollection.principalForUID(uid)
+            if p:
+                found.append(p)
+                # Make sure any outstanding deletion timer entries for
+                # existing principals are removed
+                yield self._index()._memcacher.clearDeletionTimer(uid)
             else:
-                returnValue(self.parent.readOnlyProxies())
+                missing.append(uid)
+
+        # Clean-up ones that are missing
+        for uid in missing:
+            cacheTimeout = config.DirectoryService.params.get("cacheTimeout", 30) * 60 # in seconds
+
+            yield self._index().removePrincipal(uid,
+                delay=cacheTimeout*2)
+
+        returnValue(found)
 
     def groupMembers(self):
         return self._expandMemberUIDs()
@@ -327,10 +350,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
         memberships = yield self._index().getMemberships(self.uid)
         returnValue([p for p in [self.pcollection.principalForUID(uid) for uid in memberships] if p])
 
-    def hasEditableMembership(self):
-        return self.parent.hasEditableProxyMembership()
-
-class CalendarUserProxyDatabase(AbstractSQLDatabase):
+class CalendarUserProxyDatabase(AbstractSQLDatabase, LoggingMixIn):
     """
     A database to maintain calendar user proxy group memberships.
 
@@ -384,6 +404,33 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
         def deleteMembership(self, guid):
             return self.delete("memberships:%s" % (guid,))
 
+        def setDeletionTimer(self, guid, delay):
+            return self.set("del:%s" % (str(guid),), str(self.getTime()+delay))
+
+        def checkDeletionTimer(self, guid):
+            # True means it's overdue, False means it's not, None means no timer
+            def _value(value):
+                if value:
+                    if int(value) <= self.getTime():
+                        return True
+                    else:
+                        return False
+                else:
+                    return None
+            d = self.get("del:%s" % (str(guid),))
+            d.addCallback(_value)
+            return d
+
+        def clearDeletionTimer(self, guid):
+            return self.delete("del:%s" % (str(guid),))
+
+        def getTime(self):
+            if hasattr(self, 'theTime'):
+                theTime = self.theTime
+            else:
+                theTime = int(time.time())
+            return theTime
+
     def __init__(self, path):
         path = os.path.join(path, CalendarUserProxyDatabase.dbFilename)
         super(CalendarUserProxyDatabase, self).__init__(path, True)
@@ -405,11 +452,8 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
             current_members = ()
         current_members = set(current_members)
 
-        # Remove what is there, then add it back.
-        self._delete_from_db(principalUID)
-        self._add_to_db(principalUID, members)
-        self._db_commit()
-        
+        self.setGroupMembersInDatabase(principalUID, members)
+
         # Update cache
         update_members = set(members)
         
@@ -419,6 +463,18 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
             _ignore = yield self._memcacher.deleteMembership(member)
         _ignore = yield self._memcacher.deleteMember(principalUID)
 
+    def setGroupMembersInDatabase(self, principalUID, members):
+        """
+        A blocking call to add a group membership record in the database.
+
+        @param principalUID: the UID of the group principal to add.
+        @param members: a list UIDs of principals that are members of this group.
+        """
+        # Remove what is there, then add it back.
+        self._delete_from_db(principalUID)
+        self._add_to_db(principalUID, members)
+        self._db_commit()
+        
     @inlineCallbacks
     def removeGroup(self, principalUID):
         """
@@ -427,15 +483,69 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
         @param principalUID: the UID of the group principal to remove.
         """
 
+        # Need to get the members before we do the delete
+        members = yield self.getMembers(principalUID)
+
         self._delete_from_db(principalUID)
         self._db_commit()
         
         # Update cache
-        members = yield self.getMembers(principalUID)
         if members:
             for member in members:
                 yield self._memcacher.deleteMembership(member)
             yield self._memcacher.deleteMember(principalUID)
+
+    @inlineCallbacks
+    def removePrincipal(self, principalUID, delay=None):
+        """
+        Remove a group membership record.
+
+        @param principalUID: the UID of the principal to remove.
+        """
+
+        if delay:
+            # We are going to remove the principal only after <delay> seconds
+            # has passed since we first chose to remove it, to protect against
+            # transient directory problems.
+            # If <delay> is specified, first see if there was a timer set
+            # previously.  If the timer is more than delay seconds old, we
+            # go ahead and remove the principal.  Otherwise, do nothing.
+
+            overdue = yield self._memcacher.checkDeletionTimer(principalUID)
+
+            if overdue == False:
+                # Do nothing
+                returnValue(None)
+
+            elif overdue is None:
+                # No timer was previously set
+                self.log_debug("Delaying removal of missing proxy principal '%s'" %
+                    (principalUID,))
+                self._memcacher.setDeletionTimer(principalUID, delay=delay)
+                returnValue(None)
+
+        self.log_warn("Removing missing proxy principal for '%s'" %
+            (principalUID,))
+
+        for suffix in ("calendar-proxy-read", "calendar-proxy-write",):
+            groupUID = "%s#%s" % (principalUID, suffix,)
+            self._delete_from_db(groupUID)
+
+            # Update cache
+            members = yield self.getMembers(groupUID)
+            if members:
+                for member in members:
+                    yield self._memcacher.deleteMembership(member)
+                yield self._memcacher.deleteMember(groupUID)
+
+        memberships = (yield self.getMemberships(principalUID))
+        for groupUID in memberships:
+            yield self._memcacher.deleteMember(groupUID)
+
+        self._delete_from_db_member(principalUID)
+        yield self._memcacher.deleteMembership(principalUID)
+        self._db_commit()
+        self._memcacher.clearDeletionTimer(principalUID)
 
     @inlineCallbacks
     def getMembers(self, principalUID):
@@ -501,6 +611,14 @@ class CalendarUserProxyDatabase(AbstractSQLDatabase):
         @param principalUID: the UID of the group principal to remove.
         """
         self._db_execute("delete from GROUPS where GROUPNAME = :1", principalUID)
+
+    def _delete_from_db_member(self, principalUID):
+        """
+        Deletes the specified member entry from the database.
+
+        @param principalUID: the UID of the member principal to remove.
+        """
+        self._db_execute("delete from GROUPS where MEMBER = :1", principalUID)
 
     def _db_version(self):
         """

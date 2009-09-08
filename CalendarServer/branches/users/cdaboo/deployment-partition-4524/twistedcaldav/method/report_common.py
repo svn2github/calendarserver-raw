@@ -284,7 +284,7 @@ def _namedPropertiesForResource(request, props, resource, calendar=None, isowner
 _namedPropertiesForResource = deferredGenerator(_namedPropertiesForResource)
     
 def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
-                         excludeuid=None, organizer=None, same_calendar_user=False):
+                         excludeuid=None, organizer=None, organizerPrincipal=None, same_calendar_user=False):
     """
     Run a free busy report on the specified calendar collection
     accumulating the free busy info for later processing.
@@ -303,7 +303,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
     
     # First check the privilege on this collection
     try:
-        d = waitForDeferred(calresource.checkPrivileges(request, (caldavxml.ReadFreeBusy(),)))
+        d = waitForDeferred(calresource.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), principal=organizerPrincipal))
         yield d
         d.getResult()
     except AccessDeniedError:
@@ -354,7 +354,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
         child = child.getResult()
 
         try:
-            d = waitForDeferred(child.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), inherited_aces=filteredaces))
+            d = waitForDeferred(child.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), inherited_aces=filteredaces, principal=organizerPrincipal))
             yield d
             d.getResult()
         except AccessDeniedError:

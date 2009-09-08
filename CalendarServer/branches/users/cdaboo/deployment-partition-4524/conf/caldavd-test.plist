@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -116,63 +116,53 @@ limitations under the License.
     <dict>
       <key>node</key>
       <string>/Search</string>
-      <key>requireComputerRecord</key>
-      <true/>
+      <key>cacheTimeout</key>
+      <integer>30</integer>
     </dict>
   </dict>
   -->
 
-  <!--  Apache-style Basic Directory Service -->
-  <!--
-  <key>DirectoryService</key>
-  <dict>
-    <key>type</key>
-    <string>twistedcaldav.directory.apache.BasicDirectoryService</string>
-  
-    <key>params</key>
+    <!--
+        Augment service
+
+        Augments for the directory service records to add calendar specific attributes.
+
+        A variety of augment services are available for use.
+        When using a partitioned server, a service that can be accessed from each host will be needed.
+      -->
+
+    <!-- XML File Augment Service -->
+    <key>AugmentService</key>
     <dict>
-      <key>userFile</key>
-      <string>conf/basic</string>
-      <key>groupFile</key>
-      <string>conf/group</string>
+      <key>type</key>
+      <string>twistedcaldav.directory.augment.AugmentXMLDB</string>
+      
+      <key>params</key>
+      <dict>
+        <key>xmlFiles</key>
+        <array>
+	      <string>conf/auth/augments-test.xml</string>
+        </array>
+      </dict>
     </dict>
-  </dict>
-  -->
-
-  <!--  Apache-style Digest Directory Service -->
-  <!--
-  <key>DirectoryService</key>
-  <dict>
-    <key>type</key>
-    <string>twistedcaldav.directory.apache.DigestDirectoryService</string>
-  
-    <key>params</key>
+    
+    <!-- Sqlite Augment Service -->
+    <!--
+    <key>AugmentService</key>
     <dict>
-      <key>userFile</key>
-      <string>conf/digest</string>
-      <key>groupFile</key>
-      <string>conf/group</string>
+      <key>type</key>
+      <string>twistedcaldav.directory.augment.AugmentSqliteDB</string>
+      
+      <key>params</key>
+      <dict>
+        <key>dbpath</key>
+        <string>/etc/caldavd/augments.sqlite</string>
+      </dict>
     </dict>
-  </dict>
-  -->
+     -->
 
-  <!--  SQL Directory Service -->
-  <!--
-  <key>DirectoryService</key>
-  <dict>
-    <key>type</key>
-    <string>twistedcaldav.directory.sqldb.SQLDirectoryService</string>
-  
-    <key>params</key>
-    <dict>
-      <key>dbParentPath</key>
-      <string>twistedcaldav/test/data/</string>
-      <key>xmlFile</key>
-      <string>conf/accounts-test.xml</string>
-    </dict>
-  </dict>
-  -->
-
+	<key>ProxyLoadFromFile</key>
+    <string>conf/auth/proxies-test.xml</string>
 
   <!--
     Special principals

@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ class DirectoryProvisioningResource (
         raise NotImplementedError("Subclass must implement principalForUID()")
 
     def principalForRecord(self, record):
-        if record is None:
+        if record is None or not record.enabled:
             return None
         return self.principalForUID(record.guid)
 
@@ -145,7 +145,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
         return self.getChild(uidsResourceName).getChild(uid)
 
     def _principalForURI(self, uri):
-        scheme, netloc, path, params, query, fragment = urlparse(uri)
+        scheme, netloc, path, _ignore_params, _ignore_query, _ignore_fragment = urlparse(uri)
 
         if scheme == "":
             pass
@@ -203,7 +203,7 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
 
         # Next try looking it up in the directory
         record = self.directory.recordWithCalendarUserAddress(address)
-        if record is not None:
+        if record is not None and record.enabled:
             return self.principalForRecord(record)
 
         log.debug("No principal for calendar user address: %r" % (address,))
@@ -275,7 +275,7 @@ class DirectoryPrincipalTypeProvisioningResource (DirectoryProvisioningResource)
 
     def listChildren(self):
         if config.EnablePrincipalListings:
-            return (record.shortName for record in self.directory.listRecords(self.recordType))
+            return (record.shortName for record in self.directory.listRecords(self.recordType) if record.enabled)
         else:
             # Not a listable collection
             raise HTTPError(responsecode.FORBIDDEN)
@@ -332,7 +332,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
 
         record = self.directory.recordWithGUID(primaryUID)
 
-        if record is None:
+        if record is None or not record.enabled:
             log.err("No principal found for UID: %s" % (name,))
             return None
 
@@ -449,6 +449,7 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
             """Record type: %s\n"""            % (self.record.recordType,),
             """Short name: %s\n"""             % (self.record.shortName,),
             """Full name: %s\n"""              % (self.record.fullName,),
+            """Email addresses:\n"""           , format_list(self.record.emailAddresses),
             """Principal UID: %s\n"""          % (self.principalUID(),),
             """Principal URL: %s\n"""          % (format_link(self.principalURL()),),
             """\nAlternate URIs:\n"""          , format_list(format_link(u) for u in self.alternateURIs()),
@@ -512,7 +513,6 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
 
         if record not in records:
             records.add(record)
-            myRecordType = self.record.recordType
             for relative in getattr(record, method)():
                 if relative not in records:
                     found = self.parent.principalForRecord(relative)
@@ -538,10 +538,6 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         groups = self._getRelatives("groups")
 
         if config.EnableProxyPrincipals:
-            # Get any directory specified proxies
-            groups.update(self._getRelatives("proxyFor", proxy='read-write'))
-            groups.update(self._getRelatives("readOnlyProxyFor", proxy='read-only'))
-
             # Get proxy group UIDs and map to principal resources
             proxies = []
             d = waitForDeferred(self._calendar_user_proxy_index().getMemberships(self.principalUID()))
@@ -551,6 +547,10 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
                 subprincipal = self.parent.principalForUID(uid)
                 if subprincipal:
                     proxies.append(subprincipal)
+                else:
+                    d = waitForDeferred(self._calendar_user_proxy_index().removeGroup(uid))
+                    yield d
+                    d.getResult()
 
             groups.update(proxies)
 
@@ -569,13 +569,6 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
                 proxyFors.update(results)
 
         if config.EnableProxyPrincipals:
-            # Get any directory specified proxies
-            if read_write:
-                directoryProxies = self._getRelatives("proxyFor", proxy='read-write')
-            else:
-                directoryProxies = self._getRelatives("readOnlyProxyFor", proxy='read-only')
-            proxyFors.update([subprincipal.parent for subprincipal in directoryProxies])
-
             # Get proxy group UIDs and map to principal resources
             proxies = []
             d = waitForDeferred(self._calendar_user_proxy_index().getMemberships(self.principalUID()))
@@ -595,6 +588,22 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
 
     def principalUID(self):
         return self.record.guid
+
+    def locallyHosted(self):
+        return self.record.locallyHosted()
+    
+    def hostedURL(self):
+        return self.record.hostedURL()
+
+    ##
+    # Extra resource info
+    ##
+
+    def setAutoSchedule(self, autoSchedule):
+        self.record.autoSchedule = autoSchedule
+
+    def getAutoSchedule(self):
+        return self.record.autoSchedule
 
     ##
     # Static
@@ -699,15 +708,6 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
     def autoSchedule(self):
         return self.record.autoSchedule
 
-    def proxies(self):
-        return self._getRelatives("proxies")
-
-    def readOnlyProxies(self):
-        return self._getRelatives("readOnlyProxies")
-
-    def hasEditableProxyMembership(self):
-        return self.record.hasEditableProxyMembership()
-
     def scheduleInbox(self, request):
         home = self._calendarHome()
         if home is None:
@@ -720,11 +720,8 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         return succeed(inbox)
 
     def calendarHomeURLs(self):
-        home = self._calendarHome()
-        if home is None:
-            return ()
-        else:
-            return (home.url(),)
+        homeURL = self._homeChildURL(None)
+        return (homeURL,) if homeURL else ()
 
     def scheduleInboxURL(self):
         return self._homeChildURL("inbox/")
@@ -743,7 +740,13 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         if home is None:
             return None
         else:
-            return joinURL(home.url(), name)
+            url = home.url()
+            if name:
+                url = joinURL(url, name)
+            if not self.locallyHosted():
+                url = joinURL(self.hostedURL(), url)
+                
+            return url
 
     def _calendarHome(self):
         # FIXME: self.record.service.calendarHomesCollection smells like a hack

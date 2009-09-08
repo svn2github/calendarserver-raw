@@ -18,7 +18,6 @@ from new import instancemethod
 import hashlib
 import cPickle
 
-from twisted.trial.unittest import TestCase
 from twisted.internet.defer import succeed, maybeDeferred
 
 from twisted.web2.dav import davxml
@@ -31,6 +30,7 @@ from twistedcaldav.cache import MemcacheChangeNotifier
 from twistedcaldav.cache import PropfindCacheMixin
 
 from twistedcaldav.test.util import InMemoryMemcacheProtocol
+from twistedcaldav.test.util import TestCase
 
 
 def _newCacheToken(self):
@@ -87,6 +87,7 @@ class StubURLResource(object):
 
 class MemCacheChangeNotifierTests(TestCase):
     def setUp(self):
+        TestCase.setUp(self)
         self.memcache = InMemoryMemcacheProtocol()
         self.ccn = MemcacheChangeNotifier(
             StubURLResource(':memory:'),
@@ -438,6 +439,7 @@ class PropfindCacheMixinTests(TestCase):
     Test the PropfindCacheMixin
     """
     def setUp(self):
+        TestCase.setUp(self)
         self.resource = TestCachingResource(StubResponse(200, {}, "foobar"))
         self.responseCache = StubResponseCacheResource()
 

@@ -19,6 +19,7 @@ import stat
 
 from zope.interface import implements
 
+from twisted.internet import reactor
 from twisted.internet.address import IPv4Address
 
 from twisted.python.log import FileLogObserver
@@ -45,6 +46,8 @@ from twistedcaldav.cluster import makeService_Combined, makeService_Master
 from twistedcaldav.config import config, parseConfig, defaultConfig, ConfigurationError
 from twistedcaldav.root import RootResource
 from twistedcaldav.resource import CalDAVResource
+from twistedcaldav.directory import augment
+from twistedcaldav.directory.calendaruserproxyloader import XMLCalendarUserProxyLoader
 from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.aggregate import AggregateDirectoryService
@@ -446,6 +449,19 @@ class CalDAVServiceMaker(object):
         setLogLevelForNamespace(None, "info")
 
         #
+        # Setup the Augment Service
+        #
+        augmentClass = namedClass(config.AugmentService.type)
+
+        log.info("Configuring augment service of type: %s" % (augmentClass,))
+
+        try:
+            augment.AugmentService = augmentClass(**config.AugmentService.params)
+        except IOError, e:
+            log.error("Could not start augment service")
+            raise
+
+        #
         # Setup the Directory
         #
         directories = []
@@ -479,6 +495,16 @@ class CalDAVServiceMaker(object):
         if sudoDirectory:
             directory.userRecordTypes.insert(0,
                 SudoDirectoryService.recordType_sudoers)
+
+        #
+        # Make sure proxies get initialized
+        #
+        if config.ProxyLoadFromFile:
+            def _doProxyUpdate():
+                loader = XMLCalendarUserProxyLoader(config.ProxyLoadFromFile)
+                return loader.updateProxyDB()
+            
+            reactor.addSystemEventTrigger("before", "startup", _doProxyUpdate)
 
         #
         # Configure Memcached Client Pool
