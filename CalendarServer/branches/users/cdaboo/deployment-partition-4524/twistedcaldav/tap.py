@@ -54,6 +54,7 @@ from twistedcaldav.directory.aggregate import AggregateDirectoryService
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.httpfactory import HTTP503LoggingFactory
 from twistedcaldav.static import CalendarHomeProvisioningFile
+from twistedcaldav.static import IScheduleInboxFile
 from twistedcaldav.static import TimezoneServiceFile
 from twistedcaldav.timezones import TimezoneCache
 from twistedcaldav import pdmonster
@@ -438,6 +439,7 @@ class CalDAVServiceMaker(object):
     rootResourceClass            = RootResource
     principalResourceClass       = DirectoryPrincipalProvisioningResource
     calendarResourceClass        = CalendarHomeProvisioningFile
+    iScheduleResourceClass       = IScheduleInboxFile
     timezoneServiceResourceClass = TimezoneServiceFile
 
     def makeService_Slave(self, options):
@@ -551,6 +553,17 @@ class CalDAVServiceMaker(object):
 
         root.putChild('principals', principalCollection)
         root.putChild('calendars', calendarCollection)
+
+        # iSchedule service is optional
+        if config.Scheduling.iSchedule.Enabled:
+            log.info("Setting up iSchedule inbox resource: %r"
+                          % (self.iScheduleResourceClass,))
+
+            ischedule = self.iScheduleResourceClass(
+                os.path.join(config.DocumentRoot, "ischedule"),
+                root,
+            )
+            root.putChild("ischedule", ischedule)
 
         # Timezone service is optional
         if config.EnableTimezoneService:

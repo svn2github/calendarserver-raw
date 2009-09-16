@@ -319,6 +319,40 @@
 
 
     <!--
+        Server-to-server protocol
+      -->
+
+    <key>Scheduling</key>
+    <dict>
+
+      <!-- CalDAV protocol options -->
+      <key>CalDAV</key>
+      <dict>
+        <key>EmailDomain</key>
+        <string></string>
+        <key>HTTPDomain</key>
+        <string></string>
+        <key>AddressPatterns</key>
+        <array>
+        </array>
+      </dict>
+
+      <!-- iSchedule protocol options -->
+      <key>iSchedule</key>
+      <dict>
+        <key>Enabled</key>
+        <false/>
+        <key>AddressPatterns</key>
+        <array>
+        </array>
+        <key>Servers</key>
+        <string>/etc/caldavd/servertoserver.xml</string>
+      </dict>
+
+    </dict>
+
+
+    <!--
         Notifications
       -->
 

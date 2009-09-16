@@ -245,6 +245,33 @@ defaultConfig = {
     "EnableAutoAcceptTrigger" : False, # Manually trigger auto-accept behavior
 
     #
+    # Scheduling related options
+    #
+    "Scheduling": {
+        
+        "CalDAV": {
+            "EmailDomain"                : "",    # Domain for mailto calendar user addresses on this server
+            "HTTPDomain"                 : "",    # Domain for http calendar user addresses on this server
+            "AddressPatterns"            : [],    # Reg-ex patterns to match local calendar user addresses
+            "OldDraftCompatibility"      : True,  # Whether to maintain compatibility with non-implicit mode
+            "ScheduleTagCompatibility"   : True,  # Whether to support older clients that do not use Schedule-Tag feature
+            "EnablePrivateComments"      : True,  # Private comments from attendees to organizer
+        },
+
+        "iSchedule": {
+            "Enabled"          : False, # iSchedule protocol
+            "AddressPatterns"  : [],    # Reg-ex patterns to match iSchedule-able calendar user addresses
+            "Servers"          : "/etc/caldavd/servertoserver.xml",    # iSchedule server configurations
+        },
+
+        "Options" : {
+            "AllowGroupAsOrganizer"      : False, # Allow groups to be Organizers
+            "AllowLocationAsOrganizer"   : False, # Allow locations to be Organizers
+            "AllowResourceAsOrganizer"   : False, # Allow resources to be Organizers
+        }
+    },
+
+    #
     # Notifications
     #
     "Notifications" : {

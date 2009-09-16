@@ -401,7 +401,7 @@ def processCancel(request, principal, inbox, calendar, child):
                     log.info("Deleted calendar component %s after cancellations from iTIP message in %s." % (calmatch, calURL))
                 else:
                     # Update the existing calendar object
-                    newchild = yield writeResource(request, calURL, updatecal, calmatch, existing_calendar)
+                    yield writeResource(request, calURL, updatecal, calmatch, existing_calendar)
                     log.info("Updated calendar component %s with cancellations from iTIP message in %s." % (calmatch, calURL))
                 processed = "processed"
             else:

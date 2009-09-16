@@ -64,7 +64,8 @@ from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.index import Index, IndexSchedule
 from twistedcaldav.resource import CalDAVResource, isCalendarCollectionResource, isPseudoCalendarCollectionResource
-from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
+from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource,\
+    IScheduleInboxResource
 from twistedcaldav.dropbox import DropBoxHomeResource, DropBoxCollectionResource
 from twistedcaldav.directory.calendar import uidsResourceName
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
@@ -862,6 +863,51 @@ class ScheduleOutboxFile (ScheduleOutboxResource, ScheduleFile):
 
     def __repr__(self):
         return "<%s (calendar outbox collection): %s>" % (self.__class__.__name__, self.fp.path)
+
+class IScheduleInboxFile (IScheduleInboxResource, CalDAVFile):
+    """
+    Server-to-server scheduling inbox resource.
+    """
+    def __init__(self, path, parent):
+        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
+        IScheduleInboxResource.__init__(self, parent)
+
+    def __repr__(self):
+        return "<%s (server-to-server inbox resource): %s>" % (self.__class__.__name__, self.fp.path)
+
+    def isCollection(self):
+        return False
+
+    def createSimilarFile(self, path):
+        if path == self.fp.path:
+            return self
+        else:
+            return responsecode.NOT_FOUND
+
+    def http_PUT        (self, request): return responsecode.FORBIDDEN
+    def http_COPY       (self, request): return responsecode.FORBIDDEN
+    def http_MOVE       (self, request): return responsecode.FORBIDDEN
+    def http_DELETE     (self, request): return responsecode.FORBIDDEN
+    def http_MKCOL      (self, request): return responsecode.FORBIDDEN
+
+    def http_MKCALENDAR(self, request):
+        return ErrorResponse(
+            responsecode.FORBIDDEN,
+            (caldav_namespace, "calendar-collection-location-ok")
+        )
+
+    def etag(self):
+        return None
+
+    def checkPreconditions(self, request):
+        return None
+
+    ##
+    # ACL
+    ##
+
+    def supportedPrivileges(self, request):
+        return succeed(schedulePrivilegeSet)
 
 class DropBoxHomeFile (AutoProvisioningFileMixIn, DropBoxHomeResource, CalDAVFile):
     def __init__(self, path, parent):
