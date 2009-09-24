@@ -714,7 +714,9 @@ class CalDAVServiceMaker(object):
         # If inheriting file descriptors from the master, use those to handle
         # requests instead of opening ports.
 
-        if config.InheritFDs or config.InheritSSLFDs:
+        if (config.EnableConnectionInheriting and
+           (config.InheritFDs or config.InheritSSLFDs)):
+
             for fd in config.InheritFDs:
                 fd = int(fd)
                 inheritedService = InheritTCPServer(

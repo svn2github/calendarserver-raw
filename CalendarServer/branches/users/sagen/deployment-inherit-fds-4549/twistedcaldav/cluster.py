@@ -112,6 +112,7 @@ class TwistdSlaveProcess(object):
              '-o', 'BindAddresses=%s' % (','.join(self.interfaces),),
              '-o', 'PIDFile=None',
              '-o', 'ErrorLogFile=None',
+             '-o', 'LogID=%s' % (self.id,),
              '-o', 'MultiProcess/ProcessCount=%d' % (
                     config.MultiProcess['ProcessCount'],)])
 
@@ -294,9 +295,8 @@ def makeService_Combined(self, options):
         config.MultiProcess['LoadBalancer']['Enabled'] = False
         bindAddress = config.BindAddresses
 
-    elif not config.MultiProcess['LoadBalancer']['Enabled']:
-        # We are multiprocess but not using load balancer, open the socket(s)
-        # to be inherited by the slaves
+    elif config.EnableConnectionInheriting:
+        # Open the socket(s) to be inherited by the slaves
 
         if not config.BindAddresses:
             config.BindAddresses = [""]
