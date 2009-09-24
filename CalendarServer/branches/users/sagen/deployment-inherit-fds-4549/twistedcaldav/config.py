@@ -100,6 +100,8 @@ defaultConfig = {
     "BindAddresses": [],   # List of IP addresses to bind to [empty = all]
     "BindHTTPPorts": [],   # List of port numbers to bind to for HTTP [empty = same as "Port"]
     "BindSSLPorts" : [],   # List of port numbers to bind to for SSL [empty = same as "SSLPort"]
+    "InheritFDs"   : [],   # File descriptors to inherit for HTTP requests (empty = don't inherit)
+    "InheritSSLFDs": [],   # File descriptors to inherit for HTTPS requests (empty = don't inherit)
 
     #
     # Data store
