@@ -82,6 +82,20 @@ augmentDefaultParams = {
     "twistedcaldav.directory.augment.AugmentSqliteDB": {
         "dbpath": "/etc/caldavd/augments.sqlite",
     },
+    "twistedcaldav.directory.augment.AugmentPostgreSQLDB": {
+        "host": "localhost",
+        "database": "augments",
+    },
+}
+
+proxyDBDefaultParams = {
+    "twistedcaldav.directory.calendaruserproxy.ProxySqliteDB": {
+        "dbpath": "/etc/caldavd/proxies.sqlite",
+    },
+    "twistedcaldav.directory.calendaruserproxy.ProxyPostgreSQLDB": {
+        "host": "localhost",
+        "database": "proxies",
+    },
 }
 
 
@@ -140,11 +154,13 @@ defaultConfig = {
     },
 
     #
-    # Proxy loader
+    # Proxies
     #
-    #    Allows for initialization of the proxy database from an XML file.
-    #
-    "ProxyLoadFromFile": "",
+    "ProxyDBService": {
+        "type": "twistedcaldav.directory.calendaruserproxy.ProxySqliteDB",
+        "params": proxyDBDefaultParams["twistedcaldav.directory.calendaruserproxy.ProxySqliteDB"],
+    },
+    "ProxyLoadFromFile": "",    # Allows for initialization of the proxy database from an XML file
 
     #
     # Special principals
@@ -474,6 +490,12 @@ class Config (object):
                 if param not in augmentDefaultParams[self._data.AugmentService.type]:
                     log.warn("Parameter %s is not supported by service %s" % (param, self._data.AugmentService.type))
                     del self._data.AugmentService.params[param]
+
+        if self._data.ProxyDBService.type in proxyDBDefaultParams:
+            for param in tuple(self._data.ProxyDBService.params):
+                if param not in proxyDBDefaultParams[self._data.ProxyDBService.type]:
+                    log.warn("Parameter %s is not supported by service %s" % (param, self._data.ProxyDBService.type))
+                    del self._data.ProxyDBService.params[param]
 
     @staticmethod
     def updateACLs(self, items):

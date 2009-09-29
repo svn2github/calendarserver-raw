@@ -28,7 +28,7 @@ from twistedcaldav.directory.xmlfile import XMLDirectoryService
 
 import twistedcaldav.test.util
 from twistedcaldav.config import config
-from twistedcaldav.directory import augment
+from twistedcaldav.directory import augment, calendaruserproxy
 from twistedcaldav.directory.calendaruserproxyloader import XMLCalendarUserProxyLoader
 import os
 
@@ -43,6 +43,7 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
 
         self.directoryService = XMLDirectoryService(xmlFile=xmlFile)
         augment.AugmentService = augment.AugmentXMLDB(xmlFiles=(augmentsFile.path,))
+        calendaruserproxy.ProxyDBService = calendaruserproxy.ProxySqliteDB(self.mktemp())
 
         # Set up a principals hierarchy for each service we're testing with
         self.principalRootResources = {}
@@ -381,6 +382,7 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
 
         # Set up the in-memory (non-null) memcacher:
         config.ProcessType = "Single"
+        calendaruserproxy.ProxyDBService._memcacher._memcacheProtocol = None
         principal = self._getPrincipalByShortName(
             DirectoryService.recordType_users, "wsanchez")
         db = principal._calendar_user_proxy_index()

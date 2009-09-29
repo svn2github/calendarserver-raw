@@ -46,7 +46,7 @@ from twistedcaldav.cluster import makeService_Combined, makeService_Master
 from twistedcaldav.config import config, parseConfig, defaultConfig, ConfigurationError
 from twistedcaldav.root import RootResource
 from twistedcaldav.resource import CalDAVResource
-from twistedcaldav.directory import augment
+from twistedcaldav.directory import augment, calendaruserproxy
 from twistedcaldav.directory.calendaruserproxyloader import XMLCalendarUserProxyLoader
 from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
@@ -464,6 +464,19 @@ class CalDAVServiceMaker(object):
             raise
 
         #
+        # Setup the ProxyDB Service
+        #
+        proxydbClass = namedClass(config.ProxyDBService.type)
+
+        log.info("Configuring proxydb service of type: %s" % (proxydbClass,))
+
+        try:
+            calendaruserproxy.ProxyDBService = proxydbClass(**config.ProxyDBService.params)
+        except IOError, e:
+            log.error("Could not start proxydb service")
+            raise
+
+        #
         # Setup the Directory
         #
         directories = []
@@ -506,7 +519,7 @@ class CalDAVServiceMaker(object):
                 loader = XMLCalendarUserProxyLoader(config.ProxyLoadFromFile)
                 return loader.updateProxyDB()
             
-            reactor.addSystemEventTrigger("before", "startup", _doProxyUpdate)
+            reactor.addSystemEventTrigger("after", "startup", _doProxyUpdate)
 
         #
         # Configure Memcached Client Pool
