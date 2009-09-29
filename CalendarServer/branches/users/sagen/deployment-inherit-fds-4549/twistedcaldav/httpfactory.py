@@ -18,7 +18,7 @@ from random import randint
 
 from twisted.internet import protocol
 from twisted.python import log
-from twisted.web2.channel.http import HTTPFactory
+from twisted.web2.channel.http import HTTPFactory, HTTPChannel
 
 from twistedcaldav.config import config
 
@@ -61,3 +61,21 @@ class HTTP503LoggingFactory(HTTPFactory):
         for arg,value in self.protocolArgs.iteritems():
             setattr(p, arg, value)
         return p
+
+
+class LimitingHTTPChannel(HTTPChannel):
+
+    def connectionMade(self):
+        HTTPChannel.connectionMade(self)
+        if self.factory.outstandingRequests >= self.factory.maxRequests:
+            log.msg("Overload")
+            self.factory.myServer.myPort.stopReading()
+
+    def connectionLost(self, reason):
+        HTTPChannel.connectionLost(self, reason)
+        if self.factory.outstandingRequests < self.factory.maxRequests:
+            self.factory.myServer.myPort.startReading()
+
+class LimitingHTTPFactory(HTTPFactory):
+    protocol = LimitingHTTPChannel
+

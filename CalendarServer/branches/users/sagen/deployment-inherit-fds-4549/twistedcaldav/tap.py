@@ -51,7 +51,7 @@ from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.aggregate import AggregateDirectoryService
 from twistedcaldav.directory.sudo import SudoDirectoryService
-from twistedcaldav.httpfactory import HTTP503LoggingFactory
+from twistedcaldav.httpfactory import HTTP503LoggingFactory, LimitingHTTPFactory
 from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.static import TimezoneServiceFile
 from twistedcaldav.timezones import TimezoneCache
@@ -456,18 +456,28 @@ class InheritedSSLPort(InheritedPort):
 
 class InheritTCPServer(internet.TCPServer):
 
+    def __init__(self, *args, **kwargs):
+        internet.TCPServer.__init__(self, *args, **kwargs)
+        self.args[1].myServer = self
+
     def _getPort(self):
         from twisted.internet import reactor
         port = InheritedPort(self.args[0], self.args[1], reactor)
         port.startListening()
+        self.myPort = port
         return port
 
 class InheritSSLServer(internet.SSLServer):
+
+    def __init__(self, *args, **kwargs):
+        internet.SSLServer.__init__(self, *args, **kwargs)
+        self.args[1].myServer = self
 
     def _getPort(self):
         from twisted.internet import reactor
         port = InheritedSSLPort(self.args[0], self.args[1], self.args[2], reactor)
         port.startListening()
+        self.myPort = port
         return port
 
 class CalDAVServiceMaker(object):
@@ -700,22 +710,17 @@ class CalDAVServiceMaker(object):
 
         site = Site(realRoot)
 
-        channel = HTTP503LoggingFactory(
-            site,
-            maxRequests=config.MaxRequests,
-            betweenRequestsTimeOut=config.IdleConnectionTimeOut)
-
-        def updateChannel(config, items):
-            channel.maxRequests = config.MaxRequests
-
-        config.addHook(updateChannel)
-
 
         # If inheriting file descriptors from the master, use those to handle
         # requests instead of opening ports.
 
         if (config.EnableConnectionInheriting and
            (config.InheritFDs or config.InheritSSLFDs)):
+
+            channel = LimitingHTTPFactory(
+                site,
+                maxRequests=config.MaxRequests,
+                betweenRequestsTimeOut=config.IdleConnectionTimeOut)
 
             for fd in config.InheritFDs:
                 fd = int(fd)
@@ -747,6 +752,11 @@ class CalDAVServiceMaker(object):
 
 
         else: # Not inheriting, therefore open our own:
+
+            channel = HTTP503LoggingFactory(
+                site,
+                maxRequests=config.MaxRequests,
+                betweenRequestsTimeOut=config.IdleConnectionTimeOut)
 
             if not config.BindAddresses:
                 config.BindAddresses = [""]
@@ -798,6 +808,11 @@ class CalDAVServiceMaker(object):
                             backlog=config.ListenBacklog
                         )
                         httpsService.setServiceParent(service)
+
+        def updateChannel(config, items):
+            channel.maxRequests = config.MaxRequests
+
+        config.addHook(updateChannel)
 
 
         # Change log level back to what it was before
