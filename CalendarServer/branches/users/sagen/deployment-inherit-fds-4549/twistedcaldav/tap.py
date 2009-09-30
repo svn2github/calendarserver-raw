@@ -437,8 +437,13 @@ class InheritedPort(tcp.Port):
         self.factory.doStart()
         self.connected = 1
         self.fileno = self.socket.fileno
-        self.numberAccepts = 100
+        self.numberAccepts = self.factory.maxRequests
         self.startReading()
+
+    def doRead(self):
+        self.numberAccepts = self.factory.maxRequests - self.factory.outstandingRequests
+        tcp.Port.doRead(self)
+
 
 class InheritedSSLPort(InheritedPort):
     _socketShutdownMethod = 'sock_shutdown'
