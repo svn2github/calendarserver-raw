@@ -68,14 +68,26 @@ class LimitingHTTPChannel(HTTPChannel):
     def connectionMade(self):
         HTTPChannel.connectionMade(self)
         if self.factory.outstandingRequests >= self.factory.maxRequests:
-            log.msg("Overload")
+            # log.msg("Overloaded")
             self.factory.myServer.myPort.stopReading()
 
     def connectionLost(self, reason):
         HTTPChannel.connectionLost(self, reason)
-        if self.factory.outstandingRequests < self.factory.maxRequests:
+        if self.factory.outstandingRequests < self.factory.resumeRequests:
+            # log.msg("Resuming")
             self.factory.myServer.myPort.startReading()
 
 class LimitingHTTPFactory(HTTPFactory):
     protocol = LimitingHTTPChannel
 
+    def __init__(self, requestFactory, maxRequests=600, resumeRequests=550,
+        **kwargs):
+        HTTPFactory.__init__(self, requestFactory, maxRequests, **kwargs)
+        self.resumeRequests = resumeRequests
+
+    def buildProtocol(self, addr):
+
+        p = protocol.ServerFactory.buildProtocol(self, addr)
+        for arg, value in self.protocolArgs.iteritems():
+            setattr(p, arg, value)
+        return p

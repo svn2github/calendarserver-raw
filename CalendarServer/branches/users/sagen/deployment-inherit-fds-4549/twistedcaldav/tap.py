@@ -720,6 +720,7 @@ class CalDAVServiceMaker(object):
             channel = LimitingHTTPFactory(
                 site,
                 maxRequests=config.MaxRequests,
+                resumeRequests=config.ResumeRequests,
                 betweenRequestsTimeOut=config.IdleConnectionTimeOut)
 
             for fd in config.InheritFDs:

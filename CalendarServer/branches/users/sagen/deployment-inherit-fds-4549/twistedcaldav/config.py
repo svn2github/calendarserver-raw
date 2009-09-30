@@ -263,6 +263,7 @@ defaultConfig = {
 
     # Set the maximum number of outstanding requests to this server.
     "MaxRequests": 600,
+    "ResumeRequests": 550,
 
     "ListenBacklog": 50,
     "IdleConnectionTimeOut": 15,
