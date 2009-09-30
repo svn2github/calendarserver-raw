@@ -817,6 +817,7 @@ class CalDAVServiceMaker(object):
 
         def updateChannel(config, items):
             channel.maxRequests = config.MaxRequests
+            channel.requestsRequests = config.ResumeRequests
 
         config.addHook(updateChannel)
 
