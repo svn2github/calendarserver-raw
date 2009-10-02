@@ -1105,7 +1105,6 @@ class OpenDirectoryRecord(DirectoryRecord):
 
     def getMemcacheKey(self, shortName):
         key = "auth-%s" % (md5(shortName).hexdigest(),)
-        print shortName, key
         return key
 
     def verifyCredentials(self, credentials):
@@ -1130,7 +1129,7 @@ class OpenDirectoryRecord(DirectoryRecord):
             try:
                 if opendirectory.authenticateUserBasic(self.service.directory, self.nodeName, self.shortName, credentials.password):
                     # Cache the password to avoid future DS queries
-                    self.password = md5(credentials.password).hexdigest()
+                    self.password = credPassword
                     key = self.getMemcacheKey(self.shortName)
                     self.service._getMemcacheClient().set(key, self.password, time=self.service.cacheTimeout*60)
                     return True
