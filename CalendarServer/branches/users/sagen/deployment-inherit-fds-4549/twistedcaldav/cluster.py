@@ -298,6 +298,8 @@ def makeService_Combined(self, options):
     elif config.EnableConnectionInheriting:
         # Open the socket(s) to be inherited by the slaves
 
+        config.MultiProcess['LoadBalancer']['Enabled'] = False
+
         if not config.BindAddresses:
             config.BindAddresses = [""]
 
@@ -337,6 +339,9 @@ def makeService_Combined(self, options):
             for portNum in config.BindSSLPorts:
                 sock = _openSocket(bindAddress, int(portNum))
                 inheritSSLFDs.append(sock.fileno())
+
+    if not config.MultiProcess['LoadBalancer']['Enabled']:
+        bindAddress = config.BindAddresses
 
     for p in xrange(0, config.MultiProcess['ProcessCount']):
         if config.MultiProcess['ProcessCount'] > 1:

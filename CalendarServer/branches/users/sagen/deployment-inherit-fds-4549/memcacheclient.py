@@ -550,6 +550,19 @@ class Client(local):
 
 
         """
+        # Short-circuit:
+        key_list = list(key_iterable)
+        server, ignored = self._get_server(key_list[0])
+        server_keys = {
+            server : key_list,
+        }
+        prefixed_to_orig_key = { }
+        for key in key_list:
+            prefixed_to_orig_key[key] = key
+        return (server_keys, prefixed_to_orig_key)
+
+
+
         # Check it just once ...
         key_extra_len=len(key_prefix)
         if key_prefix:
