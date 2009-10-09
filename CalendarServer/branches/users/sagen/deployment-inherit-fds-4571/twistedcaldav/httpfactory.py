@@ -80,9 +80,10 @@ class LimitingHTTPChannel(HTTPChannel):
 class LimitingHTTPFactory(HTTPFactory):
     protocol = LimitingHTTPChannel
 
-    def __init__(self, requestFactory, maxRequests=600, resumeRequests=550,
+    def __init__(self, requestFactory, maxRequests=600, maxAccepts=100, resumeRequests=550,
         **kwargs):
         HTTPFactory.__init__(self, requestFactory, maxRequests, **kwargs)
+        self.maxAccepts = maxAccepts
         self.resumeRequests = resumeRequests
 
     def buildProtocol(self, addr):

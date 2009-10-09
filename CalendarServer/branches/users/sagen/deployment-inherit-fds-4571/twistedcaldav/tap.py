@@ -441,7 +441,7 @@ class InheritedPort(tcp.Port):
         self.startReading()
 
     def doRead(self):
-        self.numberAccepts = self.factory.maxRequests - self.factory.outstandingRequests
+        self.numberAccepts = min(self.factory.maxRequests - self.factory.outstandingRequests, self.factory.maxAccepts)
         tcp.Port.doRead(self)
 
 
@@ -725,6 +725,7 @@ class CalDAVServiceMaker(object):
             channel = LimitingHTTPFactory(
                 site,
                 maxRequests=config.MaxRequests,
+                maxAccepts=config.MaxAccepts,
                 resumeRequests=config.ResumeRequests,
                 betweenRequestsTimeOut=config.IdleConnectionTimeOut)
 
@@ -817,6 +818,7 @@ class CalDAVServiceMaker(object):
 
         def updateChannel(config, items):
             channel.maxRequests = config.MaxRequests
+            channel.maxAccepts = config.MaxAccepts
             channel.requestsRequests = config.ResumeRequests
 
         config.addHook(updateChannel)
