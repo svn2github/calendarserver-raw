@@ -330,7 +330,7 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
                 found.append(p)
                 # Make sure any outstanding deletion timer entries for
                 # existing principals are removed
-                yield self._index()._memcacher.clearDeletionTimer(uid)
+                yield self._index().refreshPrincipal(uid)
             else:
                 missing.append(uid)
 
@@ -434,7 +434,7 @@ class ProxyDB(AbstractADBAPIDatabase, LoggingMixIn):
     def __init__(self, dbID, dbapiName, dbapiArgs, **kwargs):
         AbstractADBAPIDatabase.__init__(self, dbID, dbapiName, dbapiArgs, True, **kwargs)
         
-        self._memcacher = ProxyDB.ProxyDBMemcacher("proxyDB")
+        self._memcacher = ProxyDB.ProxyDBMemcacher("ProxyDB")
 
     @inlineCallbacks
     def setGroupMembers(self, principalUID, members):
@@ -559,6 +559,16 @@ class ProxyDB(AbstractADBAPIDatabase, LoggingMixIn):
         yield self._delete_from_db_member(principalUID)
         yield self._memcacher.deleteMembership(principalUID)
         yield self._memcacher.clearDeletionTimer(principalUID)
+
+    def refreshPrincipal(self, principalUID):
+        """
+        Bring back to life a principal that was previously deleted.
+
+        @param principalUID:
+        @type principalUID:
+        """
+        
+        return self._memcacher.clearDeletionTimer(principalUID)
 
     @inlineCallbacks
     def getMembers(self, principalUID):

@@ -525,12 +525,10 @@ class CalDAVServiceMaker(object):
         # Configure Memcached Client Pool
         #
         if config.Memcached["ClientEnabled"]:
-            memcachepool.installPool(
-                IPv4Address(
-                    'TCP',
-                    config.Memcached["BindAddress"],
-                    config.Memcached["Port"]),
-                config.Memcached["MaxClients"])
+            memcachepool.installPools(
+                config.Memcached.Pools,
+                config.Memcached.MaxClients,
+            )
 
         #
         # Configure NotificationClient
