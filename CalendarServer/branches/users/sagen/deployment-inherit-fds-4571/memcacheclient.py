@@ -550,6 +550,8 @@ class Client(local):
 
 
         """
+
+        """
         # Short-circuit:
         key_list = list(key_iterable)
         server, ignored = self._get_server(key_list[0])
@@ -560,6 +562,7 @@ class Client(local):
         for key in key_list:
             prefixed_to_orig_key[key] = key
         return (server_keys, prefixed_to_orig_key)
+        """
 
 
 
@@ -1287,6 +1290,9 @@ def check_key(key, key_extra_len=0):
         Is not a string (Raises MemcachedKeyError)
         Is None (Raises MemcachedKeyError)
     """
+
+    return #  Short circuit
+
     if type(key) == types.TupleType: key = key[1]
     if not key:
         raise Client.MemcachedKeyNoneError, ("Key is None")
