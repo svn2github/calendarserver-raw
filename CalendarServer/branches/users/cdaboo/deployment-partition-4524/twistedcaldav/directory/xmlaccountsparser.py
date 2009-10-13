@@ -186,6 +186,7 @@ class XMLAccountRecord (object):
         result.guid = guid
         result.password = password
         result.name = name
+        result.emailAddresses = emailAddresses
         result.members = self.members
         return result
 
