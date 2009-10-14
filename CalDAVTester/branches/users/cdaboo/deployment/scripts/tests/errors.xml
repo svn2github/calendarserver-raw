@@ -1184,7 +1184,7 @@
 				</verify>
 			</request>
 		</test>
-		<test name='3'>
+		<test name='3' ignore='yes'>
 			<description>free-busy with too many results</description>
 			<request print-response='no'>
 				<method>REPORT</method>
