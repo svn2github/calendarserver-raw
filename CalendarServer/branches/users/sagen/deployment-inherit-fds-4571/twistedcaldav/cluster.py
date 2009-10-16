@@ -23,11 +23,13 @@ import time
 from twisted.runner import procmon
 from twisted.application import internet, service
 from twisted.internet import reactor, process
+from twisted.python.reflect import namedClass
 
 from twistedcaldav.accesslog import AMPLoggingFactory, RotatingFileAccessLoggingObserver
 from twistedcaldav.config import config, ConfigurationError
 from twistedcaldav.util import getNCPU
 from twistedcaldav.log import Logger
+from twistedcaldav.directory.appleopendirectory import OpenDirectoryService
 
 log = Logger()
 
@@ -231,7 +233,15 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
             childFDs=childFDs)
 
 def makeService_Combined(self, options):
+
+
+    # Refresh directory information on behalf of the child processes
+    directoryClass = namedClass(config.DirectoryService["type"])
+    directory = directoryClass(dosetup=False, **config.DirectoryService["params"])
+    directory.refresh()
+
     s = service.MultiService()
+
     monitor = DelayedStartupProcessMonitor()
     monitor.setServiceParent(s)
     s.processMonitor = monitor
