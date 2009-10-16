@@ -233,7 +233,7 @@ class DirectoryRecord(LoggingMixIn):
         return False
 
     def locallyHosted(self):
-        return not self.hostedAt or not config.EnablePartitions or self.hostedAt == config.ServerPartitionID
+        return not self.hostedAt or not config.Partitioning.Enabled or self.hostedAt == config.Partitioning.ServerPartitionID
     
     def hostedURL(self):
         return partitions.getPartitionURL(self.hostedAt)
