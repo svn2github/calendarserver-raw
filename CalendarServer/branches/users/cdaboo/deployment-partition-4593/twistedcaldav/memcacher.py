@@ -82,6 +82,7 @@ class Memcacher(LoggingMixIn, CachePoolUserMixIn):
         @type no_invalidation: C{bool}
         """
         self._memcacheProtocol = None
+        self._cachePoolHandle = namespace
         self._namespace = namespace
         self._pickle = pickle
         self._noInvalidation = no_invalidation

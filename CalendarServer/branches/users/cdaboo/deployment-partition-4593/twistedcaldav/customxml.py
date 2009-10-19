@@ -315,6 +315,13 @@ class PubSubXMPPServerProperty (davxml.WebDAVTextElement):
     protected = True
     hidden = True
 
+class IScheduleInbox (davxml.WebDAVEmptyElement):
+    """
+    Denotes the resourcetype of a iSchedule Inbox.
+    (CalDAV-s2s-xx, section x.x.x)
+    """
+    namespace = calendarserver_namespace
+    name = "ischedule-inbox"
 
 
 
@@ -327,3 +334,4 @@ davxml.ResourceType.dropbox = davxml.ResourceType(davxml.Collection(), DropBox()
 davxml.ResourceType.calendarproxyread = davxml.ResourceType(davxml.Principal(), davxml.Collection(), CalendarProxyRead())
 davxml.ResourceType.calendarproxywrite = davxml.ResourceType(davxml.Principal(), davxml.Collection(), CalendarProxyWrite())
 davxml.ResourceType.timezones = davxml.ResourceType(Timezones())
+davxml.ResourceType.ischeduleinbox = davxml.ResourceType(IScheduleInbox())

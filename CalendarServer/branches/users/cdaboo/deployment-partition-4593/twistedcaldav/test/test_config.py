@@ -158,7 +158,6 @@ class ConfigTests(TestCase):
         self.assertEquals(config.DirectoryService.type, "twistedcaldav.directory.appleopendirectory.OpenDirectoryService")
         self.assertNotIn("xmlFile", config.DirectoryService.params)
         self.assertEquals(config.DirectoryService.params.node, "/Search")
-        self.assertEquals(config.DirectoryService.params.requireComputerRecord, True)
         self.assertEquals(config.DirectoryService.params.cacheTimeout, 30)
 
     def testDirectoryService_newParam(self):
@@ -167,13 +166,11 @@ class ConfigTests(TestCase):
 
         config.update({"DirectoryService": {"type": "twistedcaldav.directory.appleopendirectory.OpenDirectoryService"}})
         config.update({"DirectoryService": {"params": {
-            "requireComputerRecord": False,
             "cacheTimeout": 12345,
         }}})
 
         self.assertEquals(config.DirectoryService.type, "twistedcaldav.directory.appleopendirectory.OpenDirectoryService")
         self.assertEquals(config.DirectoryService.params.node, "/Search")
-        self.assertEquals(config.DirectoryService.params.requireComputerRecord, False)
         self.assertEquals(config.DirectoryService.params.cacheTimeout, 12345)
 
     def testDirectoryService_unknownType(self):

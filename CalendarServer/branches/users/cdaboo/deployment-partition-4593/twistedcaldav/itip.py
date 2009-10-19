@@ -951,3 +951,26 @@ def compareSyncInfo(info1, info2):
         return -1
 
     return 0
+
+class iTIPRequestStatus(object):
+    """
+    String constants for various iTIP status codes we use.
+    """
+    
+    MESSAGE_PENDING_CODE    = "1.0"
+    MESSAGE_SENT_CODE       = "1.1"
+    MESSAGE_DELIVERED_CODE  = "1.2"
+
+    MESSAGE_PENDING         = MESSAGE_PENDING_CODE + ";Scheduling message send is pending"
+    MESSAGE_SENT            = MESSAGE_SENT_CODE + ";Scheduling message has been sent"
+    MESSAGE_DELIVERED       = MESSAGE_DELIVERED_CODE + ";Scheduling message has been delivered"
+    
+    SUCCESS                 = "2.0;Success"
+
+    INVALID_CALENDAR_USER   = "3.7;Invalid Calendar User"
+    NO_AUTHORITY            = "3.8;No authority"
+
+    BAD_REQUEST             = "5.0;Service cannot handle request"
+    SERVICE_UNAVAILABLE     = "5.1;Service unavailable"
+    INVALID_SERVICE         = "5.2;Invalid calendar service"
+    NO_USER_SUPPORT         = "5.3;No scheduling support for user"

@@ -7,13 +7,11 @@ Test the memcache client protocol.
 
 from twistedcaldav.memcache import MemCacheProtocol, NoSuchCommand
 from twistedcaldav.memcache import ClientError, ServerError
+from twistedcaldav.test.util import TestCase
 
-from twisted.trial.unittest import TestCase
 from twisted.test.proto_helpers import StringTransportWithDisconnection
 from twisted.internet.task import Clock
 from twisted.internet.defer import Deferred, gatherResults, TimeoutError
-
-
 
 class MemCacheTestCase(TestCase):
     """
@@ -25,6 +23,7 @@ class MemCacheTestCase(TestCase):
         Create a memcache client, connect it to a string protocol, and make it
         use a deterministic clock.
         """
+        TestCase.setUp(self)
         self.proto = MemCacheProtocol()
         self.clock = Clock()
         self.proto.callLater = self.clock.callLater

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <!--
-Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
  -->
 
-<!DOCTYPE accounts SYSTEM "../../../conf/accounts.dtd">
+<!DOCTYPE accounts SYSTEM "../../../conf/auth/accounts.dtd">
 
 <accounts realm="Test">
   <user>
@@ -30,36 +30,45 @@ limitations under the License.
     <guid>6423F94A-6B76-4A3A-815B-D52CFD77935D</guid>
     <password>zehcnasw</password>
     <name>Wilfredo Sanchez</name>
-    <cuaddr>mailto:wsanchez@example.com</cuaddr>
+    <email-address>wsanchez@example.com</email-address>
   </user>
   <user>
     <uid>cdaboo</uid>
     <guid>5A985493-EE2C-4665-94CF-4DFEA3A89500</guid>
     <password>oobadc</password>
     <name>Cyrus Daboo</name>
-    <cuaddr>mailto:cdaboo@example.com</cuaddr>
+    <email-address>cdaboo@example.com</email-address>
   </user>
   <user>
     <uid>lecroy</uid>
     <guid>8B4288F6-CC82-491D-8EF9-642EF4F3E7D0</guid>
     <password>yorcel</password>
     <name>Chris Lecroy</name>
-    <cuaddr>mailto:lecroy@example.com</cuaddr>
+    <email-address>lecroy@example.com</email-address>
   </user>
   <user>
     <uid>dreid</uid>
     <guid>5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1</guid>
     <password>dierd</password>
     <name>David Reid</name>
-    <cuaddr>mailto:dreid@example.com</cuaddr>
+    <email-address>dreid@example.com</email-address>
+  </user>
+  <user>
+    <uid>nocalendar</uid>
+    <guid>543D28BA-F74F-4D5F-9243-B3E3A61171E5</guid>
+    <password>radnelacon</password>
+    <name>No Calendar</name>
+    <email-address>nocalendar@example.com</email-address>
   </user>
   <user repeat="2">
     <uid>user%02d</uid>
+    <guid>user%02d</guid>
     <password>%02duser</password>
     <name>User %02d</name>
   </user>
   <group>
     <uid>managers</uid>
+    <guid>9FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1</guid>
     <password>managers</password>
     <name>Managers</name>
     <members>
@@ -68,6 +77,7 @@ limitations under the License.
   </group>
   <group>
     <uid>admin</uid>
+    <guid>admin</guid>
     <password>admin</password>
     <name>Administrators</name>
     <members>
@@ -76,6 +86,7 @@ limitations under the License.
   </group>
   <group>
     <uid>grunts</uid>
+    <guid>grunts</guid>
     <password>grunts</password>
     <name>We do all the work</name>
     <members>
@@ -86,6 +97,7 @@ limitations under the License.
   </group>
   <group>
     <uid>right_coast</uid>
+    <guid>right_coast</guid>
     <password>right_coast</password>
     <name>East Coast</name>
     <members>
@@ -94,6 +106,7 @@ limitations under the License.
   </group>
   <group>
     <uid>left_coast</uid>
+    <guid>left_coast</guid>
     <password>left_coast</password>
     <name>West Coast</name>
     <members>
@@ -104,6 +117,7 @@ limitations under the License.
   </group>
   <group>
     <uid>both_coasts</uid>
+    <guid>both_coasts</guid>
     <password>both_coasts</password>
     <name>Both Coasts</name>
     <members>
@@ -113,6 +127,7 @@ limitations under the License.
   </group>
   <group>
     <uid>recursive1_coasts</uid>
+    <guid>recursive1_coasts</guid>
     <password>recursive1_coasts</password>
     <name>Recursive1 Coasts</name>
     <members>
@@ -122,6 +137,7 @@ limitations under the License.
   </group>
   <group>
     <uid>recursive2_coasts</uid>
+    <guid>recursive2_coasts</guid>
     <password>recursive2_coasts</password>
     <name>Recursive2 Coasts</name>
     <members>
@@ -131,74 +147,61 @@ limitations under the License.
   </group>
   <group>
     <uid>non_calendar_group</uid>
+    <guid>non_calendar_group</guid>
     <password>non_calendar_group</password>
     <name>Non-calendar group</name>
     <members>
       <member>cdaboo</member>
       <member>lecroy</member>
     </members>
-    <disable-calendar/>
   </group>
   <location>
     <uid>mercury</uid>
+    <guid>mercury</guid>
     <password>mercury</password>
     <name>Mecury Seven</name>
-    <cuaddr>mailto:mercury@example.com</cuaddr>
-    <proxies>
-      <member type="groups">left_coast</member>
-    </proxies>
+    <email-address>mercury@example.com</email-address>
   </location>
   <location>
     <uid>gemini</uid>
+    <guid>gemini</guid>
     <password>gemini</password>
     <name>Gemini Twelve</name>
-    <cuaddr>mailto:gemini@example.com</cuaddr>
-    <auto-schedule/>
-    <proxies>
-      <member>wsanchez</member>
-    </proxies>
+    <email-address>gemini@example.com</email-address>
   </location>
   <location>
     <uid>apollo</uid>
+    <guid>apollo</guid>
     <password>apollo</password>
     <name>Apollo Eleven</name>
-    <cuaddr>mailto:apollo@example.com</cuaddr>
-    <proxies>
-      <member type="groups">both_coasts</member>
-    </proxies>
+    <email-address>apollo@example.com</email-address>
   </location>
   <location>
     <uid>orion</uid>
+    <guid>orion</guid>
     <password>orion</password>
     <name>Orion</name>
-    <cuaddr>mailto:orion@example.com</cuaddr>
-    <proxies>
-      <member type="groups">recursive1_coasts</member>
-    </proxies>
+    <email-address>orion@example.com</email-address>
   </location>
   <resource>
     <uid>transporter</uid>
+    <guid>transporter</guid>
     <password>transporter</password>
     <name>Mass Transporter</name>
-    <cuaddr>mailto:transporter@example.com</cuaddr>
+    <email-address>transporter@example.com</email-address>
   </resource>
   <resource>
     <uid>ftlcpu</uid>
+    <guid>ftlcpu</guid>
     <password>ftlcpu</password>
     <name>Faster-Than-Light Microprocessor</name>
-    <cuaddr>mailto:ftlcpu@example.com</cuaddr>
+    <email-address>ftlcpu@example.com</email-address>
   </resource>
   <resource>
     <uid>non_calendar_proxy</uid>
     <guid>non_calendar_proxy</guid>
     <password>non_calendar_proxy</password>
     <name>Non-calendar proxy</name>
-    <cuaddr>mailto:non_calendar_proxy@example.com</cuaddr>
-    <proxies>
-      <member type="groups">non_calendar_group</member>
-    </proxies>
-    <read-only-proxies>
-      <member type="groups">recursive2_coasts</member>
-    </read-only-proxies>
+    <email-address>non_calendar_proxy@example.com</email-address>
   </resource>
 </accounts>
