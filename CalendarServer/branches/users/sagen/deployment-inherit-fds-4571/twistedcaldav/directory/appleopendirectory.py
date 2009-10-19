@@ -131,7 +131,7 @@ class OpenDirectoryService(DirectoryService):
                 cacheDir.createDirectory()
 
             for recordType in self.recordTypes():
-                self.log_info("Master fetching %s from directory" % (recordType,))
+                self.log_debug("Master fetching %s from directory" % (recordType,))
                 cacheFile = cacheDir.child(recordType)
                 try:
                     results = self._queryDirectory(recordType)
@@ -166,7 +166,7 @@ class OpenDirectoryService(DirectoryService):
                     self.log_info("Saving cache file for %s (%d items)" % (recordType, numNewResults))
                     cacheFile.setContent(pickled)
                 else:
-                    self.log_info("%s info hasn't changed" % (recordType,))
+                    self.log_debug("%s info hasn't changed" % (recordType,))
 
         def _refreshInThread(self):
             return deferToThread(_refresh, self)
@@ -663,7 +663,7 @@ class OpenDirectoryService(DirectoryService):
             try:
                 storage = self._records[recordType]
                 if not forceUpdate and (lastModified <= storage["last modified"]):
-                    self.log_info("Directory cache file for %s unchanged" % (recordType,))
+                    self.log_debug("Directory cache file for %s unchanged" % (recordType,))
                     storage["status"] = "new" # mark this as not stale
                     self._delayedCalls.add(callLater(cacheTimeout, rot))
                     return
@@ -671,7 +671,7 @@ class OpenDirectoryService(DirectoryService):
                 # Haven't read the file before
                 pass
 
-            self.log_info("Reloading %s record cache" % (recordType,))
+            self.log_debug("Reloading %s record cache" % (recordType,))
 
             pickled = cacheFile.getContent()
             results = pickle.loads(pickled)
