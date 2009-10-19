@@ -461,6 +461,42 @@ else:
             user3 = self._service.recordWithCalendarUserAddress("mailto:user03@example.com")
             self.assertTrue(user3 is not None)
 
+
+        def test_substantialDecline(self):
+            """
+            Test the "substantial decline" protection logic in the case where an
+            od query returns less than half the results of the previous
+            successful one.
+            """
+
+            self._service.fakerecords = {
+                DirectoryService.recordType_users: [
+                    fakeODRecord("User 01"),
+                    fakeODRecord("User 02"),
+                    fakeODRecord("User 03"),
+                    fakeODRecord("User 04"),
+                    fakeODRecord("User 05"),
+                    fakeODRecord("User 06"),
+                ],
+                DirectoryService.recordType_groups: [],
+                DirectoryService.recordType_resources: [],
+                DirectoryService.recordType_locations: [],
+            }
+            self._service.refresh(loop=False)
+            self._service.reloadCache(DirectoryService.recordType_users, forceUpdate=True)
+            user1 = self._service.recordWithCalendarUserAddress("mailto:user01@example.com")
+            self.assertTrue(user1 is not None)
+
+            # Pretend OD suddenly returned less than half:
+            self._service.fakerecords[DirectoryService.recordType_users] = [
+                    fakeODRecord("User 01"),
+                    fakeODRecord("User 02"),
+            ]
+            self._service.refresh(loop=False)
+            self._service.reloadCache(DirectoryService.recordType_users, forceUpdate=True)
+            user3 = self._service.recordWithCalendarUserAddress("mailto:user03@example.com")
+            self.assertTrue(user3 is not None)
+
 def fakeODRecord(fullName, shortName=None, guid=None, email=None, addLocator=True, members=None):
     if shortName is None:
         shortName = shortNameForFullName(fullName)
