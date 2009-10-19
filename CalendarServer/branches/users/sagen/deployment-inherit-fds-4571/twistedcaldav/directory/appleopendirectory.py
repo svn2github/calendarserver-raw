@@ -133,7 +133,12 @@ class OpenDirectoryService(DirectoryService):
             for recordType in self.recordTypes():
                 self.log_debug("Master fetching %s from directory" % (recordType,))
                 cacheFile = cacheDir.child(recordType)
-                results = self._queryDirectory(recordType)
+                try:
+                    results = self._queryDirectory(recordType)
+                except Exception, e:
+                    self.log_error("Master query for %s failed: %s" % (recordType, e))
+                    continue
+
                 results.sort()
                 pickled = pickle.dumps(results)
                 needsWrite = True
@@ -150,10 +155,10 @@ class OpenDirectoryService(DirectoryService):
         def _refreshInThread(self):
             return deferToThread(_refresh, self)
 
+        _refresh(self)
+
         if loop:
             LoopingCall(_refreshInThread, self).start(self.cacheTimeout * 60)
-        else:
-            _refresh(self)
 
 
 
@@ -635,24 +640,26 @@ class OpenDirectoryService(DirectoryService):
         cacheFile = cacheDir.child(recordType)
         if not cacheFile.exists():
             self.log_error("Directory cache file for %s does not exist: %s" % (recordType, cacheFile.path))
-            return
-        lastModified = cacheFile.getModificationTime()
-        try:
-            storage = self._records[recordType]
-            if not forceUpdate and (lastModified <= storage["last modified"]):
-                self.log_debug("Directory cache file for %s unchanged" % (recordType,))
-                storage["status"] = "new" # mark this as not stale
-                self._delayedCalls.add(callLater(cacheTimeout, rot))
-                return
-        except KeyError:
-            # Haven't read the file before
-            pass
+            results = []
+            lastModified = 0
+        else:
+            lastModified = cacheFile.getModificationTime()
+            try:
+                storage = self._records[recordType]
+                if not forceUpdate and (lastModified <= storage["last modified"]):
+                    self.log_debug("Directory cache file for %s unchanged" % (recordType,))
+                    storage["status"] = "new" # mark this as not stale
+                    self._delayedCalls.add(callLater(cacheTimeout, rot))
+                    return
+            except KeyError:
+                # Haven't read the file before
+                pass
 
-        self.log_info("Reloading %s record cache" % (recordType,))
+            self.log_info("Reloading %s record cache" % (recordType,))
 
-        pickled = cacheFile.getContent()
-        results = pickle.loads(pickled)
-        # results = self._queryDirectory(recordType)
+            pickled = cacheFile.getContent()
+            results = pickle.loads(pickled)
+            # results = self._queryDirectory(recordType)
 
         records = {}
         guids   = {}
