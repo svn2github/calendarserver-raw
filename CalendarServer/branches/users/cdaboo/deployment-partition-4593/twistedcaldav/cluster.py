@@ -343,20 +343,21 @@ def makeService_Combined(self, options):
 
 
     if config.Memcached["ServerEnabled"]:
-        log.msg("Adding memcached service")
+        for name, pool in config.Memcached["Pools"].items():
+            log.msg("Adding memcached service for pool: %s" % (name,))
 
-        memcachedArgv = [
-                config.Memcached["memcached"],
-                '-p', str(config.Memcached["Port"]),
-                '-l', config.Memcached["BindAddress"]]
-
-        if config.Memcached["MaxMemory"] is not 0:
-            memcachedArgv.extend([
-                    '-m', str(config.Memcached["MaxMemory"])])
-
-        memcachedArgv.extend(config.Memcached["Options"])
-
-        monitor.addProcess('memcached', memcachedArgv, env=parentEnv)
+            memcachedArgv = [
+                    config.Memcached["memcached"],
+                    '-p', str(pool["Port"]),
+                    '-l', pool["BindAddress"]]
+    
+            if config.Memcached["MaxMemory"] is not 0:
+                memcachedArgv.extend([
+                        '-m', str(config.Memcached["MaxMemory"])])
+    
+            memcachedArgv.extend(config.Memcached["Options"])
+    
+            monitor.addProcess('memcached-%s' % (name,), memcachedArgv, env=parentEnv)
 
     if (config.Notifications["Enabled"] and
         config.Notifications["InternalNotificationHost"] == "localhost"):
