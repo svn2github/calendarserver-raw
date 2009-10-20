@@ -17,7 +17,7 @@
 # limitations under the License.
 ##
 
-. support/pystuff.sh;
+. support/py.sh;
 
 # Echo the usage for the main 'run' script, then exit with an error.
 usage () {
@@ -103,7 +103,7 @@ conf_read_key ()
 }
 
 # Initialize all the global state required to use this library.
-init_runlib () {
+init_build () {
 
         verbose="";
          do_get="true";
@@ -660,4 +660,4 @@ dependencies () {
 
 
 # Actually do the initialization, once all functions are defined.
-init_runlib;
+init_build;

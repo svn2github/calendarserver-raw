@@ -82,7 +82,7 @@ py_have_module () {
 # Detect which python to use, and store it in the 'python' variable, as well as
 # setting up variables related to version and build configuration.
 
-init_pystuff () {
+init_py () {
   python="$(detect_python_version)";
 
   if [ -z "${python:-}" ]; then
@@ -99,4 +99,4 @@ init_pystuff () {
            py_libdir="$("${python}" -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1);")";
 }
 
-init_pystuff;
+init_py;

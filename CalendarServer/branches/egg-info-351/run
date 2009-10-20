@@ -34,6 +34,6 @@ set -u;
 
 wd="$(cd "$(dirname "$0")" && pwd)";
 
-. support/runlib.sh;
+. support/build.sh;
 
 run_main "$@";
