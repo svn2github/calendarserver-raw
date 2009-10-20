@@ -357,7 +357,7 @@ py_dependency () {
     if "${inplace}"; then
       if "${override_system}" && ! "${skip_egg}"; then
         echo;
-        echo "${name} overrides system, building egg only";
+        echo "Building ${name}... [overrides system, building egg-info metadata only]";
         cd "${srcdir}";
         "${python}" ./setup.py -q egg_info 2>| grep -v 'Unrecognized .svn/entries';
         cd /;
