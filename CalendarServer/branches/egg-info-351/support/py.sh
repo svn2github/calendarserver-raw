@@ -88,8 +88,6 @@ init_py () {
   if [ -z "${python:-}" ]; then
     echo "No suitable python found. Python 2.5 is required.";
     exit 1;
-  else
-    echo "Using ${python} as Python";
   fi
 
          py_platform="$("${python}" -c "from distutils.util import get_platform; print get_platform()")";

@@ -1,4 +1,5 @@
 #!/bin/bash
+# -*- sh-basic-offset: 2 -*-
 
 ##
 # Copyright (c) 2005-2009 Apple Inc. All rights reserved.
@@ -106,11 +107,6 @@ parse_options () {
 # Actually run the server.  (Or, exit, if things aren't sufficiently set up in
 # order to do that.)
 run () {
-  if "${print_path}"; then
-    echo "${PYTHONPATH}";
-    exit 0;
-  fi;
-
   echo "";
   echo "Using ${python} as Python";
 
@@ -186,6 +182,13 @@ run_main () {
   # About to do something for real; let's enumerate (and depending on options,
   # possibly download and/or install) the dependencies.
   dependencies;
+
+  # Now that all the dependencies are set up, let's see if we're just being
+  # asked to print the path.
+  if "${print_path}"; then
+    echo "${PYTHONPATH}";
+    exit 0;
+  fi;
 
   # If we're installing, install the calendar server itself.
   py_install "Calendar Server" "${caldav}";
