@@ -19,41 +19,6 @@
 
 . support/py.sh;
 
-# Echo the usage for the main 'run' script, then exit with an error.
-usage () {
-  program="$(basename "$0")";
-
-  if [ "${1--}" != "-" ]; then
-    echo "$@";
-    echo;
-  fi;
-
-  echo "Usage: ${program} [-hvgsfnpdkrR] [-K key] [-iI dst] [-t type] [-S statsdirectory] [-P plugin]";
-  echo "Options:";
-  echo "	-h  Print this help and exit";
-  echo "	-v  Be verbose";
-  echo "	-g  Get dependencies only; don't run setup or run the server.";
-  echo "	-s  Run setup only; don't run server";
-  echo "	-f  Force setup to run";
-  echo "	-n  Do not run setup";
-  echo "	-p  Print PYTHONPATH value for server and exit";
-  echo "	-d  Run caldavd as a daemon";
-  echo "	-k  Stop caldavd";
-  echo "	-r  Restart caldavd";
-  echo "	-K  Print value of configuration key and exit";
-  echo "	-i  Perform a system install into dst; implies -s";
-  echo "	-I  Perform a home install into dst; implies -s";
-  echo "	-t  Select the server process type (Master, Slave or Combined) [${service_type}]";
-  echo "	-S  Write a pstats object for each process to the given directory when the server is stopped.";
-  echo "	-P  Select the twistd plugin name [${plugin_name}]";
-  echo "	-R  Twisted Reactor plugin to execute [${reactor}]";
-
-  if [ "${1-}" == "-" ]; then
-    return 0;
-  fi;
-  exit 64;
-}
-
 # Provide a default value: if the variable named by the first argument is
 # empty, set it to the default in the second argument.
 conditional_set () {
@@ -64,34 +29,8 @@ conditional_set () {
   fi;
 }
 
-parse_run_options () {
-  while getopts 'hvgsfnpdkrK:i:I:t:S:P:R:' option; do
-    case "$option" in
-      '?') usage; ;;
-      'h') usage -; exit 0; ;;
-      'v')       verbose="-v"; ;;
-      'f')   force_setup="true"; ;;
-      'k')          kill="true"; ;;
-      'r')       restart="true"; ;;
-      'd')     daemonize=""; ;;
-      'P')   plugin_name="${OPTARG}"; ;;
-      'R')       reactor="-R ${OPTARG}"; ;;
-      't')  service_type="${OPTARG}"; ;;
-      'K')      read_key="${OPTARG}"; ;;
-      'S')       profile="--profiler cprofile -p ${OPTARG}"; ;;
-      'g') do_get="true" ; do_setup="false"; do_run="false"; ;;
-      's') do_get="true" ; do_setup="true" ; do_run="false"; ;;
-      'p') do_get="false"; do_setup="false"; do_run="false"; print_path="true"; ;;
-      'i') do_get="true" ; do_setup="true" ; do_run="false"; install="${OPTARG}"; install_flag="--root="; ;;
-      'I') do_get="true" ; do_setup="true" ; do_run="false"; install="${wd}/build/dst"; install_flag="--root="; install_home="${OPTARG}"; ;;
-    esac;
-  done;
-  shift $((${OPTIND} - 1));
-  if [ $# != 0 ]; then
-    usage "Unrecognized arguments:" "$@";
-  fi;
-}
-
+# Read a configuration key from the configuration plist file and print it to
+# stdout.
 conf_read_key ()
 {
   local key="$1"; shift;
@@ -174,65 +113,6 @@ init_build () {
   conditional_set svn_uri_base "http://svn.calendarserver.org/repository/calendarserver";
 }
 
-# The main-point of the 'run' script: parse all options, decide what to do,
-# then do it.
-
-run_main () {
-  parse_run_options "$@"
-
-  # If we've been asked to read a configuration key, just read it and exit.
-  if [ -n "${read_key}" ]; then
-    conf_read_key "${read_key}";
-    exit $?;
-  fi;
-
-  if "${kill}" || "${restart}"; then
-    pidfile="$(conf_read_key "PIDFile")";
-    if [ ! -r "${pidfile}" ]; then
-      echo "Unreadable PID file: ${pidfile}";
-      exit 1
-    fi;
-    pid="$(cat "${pidfile}" | head -1)";
-    if [ -z "${pid}" ]; then
-      echo "No PID in PID file: ${pidfile}";
-      exit 1;
-    fi;
-    echo "Killing process ${pid}";
-    kill -TERM "${pid}";
-    if ! "${restart}"; then
-      exit 0;
-    fi;
-  fi;
-
-  # Prepare to set up PYTHONPATH et. al.
-  if [ -z "${PYTHONPATH:-}" ]; then
-    user_python_path="";
-  else
-    user_python_path=":${PYTHONPATH}";
-  fi;
-
-  export PYTHONPATH="${caldav}";
-
-  # About to do something for real; let's enumerate (and depending on options,
-  # possibly download and/or install) the dependencies.
-  dependencies;
-
-  # If we're installing, install the calendar server itself.
-  py_install "Calendar Server" "${caldav}";
-
-  if [ -n "${install_home:-}" ]; then
-    do_home_install;
-  fi;
-
-  # Finish setting up PYTHONPATH (put the user's original path at the *end* so
-  # that CalendarServer takes precedence).
-
-  export PYTHONPATH="${PYTHONPATH}${user_python_path}";
-
-  # Finally, run the server.
-  run;
-}
-
 
 # This is a hack, but it's needed because installing with --home doesn't work
 # for python-dateutil.
@@ -250,6 +130,7 @@ do_home_install () {
 }
 
 
+# Apply patches from lib-patches to the given dependency codebase.
 apply_patches () {
   local name="$1"; shift;
   local path="$1"; shift;
@@ -276,6 +157,7 @@ apply_patches () {
 }
 
 
+# If do_get is turned on, get an archive file containing a dependency via HTTP.
 www_get () {
   if ! "${do_get}"; then return 0; fi;
 
@@ -410,46 +292,7 @@ svn_get () {
 }
 
 
-run () {
-  if "${print_path}"; then
-    echo "${PYTHONPATH}";
-    exit 0;
-  fi;
-
-  echo "";
-  echo "Using ${python} as Python";
-
-  if "${do_run}"; then
-    if [ ! -f "${config}" ]; then
-      echo "";
-      echo "Missing config file: ${config}";
-      echo "You might want to start by copying the test configuration:";
-      echo "";
-      echo "  cp conf/caldavd-test.plist conf/caldavd-dev.plist";
-      echo "";
-      exit 1;
-    fi;
-
-    cd "${wd}";
-    if [ ! -d "${wd}/logs" ]; then
-      mkdir "${wd}/logs";
-    fi;
-
-    echo "";
-    echo "Starting server...";
-    exec ${caldavd_wrapper_command}                   \
-        "${caldav}/bin/caldavd" ${daemonize}          \
-        -f "${config}"                                \
-        -T "${twisted}/bin/twistd"                    \
-        -P "${plugin_name}"                           \
-        -t "${service_type}"                          \
-        ${reactor}                                    \
-        ${profile};
-    cd /;
-  fi;
-}
-
-
+# (optionally) Invoke 'python setup.py build' on the given python project.
 py_build () {
   local     name="$1"; shift;
   local     path="$1"; shift;
@@ -471,6 +314,8 @@ py_build () {
   fi;
 }
 
+# If in install mode, install the given package from the given path.
+# (Otherwise do nothing.)
 py_install () {
   local name="$1"; shift;
   local path="$1"; shift;
@@ -486,7 +331,6 @@ py_install () {
 
 
 # Declare a dependency on a Python project.
-
 py_dependency () {
 
   # args
@@ -534,7 +378,6 @@ py_dependency () {
 
 
 # Declare a dependency on a C project built with autotools.
-
 c_dependency () {
   local name="$1"; shift;
   local path="$1"; shift;
@@ -564,10 +407,9 @@ c_dependency () {
 
 
 # Enumerate all the dependencies with c_dependency and py_dependency; depending
-# on options parsed by parse_run_options and on-disk state, this may do as
+# on options parsed by ../run:parse_options and on-disk state, this may do as
 # little as update the PATH, DYLD_LIBRARY_PATH, LD_LIBRARY_PATH and PYTHONPATH,
 # or, it may do as much as download and install all dependencies.
-
 dependencies () {
 
   # Dependencies compiled from C source code
