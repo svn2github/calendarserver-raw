@@ -95,6 +95,8 @@ proxyDBDefaultParams = {
     "twistedcaldav.directory.calendaruserproxy.ProxyPostgreSQLDB": {
         "host": "localhost",
         "database": "proxies",
+        "user": "",
+        "password": "",
     },
 }
 
