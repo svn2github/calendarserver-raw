@@ -408,14 +408,14 @@ defaultConfig = {
                     "Default",
                 ]
             },
-            "ProxyDB": {
-                "Enabled": True,
-                "BindAddress": "127.0.0.1",
-                "Port": 11211,
-                "HandleCacheTypes": [
-                    "ProxyDB", "PrincipalToken",
-                ]
-            },
+#            "ProxyDB": {
+#                "Enabled": True,
+#                "BindAddress": "127.0.0.1",
+#                "Port": 11211,
+#                "HandleCacheTypes": [
+#                    "ProxyDB", "PrincipalToken",
+#                ]
+#            },
         },
         "memcached": "memcached", # Find in PATH
         "MaxMemory": 0, # Megabytes
