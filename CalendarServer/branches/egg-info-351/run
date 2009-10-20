@@ -36,4 +36,4 @@ wd="$(cd "$(dirname "$0")" && pwd)";
 
 . support/runlib.sh
 
-run_main
+run_main "$@"
