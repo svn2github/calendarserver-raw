@@ -16,12 +16,12 @@
 # limitations under the License.
 ##
 
-set -e
-set -u
+set -e;
+set -u;
 
-wd="$(cd "$(dirname "$0")" && pwd -L)"
+wd="$(cd "$(dirname "$0")" && pwd -L)";
 
-. support/pystuff.sh
+. support/pystuff.sh;
 
 random="--random=$(date "+%s")";
 no_colour="";

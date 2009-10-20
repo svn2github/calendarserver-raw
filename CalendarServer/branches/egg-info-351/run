@@ -29,11 +29,11 @@
 # executable to start the server.
 ##
 
-set -e
-set -u
+set -e;
+set -u;
 
 wd="$(cd "$(dirname "$0")" && pwd)";
 
-. support/runlib.sh
+. support/runlib.sh;
 
-run_main "$@"
+run_main "$@";
