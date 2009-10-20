@@ -76,7 +76,8 @@ detect_python_version () {
 # Detect if the given Python module is installed in the system Python configuration.
 py_have_module () {
   local module="$1"; shift;
-    PYTHONPATH="" "${python}" -c "import ${module}" > /dev/null 2>&1;
+
+  PYTHONPATH="" "${python}" -c "import ${module}" > /dev/null 2>&1;
 }
 
 # Detect which python to use, and store it in the 'python' variable, as well as

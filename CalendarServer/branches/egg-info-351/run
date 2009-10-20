@@ -144,7 +144,7 @@ run () {
 # The main-point of the 'run' script: parse all options, decide what to do,
 # then do it.
 run_main () {
-  parse_options "$@"
+  parse_options "$@";
 
   # If we've been asked to read a configuration key, just read it and exit.
   if [ -n "${read_key}" ]; then
