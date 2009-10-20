@@ -412,13 +412,15 @@ c_dependency () {
 # or, it may do as much as download and install all dependencies.
 dependencies () {
 
-  # Dependencies compiled from C source code
-  local le="libevent-1.4.8-stable";
-  c_dependency "libevent" "${le}" \
-    "http://monkey.org/~provos/libevent-1.4.8-stable.tar.gz";
-  c_dependency "memcached" "memcached-1.2.6" \
-    "http://www.danga.com/memcached/dist/memcached-1.2.6.tar.gz" \
-    --enable-threads --with-libevent="${top}/${le}/_root";
+  if ! type memcached >& /dev/null; then
+    # Dependencies compiled from C source code
+    local le="libevent-1.4.8-stable";
+    c_dependency "libevent" "${le}" \
+      "http://monkey.org/~provos/libevent-1.4.8-stable.tar.gz";
+    c_dependency "memcached" "memcached-1.2.6" \
+      "http://www.danga.com/memcached/dist/memcached-1.2.6.tar.gz" \
+      --enable-threads --with-libevent="${top}/${le}/_root";
+  fi;
 
   # Python dependencies
   py_dependency "Zope Interface" "zope.interface" "zope.interface-3.3.0" \
