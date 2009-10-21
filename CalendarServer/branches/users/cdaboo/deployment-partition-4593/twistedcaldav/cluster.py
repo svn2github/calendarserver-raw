@@ -104,10 +104,6 @@ class TwistdSlaveProcess(object):
              '-o', 'MultiProcess/ProcessCount=%d' % (
                     config.MultiProcess['ProcessCount'],)])
 
-        if config.Memcached["ServerEnabled"]:
-            args.extend(
-                ['-o', 'Memcached/ClientEnabled=True'])
-
         if self.ports:
             args.extend([
                     '-o',
@@ -342,10 +338,10 @@ def makeService_Combined(self, options):
                            env=parentEnv)
 
 
-    if config.Memcached["ServerEnabled"]:
-        for name, pool in config.Memcached["Pools"].items():
+    for name, pool in config.Memcached["Pools"].items():
+        if pool["ServerEnabled"]:
             log.msg("Adding memcached service for pool: %s" % (name,))
-
+    
             memcachedArgv = [
                     config.Memcached["memcached"],
                     '-p', str(pool["Port"]),

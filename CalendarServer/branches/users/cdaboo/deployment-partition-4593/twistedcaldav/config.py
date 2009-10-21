@@ -399,11 +399,10 @@ defaultConfig = {
 
     "Memcached": {
         "MaxClients": 5,
-        "ClientEnabled": True,
-        "ServerEnabled": True,
         "Pools": {
             "Default": {
-                "Enabled": True,
+                "ClientEnabled": True,
+                "ServerEnabled": True,
                 "BindAddress": "127.0.0.1",
                 "Port": 11211,
                 "HandleCacheTypes": [
@@ -411,7 +410,8 @@ defaultConfig = {
                 ]
             },
 #            "ProxyDB": {
-#                "Enabled": True,
+#                "ClientEnabled": True,
+#                "ServerEnabled": True,
 #                "BindAddress": "127.0.0.1",
 #                "Port": 11211,
 #                "HandleCacheTypes": [

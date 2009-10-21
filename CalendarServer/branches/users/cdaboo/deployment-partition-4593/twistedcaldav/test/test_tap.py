@@ -203,8 +203,8 @@ class BaseServiceMakerTests(TestCase):
 
         self.config['SudoersFile'] = ''
 
-        self.config['Memcached']['ClientEnabled'] = False
-        self.config['Memcached']['ServerEnabled'] = False
+        self.config['Memcached']['Pools']['Default']['ClientEnabled'] = False
+        self.config['Memcached']['Pools']['Default']['ServerEnabled'] = False
 
         if self.configOptions:
             config_mod._mergeData(self.config, self.configOptions)

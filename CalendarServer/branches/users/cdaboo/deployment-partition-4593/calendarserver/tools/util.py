@@ -121,7 +121,7 @@ def autoDisableMemcached(config):
     If memcached is not running, set config.Memcached.ClientEnabled to False
     """
 
-    if not config.Memcached.ClientEnabled:
+    if not config.Memcached.Pools.Default.ClientEnabled:
         return
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -131,4 +131,4 @@ def autoDisableMemcached(config):
         s.close()
 
     except socket.error:
-        config.Memcached.ClientEnabled = False
+        config.Memcached.Pools.Default.ClientEnabled = False

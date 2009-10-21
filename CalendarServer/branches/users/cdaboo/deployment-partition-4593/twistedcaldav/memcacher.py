@@ -92,7 +92,7 @@ class Memcacher(LoggingMixIn, CachePoolUserMixIn):
         if self._memcacheProtocol is not None:
             return self._memcacheProtocol
 
-        if config.Memcached['ClientEnabled']:
+        if config.Memcached['Pools']['Default']['ClientEnabled']:
             return self.getCachePool()
 
         elif config.ProcessType == "Single" or self._noInvalidation:
