@@ -615,15 +615,15 @@ class Config (object):
         clearLogLevels()
 
         try:
-            if "DefaultLogLevel" in items:
-                level = items["DefaultLogLevel"]
+            if "DefaultLogLevel" in self._data:
+                level = self._data["DefaultLogLevel"]
                 if not level:
                     level = "warn"
                 setLogLevelForNamespace(None, level)
 
-            if "LogLevels" in items:
-                for namespace in items["LogLevels"]:
-                    setLogLevelForNamespace(namespace, items["LogLevels"][namespace])
+            if "LogLevels" in self._data:
+                for namespace in self._data["LogLevels"]:
+                    setLogLevelForNamespace(namespace, self._data["LogLevels"][namespace])
 
         except InvalidLogLevelError, e:
             raise ConfigurationError("Invalid log level: %s" % (e.level))
