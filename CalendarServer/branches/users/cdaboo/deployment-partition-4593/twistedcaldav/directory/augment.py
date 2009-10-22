@@ -75,6 +75,16 @@ class AugmentDB(object):
                 result.guid = guid
         returnValue(result)
 
+    @inlineCallbacks
+    def getAllGUIDs(self):
+        """
+        Get all AugmentRecord GUIDs.
+
+        @return: L{Deferred}
+        """
+        
+        raise NotImplementedError("Child class must define this.")
+
     def _lookupAugmentRecord(self, guid):
         """
         Get an AugmentRecord for the specified GUID.
@@ -115,6 +125,16 @@ class AugmentXMLDB(AugmentDB):
             raise
             
         self.lastCached = time.time()
+
+    @inlineCallbacks
+    def getAllGUIDs(self):
+        """
+        Get all AugmentRecord GUIDs.
+
+        @return: L{Deferred}
+        """
+        
+        return succeed(self.db.keys())
 
     def _lookupAugmentRecord(self, guid):
         """
@@ -169,6 +189,18 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
         AbstractADBAPIDatabase.__init__(self, dbID, dbapiName, dbapiArgs, True, **kwargs)
         
     @inlineCallbacks
+    def getAllGUIDs(self):
+        """
+        Get all AugmentRecord GUIDs.
+
+        @return: L{Deferred}
+        """
+        
+        # Query for the record information
+        results = (yield self.queryList("select GUID from AUGMENTS", ()))
+        returnValue(results)
+
+    @inlineCallbacks
     def _lookupAugmentRecord(self, guid):
         """
         Get an AugmentRecord for the specified GUID.
@@ -198,23 +230,43 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
             returnValue(record)
 
     @inlineCallbacks
-    def addAugmentRecord(self, record):
+    def addAugmentRecord(self, record, update=False):
 
         partitionid = (yield self._getPartitionID(record.hostedAt))
         cuaddrs = "\t".join(record.calendarUserAddresses)
         
-        yield self.execute(
-            """insert into AUGMENTS
-            (GUID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE, CUADDRS)
-            values (:1, :2, :3, :4, :5, :6)""",
-            (
-                record.guid,
-                "T" if record.enabled else "F",
-                partitionid,
-                "T" if record.enabledForCalendaring else "F",
-                "T" if record.autoSchedule else "F",
-                cuaddrs,)
-        )
+        if update:
+            yield self.execute(
+                """update AUGMENTS set
+                   (GUID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE, CUADDRS) =
+                   (:1, :2, :3, :4, :5, :6) where GUID = :7""",
+                (
+                    record.guid,
+                    "T" if record.enabled else "F",
+                    partitionid,
+                    "T" if record.enabledForCalendaring else "F",
+                    "T" if record.autoSchedule else "F",
+                    cuaddrs,
+                    record.guid,
+                )
+            )
+        else:
+            yield self.execute(
+                """insert into AUGMENTS
+                   (GUID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE, CUADDRS)
+                   values (:1, :2, :3, :4, :5, :6)""",
+                (
+                    record.guid,
+                    "T" if record.enabled else "F",
+                    partitionid,
+                    "T" if record.enabledForCalendaring else "F",
+                    "T" if record.autoSchedule else "F",
+                    cuaddrs,)
+            )
+
+    def removeAugmentRecord(self, guid):
+
+        return self.query("delete from AUGMENTS where GUID = :1", (guid,))
 
     @inlineCallbacks
     def _getPartitionID(self, hostedat, createIfMissing=True):

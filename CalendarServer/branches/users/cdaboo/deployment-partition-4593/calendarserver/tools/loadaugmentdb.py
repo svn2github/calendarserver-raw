@@ -78,6 +78,7 @@ def usage(e=None):
     print "  -h --help: print this help and exit"
     print "  -f --config: Specify caldavd.plist configuration path"
     print "  -x --xmlfile: Specify xml augments file path"
+    print "  -r --remove: Remove all entries from the database"
 
     if e:
         sys.exit(64)
@@ -87,8 +88,9 @@ def usage(e=None):
 def main():
     try:
         (optargs, args) = getopt(
-            sys.argv[1:], "hf:x:", [
+            sys.argv[1:], "hf:rx:", [
                 "config=",
+                "remove",
                 "xmlfile=",
                 "help",
             ],
@@ -98,6 +100,7 @@ def main():
 
     configFileName = None
     xmlFileName = None
+    remove = False
 
     for opt, arg in optargs:
         if opt in ("-h", "--help"):
@@ -105,6 +108,11 @@ def main():
 
         elif opt in ("-f", "--config"):
             configFileName = arg
+
+        elif opt in ("-r", "--remove"):
+            remove = True
+            if raw_input("Do you really want to remove all records from the database? [y/n] ") != "y":
+                sys.exit(0)
 
         elif opt in ("-x", "--xmlfile"):
             xmlFileName = arg
@@ -136,7 +144,7 @@ def main():
         usage("Unable to start: %s" % (e,))
 
     try:
-        dbxml = AugmentXMLDB((xmlFileName,))
+        dbxml = AugmentXMLDB((xmlFileName,)) if not remove else None
     except IOError, e:
         usage("Could not read XML augment file: %s" % (e,))
 
@@ -150,9 +158,28 @@ def main():
 def run(dbxml):
     
     try:
-        yield augment.AugmentService.clean()
-        for record in dbxml.db.values():
-            yield augment.AugmentService.addAugmentRecord(record)
+        guids = set((yield augment.AugmentService.getAllGUIDs()))
+        added = 0
+        updated = 0
+        removed = 0
+        if dbxml:
+            for record in dbxml.db.values():
+                yield augment.AugmentService.addAugmentRecord(record, record.guid in guids)
+                if record.guid in guids:
+                    updated += 1
+                else:
+                    added += 1
+            for guid in guids.difference(dbxml.db.keys()):
+                yield augment.AugmentService.removeAugmentRecord(guid)
+                removed += 1
+        else:
+            yield augment.AugmentService.clean()
+            removed = len(guids)
+            
+        print "Changes:"
+        print "  Added: %d" % (added,)
+        print "  Changed: %d" % (updated,)
+        print "  Removed: %d" % (removed,)
     finally:
         #
         # Stop the reactor
