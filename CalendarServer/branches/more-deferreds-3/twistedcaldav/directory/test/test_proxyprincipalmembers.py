@@ -115,7 +115,7 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
     def _proxyForTest(self, recordType, recordName, expectedProxies, read_write):
         principal = (yield self._getPrincipalByShortName(recordType, recordName))
         proxies = (yield principal.proxyFor(read_write))
-        proxies = set([principal.displayName() for principal in proxies])
+        proxies = set([(yield principal.displayName()) for principal in proxies])
         self.assertEquals(proxies, set(expectedProxies))
 
     def test_groupMembersRegular(self):
