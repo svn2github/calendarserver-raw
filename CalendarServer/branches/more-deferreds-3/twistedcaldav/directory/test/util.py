@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.directory.test -*-
 ##
 # Copyright (c) 2005-2009 Apple Inc. All rights reserved.
 #
@@ -14,11 +15,14 @@
 # limitations under the License.
 ##
 
+from zope.interface.verify import verifyObject
+
 from twisted.internet.defer import inlineCallbacks
 from twisted.trial.unittest import SkipTest
 from twisted.cred.credentials import UsernamePassword
 from twisted.web2.auth.digest import DigestedCredentials, calcResponse, calcHA1
 
+from twistedcaldav.directory.idirectory import IDirectoryService
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.directory import UnknownRecordTypeError
 from twistedcaldav.test.util import TestCase
@@ -50,6 +54,15 @@ class DirectoryTestCase (TestCase):
 
     # For aggregator subclasses
     recordTypePrefixes = ("",)
+
+
+    def test_isDirectoryService(self):
+        """
+        Does the directory service at least attempt to implement the methods
+        described by the interface?
+        """
+        self.failUnless(verifyObject(IDirectoryService, self.service()))
+
 
     def test_realm(self):
         """
