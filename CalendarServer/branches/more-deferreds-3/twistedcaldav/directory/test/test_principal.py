@@ -17,7 +17,7 @@
 import os
 
 from twisted.cred.credentials import UsernamePassword
-from twisted.internet.defer import inlineCallbacks, gatherResults, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.web2.dav import davxml
 from twisted.web2.dav.fileop import rmdir
 from twisted.web2.dav.resource import AccessDeniedError
@@ -25,11 +25,9 @@ from twisted.web2.test.test_server import SimpleRequest
 
 from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.config import config
-from twistedcaldav.directory.apache import BasicDirectoryService, DigestDirectoryService
 from twistedcaldav.directory.directory import DirectoryService
-from twistedcaldav.directory.test.test_apache import basicUserFile, digestUserFile, groupFile, digestRealm
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
-from twistedcaldav.directory.test.test_xmlfile import xmlFile
+from twistedcaldav.directory.test.test_xmlfile import xmlFile, XMLFile
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.principal import DirectoryPrincipalTypeProvisioningResource
 from twistedcaldav.directory.principal import DirectoryPrincipalResource
@@ -48,20 +46,8 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         super(ProvisionedPrincipals, self).setUp()
 
         self.directoryServices = (
-            BasicDirectoryService(
-                {
-                    'realmName' : digestRealm,
-                    'userFile' : basicUserFile,
-                    'groupFile' : groupFile,
-                }
-            ),
-            DigestDirectoryService(
-                {
-                    'realmName' : digestRealm,
-                    'userFile' : digestUserFile,
-                    'groupFile' : groupFile,
-                }
-            ),
+            # realm 'Test' with 'digest' users
+            # realm 'Test' with 'basic' users
             XMLDirectoryService(
                 {
                     'xmlFile' : xmlFile,
@@ -204,12 +190,31 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
             self.failIf(principal is None)
             self.assertEquals(record, principal.record)
 
+
+    @inlineCallbacks
+    def _warmCache(self):
+        """
+        Load some records into the cache so that listRecords() will actually
+        return something from an XMLDirectoryService.
+
+        XXX TODO this method shouldn't really be necessary; instead, we should
+        be able to express the appropriate 'list' functionality to the
+        IDirectoryService API and not rely on XMLDirectoryService's caching
+        behavior.
+        """
+        for svc in self.directoryServices:
+            for user in XMLFile.users:
+                record = (yield svc.recordWithShortName(DirectoryService.recordType_users, user))
+
+
     @inlineCallbacks
     def test_principalForCalendarUserAddress(self):
         """
         DirectoryPrincipalProvisioningResource.principalForCalendarUserAddress()
         """
-        for provisioningResource, recordType, recordResource, record in (yield self._allRecords()):
+
+        yield self._warmCache()
+        for (provisioningResource, recordType, recordResource, record) in (yield self._allRecords()):
             principalURL = recordResource.principalURL()
             if principalURL.endswith("/"):
                 alternateURL = principalURL[:-1]
@@ -347,7 +352,6 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         DirectoryPrincipalResource.scheduleInboxURL(),
         DirectoryPrincipalResource.scheduleOutboxURL()
         """
-        ds = []
         # No calendar home provisioner should result in no calendar homes.
         for provisioningResource, recordType, recordResource, record in (yield self._allRecords()):
             if record.enabledForCalendaring:
@@ -442,7 +446,7 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
             def qname(self):
                 return self.ns, self.name
 
-        provisioningResource = self.principalRootResources['BasicDirectoryService']
+        provisioningResource = self.principalRootResources['XMLDirectoryService']
 
         expected = (
             ("DAV:", "displayname", "morgen", "fullName", "morgen"),
