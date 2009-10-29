@@ -288,6 +288,79 @@ class AbstractCalendarIndex(AbstractSQLDatabase):
                         % (name, self.resource))
                 self.deleteResource(name)
 
+    def _db(self):
+        """
+        Access the underlying database.
+        @return: a db2 connection object for this index's underlying data store.
+        """
+        if not hasattr(self, "_db_connection"):
+            db_filename = self.dbpath
+            try:
+                if self.autocommit:
+                    self._db_connection = sqlite.connect(db_filename, isolation_level=None)
+                else:
+                    self._db_connection = sqlite.connect(db_filename)
+            except:
+                log.err("Unable to open database: %s" % (self,))
+                raise
+
+            #
+            # Set up the schema
+            #
+            q = self._db_connection.cursor()
+            try:
+                # Create CALDAV table if needed
+
+                if self._test_schema_table(q):
+                    q.execute(
+                        """
+                        select VALUE from CALDAV
+                         where KEY = 'SCHEMA_VERSION'
+                        """)
+                    version = q.fetchone()
+
+                    if version is not None: version = version[0]
+
+                    q.execute(
+                        """
+                        select VALUE from CALDAV
+                         where KEY = 'TYPE'
+                        """)
+                    type = q.fetchone()
+
+                    if type is not None: type = type[0]
+
+                    if (version != self._db_version()) and (version != "8") or (type != self._db_type()):
+
+                        # Clean-up first
+                        q.close()
+                        q = None
+                        self._db_connection.close()
+                        del(self._db_connection)
+
+                        if version != self._db_version():
+                            log.err("Database %s has different schema (v.%s vs. v.%s)"
+                                    % (db_filename, version, self._db_version()))
+                            
+                            # Upgrade the DB
+                            return self._db_upgrade(version)
+
+                        if type != self._db_type():
+                            log.err("Database %s has different type (%s vs. %s)"
+                                    % (db_filename, type, self._db_type()))
+
+                            # Delete this index and start over
+                            os.remove(db_filename)
+                            return self._db()
+
+                else:
+                    self._db_init(db_filename, q)
+
+                self._db_connection.commit()
+            finally:
+                if q is not None: q.close()
+        return self._db_connection
+
     def _db_version(self):
         """
         @return: the schema version assigned to this index.
