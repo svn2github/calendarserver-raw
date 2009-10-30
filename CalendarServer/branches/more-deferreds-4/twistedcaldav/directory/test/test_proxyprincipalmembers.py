@@ -504,5 +504,5 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
                 parser = XMLAccountsParser(self.directoryService.xmlFile)
                 self.directoryService._parsedAccounts = parser.items
 
-                self._clearProxy(principal, proxyType)
-                self._clearProxy(fakePrincipal, proxyType)
+                yield self._clearProxy(principal, proxyType)
+                yield self._clearProxy(fakePrincipal, proxyType)
