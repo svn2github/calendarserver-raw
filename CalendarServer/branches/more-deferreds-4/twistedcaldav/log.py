@@ -325,9 +325,25 @@ class Logger (object):
         """
         Compatibility layer for Twisted's log module.
         """
-        self.emit("error", _why or "Unhandled Error",
-              isError=1, failure=_stuff or failure.Failure(),
-              **kw)
+        theMessage = None
+        if isinstance(_stuff, failure.Failure):
+            theFailure = _stuff
+        elif isinstance(_stuff, Exception):
+            theFailure = failure.Failure(_stuff)
+        elif _stuff is None:
+            theFailure = failure.Failure()
+        else:
+            theFailure = None
+            theMessage = repr(_stuff)
+        if theMessage is None:
+            if _why is None:
+                theMessage = "Unhandled Error"
+            else:
+                theMessage = _why
+        if theFailure is None:
+            self.emit("error", theMessage, isError=1, why=_why, **kw)
+        else:
+            self.emit("error", theMessage, isError=1, why=_why, failure=theFailure, **kw)
 
 class LoggingMixIn (object):
     """
