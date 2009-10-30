@@ -16,6 +16,7 @@
 
 from twisted.internet import reactor
 from twisted.internet.task import deferLater
+from twisted.internet.defer import succeed
 
 from twistedcaldav.ical import Component
 from twistedcaldav.index import Index, default_future_expansion_duration,\
@@ -40,7 +41,7 @@ class SQLIndexTests (twistedcaldav.test.util.TestCase):
 
     def setUp(self):
         super(SQLIndexTests, self).setUp()
-        self.site.resource.isCalendarCollection = lambda: True
+        self.site.resource.isCalendarCollection = lambda: succeed(True)
         self.db = Index(self.site.resource)
 
 
@@ -426,13 +427,15 @@ END:VCALENDAR
                    )
               )
 
-            resources = self.db.indexedSearch(filter, fbtype=True)
-            index_results = set()
-            for _ignore_name, _ignore_uid, type, test_organizer, float, start, end, fbtype in resources:
-                self.assertEqual(test_organizer, organizer, msg=description)
-                index_results.add((float, start, end, fbtype,))
+            d = self.db.indexedSearch(filter, fbtype=True)
+            def _gotSearchResults(resources):
+                index_results = set()
+                for _ignore_name, _ignore_uid, type, test_organizer, float, start, end, fbtype in resources:
+                    self.assertEqual(test_organizer, organizer, msg=description)
+                    index_results.add((float, start, end, fbtype,))
 
-            self.assertEqual(set(instances), index_results, msg=description)
+                self.assertEqual(set(instances), index_results, msg=description)
+            return d.addCallback(_gotSearchResults)
 
 class SQLIndexUpgradeTests (twistedcaldav.test.util.TestCase):
     """

@@ -14,6 +14,10 @@
 # limitations under the License.
 ##
 
+from twisted.internet.defer import inlineCallbacks, succeed
+
+from twisted.web2.dav import davxml
+
 from twistedcaldav.config import config
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyDatabase
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
@@ -21,8 +25,8 @@ from twistedcaldav.directory.resourceinfo import ResourceInfoDatabase
 from twistedcaldav.mail import MailGatewayTokensDatabase
 from twistedcaldav.upgrade import UpgradeError, upgradeData, updateFreeBusySet
 from twistedcaldav.test.util import TestCase
+
 from calendarserver.tools.util import getDirectory
-from twisted.web2.dav import davxml
 
 import hashlib
 import os, zlib, cPickle
@@ -33,7 +37,7 @@ md5Attr = "WebDAV:{http:%2F%2Ftwistedmatrix.com%2Fxml_namespace%2Fdav%2F}getcont
 
 
 class ProxyDBUpgradeTests(TestCase):
-    
+
     def setUpXMLDirectory(self):
         xmlFile = os.path.join(os.path.dirname(os.path.dirname(__file__)),
             "directory", "test", "accounts.xml")
@@ -46,12 +50,12 @@ class ProxyDBUpgradeTests(TestCase):
         self.setUpOldDocRoot()
         self.setUpOldDocRootWithoutDB()
         self.setUpNewDocRoot()
-        
+
         self.setUpNewDataRoot()
         self.setUpDataRootWithProxyDB()
 
     def setUpOldDocRoot(self):
-        
+
         # Set up doc root
         self.olddocroot = self.mktemp()
         os.mkdir(self.olddocroot)
@@ -74,7 +78,7 @@ class ProxyDBUpgradeTests(TestCase):
 
 
     def setUpOldDocRootWithoutDB(self):
-        
+
         # Set up doc root
         self.olddocrootnodb = self.mktemp()
         os.mkdir(self.olddocrootnodb)
@@ -90,7 +94,7 @@ class ProxyDBUpgradeTests(TestCase):
         os.mkdir(os.path.join(self.olddocrootnodb, "calendars"))
 
     def setUpNewDocRoot(self):
-        
+
         # Set up doc root
         self.newdocroot = self.mktemp()
         os.mkdir(self.newdocroot)
@@ -98,13 +102,13 @@ class ProxyDBUpgradeTests(TestCase):
         os.mkdir(os.path.join(self.newdocroot, "calendars"))
 
     def setUpNewDataRoot(self):
-        
+
         # Set up data root
         self.newdataroot = self.mktemp()
         os.mkdir(self.newdataroot)
 
     def setUpDataRootWithProxyDB(self):
-        
+
         # Set up data root
         self.existingdataroot = self.mktemp()
         os.mkdir(self.existingdataroot)
@@ -122,7 +126,7 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = self.olddocroot
         config.DataRoot = self.newdataroot
 
-        
+
         # Check pre-conditions
         self.assertTrue(os.path.exists(os.path.join(config.DocumentRoot, "principals")))
         self.assertTrue(os.path.isdir(os.path.join(config.DocumentRoot, "principals")))
@@ -130,7 +134,7 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertFalse(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
         upgradeData(config)
-        
+
         # Check post-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals",)))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
@@ -145,18 +149,19 @@ class ProxyDBUpgradeTests(TestCase):
 
         config.DocumentRoot = self.newdocroot
         config.DataRoot = self.existingdataroot
-        
+
         # Check pre-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals")))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
         upgradeData(config)
-        
+
         # Check post-conditions
         self.assertFalse(os.path.exists(os.path.join(config.DocumentRoot, "principals",)))
         self.assertTrue(os.path.exists(os.path.join(config.DataRoot, CalendarUserProxyDatabase.dbFilename)))
 
 
+    @inlineCallbacks
     def test_freeBusyUpgrade(self):
         """
         Test the updating of calendar-free-busy-set xattrs on inboxes
@@ -171,18 +176,18 @@ class ProxyDBUpgradeTests(TestCase):
 
         # Uncompressed XML
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/BB05932F-DCE7-4195-9ED4-0896EAFF3B0B/calendar</href>\r\n</calendar-free-busy-set>\r\n"
-        self.assertEquals(updateFreeBusySet(value, directory), None)
+        self.assertEquals((yield updateFreeBusySet(value, directory)), None)
 
         # Zlib compressed XML
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/BB05932F-DCE7-4195-9ED4-0896EAFF3B0B/calendar</href>\r\n</calendar-free-busy-set>\r\n"
         value = zlib.compress(value)
-        self.assertEquals(updateFreeBusySet(value, directory), None)
+        self.assertEquals((yield updateFreeBusySet(value, directory)), None)
 
         # Pickled XML
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/__uids__/BB05932F-DCE7-4195-9ED4-0896EAFF3B0B/calendar</href>\r\n</calendar-free-busy-set>\r\n"
         doc = davxml.WebDAVDocument.fromString(value)
         value = cPickle.dumps(doc.root_element)
-        self.assertEquals(updateFreeBusySet(value, directory), None)
+        self.assertEquals((yield updateFreeBusySet(value, directory)), None)
 
 
         #
@@ -193,14 +198,14 @@ class ProxyDBUpgradeTests(TestCase):
 
         # Uncompressed XML
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n"
-        newValue = updateFreeBusySet(value, directory)
+        newValue = yield updateFreeBusySet(value, directory)
         newValue = zlib.decompress(newValue)
         self.assertEquals(newValue, expected)
 
         # Zlib compressed XML
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n"
         value = zlib.compress(value)
-        newValue = updateFreeBusySet(value, directory)
+        newValue = yield updateFreeBusySet(value, directory)
         newValue = zlib.decompress(newValue)
         self.assertEquals(newValue, expected)
 
@@ -208,7 +213,7 @@ class ProxyDBUpgradeTests(TestCase):
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/wsanchez/calendar</href>\r\n</calendar-free-busy-set>\r\n"
         doc = davxml.WebDAVDocument.fromString(value)
         value = cPickle.dumps(doc.root_element)
-        newValue = updateFreeBusySet(value, directory)
+        newValue = yield updateFreeBusySet(value, directory)
         newValue = zlib.decompress(newValue)
         self.assertEquals(newValue, expected)
 
@@ -219,7 +224,7 @@ class ProxyDBUpgradeTests(TestCase):
 
         expected = "<?xml version='1.0' encoding='UTF-8'?><calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'/>"
         value = "<?xml version='1.0' encoding='UTF-8'?>\r\n<calendar-free-busy-set xmlns='urn:ietf:params:xml:ns:caldav'>\r\n  <href xmlns='DAV:'>/calendars/users/nonexistent/calendar</href>\r\n</calendar-free-busy-set>\r\n"
-        newValue = updateFreeBusySet(value, directory)
+        newValue = yield updateFreeBusySet(value, directory)
         newValue = zlib.decompress(newValue)
         self.assertEquals(newValue, expected)
 
@@ -231,7 +236,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
         before = {
             "calendars" :
@@ -379,7 +383,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
         before = {
             "calendars" :
@@ -459,6 +462,7 @@ class ProxyDBUpgradeTests(TestCase):
         self.assertTrue(self.verifyHierarchy(root, after))
 
 
+    @inlineCallbacks
     def test_calendarsUpgradeWithDuplicateOrphans(self):
         """
         Verify that calendar homes in the /calendars/<type>/<shortname>/ form
@@ -466,7 +470,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
         before = {
             "archived" :
@@ -553,11 +556,11 @@ class ProxyDBUpgradeTests(TestCase):
         config.DocumentRoot = root
         config.DataRoot = root
 
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
         # Ensure that repeating the process doesn't change anything
-        upgradeData(config)
+        yield upgradeData(config)
         self.assertTrue(self.verifyHierarchy(root, after))
 
 
@@ -568,7 +571,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
         before = {
             ".DS_Store" :
@@ -665,7 +667,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
 
         before = {
@@ -779,7 +780,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
         before = {
             "calendars" :
@@ -910,7 +910,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
         before = {
             "calendars" :
@@ -1039,7 +1038,6 @@ class ProxyDBUpgradeTests(TestCase):
         """
 
         self.setUpXMLDirectory()
-        directory = getDirectory()
 
         before = {
             "calendars" :
@@ -1127,9 +1125,13 @@ class ProxyDBUpgradeTests(TestCase):
 
         config.DocumentRoot = root
         config.DataRoot = root
+        def failTest(result):
+            self.fail("oops")
+        def checkUpgradeError(result):
+            self.assertIsInstance(result.value, UpgradeError)
+            self.assertTrue(self.verifyHierarchy(root, after))
 
-        self.assertRaises(UpgradeError, upgradeData, config)
-        self.assertTrue(self.verifyHierarchy(root, after))
+        return upgradeData(config).addCallbacks(failTest, checkUpgradeError)
 
     def test_migrateResourceInfo(self):
         # Fake getResourceInfo( )
@@ -1145,7 +1147,7 @@ class ProxyDBUpgradeTests(TestCase):
             results = []
             for guid, info in assignments.iteritems():
                 results.append( (guid, info[0], info[1], info[2]) )
-            return results
+            return succeed(results)
 
         self.setUpInitialStates()
         # Override the normal getResourceInfo method with our own:
@@ -1298,7 +1300,7 @@ def isValidCTag(value):
     except zlib.error:
         return False
     try:
-        doc = davxml.WebDAVDocument.fromString(value)
+        davxml.WebDAVDocument.fromString(value)
         return True
     except ValueError:
         return False

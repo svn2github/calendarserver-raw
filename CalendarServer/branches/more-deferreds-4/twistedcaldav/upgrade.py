@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.test.test_upgrade -*-
 ##
 # Copyright (c) 2008 Apple Inc. All rights reserved.
 #
@@ -16,6 +17,7 @@
 
 from __future__ import with_statement
 
+from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.web2.dav.fileop import rmdir
 from twisted.web2.dav import davxml
 from twistedcaldav.directory.directory import DirectoryService
@@ -52,14 +54,12 @@ def getCalendarServerIDs(config):
 
     return uid, gid
 
-#
-# upgrade_to_1
-#
-# Upconverts data from any calendar server version prior to data format 1
-#
 
+@inlineCallbacks
 def upgrade_to_1(config):
-
+    """
+    Upconverts data from any calendar server version prior to data format 1
+    """
     errorOccurred = False
 
     def fixBadQuotes(data):
@@ -82,30 +82,32 @@ def upgrade_to_1(config):
             return data, False
 
 
-
+    @inlineCallbacks
     def normalizeCUAddrs(data, directory):
         cal = Component.fromString(data)
 
+        @inlineCallbacks
         def lookupFunction(cuaddr):
             try:
-                principal = directory.principalForCalendarUserAddress(cuaddr)
+                principal = (yield directory.principalForCalendarUserAddress(cuaddr))
             except Exception, e:
                 log.debug("Lookup of %s failed: %s" % (cuaddr, e))
                 principal = None
 
             if principal is None:
-                return (None, None, None)
+                returnValue((None, None, None))
             else:
-                return (principal.record.fullName.decode("utf-8"),
+                returnValue((principal.record.fullName.decode("utf-8"),
                     principal.record.guid,
-                    principal.record.calendarUserAddresses)
+                    principal.record.calendarUserAddresses))
 
-        cal.normalizeCalendarUserAddresses(lookupFunction)
+        yield cal.normalizeCalendarUserAddresses(lookupFunction)
 
         newData = str(cal)
-        return newData, not newData == data
+        returnValue((newData, not newData == data))
 
 
+    @inlineCallbacks
     def upgradeCalendarCollection(calPath, directory):
 
         errorOccurred = False
@@ -139,7 +141,8 @@ def upgrade_to_1(config):
                     continue
 
                 try:
-                    data, fixed = normalizeCUAddrs(data, directory)
+                    # MOR: Defer this:
+                    data, fixed = yield normalizeCUAddrs(data, directory)
                     if fixed:
                         log.debug("Normalized CUAddrs in %s" % (resPath,))
                         needsRewrite = True
@@ -165,9 +168,10 @@ def upgrade_to_1(config):
             ctagValue = zlib.compress(ctagValue)
             xattr.setxattr(calPath, "WebDAV:{http:%2F%2Fcalendarserver.org%2Fns%2F}getctag", ctagValue)
 
-        return errorOccurred
+        returnValue(errorOccurred)
 
 
+    @inlineCallbacks
     def upgradeCalendarHome(homePath, directory):
 
         errorOccurred = False
@@ -178,7 +182,7 @@ def upgrade_to_1(config):
             for cal in os.listdir(homePath):
                 calPath = os.path.join(homePath, cal)
                 log.debug("Upgrading calendar: %s" % (calPath,))
-                if not upgradeCalendarCollection(calPath, directory):
+                if not (yield upgradeCalendarCollection(calPath, directory)):
                     errorOccurred = True
 
                 # Change the calendar-free-busy-set xattrs of the inbox to the
@@ -186,7 +190,7 @@ def upgrade_to_1(config):
                 if cal == "inbox":
                     for attr, value in xattr.xattr(calPath).iteritems():
                         if attr == "WebDAV:{urn:ietf:params:xml:ns:caldav}calendar-free-busy-set":
-                            value = updateFreeBusySet(value, directory)
+                            value = yield updateFreeBusySet(value, directory)
                             if value is not None:
                                 # Need to write the xattr back to disk
                                 xattr.setxattr(calPath, attr, value)
@@ -195,7 +199,7 @@ def upgrade_to_1(config):
             log.error("Failed to upgrade calendar home %s: %s" % (homePath, e))
             raise
 
-        return errorOccurred
+        returnValue(errorOccurred)
 
 
     def doProxyDatabaseMoveUpgrade(config, uid=-1, gid=-1):
@@ -251,11 +255,12 @@ def upgrade_to_1(config):
         os.rename(oldHome, newHome)
 
 
+    @inlineCallbacks
     def migrateResourceInfo(config, directory, uid, gid):
         log.info("Fetching delegate assignments and auto-schedule settings from directory")
         resourceInfoDatabase = ResourceInfoDatabase(config.DataRoot)
         calendarUserProxyDatabase = CalendarUserProxyDatabase(config.DataRoot)
-        resourceInfo = directory.getResourceInfo()
+        resourceInfo = (yield directory.getResourceInfo())
         for guid, autoSchedule, proxy, readOnlyProxy in resourceInfo:
             resourceInfoDatabase.setAutoScheduleInDatabase(guid, autoSchedule)
             if proxy:
@@ -363,7 +368,7 @@ def upgrade_to_1(config):
                 dirPath = os.path.join(calRoot, dirName)
                 if os.path.exists(dirPath):
                     for shortName in os.listdir(dirPath):
-                        record = directory.recordWithShortName(recordType,
+                        record = yield directory.recordWithShortName(recordType,
                             shortName)
                         oldHome = os.path.join(dirPath, shortName)
                         if record is not None:
@@ -420,8 +425,8 @@ def upgrade_to_1(config):
                                     homePath = os.path.join(secondPath, home)
 
 
-                                    if not upgradeCalendarHome(homePath,
-                                        directory):
+                                    if not (yield upgradeCalendarHome(
+                                            homePath, directory)):
                                         errorOccurred = True
 
                                     count += 1
@@ -446,6 +451,7 @@ upgradeMethods = [
     (1, upgrade_to_1),
 ]
 
+@inlineCallbacks
 def upgradeData(config):
 
     docRoot = config.DocumentRoot
@@ -457,10 +463,10 @@ def upgradeData(config):
         try:
             with open(versionFilePath) as versionFile:
                 onDiskVersion = int(versionFile.read().strip())
-        except IOError, e:
+        except IOError:
             log.error("Cannot open %s; skipping migration" %
                 (versionFilePath,))
-        except ValueError, e:
+        except ValueError:
             log.error("Invalid version number in %s; skipping migration" %
                 (versionFilePath,))
 
@@ -469,7 +475,7 @@ def upgradeData(config):
     for version, method in upgradeMethods:
         if onDiskVersion < version:
             log.warn("Upgrading to version %d" % (version,))
-            method(config)
+            yield method(config)
             with open(versionFilePath, "w") as verFile:
                 verFile.write(str(version))
             os.chown(versionFilePath, uid, gid)
@@ -485,25 +491,27 @@ class UpgradeError(RuntimeError):
 #
 # Utility functions
 #
+@inlineCallbacks
 def updateFreeBusyHref(href, directory):
     pieces = href.split("/")
     if pieces[2] == "__uids__":
         # Already updated
-        return None
+        returnValue(None)
 
     recordType = pieces[2]
     shortName = pieces[3]
-    record = directory.recordWithShortName(recordType, shortName)
+    record = yield directory.recordWithShortName(recordType, shortName)
     if record is None:
         # We will simply ignore this and not write out an fb-set entry
         log.error("Can't update free-busy href; %s is not in the directory" % shortName)
-        return ""
+        returnValue("")
 
     uid = record.uid
     newHref = "/calendars/__uids__/%s/%s/" % (uid, pieces[4])
-    return newHref
+    returnValue(newHref)
 
 
+@inlineCallbacks
 def updateFreeBusySet(value, directory):
 
     try:
@@ -521,13 +529,13 @@ def updateFreeBusySet(value, directory):
         except UnpicklingError:
             log.err("Invalid free/busy property value")
             # MOR: continue on?
-            return None
+            returnValue(None)
 
     fbset = set()
     didUpdate = False
     for href in freeBusySet.children:
         href = str(href)
-        newHref = updateFreeBusyHref(href, directory)
+        newHref = yield updateFreeBusyHref(href, directory)
         if newHref is None:
             fbset.add(href)
         else:
@@ -539,9 +547,9 @@ def updateFreeBusySet(value, directory):
         property = caldavxml.CalendarFreeBusySet(*[davxml.HRef(href)
             for href in fbset])
         value = compress(property.toxml())
-        return value
+        returnValue(value)
 
-    return None # no update required
+    returnValue(None) # no update required
 
 
 def makeDirsUserGroup(path, uid=-1, gid=-1):

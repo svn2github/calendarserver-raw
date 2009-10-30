@@ -14,6 +14,7 @@
 # limitations under the License.
 ##
 
+from twisted.internet.defer import inlineCallbacks
 from twistedcaldav.directory.cachingdirectory import CachingDirectoryService,\
     CachingDirectoryRecord, DictRecordTypeCache
 from twistedcaldav.test.util import TestCase
@@ -161,10 +162,11 @@ class GUIDLookups(CachingDirectoryTest):
         self.verifyRecords(DirectoryService.recordType_resources, set())
         self.verifyRecords(DirectoryService.recordType_locations, set())
     
+    @inlineCallbacks
     def test_cacheoneguid(self):
         self.dummyRecords()
 
-        self.assertTrue(self.service.recordWithGUID(self.guidForShortName("user01")) is not None)
+        self.assertTrue((yield self.service.recordWithGUID(self.guidForShortName("user01"))) is not None)
         self.assertTrue(self.service.queried)
         self.verifyRecords(DirectoryService.recordType_users, set((
             self.guidForShortName("user01"),
@@ -175,16 +177,17 @@ class GUIDLookups(CachingDirectoryTest):
 
         # Make sure it really is cached and won't cause another query
         self.service.queried = False
-        self.assertTrue(self.service.recordWithGUID(self.guidForShortName("user01")) is not None)
+        self.assertTrue((yield self.service.recordWithGUID(self.guidForShortName("user01"))) is not None)
         self.assertFalse(self.service.queried)
         
+    @inlineCallbacks
     def test_cacheoneshortname(self):
         self.dummyRecords()
 
-        self.assertTrue(self.service.recordWithShortName(
+        self.assertTrue((yield self.service.recordWithShortName(
             DirectoryService.recordType_users,
             "user02"
-        ) is not None)
+        )) is not None)
         self.assertTrue(self.service.queried)
         self.verifyRecords(DirectoryService.recordType_users, set((
             self.guidForShortName("user02"),
@@ -195,18 +198,19 @@ class GUIDLookups(CachingDirectoryTest):
 
         # Make sure it really is cached and won't cause another query
         self.service.queried = False
-        self.assertTrue(self.service.recordWithShortName(
+        self.assertTrue((yield self.service.recordWithShortName(
             DirectoryService.recordType_users,
             "user02"
-        ) is not None)
+        )) is not None)
         self.assertFalse(self.service.queried)
 
+    @inlineCallbacks
     def test_cacheoneemail(self):
         self.dummyRecords()
 
-        self.assertTrue(self.service.recordWithCalendarUserAddress(
+        self.assertTrue((yield self.service.recordWithCalendarUserAddress(
             "mailto:user03@example.com"
-        ) is not None)
+        )) is not None)
         self.assertTrue(self.service.queried)
         self.verifyRecords(DirectoryService.recordType_users, set((
             self.guidForShortName("user03"),
@@ -217,17 +221,18 @@ class GUIDLookups(CachingDirectoryTest):
 
         # Make sure it really is cached and won't cause another query
         self.service.queried = False
-        self.assertTrue(self.service.recordWithCalendarUserAddress(
+        self.assertTrue((yield self.service.recordWithCalendarUserAddress(
             "mailto:user03@example.com"
-        ) is not None)
+        )) is not None)
         self.assertFalse(self.service.queried)
 
+    @inlineCallbacks
     def test_cacheoneauthid(self):
         self.dummyRecords()
 
-        self.assertTrue(self.service.recordWithAuthID(
+        self.assertTrue((yield self.service.recordWithAuthID(
             "Kerberos:user03@example.com"
-        ) is not None)
+        )) is not None)
         self.assertTrue(self.service.queried)
         self.verifyRecords(DirectoryService.recordType_users, set((
             self.guidForShortName("user03"),
@@ -238,7 +243,7 @@ class GUIDLookups(CachingDirectoryTest):
 
         # Make sure it really is cached and won't cause another query
         self.service.queried = False
-        self.assertTrue(self.service.recordWithAuthID(
+        self.assertTrue((yield self.service.recordWithAuthID(
             "Kerberos:user03@example.com"
-        ) is not None)
+        )) is not None)
         self.assertFalse(self.service.queried)

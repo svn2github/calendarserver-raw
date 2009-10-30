@@ -75,10 +75,10 @@ class WikiDirectoryService(DirectoryService):
             record = self.byShortName[shortName]
             self.log_info("Returning existing wiki record with UID %s" %
                 (record.uid,))
-            return record
+            return succeed(record)
 
         record = self._addRecord(shortName)
-        return record
+        return succeed(record)
 
     def recordWithUID(self, uid):
 
@@ -86,14 +86,14 @@ class WikiDirectoryService(DirectoryService):
             record = self.byUID[uid]
             self.log_info("Returning existing wiki record with UID %s" %
                 (record.uid,))
-            return record
+            return succeed(record)
 
         if uid.startswith(self.UIDPrefix):
             shortName = uid[len(self.UIDPrefix):]
             record = self._addRecord(shortName)
-            return record
+            return succeed(record)
         else:
-            return None
+            return succeed(None)
 
     def _addRecord(self, shortName):
 

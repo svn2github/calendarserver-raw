@@ -19,7 +19,7 @@ __all__ = [
     "RootResource",
 ]
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twisted.cred.error import LoginFailed, UnauthorizedLogin
 
 from twisted.web2 import responsecode
@@ -95,7 +95,7 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
         return self._dead_properties
 
     def defaultAccessControlList(self):
-        return config.RootResourceACL
+        return succeed(config.RootResourceACL)
 
     @inlineCallbacks
     def checkSacl(self, request):
@@ -135,7 +135,7 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
         request.checkingSACL = True
 
         for collection in self.principalCollections():
-            principal = collection._principalForURI(authzUser.children[0].children[0].data)
+            principal = (yield collection._principalForURI(authzUser.children[0].children[0].data))
             if principal is None:
                 response = (yield UnauthorizedResponse.makeResponse(
                     request.credentialFactories,
@@ -180,14 +180,14 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
                     username = (yield proxy.callRemote(wikiConfig["UserMethod"], token))
                     log.debug("Wiki lookup returned user: %s" % (username,))
                     directory = request.site.resource.getDirectory()
-                    record = directory.recordWithShortName("users", username)
+                    record = (yield directory.recordWithShortName("users", username))
                     if record is None:
                         raise HTTPError(StatusResponse(
                             responsecode.FORBIDDEN,
                             "The username (%s) corresponding to your sessionID was not found by calendar server." % (username,)
                         ))
                     for collection in self.principalCollections():
-                        principal = collection.principalForRecord(record)
+                        principal = (yield collection.principalForRecord(record))
                         if principal is not None:
                             break
                     else:
@@ -217,8 +217,7 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
                                     davxml.HRef.fromString("/principals/wikis/%s/" % (wikiName,))
                                 )
 
-                    child = (yield super(RootResource, self).locateChild(request, segments))
-                    returnValue(child)
+                    returnValue((yield super(RootResource, self).locateChild(request, segments)))
 
                 # FIXME: should catch something more specific than Exception
                 except Exception, e:
@@ -275,8 +274,7 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
             except KeyError:
                 pass
 
-        child = (yield super(RootResource, self).locateChild(request, segments))
-        returnValue(child)
+        returnValue((yield super(RootResource, self).locateChild(request, segments)))
 
     def http_COPY       (self, request): return responsecode.FORBIDDEN
     def http_MOVE       (self, request): return responsecode.FORBIDDEN

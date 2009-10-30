@@ -16,6 +16,7 @@
 import os
 
 from twisted.python.filepath import FilePath
+from twisted.internet.defer import inlineCallbacks
 
 import twistedcaldav.directory.test.util
 from twistedcaldav.directory.sudo import SudoDirectoryService
@@ -57,19 +58,21 @@ class SudoTestCase(
             self.assertEqual(self.sudoers[record.shortNames[0]]['password'],
                              record.password)
 
+    @inlineCallbacks
     def test_recordWithShortName(self):
         service = self.service()
 
-        record = service.recordWithShortName(self.recordType, 'alice')
+        record = (yield service.recordWithShortName(self.recordType, 'alice'))
         self.assertEquals(record.password, 'alice')
 
-        record = service.recordWithShortName(self.recordType, 'bob')
+        record = (yield service.recordWithShortName(self.recordType, 'bob'))
         self.failIf(record)
 
+    @inlineCallbacks
     def test_calendaringDisabled(self):
         service = self.service()
 
-        record = service.recordWithShortName(self.recordType, 'alice')
+        record = (yield service.recordWithShortName(self.recordType, 'alice'))
 
         self.failIf(record.enabledForCalendaring,
                     "sudoers should have enabledForCalendaring=False")

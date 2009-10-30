@@ -1,0 +1,20 @@
+Index: twisted/web2/dav/test/test_prop.py
+===================================================================
+--- twisted/web2/dav/test/test_prop.py	(revision 26969)
++++ twisted/web2/dav/test/test_prop.py	(working copy)
+@@ -26,6 +26,7 @@
+ 
+ import random
+ 
++from twisted.internet.defer import deferredGenerator, waitForDeferred
+ from twisted.trial.unittest import SkipTest
+ from twisted.web2 import responsecode
+ from twisted.web2.iweb import IResponse
+@@ -57,6 +58,7 @@
+     PROPFIND, PROPPATCH requests
+     """
+ 
++
+     def liveProperties(self):
+         return [lookupElement(qname)() for qname in self.resource_class.liveProperties if (qname[0] == dav_namespace) and qname not in dynamicLiveProperties]
+ 
