@@ -59,7 +59,7 @@ __all__ = [
 import inspect
 import logging
 
-from twisted.python import log
+from twisted.python import log, failure
 
 from StringIO import StringIO
 
@@ -321,6 +321,14 @@ class Logger (object):
             d.addCallback(_gotData)
             return d
 
+    def err(self, _stuff=None, _why=None, **kw):
+        """
+        Compatibility layer for Twisted's log module.
+        """
+        self.emit("error", _why or "Unhandled Error",
+              isError=1, failure=_stuff or failure.Failure(),
+              **kw)
+
 class LoggingMixIn (object):
     """
     Mix-in class for logging methods.
@@ -388,7 +396,6 @@ del level
 
 # Add some compatibility with twisted's log module
 Logger.msg = Logger.info
-Logger.err = Logger.error
 
 ##
 # Errors
