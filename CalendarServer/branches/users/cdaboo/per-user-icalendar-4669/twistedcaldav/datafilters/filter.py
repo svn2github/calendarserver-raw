@@ -13,12 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twistedcaldav.ical import Component
 
 __all__ = [
-    "ICalendarFilter",
+    "CalendarFilter",
 ]
 
-class ICalendarFilter(object):
+class CalendarFilter(object):
     """
     Abstract class that defines an iCalendar filter/merge object
     """
@@ -48,3 +49,17 @@ class ICalendarFilter(object):
         @type icalold: L{Component}
         """
         raise NotImplementedError
+
+    def validCalendar(self, ical):
+
+        # If we were passed a string, parse it out as a Component
+        if isinstance(ical, str):
+            try:
+                ical = Component.fromString(ical)
+            except ValueError:
+                raise ValueError("Not a calendar: %r" % (ical,))
+        
+        if ical is None or ical.name() != "VCALENDAR":
+            raise ValueError("Not a calendar: %r" % (ical,))
+        
+        return ical

@@ -1,0 +1,180 @@
+##
+# Copyright (c) 2009 Apple Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##
+
+from twistedcaldav.datafilters.filter import CalendarFilter
+
+__all__ = [
+    "PerUserDataFilter",
+]
+
+"""
+Object model for calendar data is as follows:
+
+VCALENDAR
+  VTIMEZONE*
+  VEVENT* / VTODO* / VJOURNAL*
+  BEGIN:X-CALENDARSERVER-PERUSER*
+    X-CALENDARSERVER-PERUSER-UID
+    UID
+    BEGIN:X-CALENDARSERVER-PERINSTANCE
+      RECURRENCE-ID?
+      TRANSP?
+      VALARM*
+
+So we will store per user data inside the top-level component (alongside VEVENT, VTODO etc). That new component will
+contain properties to identify the user and the UID of the VEVENT, VTODO it affects. It will contain sub-components
+for each instance overridden by the per-user data. These per-user overridden components may not correspond to an
+actual overridden component. In that situation the server has to re-construct the per-user data appropriately:
+
+e.g., 
+
+1. VEVENT contains an overridden instance, but X-CALENDARSERVER-PERUSER does not - server uses the must instance
+X-CALENDARSERVER-PERUSER data (if any) for the overridden instance.
+
+2. VEVENT does not contain an overridden instance, but X-CALENDARSERVER-PERUSER does - server synthesizes an
+overridden instance to match the X-CALENDARSERVER-PERUSER one.
+
+3. VEVENT contains overridden instance and X-CALENDARSERVER-PERUSER does - server merges X-CALENDARSERVER-PERUSER
+data into overridden instance.
+
+"""
+
+class PerUserDataFilter(CalendarFilter):
+    """
+    Filter per-user data
+    """
+
+    PERUSER_COMPONENT     = "X-CALENDARSERVER-PERUSER"
+    PERUSER_UID           = "X-CALENDARSERVER-PERUSER-UID"
+    PERINSTANCE_COMPONENT = "X-CALENDARSERVER-PERINSTANCE"
+
+    def __init__(self, uid):
+        """
+        
+        @param uid: unique identifier of the user for whom the data is being filtered 
+        @type uid: C{str}
+        """
+        
+        self.uid = uid
+    
+    def filter(self, ical):
+        """
+        Filter the supplied iCalendar (vobject) data using the request information.
+        Assume that the object is a CalDAV calendar resource.
+
+        @param ical: iCalendar object - this will be modified and returned
+        @type ical: L{Component} or C{str}
+        
+        @return: L{Component} for the filtered calendar data
+        """
+        
+        # Make sure input is valid
+        ical = self.validCalendar(ical)
+
+        # Look for matching per-user sub-component, removing all the others
+        peruser_component = None
+        for component in tuple(ical.subcomponents()):
+            if component.name() == PerUserDataFilter.PERUSER_COMPONENT:
+                
+                # Check user id - remove if not matches
+                if component.propertyValue(PerUserDataFilter.PERUSER_UID) != self.uid:
+                    ical.removeComponent(component)
+                elif peruser_component is None:
+                    peruser_component = component
+                    ical.removeComponent(component)
+                else:
+                    raise AssertionError("Can't have two X-CALENDARSERVER-PERUSER components for the same user")
+
+        # Now transfer any components over
+        if peruser_component:
+            self._mergeBack(ical, peruser_component)
+
+        return ical
+
+    def merge(self, icalnew, icalold):
+        """
+        Private event merging does not happen
+        """
+        raise NotImplementedError
+
+    def _mergeBack(self, ical, peruser):
+        """
+        Merge the per-user data back into the main calendar data.
+
+        @param ical: main calendar data to merge into
+        @type ical: L{Component}
+        @param peruser: the per-user data to merge in
+        @type peruser: L{Component}
+        """
+        
+        # Iterate over each instance in the per-user data and build mapping
+        peruser_recurrence_map = {}
+        for subcomponent in peruser.subcomponents():
+            if subcomponent.name() != PerUserDataFilter.PERINSTANCE_COMPONENT:
+                raise AssertionError("Wrong sub-component '%s' in a X-CALENDARSERVER-PERUSER component" % (subcomponent.name(),))
+            peruser_recurrence_map[subcomponent.getRecurrenceIDUTC()] = subcomponent
+            
+        ical_recurrence_set = set(ical.getComponentInstances())
+        peruser_recurrence_set = set(peruser_recurrence_map.keys())
+        
+        # Set operations to find union and differences
+        union_set = ical_recurrence_set.intersection(peruser_recurrence_set)
+        ical_only_set = ical_recurrence_set.difference(peruser_recurrence_set)
+        peruser_only_set = peruser_recurrence_set.difference(ical_recurrence_set)
+        
+        # For ones in per-user data but no main data, we synthesize an instance and copy over per-user data
+        # NB We have to do this before we do any merge that may change the master
+        if ical.masterComponent() is not None:
+            for rid in peruser_only_set:
+                ical_component = ical.deriveInstance(rid)
+                peruser_component = peruser_recurrence_map[rid]
+                self._mergeBackComponent(ical_component, peruser_component)
+                ical.addComponent(ical_component)
+        elif peruser_only_set:
+            raise AssertionError("Cannot derive a per-user instance when there is no master component.")
+                    
+        # Process the unions by merging in per-user data
+        for rid in union_set:
+            ical_component = ical.overriddenComponent(rid)
+            peruser_component = peruser_recurrence_map[rid]
+            self._mergeBackComponent(ical_component, peruser_component)
+
+        # For ones in main data but no per-user data, we try and copy over the master per-user data
+        if ical_only_set:
+            peruser_master = peruser_recurrence_map.get(None)
+            if peruser_master:
+                for rid in ical_only_set:
+                    ical_component = ical.overriddenComponent(rid)
+                    self._mergeBackComponent(ical_component, peruser_master)
+                    
+    def _mergeBackComponent(self, ical, peruser):
+        """
+        Copy all properties and sub-components from per-user data into the main component
+        @param ical:
+        @type ical:
+        @param peruser:
+        @type peruser:
+        """
+        
+        # Each sub-component
+        for subcomponent in peruser.subcomponents():
+            ical.addComponent(subcomponent)
+        
+        # Each property except RECURRENCE-ID
+        for property in peruser.properties():
+            if property.name() == "RECURRENCE-ID":
+                continue
+            ical.addProperty(property)

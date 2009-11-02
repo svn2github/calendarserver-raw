@@ -19,13 +19,14 @@ from twisted.web2.http import HTTPError, StatusResponse
 from twistedcaldav.caldavxml import Property, CalendarData, CalendarComponent,\
     AllProperties, AllComponents
 from twistedcaldav.datafilters.calendardata import CalendarDataFilter
+from twistedcaldav.datafilters.filter import CalendarFilter
 from twistedcaldav.ical import Component
 
 __all__ = [
     "PrivateEventFilter",
 ]
 
-class PrivateEventFilter(object):
+class PrivateEventFilter(CalendarFilter):
     """
     Filter a private event to match the rights of the non-owner user accessing the data
     """

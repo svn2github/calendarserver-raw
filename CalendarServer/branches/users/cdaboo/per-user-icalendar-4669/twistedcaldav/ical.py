@@ -418,7 +418,7 @@ class Component (object):
         
         mtype = None
         for component in self.subcomponents():
-            if component.name() == "VTIMEZONE":
+            if component.name() == "VTIMEZONE" or component.name().startswith("X-"):
                 continue
             elif mtype and (mtype != component.name()):
                 raise ValueError("Component contains more than one type of primary type: %r" % (self,))
@@ -437,7 +437,7 @@ class Component (object):
         
         result = None
         for component in self.subcomponents():
-            if component.name() == "VTIMEZONE":
+            if component.name() == "VTIMEZONE" or component.name().startswith("X-"):
                 continue
             elif not allow_multiple and (result is not None):
                 raise ValueError("Calendar contains more than one primary component: %r" % (self,))
@@ -457,7 +457,7 @@ class Component (object):
         assert self.name() == "VCALENDAR", "Must be a VCALENDAR: %r" % (self,)
         
         for component in self.subcomponents():
-            if component.name() == "VTIMEZONE":
+            if component.name() == "VTIMEZONE" or component.name().startswith("X-"):
                 continue
             if not component.hasProperty("RECURRENCE-ID"):
                 return component
@@ -476,7 +476,7 @@ class Component (object):
         assert self.name() == "VCALENDAR", "Must be a VCALENDAR: %r" % (self,)
         
         for component in self.subcomponents():
-            if component.name() == "VTIMEZONE":
+            if component.name() == "VTIMEZONE" or component.name().startswith("X-"):
                 continue
             rid = component.getRecurrenceIDUTC()
             if rid and recurrence_id and compareDateTime(rid, recurrence_id) == 0:
@@ -1018,7 +1018,7 @@ class Component (object):
         if self.name() == "VCALENDAR":
             result = ()
             for component in self.subcomponents():
-                if component.name() != "VTIMEZONE":
+                if component.name() != "VTIMEZONE" and not component.name().startswith("X-"):
                     result += component.getComponentInstances()
             return result
         else:
@@ -1033,7 +1033,7 @@ class Component (object):
         # Extract appropriate sub-component if this is a VCALENDAR
         if self.name() == "VCALENDAR":
             for component in self.subcomponents():
-                if component.name() != "VTIMEZONE" and component.isRecurring():
+                if component.name() != "VTIMEZONE" and not component.name().startswith("X-") and component.isRecurring():
                     return True
         else:
             for propname in ("RRULE", "RDATE", "EXDATE", "RECURRENCE-ID",):
@@ -1161,7 +1161,7 @@ class Component (object):
 
         if not hasattr(self, "_resource_uid"):
             for subcomponent in self.subcomponents():
-                if subcomponent.name() != "VTIMEZONE":
+                if subcomponent.name() != "VTIMEZONE" and not subcomponent.name().startswith("X-"):
                     self._resource_uid = subcomponent.propertyValue("UID")
                     break
             else:
@@ -1183,6 +1183,8 @@ class Component (object):
                 name = subcomponent.name()
                 if name == "VTIMEZONE":
                     has_timezone = True
+                elif subcomponent.name().startswith("X-"):
+                    continue
                 else:
                     self._resource_type = name
                     break

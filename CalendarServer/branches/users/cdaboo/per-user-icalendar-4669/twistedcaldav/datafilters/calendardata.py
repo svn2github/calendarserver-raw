@@ -14,16 +14,17 @@
 # limitations under the License.
 ##
 
-from twistedcaldav.ical import Component
-from twistedcaldav.dateops import clipPeriod
 from twistedcaldav.caldavxml import LimitRecurrenceSet, Expand, AllComponents,\
     AllProperties
+from twistedcaldav.datafilters.filter import CalendarFilter
+from twistedcaldav.dateops import clipPeriod
+from twistedcaldav.ical import Component
 
 __all__ = [
     "CalendarDataFilter",
 ]
 
-class CalendarDataFilter(object):
+class CalendarDataFilter(CalendarFilter):
     """
     Filter using the CALDAV:calendar-data element specification
     """
@@ -54,15 +55,8 @@ class CalendarDataFilter(object):
         if not self.calendardata.children:
             return ical
 
-        # If we were passed a string, parse it out as a Component
-        if isinstance(ical, str):
-            try:
-                ical = Component.fromString(ical)
-            except ValueError:
-                raise ValueError("Not a calendar: %r" % (ical,))
-
-        if ical is None or ical.name() != "VCALENDAR":
-            raise ValueError("Not a calendar: %r" % (ical,))
+        # Make sure input is valid
+        ical = self.validCalendar(ical)
 
         # Pre-process the calendar data based on expand and limit options
         if self.calendardata.freebusy_set:
