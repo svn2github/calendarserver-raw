@@ -350,12 +350,21 @@ Index: twisted/web2/dav/resource.py
          yield None
  
      mergeAccessControlList = deferredGenerator(mergeAccessControlList)
+@@ -939,7 +987,7 @@
+         via the ACL command.
+         @param new_aces: C{list} of L{ACE} for ACL being set.
+         """
+-        self.setAccessControlList(davxml.ACL(*new_aces))
++        return self.setAccessControlList(davxml.ACL(*new_aces))
+ 
+     def matchPrivilege(self, privilege, ace_privileges, supportedPrivileges):
+         for ace_privilege in ace_privileges:
 @@ -1089,7 +1137,9 @@
              return url
  
          try:
 -            acl = self.readDeadProperty(davxml.ACL)
-+            acl = waitForDeferred(self.readDeadProperty(davxml.ACL))
++            acl = waitForDeferred(maybeDeferred(self.readDeadProperty, davxml.ACL))
 +            yield acl
 +            acl = acl.getResult()
          except HTTPError, e:
