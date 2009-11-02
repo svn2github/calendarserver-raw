@@ -400,7 +400,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
         similar = yield maybeDeferred(super(CalDAVFile, self).createSimilarFile, path)
 
-        if isCalendarCollectionResource(self):
+        if (yield isCalendarCollectionResource(self)):
 
             # Short-circuit stat with information we know to be true at this point
             if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
