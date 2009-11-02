@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2008 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,8 +51,10 @@ from twisted.web2.dav.resource import AccessDeniedError
 from twisted.web2.http import HTTPError
 
 from twistedcaldav import caldavxml
-from twistedcaldav.caldavxml import caldav_namespace
+from twistedcaldav.caldavxml import caldav_namespace, CalendarData
 from twistedcaldav.customxml import TwistedCalendarAccessProperty
+from twistedcaldav.datafilters.calendardata import CalendarDataFilter
+from twistedcaldav.datafilters.privateevents import PrivateEventFilter
 from twistedcaldav.dateops import clipPeriod, normalizePeriodList, timeRangesOverlap
 from twistedcaldav.ical import Component, Property, iCalendarProductID
 from twistedcaldav.instance import InstanceList
@@ -244,20 +246,16 @@ def _namedPropertiesForResource(request, props, resource, calendar=None, timezon
     for property in props:
         if isinstance(property, caldavxml.CalendarData):
             # Handle private events access restrictions
-            if not isowner:
-                try:
-                    access = resource.readDeadProperty(TwistedCalendarAccessProperty)
-                except HTTPError:
-                    access = None
-            else:
+            try:
+                access = resource.readDeadProperty(TwistedCalendarAccessProperty)
+            except HTTPError:
                 access = None
 
-            if calendar:
-                propvalue = property.elementFromCalendarWithAccessRestrictions(calendar, access, timezone)
-            else:
-                propvalue = property.elementFromResourceWithAccessRestrictions(resource, access, timezone)
-            if propvalue is None:
-                raise ValueError("Invalid CalDAV:calendar-data for request: %r" % (property,))
+            if calendar is None:
+                calendar = resource.iCalendarText()
+            filtered = PrivateEventFilter(access, isowner).filter(calendar)
+            filtered = CalendarDataFilter(property, timezone).filter(filtered)
+            propvalue = CalendarData().fromCalendar(filtered)
             properties_by_status[responsecode.OK].append(propvalue)
             continue
     

@@ -31,7 +31,7 @@ from vobject.icalendar import utc, TimezoneComponent
 
 from twisted.web2.dav import davxml
 
-from twistedcaldav.dateops import clipPeriod, timeRangesOverlap
+from twistedcaldav.dateops import timeRangesOverlap
 from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.ical import parse_date_or_datetime
@@ -397,6 +397,8 @@ class CalendarData (CalDAVElement):
     @classmethod
     def fromCalendar(clazz, calendar):
         if isinstance(calendar, str):
+            if not calendar:
+                raise ValueError("Missing calendar data")
             return clazz(davxml.PCDATAElement(calendar))
         elif isinstance(calendar, iComponent):
             assert calendar.name() == "VCALENDAR", "Not a calendar: %r" % (calendar,)
@@ -487,205 +489,6 @@ class CalendarData (CalDAVElement):
         
         return False
 
-    def elementFromResource(self, resource, timezone=None):
-        """
-        Return a new CalendarData element comprised of the possibly filtered
-        calendar data from the specified resource. If no filter is being applied
-        read the data directly from the resource without parsing it. If a filter
-        is required, parse the iCal data and filter using this CalendarData.
-        @param resource: the resource whose calendar data is to be returned.
-        @param timezone: the L{Component} the VTIMEZONE to use for floating/all-day.
-        @return: an L{CalendarData} with the (filtered) calendar data.
-        """
-        return self.elementFromCalendar(resource.iCalendarText(), timezone)
-
-    def elementFromCalendar(self, calendar, timezone=None):
-        """
-        Return a new CalendarData element comprised of the possibly filtered
-        calendar.
-        @param calendar: the calendar that is to be filtered and returned.
-        @param timezone: the L{Component} the VTIMEZONE to use for floating/all-day.
-        @return: an L{CalendarData} with the (filtered) calendar data.
-        """
-        
-        # Check for filtering or not
-        filtered = self.getFromICalendar(calendar, timezone)
-        return CalendarData.fromCalendar(filtered)
-
-    def elementFromResourceWithAccessRestrictions(self, resource, access, timezone=None):
-        """
-        Return a new CalendarData element comprised of the possibly filtered
-        calendar data from the specified resource. If no filter is being applied
-        read the data directly from the resource without parsing it. If a filter
-        is required, parse the iCal data and filter using this CalendarData.
-        
-        Also, apply appropriate access restriction filtering to the data.
-
-        @param resource: the resource whose calendar data is to be returned.
-        @param access: private event access restriction level.
-        @param timezone: the L{Component} the VTIMEZONE to use for floating/all-day.
-        @return: an L{CalendarData} with the (filtered) calendar data.
-        """
-        return self.elementFromCalendarWithAccessRestrictions(resource.iCalendarText(), access, timezone)
-
-    def elementFromCalendarWithAccessRestrictions(self, calendar, access, timezone=None):
-        """
-        Return a new CalendarData element comprised of the possibly filtered
-        calendar.
-        
-        Also, apply appropriate access restriction filtering to the data.
-
-        @param calendar: the calendar that is to be filtered and returned.
-        @param access: private event access restriction level.
-        @param timezone: the L{Component} the VTIMEZONE to use for floating/all-day.
-        @return: an L{CalendarData} with the (filtered) calendar data.
-        """
-        
-        # Do normal filtering first
-        filtered_calendar = self.getFromICalendar(calendar, timezone)
-        
-        if access in (iComponent.ACCESS_CONFIDENTIAL, iComponent.ACCESS_RESTRICTED):
-            # Create a CALDAV:calendar-data element with the appropriate iCalendar Component/Property
-            # filter in place for the access restriction in use
-            
-            extra_access = ()
-            if access == iComponent.ACCESS_RESTRICTED:
-                extra_access = (
-                    Property(name="SUMMARY"),
-                    Property(name="LOCATION"),
-                )
-
-            filter = CalendarData(
-                CalendarComponent(
-                    
-                    # VCALENDAR properties
-                    Property(name="PRODID"),
-                    Property(name="VERSION"),
-                    Property(name="CALSCALE"),
-                    Property(name=iComponent.ACCESS_PROPERTY),
-
-                    # VEVENT
-                    CalendarComponent(
-                        Property(name="UID"),
-                        Property(name="RECURRENCE-ID"),
-                        Property(name="SEQUENCE"),
-                        Property(name="DTSTAMP"),
-                        Property(name="STATUS"),
-                        Property(name="TRANSP"),
-                        Property(name="DTSTART"),
-                        Property(name="DTEND"),
-                        Property(name="DURATION"),
-                        Property(name="RRULE"),
-                        Property(name="RDATE"),
-                        Property(name="EXRULE"),
-                        Property(name="EXDATE"),
-                        *extra_access,
-                        **{"name":"VEVENT"}
-                    ),
-                    
-                    # VTODO
-                    CalendarComponent(
-                        Property(name="UID"),
-                        Property(name="RECURRENCE-ID"),
-                        Property(name="SEQUENCE"),
-                        Property(name="DTSTAMP"),
-                        Property(name="STATUS"),
-                        Property(name="DTSTART"),
-                        Property(name="COMPLETED"),
-                        Property(name="DUE"),
-                        Property(name="DURATION"),
-                        Property(name="RRULE"),
-                        Property(name="RDATE"),
-                        Property(name="EXRULE"),
-                        Property(name="EXDATE"),
-                        *extra_access,
-                        **{"name":"VTODO"}
-                    ),
-                    
-                    # VJOURNAL
-                    CalendarComponent(
-                        Property(name="UID"),
-                        Property(name="RECURRENCE-ID"),
-                        Property(name="SEQUENCE"),
-                        Property(name="DTSTAMP"),
-                        Property(name="STATUS"),
-                        Property(name="TRANSP"),
-                        Property(name="DTSTART"),
-                        Property(name="RRULE"),
-                        Property(name="RDATE"),
-                        Property(name="EXRULE"),
-                        Property(name="EXDATE"),
-                        *extra_access,
-                        **{"name":"VJOURNAL"}
-                    ),
-                    
-                    # VFREEBUSY
-                    CalendarComponent(
-                        Property(name="UID"),
-                        Property(name="DTSTAMP"),
-                        Property(name="DTSTART"),
-                        Property(name="DTEND"),
-                        Property(name="DURATION"),
-                        Property(name="FREEBUSY"),
-                        *extra_access,
-                        **{"name":"VFREEBUSY"}
-                    ),
-                    
-                    # VTIMEZONE
-                    CalendarComponent(
-                        AllProperties(),
-                        AllComponents(),
-                        name="VTIMEZONE",
-                    ),
-                    name="VCALENDAR",
-                ),
-            )
-
-            # Now "filter" the resource calendar data through the CALDAV:calendar-data element
-            return filter.elementFromCalendar(filtered_calendar, timezone)
-        else:
-            return CalendarData.fromCalendar(filtered_calendar)
-
-    def getFromICalendar(self, calendar, timezone=None):
-        """
-        @param timezone: the L{Component} the VTIMEZONE to use for floating/all-day.
-
-        Returns a calendar object containing the data in the given calendar
-        which is specified by this CalendarData.
-        """
-        if calendar is None or isinstance(calendar, str) and not calendar:
-            raise ValueError("Not a calendar: %r" % (calendar,))
-
-        # Empty element: get all data
-        if not self.children: return calendar
-
-        # If we were passed a string, parse it out as a Component
-        if isinstance(calendar, str):
-            try:
-                calendar = iComponent.fromString(calendar)
-            except ValueError:
-                raise ValueError("Not a calendar: %r" % (calendar,))
-
-        if calendar is None or calendar.name() != "VCALENDAR":
-            raise ValueError("Not a calendar: %r" % (calendar,))
-
-        # Pre-process the calendar data based on expand and limit options
-        if self.freebusy_set:
-            calendar = self.limitFreeBusy(calendar)
-
-        # Filter data based on any provided CALDAV:comp element, or use all current data
-        if self.component is not None:
-            calendar = self.component.getFromICalendar(calendar)
-        
-        # Post-process the calendar data based on the expand and limit options
-        if self.recurrence_set:
-            if isinstance(self.recurrence_set, LimitRecurrenceSet):
-                calendar = self.limitRecurrence(calendar)
-            elif isinstance(self.recurrence_set, Expand):
-                calendar = self.expandRecurrence(calendar, timezone)
-        
-        return calendar
-
     def calendar(self):
         """
         Returns a calendar component derived from this element.
@@ -708,55 +511,6 @@ class CalendarData (CalDAVElement):
                 break
 
         return str(data)
-
-    def expandRecurrence(self, calendar, timezone=None):
-        """
-        Expand the recurrence set into individual items.
-        @param calendar: the L{Component} for the calendar to operate on.
-        @param timezone: the L{Component} the VTIMEZONE to use for floating/all-day.
-        @return: the L{Component} for the result.
-        """
-        return calendar.expand(self.recurrence_set.start, self.recurrence_set.end, timezone)
-    
-    def limitRecurrence(self, calendar):
-        """
-        Limit the set of overridden instances returned to only those
-        that are needed to describe the range of instances covered
-        by the specified time range.
-        @param calendar: the L{Component} for the calendar to operate on.
-        @return: the L{Component} for the result.
-        """
-        raise NotImplementedError()
-        return calendar
-    
-    def limitFreeBusy(self, calendar):
-        """
-        Limit the range of any FREEBUSY properties in the calendar, returning
-        a new calendar if limits were applied, or the same one if no limits were applied.
-        @param calendar: the L{Component} for the calendar to operate on.
-        @return: the L{Component} for the result.
-        """
-        
-        # First check for any VFREEBUSYs - can ignore limit if there are none
-        if calendar.mainType() != "VFREEBUSY":
-            return calendar
-        
-        # Create duplicate calendar and filter FREEBUSY properties
-        calendar = calendar.duplicate()
-        for component in calendar.subcomponents():
-            if component.name() != "VFREEBUSY":
-                continue
-            for property in component.properties("FREEBUSY"):
-                newvalue = []
-                for period in property.value():
-                    clipped = clipPeriod(period, (self.freebusy_set.start, self.freebusy_set.end))
-                    if clipped:
-                        newvalue.append(clipped)
-                if len(newvalue):
-                    property.setValue(newvalue)
-                else:
-                    component.removeProperty(property)
-        return calendar
 
 class CalendarComponent (CalDAVElement):
     """

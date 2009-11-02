@@ -59,6 +59,7 @@ from twistedcaldav import customxml
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
 from twistedcaldav.customxml import TwistedCalendarAccessProperty, TwistedScheduleMatchETags
+from twistedcaldav.datafilters.privateevents import PrivateEventFilter
 from twistedcaldav.extensions import DAVFile, CachingPropertyStore
 from twistedcaldav.memcacheprops import MemcachePropertyCollection
 from twistedcaldav.freebusyurl import FreeBusyURLResource
@@ -303,14 +304,10 @@ class CalDAVFile (CalDAVResource, DAVFile):
         except HTTPError:
             access = None
 
-        if access in (iComponent.ACCESS_CONFIDENTIAL, iComponent.ACCESS_RESTRICTED):
+        # Now "filter" the resource calendar data
+        caldata = PrivateEventFilter(access, isowner).filter(self.iCalendarText())
 
-            if not isowner:
-                # Now "filter" the resource calendar data through the CALDAV:calendar-data element and apply
-                # access restrictions to the data.
-                return caldavxml.CalendarData().elementFromResourceWithAccessRestrictions(self, access).calendarData()
-
-        return self.iCalendarText()
+        return str(caldata)
 
     def iCalendarText(self, name=None):
         if self.isPseudoCalendarCollection():

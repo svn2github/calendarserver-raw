@@ -57,29 +57,29 @@ class CalendarDataFilter(object):
         # If we were passed a string, parse it out as a Component
         if isinstance(ical, str):
             try:
-                calendar = Component.fromString(ical)
+                ical = Component.fromString(ical)
             except ValueError:
                 raise ValueError("Not a calendar: %r" % (ical,))
 
-        if calendar is None or calendar.name() != "VCALENDAR":
-            raise ValueError("Not a calendar: %r" % (calendar,))
+        if ical is None or ical.name() != "VCALENDAR":
+            raise ValueError("Not a calendar: %r" % (ical,))
 
         # Pre-process the calendar data based on expand and limit options
         if self.calendardata.freebusy_set:
-            calendar = self.limitFreeBusy(calendar)
+            ical = self.limitFreeBusy(ical)
 
         # Filter data based on any provided CALDAV:comp element, or use all current data
         if self.calendardata.component is not None:
-            calendar = self.compFilter(self.calendardata.component, calendar)
+            ical = self.compFilter(self.calendardata.component, ical)
         
         # Post-process the calendar data based on the expand and limit options
         if self.calendardata.recurrence_set:
             if isinstance(self.calendardata.recurrence_set, LimitRecurrenceSet):
-                calendar = self.limitRecurrence(calendar)
+                ical = self.limitRecurrence(ical)
             elif isinstance(self.calendardata.recurrence_set, Expand):
-                calendar = self.expandRecurrence(calendar, self.timezone)
+                ical = self.expandRecurrence(ical, self.timezone)
         
-        return calendar
+        return ical
 
     def compFilter(self, comp, component):
         """

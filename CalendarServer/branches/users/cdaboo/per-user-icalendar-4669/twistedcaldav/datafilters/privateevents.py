@@ -19,6 +19,7 @@ from twisted.web2.http import HTTPError, StatusResponse
 from twistedcaldav.caldavxml import Property, CalendarData, CalendarComponent,\
     AllProperties, AllComponents
 from twistedcaldav.datafilters.calendardata import CalendarDataFilter
+from twistedcaldav.ical import Component
 
 __all__ = [
     "PrivateEventFilter",
@@ -75,22 +76,22 @@ class PrivateEventFilter(object):
         @return: L{Component} for the filtered calendar data
         """
         
-        if self.isowner or self.accessRestriction == PrivateEventFilter.ACCESS_PUBLIC:
+        if self.isowner or self.accessRestriction == Component.ACCESS_PUBLIC or self.accessRestriction is None:
             # No need to filter for the owner or public event
             return ical
         
-        elif self.accessRestriction == PrivateEventFilter.ACCESS_PRIVATE:
+        elif self.accessRestriction == Component.ACCESS_PRIVATE:
             # We should never get here because ACCESS_PRIVATE is protected via an ACL
             raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Access Denied"))
 
-        elif self.accessRestriction == PrivateEventFilter.ACCESS_PUBLIC:
+        elif self.accessRestriction == Component.ACCESS_PUBLIC:
             return ical
-        elif self.accessRestriction in (PrivateEventFilter.ACCESS_CONFIDENTIAL, PrivateEventFilter.ACCESS_RESTRICTED):
+        elif self.accessRestriction in (Component.ACCESS_CONFIDENTIAL, Component.ACCESS_RESTRICTED):
             # Create a CALDAV:calendar-data element with the appropriate iCalendar Component/Property
             # filter in place for the access restriction in use
             
             extra_access = ()
-            if self.accessRestriction == PrivateEventFilter.ACCESS_RESTRICTED:
+            if self.accessRestriction == Component.ACCESS_RESTRICTED:
                 extra_access = (
                     Property(name="SUMMARY"),
                     Property(name="LOCATION"),
@@ -103,7 +104,7 @@ class PrivateEventFilter(object):
                     Property(name="PRODID"),
                     Property(name="VERSION"),
                     Property(name="CALSCALE"),
-                    Property(name=PrivateEventFilter.ACCESS_PROPERTY),
+                    Property(name=Component.ACCESS_PROPERTY),
 
                     # VEVENT
                     CalendarComponent(
@@ -186,7 +187,7 @@ class PrivateEventFilter(object):
             return CalendarDataFilter(calendardata).filter(ical)
         else:
             # Unknown access restriction
-            raise HTTPError(StatusResponse(responsecode.FORBIDDEN))
+            raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Access Denied"))
     
     def merge(self, icalnew, icalold):
         """
