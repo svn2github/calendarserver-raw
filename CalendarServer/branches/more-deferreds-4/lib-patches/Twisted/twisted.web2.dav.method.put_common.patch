@@ -2,6 +2,15 @@ Index: twisted/web2/dav/method/put_common.py
 ===================================================================
 --- twisted/web2/dav/method/put_common.py	(revision 26969)
 +++ twisted/web2/dav/method/put_common.py	(working copy)
+@@ -22,7 +22,7 @@
+ 
+ __version__ = "0.0"
+ 
+-__all__ = ["storeCalendarObjectResource"]
++__all__ = ["storeResource"]
+ 
+ from twisted.internet.defer import deferredGenerator, maybeDeferred, waitForDeferred
+ from twisted.python import failure, log
 @@ -208,20 +208,31 @@
          # Update the MD5 value on the resource
          if source is not None:
