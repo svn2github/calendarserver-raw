@@ -21,7 +21,6 @@ Implements drop-box functionality. A drop box is an external attachment store.
 __all__ = [
     "DropBoxHomeResource",
     "DropBoxCollectionResource",
-    "DropBoxChildResource",
 ]
 
 from twisted.internet.defer import succeed
@@ -79,7 +78,7 @@ class DropBoxCollectionResource (DAVResource):
                 edited_aces.append(ace)
         
         # Do inherited with possibly modified set of aces
-        super(DropBoxCollectionResource, self).writeNewACEs(edited_aces)
+        return super(DropBoxCollectionResource, self).writeNewACEs(edited_aces)
 
     def http_PUT(self, request):
         return ErrorResponse(

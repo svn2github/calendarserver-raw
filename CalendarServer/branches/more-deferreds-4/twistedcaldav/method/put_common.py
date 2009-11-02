@@ -27,7 +27,7 @@ import uuid
 from twext.web2.dav.davxml import ErrorResponse
 
 from twisted.internet import reactor
-from twisted.internet.defer import Deferred, inlineCallbacks, succeed
+from twisted.internet.defer import Deferred, maybeDeferred, inlineCallbacks
 from twisted.internet.defer import returnValue
 from twisted.python import failure
 from twisted.python.filepath import FilePath
@@ -307,7 +307,7 @@ class StoreCalendarObjectResource(object):
             if not self.sourcecal:
                 # Valid content type check on the source resource if its not in a calendar collection
                 if self.source is not None:
-                    result, message = self.validContentType()
+                    result, message = yield self.validContentType()
                     if not result:
                         log.err(message)
                         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
@@ -445,17 +445,22 @@ class StoreCalendarObjectResource(object):
         
     def validContentType(self):
         """
-        Make sure that the content-type of the source resource is text/calendar.
-        This test is only needed when the source is not in a calendar collection.
+        Make sure that the content-type of the source resource is
+        text/calendar.  This test is only needed when the source is not in a
+        calendar collection.
         """
         result = True
         message = ""
-        content_type = self.source.contentType()
-        if not ((content_type.mediaType == "text") and (content_type.mediaSubtype == "calendar")):
+        content_type = yield maybeDeferred(self.source.contentType)
+        if (content_type is None or
+            not ((content_type.mediaType == "text") and
+                 (content_type.mediaSubtype == "calendar"))):
             result = False
-            message = "MIME type %s not allowed in calendar collection" % (content_type,)
+            message = "MIME type %s not allowed in calendar collection" % (
+                content_type,
+            )
 
-        return result, message
+        returnValue((result, message))
         
     def validContentLength(self):
         """
@@ -1129,4 +1134,4 @@ class StoreCalendarObjectResource(object):
                         NumberOfRecurrencesWithinLimits(PCDATAElement(str(err.max_allowed)))
                     ))
             else:
-                raise err
+                raise

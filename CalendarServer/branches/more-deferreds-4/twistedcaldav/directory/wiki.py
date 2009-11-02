@@ -28,7 +28,7 @@ from twisted.web.xmlrpc import Proxy, Fault
 from twisted.web2.http import HTTPError, StatusResponse
 from twisted.web2.auth.wrapper import UnauthorizedResponse
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
 
 from twisted.web2.dav.resource import TwistedACLInheritable

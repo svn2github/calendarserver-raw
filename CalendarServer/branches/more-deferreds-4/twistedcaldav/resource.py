@@ -701,6 +701,8 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
             result.append(davxml.Report(caldavxml.FreeBusyQuery(),))
         return result
 
+
+    @inlineCallbacks
     def writeNewACEs(self, newaces):
         """
         Write a new ACL to the resource's property store. We override this for calendar collections
@@ -726,7 +728,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
             edited_aces = newaces
 
         # Do inherited with possibly modified set of aces
-        super(CalDAVResource, self).writeNewACEs(edited_aces)
+        returnValue((yield maybeDeferred(super(CalDAVResource, self).writeNewACEs, edited_aces)))
 
     ##
     # Utilities
