@@ -442,7 +442,8 @@ class StoreCalendarObjectResource(object):
             message = "File name %s not allowed in calendar collection" % (filename,)
 
         return result, message
-        
+
+    @inlineCallbacks
     def validContentType(self):
         """
         Make sure that the content-type of the source resource is
