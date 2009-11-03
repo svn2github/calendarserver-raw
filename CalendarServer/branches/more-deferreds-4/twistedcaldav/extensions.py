@@ -25,7 +25,6 @@ __all__ = [
     "DAVFile",
     "ReadOnlyWritePropertiesResourceMixIn",
     "ReadOnlyResourceMixIn",
-    "CachingXattrPropertyStore",
 ]
 
 import cPickle as pickle
@@ -797,8 +796,7 @@ class DAVFile (SudoSACLMixin, SuperDAVFile, LoggingMixIn):
                     # Render from the index file
                     returnValue((yield self.createSimilarFile(ifp.path).render(request)))
 
-                # MOR: is renderDirectory deferred?
-                returnValue(self.renderDirectory(request))
+                returnValue((yield self.renderDirectory(request)))
 
         try:
             f = self.fp.open()
