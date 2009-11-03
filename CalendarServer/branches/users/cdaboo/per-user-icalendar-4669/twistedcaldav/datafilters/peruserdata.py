@@ -132,6 +132,9 @@ class PerUserDataFilter(CalendarFilter):
         # Make sure input is valid
         icalold = self.validCalendar(icalold)
 
+        self._mergeRepresentations(icalnew, icalold)
+        return icalnew
+
     def _mergeBack(self, ical, peruser):
         """
         Merge the per-user data back into the main calendar data.
@@ -213,39 +216,39 @@ class PerUserDataFilter(CalendarFilter):
             ical.addComponent(peruser)
             return peruser
             
-        for subcomponent in ical.subcomponents():
-            if subcomponent.name() == "VTIMEZONE":
+        for component in ical.subcomponents():
+            if component.name() == "VTIMEZONE":
                 continue
 
             perinstance_component = None
             
             def init_perinstance_component():
                 peruser = Component(PerUserDataFilter.PERINSTANCE_COMPONENT)
-                rid = subcomponent.getRecurrenceIDUTC()
+                rid = component.getRecurrenceIDUTC()
                 if rid:
                     peruser.addProperty(Property("RECURRENCE-ID", rid))
                 perinstance_components[rid] = peruser
                 return peruser
 
             # Transfer per-user properties from main component to per-instance component
-            for property in tuple(subcomponent.properties()):
+            for property in tuple(component.properties()):
                 if property.name() in PerUserDataFilter.PERUSER_PROPERTIES or property.name().startswith("X-"):
                     if peruser_component is None:
                         peruser_component = init_peruser_component()
                     if perinstance_component is None:
                         perinstance_component = init_perinstance_component()
                     perinstance_component.addProperty(property)
-                    subcomponent.removeProperty(property)
+                    component.removeProperty(property)
             
             # Transfer per-user components from main component to per-instance component
-            for component in tuple(subcomponent.subcomponents()):
-                if component.name() in PerUserDataFilter.PERUSER_SUBCOMPONENTS or component.name().startswith("X-"):
+            for subcomponent in tuple(component.subcomponents()):
+                if subcomponent.name() in PerUserDataFilter.PERUSER_SUBCOMPONENTS or subcomponent.name().startswith("X-"):
                     if peruser_component is None:
                         peruser_component = init_peruser_component()
                     if perinstance_component is None:
                         perinstance_component = init_perinstance_component()
-                    perinstance_component.addComponent(component)
-                    subcomponent.removeComponent(component)
+                    perinstance_component.addComponent(subcomponent)
+                    component.removeComponent(subcomponent)
             
         # Add unique per-instance components into the per-user component
         master_perinstance = perinstance_components.get(None)
@@ -287,3 +290,32 @@ class PerUserDataFilter(CalendarFilter):
                 if str(derived) == str(subcomponent):
                     ical.removeComponent(subcomponent)
 
+    def _mergeRepresentations(self, icalnew, icalold):
+        
+        # Test for simple case first
+        if icalnew.isRecurring() and icalold.isRecurring():
+            pass
+        else:
+            self._simpleMerge(icalnew, icalold)
+            return
+    
+    def _simpleMerge(self, icalnew, icalold):
+        
+        # Take all per-user components from old and add to new, except for our user
+        new_recur = icalnew.isRecurring()
+        old_recur = icalold.isRecurring()
+        new_recur_has_no_master = new_recur and (icalnew.masterComponent() is None)
+        for component in icalold.subcomponents():
+            if component.name() == PerUserDataFilter.PERUSER_COMPONENT:
+                if component.propertyValue(PerUserDataFilter.PERUSER_UID) != self.uid and not new_recur_has_no_master:
+                    newcomponent = component.duplicate()
+                    
+                    # Only transfer the master components from the old data to the new when the old
+                    # was recurring and the new is not recurring
+                    if old_recur:
+                        for subcomponent in tuple(newcomponent.subcomponents()):
+                            if subcomponent.getRecurrenceIDUTC() is not None:
+                                newcomponent.removeComponent(subcomponent)
+
+                    if len(tuple(newcomponent.subcomponents())):
+                        icalnew.addComponent(newcomponent)
