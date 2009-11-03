@@ -29,7 +29,7 @@ class X_CALENDARSERVER_PERUSER(VCalendarComponentBehavior):
     sortFirst = ('uid', 'x-calendarserver-peruser-uid')
     knownChildren = {
         'UID':                            (1, 1, None),#min, max, behaviorRegistry id
-        'X-CALENDARSERVER-PERUSER':       (1, 1, None),
+        'X-CALENDARSERVER-PERUSER-UID':   (1, 1, None),
         'X-CALENDARSERVER-PERINSTANCE':   (0, None, None),
     }
       

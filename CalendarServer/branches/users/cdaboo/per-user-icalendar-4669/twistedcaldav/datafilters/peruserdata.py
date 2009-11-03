@@ -15,6 +15,7 @@
 ##
 
 from twistedcaldav.datafilters.filter import CalendarFilter
+from twistedcaldav.ical import Component, Property
 
 __all__ = [
     "PerUserDataFilter",
@@ -57,9 +58,13 @@ class PerUserDataFilter(CalendarFilter):
     Filter per-user data
     """
 
+    # If any of these change also change the vobject behaviors in this module's __init__.py
     PERUSER_COMPONENT     = "X-CALENDARSERVER-PERUSER"
     PERUSER_UID           = "X-CALENDARSERVER-PERUSER-UID"
     PERINSTANCE_COMPONENT = "X-CALENDARSERVER-PERINSTANCE"
+
+    PERUSER_PROPERTIES    = ("TRANSP",)
+    PERUSER_SUBCOMPONENTS = ("VALARM",)
 
     def __init__(self, uid):
         """
@@ -106,9 +111,26 @@ class PerUserDataFilter(CalendarFilter):
 
     def merge(self, icalnew, icalold):
         """
-        Private event merging does not happen
+        Merge the new data with the old taking per-user information into account.
+
+        @param icalnew: new calendar data
+        @type icalnew: L{Component} or C{str}
+        @param icalold: existing calendar data
+        @type icalold: L{Component} or C{str}
+        
+        @return: L{Component} for the merged calendar data
         """
-        raise NotImplementedError
+
+        # Make sure input is valid
+        icalnew = self.validCalendar(icalnew)
+
+        # First split the new data into common and per-user pieces
+        self._splitPerUserData(icalnew)
+        if icalold is None:
+            return icalnew
+        
+        # Make sure input is valid
+        icalold = self.validCalendar(icalold)
 
     def _mergeBack(self, ical, peruser):
         """
@@ -178,3 +200,90 @@ class PerUserDataFilter(CalendarFilter):
             if property.name() == "RECURRENCE-ID":
                 continue
             ical.addProperty(property)
+
+    def _splitPerUserData(self, ical):
+        
+        peruser_component = None
+        perinstance_components = {}
+
+        def init_peruser_component():
+            peruser = Component(PerUserDataFilter.PERUSER_COMPONENT)
+            peruser.addProperty(Property("UID", ical.resourceUID()))
+            peruser.addProperty(Property(PerUserDataFilter.PERUSER_UID, self.uid))
+            ical.addComponent(peruser)
+            return peruser
+            
+        for subcomponent in ical.subcomponents():
+            if subcomponent.name() == "VTIMEZONE":
+                continue
+
+            perinstance_component = None
+            
+            def init_perinstance_component():
+                peruser = Component(PerUserDataFilter.PERINSTANCE_COMPONENT)
+                rid = subcomponent.getRecurrenceIDUTC()
+                if rid:
+                    peruser.addProperty(Property("RECURRENCE-ID", rid))
+                perinstance_components[rid] = peruser
+                return peruser
+
+            # Transfer per-user properties from main component to per-instance component
+            for property in tuple(subcomponent.properties()):
+                if property.name() in PerUserDataFilter.PERUSER_PROPERTIES or property.name().startswith("X-"):
+                    if peruser_component is None:
+                        peruser_component = init_peruser_component()
+                    if perinstance_component is None:
+                        perinstance_component = init_perinstance_component()
+                    perinstance_component.addProperty(property)
+                    subcomponent.removeProperty(property)
+            
+            # Transfer per-user components from main component to per-instance component
+            for component in tuple(subcomponent.subcomponents()):
+                if component.name() in PerUserDataFilter.PERUSER_SUBCOMPONENTS or component.name().startswith("X-"):
+                    if peruser_component is None:
+                        peruser_component = init_peruser_component()
+                    if perinstance_component is None:
+                        perinstance_component = init_perinstance_component()
+                    perinstance_component.addComponent(component)
+                    subcomponent.removeComponent(component)
+            
+        # Add unique per-instance components into the per-user component
+        master_perinstance = perinstance_components.get(None)
+        master_perinstance_txt = str(master_perinstance)
+        if master_perinstance:
+            peruser_component.addComponent(master_perinstance)
+        for rid, perinstance in perinstance_components.iteritems():
+            if rid is None:
+                continue
+            perinstance_txt = str(perinstance)
+            perinstance_txt = "".join([line for line in perinstance_txt.splitlines(True) if not line.startswith("RECURRENCE-ID:")])
+            if master_perinstance is None or perinstance_txt != master_perinstance_txt:
+                peruser_component.addComponent(perinstance)
+
+        self._compactInstances(ical)
+
+    def _compactInstances(self, ical):
+        """
+        Remove recurrences instances that are the same as their master-derived counterparts. This gives the most
+        compact representation of the calendar data.
+
+        @param ical: calendar data to process
+        @type ical: L{Component}
+        """
+
+        # Must have a master component in order to do this
+        master = ical.masterComponent()
+        if master is None:
+            return
+
+        for subcomponent in tuple(ical.subcomponents()):
+            if subcomponent.name() == "VTIMEZONE" or subcomponent.name().startswith("X-"):
+                continue
+            rid = subcomponent.getRecurrenceIDUTC()
+            if rid is None:
+                continue
+            derived = ical.deriveInstance(rid)
+            if derived:
+                if str(derived) == str(subcomponent):
+                    ical.removeComponent(subcomponent)
+
