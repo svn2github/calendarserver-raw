@@ -655,7 +655,7 @@ class OpenDirectoryService(DirectoryService):
 
         cacheFile = cacheDir.child(recordType)
         if not cacheFile.exists():
-            self.log_error("Directory cache file for %s does not exist: %s" % (recordType, cacheFile.path))
+            self.log_debug("Directory cache file for %s does not exist: %s" % (recordType, cacheFile.path))
             results = []
             lastModified = 0
         else:
