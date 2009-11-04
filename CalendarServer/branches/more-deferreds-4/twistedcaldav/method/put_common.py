@@ -1135,4 +1135,4 @@ class StoreCalendarObjectResource(object):
                         NumberOfRecurrencesWithinLimits(PCDATAElement(str(err.max_allowed)))
                     ))
             else:
-                raise
+                raise err
