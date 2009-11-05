@@ -86,6 +86,7 @@ class StoreCalendarObjectResource(object):
             self.source_index_deleted = False
             self.destination_index_deleted = False
         
+        @inlineCallbacks
         def Rollback(self):
             """
             Rollback the server state. Do not allow this to raise another exception. If
@@ -116,7 +117,7 @@ class StoreCalendarObjectResource(object):
                         self.destination_created = False
                     if self.destination_index_deleted:
                         # Must read in calendar for destination being re-indexed
-                        self.storer.destination.iCalendar().addCallback(self.storer.doDestinationIndex)
+                        self.storer.doDestinationIndex((yield self.storer.destination.iCalendar()))
                         self.destination_index_deleted = False
                         log.debug("Rollback: destination re-indexed %s" % (self.storer.destination.fp.path,))
                     if self.source_index_deleted:
@@ -307,13 +308,13 @@ class StoreCalendarObjectResource(object):
             if not self.sourcecal:
                 # Valid content type check on the source resource if its not in a calendar collection
                 if self.source is not None:
-                    result, message = yield self.validContentType()
+                    result, message = (yield self.validContentType())
                     if not result:
                         log.err(message)
                         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "supported-calendar-data")))
                 
                     # At this point we need the calendar data to do more tests
-                    self.calendar = yield self.source.iCalendar()
+                    self.calendar = (yield self.source.iCalendar())
                 else:
                     try:
                         if type(self.calendar) in (types.StringType, types.UnicodeType,):
@@ -357,7 +358,7 @@ class StoreCalendarObjectResource(object):
 
                 # FIXME: We need this here because we have to re-index the destination. Ideally it
                 # would be better to copy the index entries from the source and add to the destination.
-                self.calendar = yield self.source.iCalendar()
+                self.calendar = (yield self.source.iCalendar())
 
             # Check access
             if self.destinationcal and config.EnablePrivateEvents:
@@ -368,7 +369,7 @@ class StoreCalendarObjectResource(object):
 
         elif self.sourcecal:
             self.source_index = self.sourceparent.index()
-            self.calendar = yield self.source.iCalendar()
+            self.calendar = (yield self.source.iCalendar())
     
     @inlineCallbacks
     def validCopyMoveOperation(self):
@@ -452,7 +453,7 @@ class StoreCalendarObjectResource(object):
         """
         result = True
         message = ""
-        content_type = yield maybeDeferred(self.source.contentType)
+        content_type = (yield maybeDeferred(self.source.contentType))
         if (content_type is None or
             not ((content_type.mediaType == "text") and
                  (content_type.mediaSubtype == "calendar"))):
@@ -599,9 +600,9 @@ class StoreCalendarObjectResource(object):
 
         # UID must be unique
         index = self.destinationparent.index()
-        isAllowed = yield index.isAllowedUID(uid, oldname, self.destination.fp.basename())
+        isAllowed = (yield index.isAllowedUID(uid, oldname, self.destination.fp.basename()))
         if not isAllowed:
-            rname = yield index.resourceNameForUID(uid)
+            rname = (yield index.resourceNameForUID(uid))
             # This can happen if two simultaneous PUTs occur with the same UID.
             # i.e. one PUT has reserved the UID but has not yet written the resource,
             # the other PUT tries to reserve and fails but no index entry exists yet.
@@ -959,7 +960,7 @@ class StoreCalendarObjectResource(object):
                 # UID conflict check - note we do this after reserving the UID to avoid a race condition where two requests
                 # try to write the same calendar data to two different resource URIs.
                 if not self.isiTIP:
-                    result, message, rname = yield self.noUIDConflict(self.uid)
+                    result, message, rname = (yield self.noUIDConflict(self.uid))
                     if not result:
                         log.err(message)
                         raise HTTPError(ErrorResponse(responsecode.FORBIDDEN,
@@ -1095,7 +1096,7 @@ class StoreCalendarObjectResource(object):
             if self.destinationcal:
                 result = (yield self.doDestinationIndex(self.calendar))
                 if result is not None:
-                    self.rollback.Rollback()
+                    yield self.rollback.Rollback()
                     returnValue(result)
     
             # Delete the original source if needed.
@@ -1125,7 +1126,7 @@ class StoreCalendarObjectResource(object):
             # Roll back changes to original server state. Note this may do nothing
             # if the rollback has already occurred or changes already committed.
             if self.rollback:
-                self.rollback.Rollback()
+                yield self.rollback.Rollback()
 
             if isinstance(err, InvalidOverriddenInstanceError):
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data"), description="Invalid overridden instance"))
@@ -1135,4 +1136,7 @@ class StoreCalendarObjectResource(object):
                         NumberOfRecurrencesWithinLimits(PCDATAElement(str(err.max_allowed)))
                     ))
             else:
+                # Important - we have to raise the original exception again, we cannot just use plain
+                # "raise" here as we have inlineCallbacks in use and those blow away the re-raised
+                # exception
                 raise err

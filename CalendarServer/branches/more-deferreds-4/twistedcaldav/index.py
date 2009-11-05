@@ -267,14 +267,14 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
         results = self._db_values_for_sql(statement, *names)
         return results
 
-
+    @inlineCallbacks
     def testAndUpdateIndex(self, minDate):
         # Find out if the index is expanded far enough
         names = self.notExpandedBeyond(minDate)
         # Actually expand recurrence max
         for name in names:
             self.log_info("Search falls outside range of index for %s %s" % (name, minDate))
-            self.reExpandResource(name, minDate)
+            yield self.reExpandResource(name, minDate)
 
     @inlineCallbacks
     def indexedSearch(self, filter, fbtype=False):
@@ -301,7 +301,7 @@ class AbstractCalendarIndex(AbstractSQLDatabase, LoggingMixIn):
                     maxDate = maxDate.date()
                     if isStartDate:
                         maxDate += datetime.timedelta(days=365)
-                    self.testAndUpdateIndex(maxDate)
+                    yield self.testAndUpdateIndex(maxDate)
             else:
                 # We cannot handler this filter in an indexed search
                 raise IndexedSearchException()
@@ -501,17 +501,16 @@ class CalendarIndex (AbstractCalendarIndex):
         """
         return self._db_values_for_sql("select NAME from RESOURCE where RECURRANCE_MAX < :1", minDate)
 
+    @inlineCallbacks
     def reExpandResource(self, name, expand_until):
         """
         Given a resource name, remove it from the database and re-add it
         with a longer expansion.
         """
-        d = self.resource.getChild(name)
-        d.addCallback(lambda r: r.iCalendar())
-        def _gotCalendar(calendar):
-            self._add_to_db(name, calendar, expand_until=expand_until, reCreate=True)
-            self._db_commit()
-        return d.addCallback(_gotCalendar)
+        child = (yield self.resource.getChild(name))
+        calendar = (yield child.iCalendar())
+        self._add_to_db(name, calendar, expand_until=expand_until, reCreate=True)
+        self._db_commit()
         
     def _add_to_db(self, name, calendar, cursor = None, expand_until=None, reCreate=False):
         """

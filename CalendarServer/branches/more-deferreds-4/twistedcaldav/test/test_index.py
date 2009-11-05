@@ -16,7 +16,7 @@
 
 from twisted.internet import reactor
 from twisted.internet.task import deferLater
-from twisted.internet.defer import succeed
+from twisted.internet.defer import succeed, inlineCallbacks
 
 from twistedcaldav.ical import Component
 from twistedcaldav.index import Index, default_future_expansion_duration,\
@@ -101,6 +101,7 @@ class SQLIndexTests (twistedcaldav.test.util.TestCase):
         return d
 
 
+    @inlineCallbacks
     def test_index(self):
         data = (
             (
@@ -251,7 +252,7 @@ END:VCALENDAR
             else:
                 self.assertFalse(self.db.resourceExists(name), msg=description)
 
-        self.db.testAndUpdateIndex(datetime.date(2020, 1, 1))
+        yield self.db.testAndUpdateIndex(datetime.date(2020, 1, 1))
         for description, name, calendar_txt, reCreate, ok in data:
             if ok:
                 self.assertTrue(self.db.resourceExists(name), msg=description)
