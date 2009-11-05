@@ -21,6 +21,7 @@ PUT/COPY/MOVE common behavior.
 __all__ = ["StoreCalendarObjectResource"]
 
 import os
+import sys
 import types
 import uuid
 
@@ -1120,6 +1121,8 @@ class StoreCalendarObjectResource(object):
             returnValue(response)
     
         except Exception, err:
+            excType, excValue, excTraceback = sys.exc_info()
+
             if reservation:
                 yield reservation.unreserve()
     
@@ -1139,4 +1142,4 @@ class StoreCalendarObjectResource(object):
                 # Important - we have to raise the original exception again, we cannot just use plain
                 # "raise" here as we have inlineCallbacks in use and those blow away the re-raised
                 # exception
-                raise err
+                raise excType, excValue, excTraceback
