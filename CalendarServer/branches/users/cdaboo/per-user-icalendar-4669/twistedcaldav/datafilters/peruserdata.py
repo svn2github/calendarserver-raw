@@ -294,10 +294,10 @@ class PerUserDataFilter(CalendarFilter):
         
         # Test for simple case first
         if icalnew.isRecurring() and icalold.isRecurring():
-            pass
+            # Test each instance from old data to see whether it is still valid in the new one 
+            self._complexMerge(icalnew, icalold)
         else:
             self._simpleMerge(icalnew, icalold)
-            return
     
     def _simpleMerge(self, icalnew, icalold):
         
@@ -312,10 +312,28 @@ class PerUserDataFilter(CalendarFilter):
                     
                     # Only transfer the master components from the old data to the new when the old
                     # was recurring and the new is not recurring
-                    if old_recur:
+                    if not new_recur and old_recur:
                         for subcomponent in tuple(newcomponent.subcomponents()):
                             if subcomponent.getRecurrenceIDUTC() is not None:
                                 newcomponent.removeComponent(subcomponent)
+
+                    if len(tuple(newcomponent.subcomponents())):
+                        icalnew.addComponent(newcomponent)
+    
+    def _complexMerge(self, icalnew, icalold):
+        
+        # Take all per-user components from old and add to new, except for our user
+        for component in icalold.subcomponents():
+            if component.name() == PerUserDataFilter.PERUSER_COMPONENT:
+                if component.propertyValue(PerUserDataFilter.PERUSER_UID) != self.uid:
+                    newcomponent = component.duplicate()
+                    
+                    # See which of the instances are still valid
+                    old_rids = dict([(subcomponent.getRecurrenceIDUTC(), subcomponent,) for subcomponent in newcomponent.subcomponents()])
+                    valid_rids = icalnew.validInstances(old_rids.keys())
+                    for old_rid, subcomponent in old_rids.iteritems():
+                        if old_rid not in valid_rids:
+                            newcomponent.removeComponent(subcomponent)
 
                     if len(tuple(newcomponent.subcomponents())):
                         icalnew.addComponent(newcomponent)

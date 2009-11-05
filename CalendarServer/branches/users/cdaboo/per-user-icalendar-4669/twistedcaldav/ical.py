@@ -1153,6 +1153,51 @@ class Component (object):
 
         return newcomp
         
+    def validInstances(self, rids):
+        """
+        Test whether the specified recurrence-ids are valid instances in this event.
+
+        @param rid: recurrence-id values
+        @type rid: iterable
+        
+        @return: C{set} of valid rids
+        """
+        
+        valid = set()
+        non_master_rids = [rid for rid in rids if rid is not None]
+        if non_master_rids:
+            highest_rid = max(non_master_rids)
+            self.cacheExpandedTimeRanges(highest_rid + datetime.timedelta(days=1))
+        for rid in rids:
+            if self.validInstance(rid, clear_cache=False):
+                valid.add(rid)
+        return valid
+        
+    def validInstance(self, rid, clear_cache=True):
+        """
+        Test whether the specified recurrence-id is a valid instance in this event.
+
+        @param rid: recurrence-id value
+        @type rid: L{datetime.datetime}
+        
+        @return: C{bool}
+        """
+        
+        # First check overridden instances already in this component
+        if not hasattr(self, "cachedComponentInstances") or clear_cache:
+            self.cachedComponentInstances = set(self.getComponentInstances())
+        if rid in self.cachedComponentInstances:
+            return True
+            
+        # Must have a master component
+        if self.masterComponent() is None:
+            return False
+
+        # Get expansion
+        instances = self.cacheExpandedTimeRanges(rid + datetime.timedelta(days=1))
+        new_rids = set([instances[key].rid for key in instances])
+        return rid in new_rids
+        
     def resourceUID(self):
         """
         @return: the UID of the subcomponents in this component.
