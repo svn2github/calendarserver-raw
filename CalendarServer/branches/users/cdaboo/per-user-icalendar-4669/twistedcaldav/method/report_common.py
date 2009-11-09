@@ -60,6 +60,7 @@ from twistedcaldav.ical import Component, Property, iCalendarProductID
 from twistedcaldav.instance import InstanceList
 from twistedcaldav.index import IndexedSearchException
 from twistedcaldav.log import Logger
+from twistedcaldav.query import queryfilter
 
 log = Logger()
 
@@ -335,6 +336,7 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
                       name="VCALENDAR",
                    )
               )
+    filter = queryfilter.Filter(filter)
 
     # Get the timezone property from the collection, and store in the query filter
     # for use during the query itself.

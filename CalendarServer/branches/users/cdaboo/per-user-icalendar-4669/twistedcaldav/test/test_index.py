@@ -16,22 +16,21 @@
 
 from twisted.internet import reactor
 from twisted.internet.task import deferLater
-
+from twistedcaldav import caldavxml
+from twistedcaldav.caldavxml import TimeRange
 from twistedcaldav.ical import Component
 from twistedcaldav.index import Index, default_future_expansion_duration,\
     maximum_future_expansion_duration, IndexedSearchException,\
     AbstractCalendarIndex
 from twistedcaldav.index import ReservationError, MemcachedUIDReserver
 from twistedcaldav.instance import InvalidOverriddenInstanceError
+from twistedcaldav.query import queryfilter
 from twistedcaldav.test.util import InMemoryMemcacheProtocol
-import twistedcaldav.test.util
-from twistedcaldav import caldavxml
-from twistedcaldav.caldavxml import TimeRange
 from vobject.icalendar import utc
-import sqlite3
-
 import datetime
 import os
+import sqlite3
+import twistedcaldav.test.util
 
 class SQLIndexTests (twistedcaldav.test.util.TestCase):
     """
@@ -414,17 +413,18 @@ END:VCALENDAR
 
             # Create fake filter element to match time-range
             filter =  caldavxml.Filter(
-                  caldavxml.ComponentFilter(
-                      caldavxml.ComponentFilter(
-                          TimeRange(
-                              start=trstart,
-                              end=trend,
-                          ),
-                          name=("VEVENT", "VFREEBUSY", "VAVAILABILITY"),
-                      ),
-                      name="VCALENDAR",
-                   )
-              )
+                caldavxml.ComponentFilter(
+                    caldavxml.ComponentFilter(
+                        TimeRange(
+                            start=trstart,
+                            end=trend,
+                        ),
+                        name=("VEVENT", "VFREEBUSY", "VAVAILABILITY"),
+                    ),
+                    name="VCALENDAR",
+                )
+            )
+            filter = queryfilter.Filter(filter)
 
             resources = self.db.indexedSearch(filter, fbtype=True)
             index_results = set()
