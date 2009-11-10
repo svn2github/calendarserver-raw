@@ -20,6 +20,7 @@ import socket
 
 from zope.interface import implements
 
+from twisted.internet import reactor
 from twisted.internet.address import IPv4Address
 from twisted.internet import tcp, ssl
 
@@ -47,12 +48,15 @@ from twistedcaldav.cluster import makeService_Combined, makeService_Master
 from twistedcaldav.config import config, parseConfig, defaultConfig, ConfigurationError
 from twistedcaldav.root import RootResource
 from twistedcaldav.resource import CalDAVResource
+from twistedcaldav.directory import augment, calendaruserproxy
+from twistedcaldav.directory.calendaruserproxyloader import XMLCalendarUserProxyLoader
 from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.aggregate import AggregateDirectoryService
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.httpfactory import HTTP503LoggingFactory, LimitingHTTPFactory
 from twistedcaldav.static import CalendarHomeProvisioningFile
+from twistedcaldav.static import IScheduleInboxFile
 from twistedcaldav.static import TimezoneServiceFile
 from twistedcaldav.timezones import TimezoneCache
 from twistedcaldav import pdmonster
@@ -501,6 +505,7 @@ class CalDAVServiceMaker(object):
     rootResourceClass            = RootResource
     principalResourceClass       = DirectoryPrincipalProvisioningResource
     calendarResourceClass        = CalendarHomeProvisioningFile
+    iScheduleResourceClass       = IScheduleInboxFile
     timezoneServiceResourceClass = TimezoneServiceFile
 
     def makeService_Slave(self, options):
@@ -510,6 +515,32 @@ class CalDAVServiceMaker(object):
         #
         oldLogLevel = logLevelForNamespace(None)
         setLogLevelForNamespace(None, "info")
+
+        #
+        # Setup the Augment Service
+        #
+        augmentClass = namedClass(config.AugmentService.type)
+
+        log.info("Configuring augment service of type: %s" % (augmentClass,))
+
+        try:
+            augment.AugmentService = augmentClass(**config.AugmentService.params)
+        except IOError, e:
+            log.error("Could not start augment service")
+            raise
+
+        #
+        # Setup the ProxyDB Service
+        #
+        proxydbClass = namedClass(config.ProxyDBService.type)
+
+        log.info("Configuring proxydb service of type: %s" % (proxydbClass,))
+
+        try:
+            calendaruserproxy.ProxyDBService = proxydbClass(**config.ProxyDBService.params)
+        except IOError, e:
+            log.error("Could not start proxydb service")
+            raise
 
         #
         # Setup the Directory
@@ -547,15 +578,22 @@ class CalDAVServiceMaker(object):
                 SudoDirectoryService.recordType_sudoers)
 
         #
+        # Make sure proxies get initialized
+        #
+        if config.ProxyLoadFromFile:
+            def _doProxyUpdate():
+                loader = XMLCalendarUserProxyLoader(config.ProxyLoadFromFile)
+                return loader.updateProxyDB()
+            
+            reactor.addSystemEventTrigger("after", "startup", _doProxyUpdate)
+
+        #
         # Configure Memcached Client Pool
         #
-        if config.Memcached["ClientEnabled"]:
-            memcachepool.installPool(
-                IPv4Address(
-                    'TCP',
-                    config.Memcached["BindAddress"],
-                    config.Memcached["Port"]),
-                config.Memcached["MaxClients"])
+        memcachepool.installPools(
+            config.Memcached.Pools,
+            config.Memcached.MaxClients,
+        )
 
         #
         # Configure NotificationClient
@@ -591,6 +629,17 @@ class CalDAVServiceMaker(object):
 
         root.putChild('principals', principalCollection)
         root.putChild('calendars', calendarCollection)
+
+        # iSchedule service is optional
+        if config.Scheduling.iSchedule.Enabled:
+            log.info("Setting up iSchedule inbox resource: %r"
+                          % (self.iScheduleResourceClass,))
+
+            ischedule = self.iScheduleResourceClass(
+                os.path.join(config.DocumentRoot, "ischedule"),
+                root,
+            )
+            root.putChild("ischedule", ischedule)
 
         # Timezone service is optional
         if config.EnableTimezoneService:

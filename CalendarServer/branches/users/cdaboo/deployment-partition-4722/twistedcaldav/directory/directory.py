@@ -34,9 +34,11 @@ from twisted.cred.error import UnauthorizedLogin
 from twisted.cred.checkers import ICredentialsChecker
 from twisted.web2.dav.auth import IPrincipalCredentials
 
+from twistedcaldav.config import config
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.directory.idirectory import IDirectoryService, IDirectoryRecord
 from twistedcaldav.directory.util import uuidFromName
+from twistedcaldav.partitions import partitions
 
 class DirectoryService(LoggingMixIn):
     implements(IDirectoryService, ICredentialsChecker)
@@ -150,19 +152,20 @@ class DirectoryRecord(LoggingMixIn):
     implements(IDirectoryRecord)
 
     def __repr__(self):
-        return "<%s[%s@%s(%s)] %s(%s) %r>" % (
+        return "<%s[%s@%s(%s)] %s(%s) %r @ %s>" % (
             self.__class__.__name__,
             self.recordType,
             self.service.guid,
             self.service.realmName,
             self.guid,
             self.shortName,
-            self.fullName
+            self.fullName,
+            self.hostedAt,
         )
 
     def __init__(
-        self, service, recordType, guid, shortName, fullName,
-        calendarUserAddresses, autoSchedule, enabledForCalendaring=True,
+        self, service, recordType, guid,
+        shortName, fullName, emailAddresses,
     ):
         assert service.realmName is not None
         assert recordType
@@ -171,19 +174,17 @@ class DirectoryRecord(LoggingMixIn):
         if not guid:
             guid = uuidFromName(service.guid, "%s:%s" % (recordType, shortName))
 
-        if enabledForCalendaring:
-            calendarUserAddresses.add("urn:uuid:%s" % (guid,))
-        else:
-            assert len(calendarUserAddresses) == 0
-
         self.service               = service
         self.recordType            = recordType
         self.guid                  = guid
+        self.enabled               = False
+        self.hostedAt              = ""
         self.shortName             = shortName
         self.fullName              = fullName
-        self.enabledForCalendaring = enabledForCalendaring
-        self.calendarUserAddresses = calendarUserAddresses
-        self.autoSchedule          = autoSchedule
+        self.emailAddresses        = emailAddresses
+        self.enabledForCalendaring = False
+        self.autoSchedule          = False
+        self.calendarUserAddresses = set()
 
     def __cmp__(self, other):
         if not isinstance(other, DirectoryRecord):
@@ -198,10 +199,35 @@ class DirectoryRecord(LoggingMixIn):
     def __hash__(self):
         h = hash(self.__class__)
         for attr in ("service", "recordType", "shortName", "guid",
-                     "enabledForCalendaring"):
+                     "enabled", "enabledForCalendaring"):
             h = (h + hash(getattr(self, attr))) & sys.maxint
 
         return h
+
+    def addAugmentInformation(self, augment):
+        
+        if augment:
+            self.enabled = augment.enabled
+            self.hostedAt = augment.hostedAt
+            self.enabledForCalendaring = augment.enabledForCalendaring
+            self.autoSchedule = augment.autoSchedule
+            self.calendarUserAddresses = set(augment.calendarUserAddresses)
+
+            if self.enabledForCalendaring and self.recordType == self.service.recordType_groups:
+                raise AssertionError("Groups may not be enabled for calendaring")
+    
+            if self.enabledForCalendaring:
+                for email in self.emailAddresses:
+                    self.calendarUserAddresses.add("mailto:%s" % (email.lower(),))
+                self.calendarUserAddresses.add("urn:uuid:%s" % (self.guid,))
+            else:
+                assert len(self.calendarUserAddresses) == 0
+
+        else:
+            self.enabled = False
+            self.hostedAt = ""
+            self.enabledForCalendaring = False
+            self.calendarUserAddresses = set()
 
     def members(self):
         return ()
@@ -209,23 +235,14 @@ class DirectoryRecord(LoggingMixIn):
     def groups(self):
         return ()
 
-    def proxies(self):
-        return ()
-
-    def proxyFor(self):
-        return ()
-
-    def readOnlyProxies(self):
-        return ()
-
-    def readOnlyProxyFor(self):
-        return ()
-
-    def hasEditableProxyMembership(self):
-        return self.recordType in (DirectoryService.recordType_users, DirectoryService.recordType_groups)
-
     def verifyCredentials(self, credentials):
         return False
+
+    def locallyHosted(self):
+        return not self.hostedAt or not config.Partitioning.Enabled or self.hostedAt == config.Partitioning.ServerPartitionID
+    
+    def hostedURL(self):
+        return partitions.getPartitionURL(self.hostedAt)
 
 class DirectoryError(RuntimeError):
     """

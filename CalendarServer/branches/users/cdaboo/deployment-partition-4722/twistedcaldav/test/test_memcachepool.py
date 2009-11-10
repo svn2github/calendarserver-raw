@@ -16,8 +16,6 @@
 
 from zope.interface import implements
 
-from twisted.trial.unittest import TestCase
-
 from twisted.internet.interfaces import IConnector, IReactorTCP
 from twisted.internet.address import IPv4Address
 
@@ -25,7 +23,7 @@ from twistedcaldav.test.util import InMemoryMemcacheProtocol
 from twistedcaldav.memcachepool import PooledMemCacheProtocol
 from twistedcaldav.memcachepool import MemCacheClientFactory
 from twistedcaldav.memcachepool import MemCachePool
-
+from twistedcaldav.test.util import TestCase
 
 MC_ADDRESS = IPv4Address('TCP', '127.0.0.1', 11211)
 
@@ -137,6 +135,7 @@ class MemCacheClientFactoryTests(TestCase):
         Create a L{MemCacheClientFactory} instance and and give it a
         L{StubConnectionPool} instance.
         """
+        TestCase.setUp(self)
         self.pool = StubConnectionPool()
         self.factory = MemCacheClientFactory()
         self.factory.connectionPool = self.pool
@@ -196,6 +195,7 @@ class MemCachePoolTests(TestCase):
         """
         Create a L{MemCachePool}.
         """
+        TestCase.setUp(self)
         self.reactor = StubReactor()
         self.pool = MemCachePool(MC_ADDRESS,
                                  maxClients=5,

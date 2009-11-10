@@ -79,11 +79,13 @@ class IDirectoryRecord(Interface):
     service               = Attribute("The L{IDirectoryService} this record exists in.")
     recordType            = Attribute("The type of this record.")
     guid                  = Attribute("The GUID of this record.")
+    enabled               = Attribute("Determines whether this record should be provisioned as a principal.")
+    hostedAt              = Attribute("Identifies the server that actually hosts data for the record.")
     shortName             = Attribute("The name of this record.")
     fullName              = Attribute("The full name of this record.")
-    calendarUserAddresses = Attribute("A set of calendar user addresses for this record.")
-    autoSchedule          = Attribute("Principal identified by this record should automatically accept/deny meetings.")
+    emailAddress          = Attribute("The email address of this record.")
     enabledForCalendaring = Attribute("Determines whether this record should be provisioned with a calendar home.")
+    calendarUserAddresses = Attribute("A set of calendar user addresses for this record.")
 
     def members():
         """

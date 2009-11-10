@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ from twisted.cred.credentials import UsernamePassword
 from twisted.web2.auth.digest import DigestedCredentials
 from twisted.python.filepath import FilePath
 
+from twistedcaldav.directory import augment
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 from twistedcaldav.directory.xmlaccountsparser import XMLAccountsParser
 
@@ -61,22 +62,38 @@ class XMLDirectoryService(DirectoryService):
 
     def listRecords(self, recordType):
         for entryShortName, xmlPrincipal in self._entriesForRecordType(recordType):
-            yield XMLDirectoryRecord(
+            record = XMLDirectoryRecord(
                 service       = self,
                 recordType    = recordType,
                 shortName     = entryShortName,
                 xmlPrincipal  = xmlPrincipal,
             )
 
+            # Look up augment information
+            # TODO: this needs to be deferred but for now we hard code the deferred result because
+            # we know it is completing immediately.
+            d = augment.AugmentService.getAugmentRecord(record.guid)
+            d.addCallback(lambda x:record.addAugmentInformation(x))
+
+            yield record
+
     def recordWithShortName(self, recordType, shortName):
         for entryShortName, xmlprincipal in self._entriesForRecordType(recordType):
             if entryShortName == shortName:
-                return XMLDirectoryRecord(
+                record = XMLDirectoryRecord(
                     service       = self,
                     recordType    = recordType,
                     shortName     = entryShortName,
                     xmlPrincipal  = xmlprincipal,
                 )
+
+                # Look up augment information
+                # TODO: this needs to be deferred but for now we hard code the deferred result because
+                # we know it is completing immediately.
+                d = augment.AugmentService.getAugmentRecord(record.guid)
+                d.addCallback(lambda x:record.addAugmentInformation(x))
+
+                return record
 
         return None
 
@@ -108,18 +125,12 @@ class XMLDirectoryRecord(DirectoryRecord):
             guid                  = xmlPrincipal.guid,
             shortName             = shortName,
             fullName              = xmlPrincipal.name,
-            calendarUserAddresses = xmlPrincipal.calendarUserAddresses,
-            autoSchedule          = xmlPrincipal.autoSchedule,
-            enabledForCalendaring = xmlPrincipal.enabledForCalendaring,
+            emailAddresses        = xmlPrincipal.emailAddresses,
         )
 
         self.password          = xmlPrincipal.password
         self._members          = xmlPrincipal.members
         self._groups           = xmlPrincipal.groups
-        self._proxies          = xmlPrincipal.proxies
-        self._proxyFor         = xmlPrincipal.proxyFor
-        self._readOnlyProxies  = xmlPrincipal.readOnlyProxies
-        self._readOnlyProxyFor = xmlPrincipal.readOnlyProxyFor
 
     def members(self):
         for recordType, shortName in self._members:
@@ -129,26 +140,11 @@ class XMLDirectoryRecord(DirectoryRecord):
         for shortName in self._groups:
             yield self.service.recordWithShortName(DirectoryService.recordType_groups, shortName)
 
-    def proxies(self):
-        for recordType, shortName in self._proxies:
-            yield self.service.recordWithShortName(recordType, shortName)
-
-    def proxyFor(self, read_write=True):
-        for recordType, shortName in self._proxyFor:
-            yield self.service.recordWithShortName(recordType, shortName)
-
-    def readOnlyProxies(self):
-        for recordType, shortName in self._readOnlyProxies:
-            yield self.service.recordWithShortName(recordType, shortName)
-
-    def readOnlyProxyFor(self, read_write=True):
-        for recordType, shortName in self._readOnlyProxyFor:
-            yield self.service.recordWithShortName(recordType, shortName)
-
     def verifyCredentials(self, credentials):
-        if isinstance(credentials, UsernamePassword):
-            return credentials.password == self.password
-        if isinstance(credentials, DigestedCredentials):
-            return credentials.checkPassword(self.password)
+        if self.enabled:
+            if isinstance(credentials, UsernamePassword):
+                return credentials.password == self.password
+            if isinstance(credentials, DigestedCredentials):
+                return credentials.checkPassword(self.password)
 
         return super(XMLDirectoryRecord, self).verifyCredentials(credentials)

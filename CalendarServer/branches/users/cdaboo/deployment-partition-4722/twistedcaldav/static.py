@@ -49,11 +49,12 @@ from twisted.web2.dav.http import ErrorResponse
 from twisted.web2.dav.idav import IDAVResource
 from twisted.web2.dav.resource import AccessDeniedError
 from twisted.web2.dav.resource import davPrivilegeSet
-from twisted.web2.dav.util import parentForURL, bindMethods
+from twisted.web2.dav.util import parentForURL, bindMethods, joinURL
 
 from twistedcaldav import caldavxml
 from twistedcaldav import customxml
 from twistedcaldav.caldavxml import caldav_namespace
+from twistedcaldav.client.reverseproxy import ReverseProxyResource
 from twistedcaldav.config import config
 from twistedcaldav.customxml import TwistedCalendarAccessProperty
 from twistedcaldav.extensions import DAVFile
@@ -63,7 +64,8 @@ from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.index import Index, IndexSchedule
 from twistedcaldav.resource import CalDAVResource, isCalendarCollectionResource, isPseudoCalendarCollectionResource
-from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
+from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource,\
+    IScheduleInboxResource
 from twistedcaldav.dropbox import DropBoxHomeResource, DropBoxCollectionResource
 from twistedcaldav.directory.calendar import uidsResourceName
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
@@ -341,7 +343,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
         if isCalendarCollectionResource(self):
 
-			# Short-circuit stat with information we know to be true at this point
+            # Short-circuit stat with information we know to be true at this point
             if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
                 if os.path.basename(path.path) in self.knownChildren:
                     path.existsCached = True
@@ -612,59 +614,76 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
 
         assert len(name) > 4, "Directory record has an invalid GUID: %r" % (name,)
         
-        childPath = self.fp.child(name[0:2]).child(name[2:4]).child(name)
-        child = self.homeResourceClass(childPath.path, self, record)
-
-        if not child.exists():
-            self.provision()
-
-            if not childPath.parent().isdir():
-                childPath.parent().makedirs()
-
-            for oldPath in (
-                # Pre 2.0: All in one directory
-                self.fp.child(name),
-                # Pre 1.2: In types hierarchy instead of the GUID hierarchy
-                self.parent.getChild(record.recordType).fp.child(record.shortName),
-            ):
-                if oldPath.exists():
-                    # The child exists at an old location.  Move to new location.
-                    log.msg("Moving calendar home from old location %r to new location %r." % (oldPath, childPath))
-                    try:
-                        oldPath.moveTo(childPath)
-                    except (OSError, IOError), e:
-                        log.err("Error moving calendar home %r: %s" % (oldPath, e))
+        if record.locallyHosted():
+            childPath = self.fp.child(name[0:2]).child(name[2:4]).child(name)
+            child = self.homeResourceClass(childPath.path, self, record)
+    
+            if not child.exists():
+                self.provision()
+    
+                if not childPath.parent().isdir():
+                    childPath.parent().makedirs()
+    
+                for oldPath in (
+                    # Pre 2.0: All in one directory
+                    self.fp.child(name),
+                    # Pre 1.2: In types hierarchy instead of the GUID hierarchy
+                    self.parent.getChild(record.recordType).fp.child(record.shortName),
+                ):
+                    if oldPath.exists():
+                        # The child exists at an old location.  Move to new location.
+                        log.msg("Moving calendar home from old location %r to new location %r." % (oldPath, childPath))
+                        try:
+                            oldPath.moveTo(childPath)
+                        except (OSError, IOError), e:
+                            log.err("Error moving calendar home %r: %s" % (oldPath, e))
+                            raise HTTPError(StatusResponse(
+                                responsecode.INTERNAL_SERVER_ERROR,
+                                "Unable to move calendar home."
+                            ))
+                        child.fp.changed()
+                        break
+                else:
+                    #
+                    # NOTE: provisionDefaultCalendars() returns a deferred, which we are ignoring.
+                    # The result being that the default calendars will be present at some point
+                    # in the future, not necessarily right now, and we don't have a way to wait
+                    # on that to finish.
+                    #
+                    child.provisionDefaultCalendars()
+    
+                    #
+                    # Try to work around the above a little by telling the client that something
+                    # when wrong temporarily if the child isn't provisioned right away.
+                    #
+                    if not child.exists():
                         raise HTTPError(StatusResponse(
-                            responsecode.INTERNAL_SERVER_ERROR,
-                            "Unable to move calendar home."
+                            responsecode.SERVICE_UNAVAILABLE,
+                            "Provisioning calendar home."
                         ))
-                    child.fp.changed()
-                    break
-            else:
-                #
-                # NOTE: provisionDefaultCalendars() returns a deferred, which we are ignoring.
-                # The result being that the default calendars will be present at some point
-                # in the future, not necessarily right now, and we don't have a way to wait
-                # on that to finish.
-                #
-                child.provisionDefaultCalendars()
-
-                #
-                # Try to work around the above a little by telling the client that something
-                # when wrong temporarily if the child isn't provisioned right away.
-                #
-                if not child.exists():
-                    raise HTTPError(StatusResponse(
-                        responsecode.SERVICE_UNAVAILABLE,
-                        "Provisioning calendar home."
-                    ))
-
-            assert child.exists()
+    
+                assert child.exists()
+        
+        else:
+            childPath = self.fp.child(name[0:2]).child(name[2:4]).child(name)
+            child = CalendarHomeReverseProxyFile(childPath.path, self, record)
 
         return child
 
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
+
+class CalendarHomeReverseProxyFile(ReverseProxyResource):
+    
+    def __init__(self, path, parent, record):
+        self.path = path
+        self.parent = parent
+        self.record = record
+        
+        super(CalendarHomeReverseProxyFile, self).__init__(self.record.hostedAt)
+    
+    def url(self):
+        return joinURL(self.parent.url(), self.record.guid)
 
 class CalendarHomeFile (PropfindCacheMixin, AutoProvisioningFileMixIn, DirectoryCalendarHomeResource, CalDAVFile):
     """
@@ -857,6 +876,51 @@ class ScheduleOutboxFile (ScheduleOutboxResource, ScheduleFile):
 
     def __repr__(self):
         return "<%s (calendar outbox collection): %s>" % (self.__class__.__name__, self.fp.path)
+
+class IScheduleInboxFile (IScheduleInboxResource, CalDAVFile):
+    """
+    Server-to-server scheduling inbox resource.
+    """
+    def __init__(self, path, parent):
+        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
+        IScheduleInboxResource.__init__(self, parent)
+
+    def __repr__(self):
+        return "<%s (server-to-server inbox resource): %s>" % (self.__class__.__name__, self.fp.path)
+
+    def isCollection(self):
+        return False
+
+    def createSimilarFile(self, path):
+        if path == self.fp.path:
+            return self
+        else:
+            return responsecode.NOT_FOUND
+
+    def http_PUT        (self, request): return responsecode.FORBIDDEN
+    def http_COPY       (self, request): return responsecode.FORBIDDEN
+    def http_MOVE       (self, request): return responsecode.FORBIDDEN
+    def http_DELETE     (self, request): return responsecode.FORBIDDEN
+    def http_MKCOL      (self, request): return responsecode.FORBIDDEN
+
+    def http_MKCALENDAR(self, request):
+        return ErrorResponse(
+            responsecode.FORBIDDEN,
+            (caldav_namespace, "calendar-collection-location-ok")
+        )
+
+    def etag(self):
+        return None
+
+    def checkPreconditions(self, request):
+        return None
+
+    ##
+    # ACL
+    ##
+
+    def supportedPrivileges(self, request):
+        return succeed(schedulePrivilegeSet)
 
 class DropBoxHomeFile (AutoProvisioningFileMixIn, DropBoxHomeResource, CalDAVFile):
     def __init__(self, path, parent):

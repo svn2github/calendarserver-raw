@@ -23,7 +23,6 @@ __all__ = [
     "config",
 ]
 
-import os
 import copy
 import re
 
@@ -33,6 +32,7 @@ from twisted.web2.dav.resource import TwistedACLInheritable
 from twistedcaldav.py.plistlib import readPlist
 from twistedcaldav.log import Logger
 from twistedcaldav.log import clearLogLevels, setLogLevelForNamespace, InvalidLogLevelError
+from twistedcaldav.partitions import partitions
 
 log = Logger()
 
@@ -71,10 +71,35 @@ serviceDefaultParams = {
     },
     "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
         "node": "/Search",
-        "requireComputerRecord": True,
         "cacheTimeout": 30,
     },
 }
+
+augmentDefaultParams = {
+    "twistedcaldav.directory.augment.AugmentXMLDB": {
+        "xmlFiles": ["/etc/caldavd/augments.xml",],
+    },
+    "twistedcaldav.directory.augment.AugmentSqliteDB": {
+        "dbpath": "/etc/caldavd/augments.sqlite",
+    },
+    "twistedcaldav.directory.augment.AugmentPostgreSQLDB": {
+        "host": "localhost",
+        "database": "augments",
+    },
+}
+
+proxyDBDefaultParams = {
+    "twistedcaldav.directory.calendaruserproxy.ProxySqliteDB": {
+        "dbpath": "/etc/caldavd/proxies.sqlite",
+    },
+    "twistedcaldav.directory.calendaruserproxy.ProxyPostgreSQLDB": {
+        "host": "localhost",
+        "database": "proxies",
+        "user": "",
+        "password": "",
+    },
+}
+
 
 defaultConfig = {
     # Note: Don't use None values below; that confuses the command-line parser.
@@ -122,6 +147,25 @@ defaultConfig = {
         "type": "twistedcaldav.directory.xmlfile.XMLDirectoryService",
         "params": serviceDefaultParams["twistedcaldav.directory.xmlfile.XMLDirectoryService"],
     },
+
+    #
+    # Augment service
+    #
+    #    Augments for the directory service records to add calendar specific attributes.
+    #
+    "AugmentService": {
+        "type": "twistedcaldav.directory.augment.AugmentXMLDB",
+        "params": augmentDefaultParams["twistedcaldav.directory.augment.AugmentXMLDB"],
+    },
+
+    #
+    # Proxies
+    #
+    "ProxyDBService": {
+        "type": "twistedcaldav.directory.calendaruserproxy.ProxySqliteDB",
+        "params": proxyDBDefaultParams["twistedcaldav.directory.calendaruserproxy.ProxySqliteDB"],
+    },
+    "ProxyLoadFromFile": "",    # Allows for initialization of the proxy database from an XML file
 
     #
     # Special principals
@@ -223,6 +267,33 @@ defaultConfig = {
     "EnableAutoAcceptTrigger" : False, # Manually trigger auto-accept behavior
 
     #
+    # Scheduling related options
+    #
+    "Scheduling": {
+        
+        "CalDAV": {
+            "EmailDomain"                : "",    # Domain for mailto calendar user addresses on this server
+            "HTTPDomain"                 : "",    # Domain for http calendar user addresses on this server
+            "AddressPatterns"            : [],    # Reg-ex patterns to match local calendar user addresses
+            "OldDraftCompatibility"      : True,  # Whether to maintain compatibility with non-implicit mode
+            "ScheduleTagCompatibility"   : True,  # Whether to support older clients that do not use Schedule-Tag feature
+            "EnablePrivateComments"      : True,  # Private comments from attendees to organizer
+        },
+
+        "iSchedule": {
+            "Enabled"          : False, # iSchedule protocol
+            "AddressPatterns"  : [],    # Reg-ex patterns to match iSchedule-able calendar user addresses
+            "Servers"          : "/etc/caldavd/servertoserver.xml",    # iSchedule server configurations
+        },
+
+        "Options" : {
+            "AllowGroupAsOrganizer"      : False, # Allow groups to be Organizers
+            "AllowLocationAsOrganizer"   : False, # Allow locations to be Organizers
+            "AllowResourceAsOrganizer"   : False, # Allow resources to be Organizers
+        }
+    },
+
+    #
     # Notifications
     #
     "Notifications" : {
@@ -255,6 +326,16 @@ defaultConfig = {
                 "AllowedJIDs": [],
             },
         }
+    },
+
+    #
+    # Partitioning
+    #
+    "Partitioning" : {
+        "Enabled":             False,   # Partitioning enabled or not
+        "ServerPartitionID":   "",      # Unique ID for this server's partition instance.
+        "PartitionConfigFile": "/etc/caldavd/partitions.plist", # File path for partition information
+        "MaxClients":          5,       # Pool size for connections to each partition
     },
 
     #
@@ -325,10 +406,26 @@ defaultConfig = {
 
     "Memcached": {
         "MaxClients": 5,
-        "ClientEnabled": True,
-        "ServerEnabled": True,
-        "BindAddress": "127.0.0.1",
-        "Port": 11211,
+        "Pools": {
+            "Default": {
+                "ClientEnabled": True,
+                "ServerEnabled": True,
+                "BindAddress": "127.0.0.1",
+                "Port": 11211,
+                "HandleCacheTypes": [
+                    "Default",
+                ]
+            },
+#            "ProxyDB": {
+#                "ClientEnabled": True,
+#                "ServerEnabled": True,
+#                "BindAddress": "127.0.0.1",
+#                "Port": 11211,
+#                "HandleCacheTypes": [
+#                    "ProxyDB", "PrincipalToken",
+#                ]
+#            },
+        },
         "memcached": "memcached", # Find in PATH
         "MaxMemory": 0, # Megabytes
         "Options": [],
@@ -358,6 +455,7 @@ class Config (object):
             self.updateDropBox,
             self.updateLogLevels,
             self.updateNotifications,
+            self.updatePartitions,
         ]
 
     def __str__(self):
@@ -414,6 +512,18 @@ class Config (object):
             for param in tuple(self._data.DirectoryService.params):
                 if param not in serviceDefaultParams[self._data.DirectoryService.type]:
                     del self._data.DirectoryService.params[param]
+
+        if self._data.AugmentService.type in augmentDefaultParams:
+            for param in tuple(self._data.AugmentService.params):
+                if param not in augmentDefaultParams[self._data.AugmentService.type]:
+                    log.warn("Parameter %s is not supported by service %s" % (param, self._data.AugmentService.type))
+                    del self._data.AugmentService.params[param]
+
+        if self._data.ProxyDBService.type in proxyDBDefaultParams:
+            for param in tuple(self._data.ProxyDBService.params):
+                if param not in proxyDBDefaultParams[self._data.ProxyDBService.type]:
+                    log.warn("Parameter %s is not supported by service %s" % (param, self._data.ProxyDBService.type))
+                    del self._data.ProxyDBService.params[param]
 
     @staticmethod
     def updateACLs(self, items):
@@ -524,6 +634,21 @@ class Config (object):
 
         except InvalidLogLevelError, e:
             raise ConfigurationError("Invalid log level: %s" % (e.level))
+
+    @staticmethod
+    def updatePartitions(self, items):
+        #
+        # Partitions
+        #
+    
+        if "Partitioning" in items:
+            if items["Partitioning"]["Enabled"]:
+                partitions.setSelfPartition(items["Partitioning"]["ServerPartitionID"])
+                partitions.setMaxClients(items["Partitioning"]["MaxClients"])
+                partitions.readConfig(items["Partitioning"]["PartitionConfigFile"])
+                partitions.installReverseProxies()
+            else:
+                partitions.clear()
 
     def updateDefaults(self, items):
         _mergeData(self._defaults, items)
