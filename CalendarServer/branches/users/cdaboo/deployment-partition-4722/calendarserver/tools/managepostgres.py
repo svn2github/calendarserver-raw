@@ -38,6 +38,7 @@ def doInit(basedir):
     with open("%s/data/postgresql.conf" % (basedir,)) as f:
         conf = f.read()
     conf = conf.replace("#listen_addresses = 'localhost'", "listen_addresses = '*'\t")
+    conf = conf.replace("max_connections = 20 ", "max_connections = 500")
     with open("%s/data/postgresql.conf" % (basedir,), "w") as f:
         f.write(conf)
         
