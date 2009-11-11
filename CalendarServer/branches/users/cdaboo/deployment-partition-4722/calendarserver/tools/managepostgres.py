@@ -67,6 +67,10 @@ def doRun(basedir, verbose):
     
     cmd("%s/bin/postgres %s -D %s/data" % (basedir, "-d 3" if verbose else "",  basedir,))
 
+def doClean(basedir):
+    
+    cmd("rm -rf %s/data" % (basedir, basedir,))
+
 if __name__ == '__main__':
 
     usage = "%prog [options] ACTION"
@@ -77,6 +81,7 @@ ACTION is one of init|start|stop|run
   start:  start postgres daemon
   stop:   stop postgres daemon
   run:    run postgres (non-daemon)
+  clean:  remove databases
   
 """
     description = "Tool to manage PostgreSQL"
@@ -103,5 +108,7 @@ ACTION is one of init|start|stop|run
         doStop(options.basedir)
     elif args[0] == "run":
         doRun(options.basedir, options.verbose)
+    elif args[0] == "clean":
+        doClean(options.basedir)
     else:
         parser.error("incorrect argument '%s'" % (args[0],))
