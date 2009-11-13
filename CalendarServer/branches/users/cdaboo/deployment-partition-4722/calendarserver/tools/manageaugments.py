@@ -152,7 +152,7 @@ def doPrint(xmlfile):
 
     print tostring(augments_node)
 
-if __name__ == '__main__':
+def main():
 
     usage = "%prog [options] ACTION"
     epilog = """
@@ -195,3 +195,6 @@ ACTION is one of add|modify|remove|print
         doRemove(options.xmlfilename, options.guid)
     elif args[0] == "print":
         doPrint(options.xmlfilename)
+
+if __name__ == '__main__':
+    main()
