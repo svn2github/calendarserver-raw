@@ -171,13 +171,7 @@ class IScheduleRequest(object):
     def _generateHeaders(self):
         self.headers = Headers()
         self.headers.setHeader('Host', utf8String(self.server.host + ":%s" % (self.server.port,)))
-
-        # So iCal uses a delegate principal as the originator when a delegate does a POST on behalf of their
-        # delegatee. If the delegate and delegatee are hosted on different nodes that causes an authorization problem.
-        # Instead we substitute the ORGANIZER principal in here - this matches what happens with implicit scheduling where
-        # the originator is derived from the organizer.
-        self.headers.addRawHeader('Originator', utf8String(self.scheduler.organizer.cuaddr))
-
+        self.headers.addRawHeader('Originator', utf8String(self.scheduler.originator.cuaddr))
         self._doAuthentication()
         for recipient in self.recipients:
             self.headers.addRawHeader('Recipient', utf8String(recipient.cuaddr))
