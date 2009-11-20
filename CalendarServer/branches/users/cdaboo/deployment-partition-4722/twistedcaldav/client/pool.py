@@ -33,12 +33,10 @@ import urlparse
 
 class ReverseProxyClientFactory(ReconnectingClientFactory, LoggingMixIn):
     """
-    A client factory for HTTPClient that reconnects and notifies a pool of it's
-    state.
+    A client factory for HTTPClient that notifies a pool of it's state.
 
     @ivar connectionPool: A managing connection pool that we notify of events.
-    @ivar deferred: A L{Deferred} that represents the initial connection.
-    @ivar _protocolInstance: The current instance of our protocol that we pass
+    @ivar protocol: The current instance of our protocol that we pass
         to our connectionPool.
     """
     protocol = HTTPClientProtocol
@@ -124,12 +122,12 @@ class ReverseProxyPool(LoggingMixIn):
         self._busyClients = set([])
         self._freeClients = set([])
         self._pendingConnects = 0
-        self._commands = []
+        self._pendingRequests = []
 
     def _isIdle(self):
         return (
             len(self._busyClients) == 0 and
-            len(self._commands) == 0 and
+            len(self._pendingRequests) == 0 and
             self._pendingConnects == 0
         )
 
@@ -153,15 +151,13 @@ class ReverseProxyPool(LoggingMixIn):
 
         def _connected(client):
             self._pendingConnects -= 1
-
             return client
 
         def _badGateway(f):
+            self._pendingConnects -= 1
             raise HTTPError(StatusResponse(responsecode.BAD_GATEWAY, "Could not connect to reverse proxy host."))
 
         factory = self.clientFactory(self._reactor)
-        factory.noisy = False
-
         factory.connectionPool = self
 
         if self._scheme == "https":
@@ -174,7 +170,6 @@ class ReverseProxyPool(LoggingMixIn):
             raise ValueError("URL scheme for client pool not supported")
 
         d = factory.deferred
-
         d.addCallback(_connected)
         d.addErrback(_badGateway)
         return d
@@ -202,7 +197,7 @@ class ReverseProxyPool(LoggingMixIn):
 
         self.clientBusy(client)
         d = client.submitRequest(request, closeAfter=False)
-        d.addBoth(_freeClientAfterRequest)
+        d.addCallback(_freeClientAfterRequest)
         return d
 
     def submitRequest(self, request, *args, **kwargs):
@@ -227,7 +222,7 @@ class ReverseProxyPool(LoggingMixIn):
 
         elif len(self._busyClients) + self._pendingConnects >= self._maxClients:
             d = Deferred()
-            self._commands.append((d, request, args, kwargs))
+            self._pendingRequests.append((d, request, args, kwargs))
             self.log_debug("Request queued: %s, %r, %r" % (request, args, kwargs))
             self._logClientStats()
 
@@ -243,7 +238,7 @@ class ReverseProxyPool(LoggingMixIn):
                 len(self._freeClients),
                 len(self._busyClients),
                 self._pendingConnects,
-                len(self._commands)))
+                len(self._pendingRequests)))
 
     def clientGone(self, client):
         """
@@ -289,8 +284,8 @@ class ReverseProxyPool(LoggingMixIn):
         if self.shutdown_deferred and self._isIdle():
             self.shutdown_deferred.callback(None)
 
-        if len(self._commands) > 0:
-            d, request, args, kwargs = self._commands.pop(0)
+        if len(self._pendingRequests) > 0:
+            d, request, args, kwargs = self._pendingRequests.pop(0)
 
             self.log_debug("Performing Queued Request: %s, %r, %r" % (
                     request, args, kwargs))
