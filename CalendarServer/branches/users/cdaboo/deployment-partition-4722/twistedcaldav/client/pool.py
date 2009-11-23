@@ -21,8 +21,8 @@ __all__ = [
 ]
 
 from twisted.internet.address import IPv4Address
-from twisted.internet.defer import Deferred
-from twisted.internet.protocol import ReconnectingClientFactory
+from twisted.internet.defer import Deferred, inlineCallbacks, returnValue
+from twisted.internet.protocol import ClientFactory
 from twisted.internet.ssl import DefaultOpenSSLContextFactory
 from twisted.web2 import responsecode
 from twisted.web2.client.http import HTTPClientProtocol
@@ -31,17 +31,17 @@ from twistedcaldav.log import LoggingMixIn
 import OpenSSL
 import urlparse
 
-class ReverseProxyClientFactory(ReconnectingClientFactory, LoggingMixIn):
+class ReverseProxyClientFactory(ClientFactory, LoggingMixIn):
     """
-    A client factory for HTTPClient that notifies a pool of it's state.
+    A client factory for HTTPClient that notifies a pool of it's state. It the connection
+    fails in the middle of a request it will retry the request.
 
-    @ivar connectionPool: A managing connection pool that we notify of events.
     @ivar protocol: The current instance of our protocol that we pass
         to our connectionPool.
+    @ivar connectionPool: A managing connection pool that we notify of events.
     """
     protocol = HTTPClientProtocol
     connectionPool = None
-    maxRetries = 2
 
     def __init__(self, reactor):
         self.reactor = reactor
@@ -98,6 +98,7 @@ class ReverseProxyPool(LoggingMixIn):
         progress.
     """
     clientFactory = ReverseProxyClientFactory
+    maxRetries = 2
 
     def __init__(self, scheme, serverAddress, maxClients=5, reactor=None):
         """
@@ -200,7 +201,35 @@ class ReverseProxyPool(LoggingMixIn):
         d.addCallback(_freeClientAfterRequest)
         return d
 
+    @inlineCallbacks
     def submitRequest(self, request, *args, **kwargs):
+        """
+        Select an available client and perform the given request on it.
+
+        @param command: A C{str} representing an attribute of
+            L{MemCacheProtocol}.
+        @parma args: Any positional arguments that should be passed to
+            C{command}.
+        @param kwargs: Any keyword arguments that should be passed to
+            C{command}.
+
+        @return: A L{Deferred} that fires with the result of the given command.
+        """
+
+        # Try this maxRetries times
+        for ctr in xrange(self.maxRetries + 1):
+            try:
+                response = yield self._submitRequest(request, args, kwargs)
+            except Exception, e:
+                self.log_error("ReverseProxy connection error (attempt: %d) - retrying: %s" % (ctr+1, e,))
+                continue
+            else:
+                returnValue(response)
+        else:
+            self.log_error("ReverseProxy connection error - exhausted retry attempts: %s" % (e,))
+            raise HTTPError(StatusResponse(responsecode.BAD_GATEWAY, "Could not connect to reverse proxy host."))
+
+    def _submitRequest(self, request, *args, **kwargs):
         """
         Select an available client and perform the given request on it.
 
@@ -227,8 +256,12 @@ class ReverseProxyPool(LoggingMixIn):
             self._logClientStats()
 
         else:
+            def _badGateway(f):
+                raise HTTPError(StatusResponse(responsecode.BAD_GATEWAY, "Could not connect to reverse proxy host."))
+
             d = self._newClientConnection()
             d.addCallback(self._performRequestOnClient, request, *args, **kwargs)
+            d.addErrback(_badGateway)
 
         return d
 
@@ -254,6 +287,8 @@ class ReverseProxyPool(LoggingMixIn):
 
         self.log_debug("Removed client: %r" % (client,))
         self._logClientStats()
+
+        self._processPending()
 
     def clientBusy(self, client):
         """
@@ -284,6 +319,12 @@ class ReverseProxyPool(LoggingMixIn):
         if self.shutdown_deferred and self._isIdle():
             self.shutdown_deferred.callback(None)
 
+        self.log_debug("Freed client: %r" % (client,))
+        self._logClientStats()
+
+        self._processPending()
+
+    def _processPending(self):
         if len(self._pendingRequests) > 0:
             d, request, args, kwargs = self._pendingRequests.pop(0)
 
@@ -291,12 +332,10 @@ class ReverseProxyPool(LoggingMixIn):
                     request, args, kwargs))
             self._logClientStats()
 
-            _ign_d = self.submitRequest(request, *args, **kwargs)
+            _ign_d = self._submitRequest(request, *args, **kwargs)
 
             _ign_d.addCallback(d.callback)
-
-        self.log_debug("Freed client: %r" % (client,))
-        self._logClientStats()
+            _ign_d.addErrback(d.errback)
 
     def suggestMaxClients(self, maxClients):
         """

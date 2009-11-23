@@ -1,0 +1,14 @@
+Index: twisted/web2/client/http.py
+===================================================================
+--- twisted/web2/client/http.py	(revision 19773)
++++ twisted/web2/client/http.py	(working copy)
+@@ -134,8 +134,7 @@
+         self.responseDefer.errback(ProtocolError(text))
+ 
+     def connectionLost(self, reason):
+-        ### FIXME!
+-        pass
++        self._error(reason)
+     
+     def gotInitialLine(self, initialLine):
+         parts = initialLine.split(' ', 2)
