@@ -49,6 +49,7 @@ from twisted.web2.dav.util import allDataFromStream
 from twistedcaldav.dateops import compareDateTime, normalizeToUTC, timeRangesOverlap
 from twistedcaldav.instance import InstanceList
 from twistedcaldav.log import Logger
+from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 
 log = Logger()
 
@@ -1155,18 +1156,10 @@ class Component (object):
         @return: the string value of the Organizer property, or None
         """
         
-        # FIXME: we should really have a URL class and have it manage comparisons
-        # in a sensible fashion.
-        def _normalizeCUAddress(addr):
-            if addr.startswith("/") or addr.startswith("http:") or addr.startswith("https:"):
-                return addr.rstrip("/")
-            else:
-                return addr
-
         # Need to normalize http/https cu addresses
         test = set()
         for item in match:
-            test.add(_normalizeCUAddress(item))
+            test.add(normalizeCUAddr(item))
         
         # Extract appropriate sub-component if this is a VCALENDAR
         if self.name() == "VCALENDAR":
@@ -1176,7 +1169,7 @@ class Component (object):
         else:
             # Find the primary subcomponent
             for p in self.properties("ATTENDEE"):
-                if _normalizeCUAddress(p.value()) in test:
+                if normalizeCUAddr(p.value()) in test:
                     return p
 
         return None
