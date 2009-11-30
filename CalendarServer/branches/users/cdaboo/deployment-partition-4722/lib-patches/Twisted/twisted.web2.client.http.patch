@@ -2,8 +2,20 @@ Index: twisted/web2/client/http.py
 ===================================================================
 --- twisted/web2/client/http.py	(revision 19773)
 +++ twisted/web2/client/http.py	(working copy)
-@@ -134,8 +134,7 @@
-         self.responseDefer.errback(ProtocolError(text))
+@@ -127,15 +127,16 @@
+ 
+     def _error(self, err):
+         self.abortParse()
+-        self.responseDefer.errback(err)
++        if hasattr(self, 'stream') and self.stream is not None:
++            self.stream.finish(err)
++        else:
++            self.responseDefer.errback(err)
+ 
+     def _abortWithError(self, errcode, text):
+-        self.abortParse()
+-        self.responseDefer.errback(ProtocolError(text))
++        self._error(ProtocolError(text))
  
      def connectionLost(self, reason):
 -        ### FIXME!
