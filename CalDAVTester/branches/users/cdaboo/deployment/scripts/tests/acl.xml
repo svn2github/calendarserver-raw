@@ -425,7 +425,7 @@
 			</request>
 		</test>
 		<test name='4' ignore='no'>
-			<description>DAV:no-protected-ace-conflict precondition failure - attempt to change protected ACE</description>
+			<description>DAV:no-protected-ace-conflict precondition failure - attempt to change protected ACE (this is ignored in deployment branch)</description>
 			<request print-response='no'>
 				<method>ACL</method>
 				<ruri>1.ics</ruri>
@@ -434,10 +434,10 @@
 					<filepath>Resource/acls/7.xml</filepath>
 				</data>
 				<verify>
-					<callback>prepostcondition</callback>
+					<callback>statusCode</callback>
 					<arg>
-						<name>error</name>
-						<value>DAV:no-protected-ace-conflict</value>
+						<name>status</name>
+						<value>200</value>
 					</arg>
 				</verify>
 			</request>
