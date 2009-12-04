@@ -303,7 +303,7 @@ class iCalDiff(object):
                         break
                 else:
                     # Nothing matches - this has to be treated as an error
-                    log.debug("attendeeMerge: Unable to match fake master component: %s" % (keynew,))
+                    self._logDiffError("attendeeMerge: Unable to match fake master component: %s" % (keynew,))
                     return False, False, (), None
             else:
                 componentold = self.oldcalendar.overriddenComponent(masternewStart)
@@ -355,29 +355,38 @@ class iCalDiff(object):
             componentnew = mapnew[key]
             if componentnew.propertyValue("STATUS") == "CANCELLED":
                 if exdatesold is None or rid not in exdatesold:
-                    log.debug("attendeeMerge: Cancelled component not found in first calendar (or no EXDATE): %s" % (key,))
-                    return False, False, (), None
+                    # We used to generate a 403 here - but instead we now ignore this error and let the server data
+                    # override the client
+                    self._logDiffError("attendeeMerge: Cancelled component not found in first calendar (or no EXDATE): %s" % (key,))
+                    setnew.remove(key)
                 else:
                     # Derive new component with STATUS:CANCELLED and remove EXDATE
                     newOverride = self.newCalendar.deriveInstance(rid, allowCancelled=True)
                     if newOverride is None:
-                        log.debug("attendeeMerge: Could not derive instance for cancelled component: %s" % (key,))
-                        return False, False, (), None
-                    self.newCalendar.addComponent(newOverride)
+                        # We used to generate a 403 here - but instead we now ignore this error and let the server data
+                        # override the client
+                        self._logDiffError("attendeeMerge: Could not derive instance for cancelled component: %s" % (key,))
+                        setnew.remove(key)
+                    else:
+                        self.newCalendar.addComponent(newOverride)
             else:
                 # Derive new component
                 newOverride = self.newCalendar.deriveInstance(rid)
                 if newOverride is None:
-                    log.debug("attendeeMerge: Could not derive instance for uncancelled component: %s" % (key,))
-                    return False, False, (), None
-                self.newCalendar.addComponent(newOverride)
+                    # We used to generate a 403 here - but instead we now ignore this error and let the server data
+                    # override the client
+                    self._logDiffError("attendeeMerge: Could not derive instance for uncancelled component: %s" % (key,))
+                    setnew.remove(key)
+                else:
+                    self.newCalendar.addComponent(newOverride)
 
         # So now newCalendar has all the same components as set2. Check changes and do transfers.
         
         # Make sure the same VCALENDAR properties match
         if not self._checkVCALENDARProperties(self.newCalendar, self.newcalendar):
+            # We used to generate a 403 here - but instead we now ignore this error and let the server data
+            # override the client
             self._logDiffError("attendeeMerge: VCALENDAR properties do not match")
-            return False, False, (), None
 
         # Now we transfer per-Attendee
         # data from newcalendar into newCalendar to sync up changes, whilst verifying that other
@@ -390,8 +399,10 @@ class iCalDiff(object):
             
             allowed, reply = self._transferAttendeeData(serverData, clientData, declines)
             if not allowed:
+                # We used to generate a 403 here - but instead we now ignore this error and let the server data
+                # override the client
                 self._logDiffError("attendeeMerge: Mismatched calendar objects")
-                return False, False, (), None
+                #return False, False, (), None
             changeCausesReply |= reply
             if reply:
                 changedRids.append(toString(rid) if rid else "")
@@ -407,7 +418,7 @@ class iCalDiff(object):
                         changeCausesReply = True
                         changedRids.append(toString(decline) if decline else "")
                 else:
-                    log.debug("Unable to override and instance to mark as DECLINED: %s" % (decline,))
+                    self._logDiffError("attendeeMerge: Unable to override an instance to mark as DECLINED: %s" % (decline,))
                     return False, False, (), None
 
         return True, changeCausesReply, changedRids, self.newCalendar
@@ -430,9 +441,9 @@ class iCalDiff(object):
 
     def _transferAttendeeData(self, serverComponent, clientComponent, declines):
         
-        # First check validity of date-time related properties
-        if not self._checkInvalidChanges(serverComponent, clientComponent, declines):
-            return False, False
+        # We are skipping this check now - instead we let the server data override the broken client data
+        # First check validity of date-time related properties and get removed components which are declines
+        self._checkInvalidChanges(serverComponent, clientComponent, declines)
         
         # Now look for items to transfer from one to the other.
         # We care about the ATTENDEE's PARTSTAT, TRANSP, VALARMS, X-APPLE-NEEDS-REPLY,
@@ -462,9 +473,8 @@ class iCalDiff(object):
         self._transferProperty("LAST-MODIFIED", serverComponent, clientComponent)
         self._transferProperty("X-APPLE-NEEDS-REPLY", serverComponent, clientComponent)
         
-        # Dropbox
-        if not self._transferDropBoxData(serverComponent, clientComponent):
-            return False, False
+        # Dropbox - this now never returns false
+        self._transferDropBoxData(serverComponent, clientComponent)
 
         # Handle VALARMs
         serverComponent.removeAlarms()
@@ -483,14 +493,14 @@ class iCalDiff(object):
         if not clientDropbox:
             return True
         elif not serverDropbox:
-            # Attendee not allowed to add a dropbox
-            log.debug("Attendee not allowed to add dropbox: %s" % (clientDropbox,))
-            return False
+            # Attendee not allowed to add a dropbox - ignore this
+            self._logDiffError("Attendee not allowed to add dropbox: %s" % (clientDropbox,))
+            return True
         else:
-            # Values must be the same
+            # Values must be the same - ignore this
             if serverDropbox != clientDropbox:
-                log.debug("Attendee not allowed to change dropbox from: %s to: %s" % (serverDropbox, clientDropbox,))
-                return False
+                self._logDiffError("Attendee not allowed to change dropbox from: %s to: %s" % (serverDropbox, clientDropbox,))
+                return True
 
             # Remove existing ATTACH's from server
             for attachment in tuple(serverComponent.properties("ATTACH")):
@@ -731,6 +741,11 @@ class iCalDiff(object):
 %s
 """ % (title, strcal1, strcal2, strdiff,)
 
-        loggedName = accounting.emitAccounting("Implicit Errors", self.oldcalendar.resourceUID().encode("base64")[:-1], logstr)
+        loggedUID = self.oldcalendar.resourceUID()
+        if loggedUID:
+            loggedUID = loggedUID.encode("base64")[:-1]
+        else:
+            loggedUID = "Unknown"
+        loggedName = accounting.emitAccounting("Implicit Errors", loggedUID, logstr)
         if loggedName:
             log.err("Generating Implicit Error accounting at path: %s" % (loggedName,))
