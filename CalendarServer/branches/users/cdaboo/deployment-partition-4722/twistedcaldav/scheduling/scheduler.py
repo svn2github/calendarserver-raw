@@ -105,6 +105,24 @@ class Scheduler(object):
         result = (yield self.doScheduling())
         returnValue(result)
 
+    def doSchedulingViaPUT(self, originator, recipients, calendar, internal_request=False):
+        """
+        The implicit scheduling PUT operation.
+        """
+    
+        self.method = "PUT"
+
+        # Load various useful bits doing some basic checks on those
+        self.originator = originator
+        self.recipients = recipients
+        self.calendar = calendar
+        self.internal_request = internal_request
+
+        # Do some extra authorization checks
+        self.checkAuthorization()
+
+        return self.doScheduling()
+
     @inlineCallbacks
     def doScheduling(self):
         # Check validity of Originator header.

@@ -43,6 +43,7 @@ from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.resource import isCalendarCollectionResource
+from twistedcaldav.scheduling.itip import handleRequest
 from twistedcaldav.scheduling.scheduler import CalDAVScheduler, IScheduleScheduler
     
 
@@ -199,7 +200,7 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
                     
                     # Now process each one in order
                     for child, calendar in children:
-                        reactor.callLater(0.0, itip.handleRequest, *(request, principal, self, calendar, child)) #@UndefinedVariable
+                        reactor.callLater(0.0, handleRequest, *(request, principal, self, calendar, child)) #@UndefinedVariable
     
                     if (len(children)):
                         response_text = "Started auto-processing of %d iTIP messages." % (len(children,))
