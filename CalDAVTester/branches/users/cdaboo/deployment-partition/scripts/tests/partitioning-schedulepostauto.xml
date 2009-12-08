@@ -30,6 +30,14 @@
 			<method>DELETEALL</method>
 			<ruri>$pathprefix:/$inbox:/</ruri>
 		</request>
+		<request user="$otherid1:" pswd="$otherpswd1:">
+			<method>DELETEALL</method>
+			<ruri>$otherpathprefix:/$outbox:/</ruri>
+		</request>
+		<request user="$otherid1:" pswd="$otherpswd1:">
+			<method>DELETEALL</method>
+			<ruri>$otherpathprefix:/$inbox:/</ruri>
+		</request>
 		<request user="$userid2:" pswd="$pswd2:">
 			<method>DELETEALL</method>
 			<ruri>$pathprefix2:/$outbox:/</ruri>
@@ -149,6 +157,14 @@
 		<request>
 			<method>DELETEALL</method>
 			<ruri>$pathprefix:/$inbox:/</ruri>
+		</request>
+		<request user="$otherid1:" pswd="$otherpswd1:">
+			<method>DELETEALL</method>
+			<ruri>$otherpathprefix:/$outbox:/</ruri>
+		</request>
+		<request user="$otherid1:" pswd="$otherpswd1:">
+			<method>DELETEALL</method>
+			<ruri>$otherpathprefix:/$inbox:/</ruri>
 		</request>
 		<request user="$userid2:" pswd="$pswd2:">
 			<method>DELETEALL</method>

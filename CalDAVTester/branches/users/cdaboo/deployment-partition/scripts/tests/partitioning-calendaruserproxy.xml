@@ -128,9 +128,6 @@
 					</arg>
 				</verify>
 			</request>
-			<request print-response="no">
-				<method>IGNORE</method>
-			</request>
 		</test>
 		<test name='5'>
 			<description>Verify no group memberships right now</description>
