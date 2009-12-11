@@ -237,6 +237,11 @@ class HTTPClientPool(LoggingMixIn):
             except (ConnectionLost, ConnectionDone, ConnectError), e:
                 self.log_error("HTTP pooled client connection error (attempt: %d) - retrying: %s" % (ctr+1, e,))
                 continue
+            
+            # TODO: find the proper cause of these assertions and fix
+            except (AssertionError,), e:
+                self.log_error("HTTP pooled client connection assertion error (attempt: %d) - retrying: %s" % (ctr+1, e,))
+                continue
             else:
                 returnValue(response)
         else:

@@ -18,7 +18,6 @@ __all__ = [
     "ReverseProxyResource",
 ]
 
-from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.web2 import iweb
 from twisted.web2.client.http import ClientRequest
 from twisted.web2.resource import LeafResource
@@ -52,7 +51,6 @@ class ReverseProxyResource(LeafResource, LoggingMixIn):
     def exists(self):
         return False
 
-    @inlineCallbacks
     def renderHTTP(self, request):
         """
         Do the reverse proxy request and return the response.
@@ -66,5 +64,4 @@ class ReverseProxyResource(LeafResource, LoggingMixIn):
         self.logger.info("%s %s %s" % (request.method, urllib.unquote(request.uri), "HTTP/%s.%s" % request.clientproto))
         clientPool = getHTTPClientPool(self.poolID)
         proxyRequest = ClientRequest(request.method, request.uri, request.headers, request.stream)
-        response = (yield clientPool.submitRequest(proxyRequest))
-        returnValue(response)
+        return clientPool.submitRequest(proxyRequest)
