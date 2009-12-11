@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 ##
 # Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 #
@@ -28,22 +27,26 @@ data storage.
 
 import sys
 
-sys.path.insert(0, "/usr/share/caldavd/lib/python")
+#sys.path.insert(0, "/usr/share/caldavd/lib/python")
 
-import os
-import sqlite3
 from getopt import getopt, GetoptError
 from os.path import dirname, abspath
-
+from twisted.internet import reactor
+from twisted.internet.address import IPv4Address
+from twisted.internet.defer import inlineCallbacks
 from twisted.python import log
 from twisted.python.reflect import namedClass
-from twisted.web2.dav import davxml
-
-from twistedcaldav import caldavxml
-from twistedcaldav.resource import isPseudoCalendarCollectionResource
-from twistedcaldav.static import CalDAVFile, CalendarHomeFile
+from twistedcaldav import memcachepool
+from twistedcaldav.cache import MemcacheChangeNotifier
 from twistedcaldav.config import config, defaultConfigFile
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
+from twistedcaldav.directory.principal import DirectoryPrincipalResource
+from twistedcaldav.notify import installNotificationClient
+from twistedcaldav.resource import isPseudoCalendarCollectionResource
+from twistedcaldav.static import CalDAVFile, CalendarHomeFile
+import os
+
+CALENDARS_DOCROOT = "_run/main/docs/calendars/"
 
 def loadConfig(configFileName):
     if configFileName is None:
@@ -54,6 +57,21 @@ def loadConfig(configFileName):
         sys.exit(1)
 
     config.loadConfig(configFileName)
+
+    CalendarHomeFile.cacheNotifierFactory = MemcacheChangeNotifier
+    DirectoryPrincipalResource.cacheNotifierFactory = MemcacheChangeNotifier
+
+    memcachepool.installPool(
+        IPv4Address(
+            'TCP',
+            config.Memcached["BindAddress"],
+            config.Memcached["Port"]),
+        config.Memcached["MaxClients"])
+
+    installNotificationClient(
+        config.Notifications["InternalNotificationHost"],
+        config.Notifications["InternalNotificationPort"],
+    )
 
     return config
 
@@ -158,12 +176,12 @@ def usage(e=None):
 def main():
     try:
         (optargs, args) = getopt(
-            sys.argv[1:], "hf:aH:r:u:", [
+            sys.argv[1:], "c:d:hf:", [
                 "config=",
                 "log=",
+                "calverified=",
+                "docroot=",
                 "help",
-                "all", "home=", "record=", "user=",
-                "no-icalendar", "no-properties", "no-index",
             ],
         )
     except GetoptError, e:
@@ -171,19 +189,8 @@ def main():
 
     configFileName = None
     logFileName = "/dev/stdout"
-
-    directory = None
-    calendarHomePaths = set()
-    records = set()
-    allRecords = False
-    readCalendarData = True
-    readProperties = True
-    readIndexes = True
-
-    def checkExists(resource):
-        if not resource.exists():
-            sys.stderr.write("No such file: %s\n" % (resource.fp.path,))
-            sys.exit(1)
+    calverifyLogFileName = None
+    docroot = CALENDARS_DOCROOT
 
     for opt, arg in optargs:
         if opt in ("-h", "--help"):
@@ -195,34 +202,11 @@ def main():
         elif opt in ("--log",):
             logFileName = arg
 
-        elif opt in ("-a", "--all"):
-            allRecords = True
+        elif opt in ("-c", "--calverified",):
+            calverifyLogFileName = arg
 
-        elif opt in ("--no-icalendar",):
-            readCalendarData = False
-
-        elif opt in ("--no-properties",):
-            readProperties = False
-
-        elif opt in ("--no-indexes",):
-            readIndexes = False
-
-        elif opt in ("-H", "--home"):
-            calendarHomePaths.add(arg)
-
-        elif opt in ("-r", "--record"):
-            try:
-                recordType, shortName = arg.split(":", 1)
-                if not recordType or not shortName:
-                    raise ValueError()
-            except ValueError:
-                sys.stderr.write("Invalid record identifier: %r\n" % (arg,))
-                sys.exit(1)
-
-            records.add((recordType, shortName))
-
-        elif opt in ("-u", "--user"):
-            records.add((DirectoryService.recordType_users, arg))
+        elif opt in ("-d", "--docroot",):
+            docroot = arg
 
     if args:
         usage("Too many arguments: %s" % (" ".join(args),))
@@ -230,16 +214,41 @@ def main():
     observer = log.FileLogObserver(open(logFileName, "a"))
     log.addObserver(observer.emit)
 
-    if records or allRecords or calendarHomePaths:
+    if not calverifyLogFileName:
+        usage("CalVerify log file name must be specified")
+
+    changedHomes, changedCalendars = calverifyScrape(calverifyLogFileName, docroot)
+    for i in sorted(changedHomes):
+        print i
+    for i in sorted(changedCalendars):
+        print i
+    print "Total homes: %s" % (len(changedHomes),)
+    print "Total calendars: %s" % (len(changedCalendars),)
+
+    #
+    # Start the reactor
+    #
+    reactor.callLater(0, run, configFileName, changedHomes, changedCalendars)
+    reactor.run()
+
+@inlineCallbacks
+def run(configFileName, changedHomes, changedCalendars):
+
+    def checkExists(resource):
+        if not resource.exists():
+            sys.stderr.write("No such file: %s\n" % (resource.fp.path,))
+            sys.exit(1)
+
+    if changedHomes or changedCalendars:
         loadConfig(configFileName)
         directory = getDirectory()
-
+        
         #from twistedcaldav.log import setLogLevelForNamespace
         #setLogLevelForNamespace("twistedcaldav.memcacheprops", "debug")
 
         calendarHomes = set()
 
-        for path in calendarHomePaths:
+        for path in changedHomes:
             path = abspath(path)
             guid = os.path.basename(path)
 
@@ -257,43 +266,60 @@ def main():
 
             parent = CalDAVFile(dirname(abspath(path)))
             calendarHome = CalendarHomeFile(path, parent, record)
+            calendarHome.url = lambda:"/calendars/__uids__/%s/" % (guid,)
             checkExists(calendarHome)
             calendarHomes.add(calendarHome)
 
-        for record in records:
-            recordType, shortName = record
-            calendarHome = directory.calendarHomeForShortName(recordType, shortName)
-            if not calendarHome:
-                sys.stderr.write("No calendar home found for record: (%s)%s\n" % (recordType, shortName))
-                sys.exit(1)
-            calendarHomes.add(calendarHome)
+        calendars = set()
 
-        if allRecords:
-            for record in directory.allRecords():
-                calendarHome = directory.calendarHomeForRecord(record)
-                if not calendarHome:
-                    pass
-                else:
-                    calendarHomes.add(calendarHome)
+        for path in changedCalendars:
+            guid = os.path.basename(path)
+
+            record = directory.recordWithGUID(guid)
+            if record is None:
+                record = DirectoryRecord(
+                    service = DummyDirectoryService(),
+                    recordType = "dummy",
+                    guid = guid,
+                    shortName = "dummy",
+                    fullName = "",
+                    calendarUserAddresses = set(),
+                    autoSchedule = False,
+                )
+
+            parent.url = lambda self:"/calendars/__uids__/"
+            calendarHome = CalendarHomeFile(path, parent, record)
+            calendarHome.url = lambda:"/calendars/__uids__/%s/" % (guid,)
+            checkExists(calendarHome)
+            calendar = calendarHome.getChild(os.path.basename(path.basename()))
+            calendars.add(calendar)
 
     n = 0
     ok_n = 0
     fail_n = 0
-    N = len(calendarHomes)
+    N = len(calendarHomes) + len(calendars)
     for calendarHome in calendarHomes:
         n += 1
         log.msg("%.2f%% (%d of %d)" % (100.0 * n/N, n, N))
         try:
-            processCalendarHome(
+            yield processCalendarHome(
                 calendarHome,
                 directory = directory,
-                readCalendarData = readCalendarData,
-                readProperties = readProperties,
-                readIndexes = readIndexes,
             )
             ok_n += 1
         except Exception, e:
             log.msg("Exception for calendar home '%s': %s" % (calendarHome, e))
+            fail_n += 1
+    for calendar in calendars:
+        n += 1
+        log.msg("%.2f%% (%d of %d)" % (100.0 * n/N, n, N))
+        try:
+            yield processCalendar(
+                calendar,
+            )
+            ok_n += 1
+        except Exception, e:
+            log.msg("Exception for calendar '%s': %s" % (calendar, e))
             fail_n += 1
 
     log.msg("")
@@ -302,97 +328,57 @@ def main():
     log.msg("Total OK: %d" % (ok_n,))
     log.msg("Total Bad: %d" % (fail_n,))
 
+    reactor.stop()
 
+def calverifyScrape(fileName, docroot):
+    
+    # Find affected paths
+    homes = set()
+    individuals = set()
+    with open(fileName) as f:
+        
+        for line in f:
+            if line.startswith("Fixed:"):
+                fixedpath = line[7:-1]
+                splits = fixedpath.split("/")[:4]
+                homes.add(docroot + "/".join(splits))
+            elif line.startswith("Fixed (removed):"):
+                fixedpath = line[17:-1]
+                splits = fixedpath.split("/")[:-1]
+                individuals.add(docroot + "/".join(splits))
+
+    # Remove individuals also in homes
+    for item in tuple(individuals):
+        splits = item.split("/")[:5]
+        if "/".join(splits) in homes:
+            individuals.remove(item)
+
+    return homes, individuals
+
+@inlineCallbacks
 def processCalendarHome(
     calendarHome,
     directory = None,
-    readCalendarData = True,
-    readProperties = True,
-    readIndexes = True
 ):
-    if readProperties:
-        readPropertiesForResource(calendarHome)
-
+    # Update ctags on each calendar collection 
     for childName in calendarHome.listChildren():
+        if childName in ("outbox", "dropbox",):
+            continue
         child = calendarHome.getChild(childName)
         if isPseudoCalendarCollectionResource(child):
-            if childName in ("inbox", "outbox"):
-                child.provision()
-            processCalendar(
+            yield processCalendar(
                 child,
-                readCalendarData = readCalendarData,
-                readProperties = readProperties,
-                readIndexes = readIndexes,
             )
-            if calendarHome.record.recordType != "users" and childName not in ("inbox", "outbox"):
-                #
-                # Add calendar to F/B set
-                #
-                if calendarHome.record.recordType is dummyDirectoryRecord:
-                    log.msg("Unable to edit F/B info for %s" % (calendarHome,))
-                    continue
 
-                calendarURL = "/calendars/__uids__/%s/%s/" % (calendarHome.record.guid, childName)
-
-                inbox = calendarHome.getChild("inbox")
-
-                if not inbox.hasDeadProperty(caldavxml.CalendarFreeBusySet):
-                    needFB = True
-                    hrefs = []
-                else:
-                    fbProp = inbox.readDeadProperty(caldavxml.CalendarFreeBusySet)
-                    hrefs = list(fbProp.childrenOfType(davxml.HRef))
-
-                    needFB = False
-
-                    for href in hrefs:
-                        if str(href).rstrip("/")+"/" == calendarURL:
-                            break
-                    else:
-                        needFB = True
-
-                if needFB:
-                    log.msg("Adding calendar %s to F/B set for %s" % (childName, calendarHome))
-                    hrefs.append(davxml.HRef(calendarURL))
-                    fbProp = caldavxml.CalendarFreeBusySet(*hrefs)
-                    inbox.writeDeadProperty(fbProp)
-
+@inlineCallbacks
 def processCalendar(
     calendarCollection,
-    readCalendarData = True,
-    readProperties = True,
-    readIndexes = True,
 ):
-    if readProperties:
-        readPropertiesForResource(calendarCollection)
-
-    if readIndexes:
-        try:
-            for name, uid, type in calendarCollection.index().search(None):
-                pass
-        except sqlite3.OperationalError:
-            # Outbox doesn't live on disk
-            if calendarCollection.fp.basename() != "outbox":
-                raise
-
-    for name in calendarCollection.listChildren():
-        child = calendarCollection.getChild(name)
-
-        if readCalendarData:
-            childCalendar = child.iCalendarText()
-        if readProperties:
-            #child.deadProperties().flushCache()
-            readPropertiesForResource(child)
-            #readProperties = False
-
-def readPropertiesForResource(resource):
-    #log.msg(resource)
-    for qname in tuple(resource.deadProperties().list()):
-        try:
-            property = resource.readDeadProperty(qname)
-        except Exception, e:
-            log.msg("Error reading {%s}%s property on resource %s\n%s\n" % (qname[0], qname[1], resource, e))
-            resource.removeDeadProperty(qname)
+    # Update the ctag on the calendar. This will update the memcache token
+    # and send a push notification.
+    yield calendarCollection.updateCTag()
+    
+    print calendarCollection
 
 if __name__ == "__main__":
     main()

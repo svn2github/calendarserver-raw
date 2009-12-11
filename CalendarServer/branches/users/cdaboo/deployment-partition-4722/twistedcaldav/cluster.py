@@ -19,10 +19,12 @@ import sys
 import tempfile
 import socket
 import time
+import signal
 
 from twisted.runner import procmon
 from twisted.application import internet, service
 from twisted.internet import reactor, process
+from twisted.internet.threads import deferToThread
 from twisted.python.reflect import namedClass
 
 from twistedcaldav.accesslog import AMPLoggingFactory, RotatingFileAccessLoggingObserver
@@ -176,7 +178,7 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
         self.consistency = reactor.callLater(self.consistencyDelay,
                                              self._checkConsistency)
 
-    def signalAll(self, signal, startswithname=None):
+    def signalAll(self, signal, startswithname=None, seconds=0):
         """
         Send a signal to all child processes.
 
@@ -185,9 +187,11 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
         @param startswithname: is set only signal those processes whose name starts with this string
         @type signal: C{str}
         """
+        delay = 0
         for name in self.processes.keys():
             if startswithname is None or name.startswith(startswithname):
-                self.signalProcess(signal, name)
+                reactor.callLater(delay, self.signalProcess, signal, name)
+                delay += seconds
 
     def signalProcess(self, signal, name):
         """
@@ -233,14 +237,23 @@ def makeService_Combined(self, options):
 
     # Refresh directory information on behalf of the child processes
     directoryClass = namedClass(config.DirectoryService["type"])
-    directory = directoryClass(dosetup=False, **config.DirectoryService["params"])
-    directory.refresh()
+    directory = directoryClass(dosetup=True, doreload=False, **config.DirectoryService["params"])
+    directory.refresh(master=True)
+
+    # Register USR1 handler
+    def sigusr1_handler(num, frame):
+        log.warn("SIGUSR1 recieved in master, triggering directory refresh")
+        deferToThread(directory.refresh, loop=False, master=True)
+        return
+
+    signal.signal(signal.SIGUSR1, sigusr1_handler)
 
     s = service.MultiService()
 
     monitor = DelayedStartupProcessMonitor()
     monitor.setServiceParent(s)
-    s.processMonitor = monitor
+
+    directory.processMonitor = s.processMonitor = monitor
 
     parentEnv = {
         'PATH': os.environ.get('PATH', ''),
