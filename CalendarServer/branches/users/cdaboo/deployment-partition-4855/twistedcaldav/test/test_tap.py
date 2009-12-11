@@ -17,9 +17,6 @@
 import os
 from copy import deepcopy
 
-from twisted.trial import unittest
-from twistedcaldav.test.util import TestCase
-
 from twisted.python.usage import Options, UsageError
 from twisted.python.util import sibpath
 from twisted.python.reflect import namedAny
@@ -40,6 +37,7 @@ from twistedcaldav.directory.aggregate import AggregateDirectoryService
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.directory.directory import UnknownRecordTypeError
 
+from twistedcaldav.test.util import TestCase
 
 class TestCalDAVOptions(CalDAVOptions):
     """
@@ -184,11 +182,18 @@ class BaseServiceMakerTests(TestCase):
 
         accountsFile = sibpath(os.path.dirname(__file__),
                                'directory/test/accounts.xml')
+        augmentsFile = sibpath(os.path.dirname(__file__),
+                               'directory/test/augments.xml')
 
         self.config['DirectoryService'] = {
             'params': {'xmlFile': accountsFile},
             'type': 'twistedcaldav.directory.xmlfile.XMLDirectoryService'
             }
+
+        self.config["AugmentService"] = {
+            "params": {"xmlFiles": [augmentsFile]},
+            "type": "twistedcaldav.directory.augment.AugmentXMLDB"
+        }
 
         self.config['DocumentRoot'] = self.mktemp()
         self.config['DataRoot'] = self.mktemp()
@@ -197,6 +202,9 @@ class BaseServiceMakerTests(TestCase):
         self.config['SSLCertificate'] = sibpath(__file__, 'data/server.pem')
 
         self.config['SudoersFile'] = ''
+
+        self.config['Memcached']['Pools']['Default']['ClientEnabled'] = False
+        self.config['Memcached']['Pools']['Default']['ServerEnabled'] = False
 
         if self.configOptions:
             config_mod._mergeData(self.config, self.configOptions)

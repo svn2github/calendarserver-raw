@@ -618,7 +618,7 @@ if ! type memcached >& /dev/null; then
   #
   libevent="${top}/libevent-1.4.8-stable"
 
-  www_get "libevent" "${libevent}" http://monkey.org/~provos/libevent-1.4.8-stable.tar.gz
+  www_get "libevent" "${libevent}" http://monkey.org/~provos/libevent-1.4.8-stable.tar.gz;
 
   if "${do_setup}" && (
     "${force_setup}" || [ ! -d "${libevent}/_root" ]
@@ -655,6 +655,42 @@ if ! type memcached >& /dev/null; then
   fi;
 
   export PATH="${PATH}:${top}/memcached-1.2.6/_root/bin";
+fi;
+
+if ! type psql >& /dev/null; then
+  #
+  # postgresql
+  #
+  postgresql="${top}/postgresql-8.4.1"
+
+  www_get "postgresql" "${postgresql}" http://wwwmaster.postgresql.org/redir/198/h/source/v8.4.1/postgresql-8.4.1.tar.bz2;
+
+  if "${do_setup}" && (
+    "${force_setup}" || [ ! -d "${postgresql}/_root" ]
+  ); then
+    echo "";
+    echo "Building postgresql...";
+    cd "${postgresql}";
+    ./configure --prefix="${postgresql}/_root";
+    make;
+    make install;
+  fi;
+
+  export PATH="${PATH:-}:${postgresql}/_root/bin";
+fi;
+
+#
+# PyGreSQL
+#
+
+if ! py_have_module pgdb; then
+  PyGreSQL="${top}/PyGreSQL-4.0";
+
+  www_get "PyGreSQL" "${PyGreSQL}" ftp://ftp.pygresql.org/pub/distrib/PyGreSQL.tgz;
+  py_build "PyGreSQL" "${PyGreSQL}" false;
+  py_install "PyGreSQL" "${PyGreSQL}";
+
+  export PYTHONPATH="${PYTHONPATH}:${PyGreSQL}/build/${py_platform_libdir}";
 fi;
 
 #

@@ -2,12 +2,12 @@
 
 from twisted.cred import error
 from twisted.internet import address
-from twistedcaldav.test.util import TestCase
 from twisted.web2.auth import digest
 from twisted.web2.auth.wrapper import UnauthorizedResponse
 from twisted.web2.test.test_server import SimpleRequest
 from twisted.web2.dav.fileop import rmdir
 from twistedcaldav.directory.digest import QopDigestCredentialFactory
+from twistedcaldav.test.util import TestCase
 import os
 import md5
 
