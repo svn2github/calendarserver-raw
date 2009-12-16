@@ -185,7 +185,23 @@ class DirectoryRecord(LoggingMixIn):
         self.emailAddresses        = emailAddresses
         self.enabledForCalendaring = False
         self.autoSchedule          = False
-        self.calendarUserAddresses = set()
+
+    def get_calendarUserAddresses(self):
+        """
+        Dynamically construct a calendarUserAddresses attribute which describes
+        this L{DirectoryRecord}.
+
+        @see: L{IDirectoryRecord.calendarUserAddresses}.
+        """
+        if not self.enabledForCalendaring:
+            return frozenset()
+        return frozenset(
+            ["urn:uuid:%s" % (self.guid,)] +
+            ["mailto:%s" % (emailAddress,)
+             for emailAddress in self.emailAddresses]
+        )
+
+    calendarUserAddresses = property(get_calendarUserAddresses)
 
     def __cmp__(self, other):
         if not isinstance(other, DirectoryRecord):
@@ -212,24 +228,15 @@ class DirectoryRecord(LoggingMixIn):
             self.hostedAt = augment.hostedAt
             self.enabledForCalendaring = augment.enabledForCalendaring
             self.autoSchedule = augment.autoSchedule
-            self.calendarUserAddresses = set(augment.calendarUserAddresses)
 
             if self.enabledForCalendaring and self.recordType == self.service.recordType_groups:
                 self.log_error("Group '%s(%s)' cannot be enabled for calendaring" % (self.guid, self.shortName,))
                 self.enabledForCalendaring = False
-    
-            if self.enabledForCalendaring:
-                for email in self.emailAddresses:
-                    self.calendarUserAddresses.add("mailto:%s" % (email.lower(),))
-                self.calendarUserAddresses.add("urn:uuid:%s" % (self.guid,))
-            else:
-                assert len(self.calendarUserAddresses) == 0
 
         else:
             self.enabled = False
             self.hostedAt = ""
             self.enabledForCalendaring = False
-            self.calendarUserAddresses = set()
 
     def members(self):
         return ()
