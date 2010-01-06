@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -e
+set -u
+
+wd="$(cd "$(dirname "$0")" && pwd)";
+flakes="$(cd "${wd}/../Pyflakes" && pwd)";
+
+export PYTHONPATH="${flakes}:${PYTHONPATH:-}";
+
+if [ $# -eq 0 ]; then
+  set - calendarserver twistedcaldav twext;
+fi;
+
+cd "${wd}" && "${flakes}/bin/pyflakes" "$@" | sed                     \
+  -e "/undefined name '_'/d"                                          \
+  -e "/undefined name 'CalDAVFile'/d"                                 \
+  -e "/redefinition of unused/d"                                      \
+  -e "/'from .* import \\*' used; unable to detect undefined names/d" \
+  -e "/redefinition of function/d"                                    \
+  ;
