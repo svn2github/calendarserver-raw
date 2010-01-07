@@ -1,0 +1,15 @@
+Index: ez_setup/__init__.py
+===================================================================
+--- ez_setup/__init__.py	(revision 2606)
++++ ez_setup/__init__.py	(working copy)
+@@ -92,6 +92,10 @@
+     this routine will print a message to ``sys.stderr`` and raise SystemExit in
+     an attempt to abort the calling script.
+     """
++    
++    # don't worry about getting the latest version.  Just use what's installed.
++    return
++    
+     was_imported = 'pkg_resources' in sys.modules or 'setuptools' in sys.modules
+     def do_download():
+         egg = download_setuptools(version, download_base, to_dir, download_delay)
