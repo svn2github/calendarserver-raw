@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 __all__ = [
     "applyToCalendarCollections",
+    "applyToAddressBookCollections",
     "responseForHref",
     "allPropertiesForResource",
     "propertyNamesForResource",
@@ -116,10 +117,12 @@ def applyToAddressBookCollections(resource, request, request_uri, depth, apply, 
     """
 
     # First check the privilege on this resource
-    try:
-        yield resource.checkPrivileges(request, privileges)
-    except AccessDeniedError:
-        returnValue( None )
+    if privileges:
+        try:
+            print ("DeleteResource.applyToAddressBookCollections(1.5)")
+            yield resource.checkPrivileges(request, privileges)
+        except AccessDeniedError:
+            returnValue( None )
 
     # When scanning we only go down as far as an address book collection - not into one
     if resource.isAddressBookCollection():
@@ -128,7 +131,7 @@ def applyToAddressBookCollections(resource, request, request_uri, depth, apply, 
         resources = [(resource, request_uri)]
     else:
         resources = []
-        yield resource.findAddressBookCollections(depth, request, lambda x, y: resources.append((x, y)), privileges = privileges)
+        yield resource.findCalendarCollections(depth, request, lambda x, y: resources.append((x, y)), privileges = privileges)
          
     for addrresource, uri in resources:
         yield apply(addrresource, uri)
