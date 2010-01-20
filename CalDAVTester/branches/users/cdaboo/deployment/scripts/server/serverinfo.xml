@@ -29,6 +29,10 @@
 			<key>$host:</key>
 			<value>http://localhost:8008</value>
 		</substitution>
+		<substitution>
+			<key>$hostalt:</key>
+			<value>https://localhost:8443</value> <!-- Should be the other scheme variant -->
+		</substitution>
 
 		<!-- relative path to principal collection-->
 		<substitution>

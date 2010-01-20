@@ -546,6 +546,53 @@
 		</test>
 	</test-suite>
 
+	<test-suite name='COPY/MOVE alternate host Destination URI' ignore='no'>
+		<test name='1'>
+			<description>COPY to different calendar, existing resource with overwrite</description>
+			<request>
+				<method>COPY</method>
+				<header>
+					<name>Destination</name>
+					<value>$hostalt:$pathprefix:/calendar2/copy2_1.ics</value>
+				</header>
+				<header>
+					<name>Overwrite</name>
+					<value>T</value>
+				</header>
+				<ruri>1.ics</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>204</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='2'>
+			<description>MOVE to different calendar, existing resource with overwrite</description>
+			<request>
+				<method>MOVE</method>
+				<header>
+					<name>Destination</name>
+					<value>$hostalt:$pathprefix:/calendar2/copy2_1.ics</value>
+				</header>
+				<header>
+					<name>Overwrite</name>
+					<value>T</value>
+				</header>
+				<ruri>1.ics</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>2xx</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+
 	<end>
 		<request>
 			<method>DELETE</method>
