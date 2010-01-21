@@ -24,7 +24,7 @@ cdt="${wd}/../CalDAVTester";
 ##
 
 verbose="";
-serverinfo="${cdt}/scripts/server/serverinfo.xml";
+serverinfo="${cdt}/scripts/server/serverinfo-carddav.xml";
 documentroot="${wd}/twistedcaldav/test/data";
 
 usage ()
@@ -64,9 +64,7 @@ fi;
 export PYTHONPATH=$("${wd}/run" -p);
 
 if [ ! -e "${documentroot}/addressbooks/__uids__/user01" ]; then
-  curl "http://localhost:8008/addressbooks/__uids__/user01/";
+  curl "http://localhost:8800/addressbooks/__uids__/user01/";
 fi;
 
-python twistedcaldav/test/data/makelargecalendars.py -n 1 -d "${documentroot}";
-
-cd "${cdt}" && python testcarddav.py -s "${serverinfo}" "$@";
+cd "${cdt}" && python testcaldav.py -s "${serverinfo}" "$@";
