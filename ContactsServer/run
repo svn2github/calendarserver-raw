@@ -232,12 +232,11 @@ if [ -n "${install}" ] && ! echo "${install}" | grep '^/' > /dev/null; then
   install="$(pwd)/${install}";
 fi;
 
-# commented out the following lines for address book server
-#svn_uri_base="$(svn info "${carddav}" --xml 2> /dev/null | sed -n 's|^.*<root>\(.*\)</root>.*$|\1|p')";
-#
-#if [ -z "${svn_uri_base}" ]; then
+svn_uri_base="$(svn info "${carddav}" --xml 2> /dev/null | sed -n 's|^.*<root>\(.*\)</root>.*$|\1|p')";
+
+if [ -z "${svn_uri_base}" ]; then
   svn_uri_base="http://svn.calendarserver.org/repository/calendarserver";
-#fi;
+fi;
 
 export PYTHONPATH="${carddav}";
 
@@ -718,6 +717,14 @@ if ! py_have_module pydirector; then
 
   export PYTHONPATH="${PYTHONPATH}:${pydirector}/build/${py_platform_libdir}";
 fi;
+
+#
+# CalDAVTester
+#
+
+caldavtester="${top}/CalDAVTester";
+
+svn_get "CalDAVTester" "${caldavtester}" "${svn_uri_base}/CalDAVTester/trunk" 4942;
 
 #
 # PyFlakes
