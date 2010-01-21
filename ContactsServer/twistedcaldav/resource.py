@@ -454,7 +454,7 @@ class CalDAVResource (CalDAVComplianceMixIn, DAVResource, LoggingMixIn):
     ##
 
     def displayName(self):
-        if self.isAddressBookCollection():
+        if self.isAddressBookCollection() and not self.hasDeadProperty((davxml.dav_namespace, "displayname")):
             return None
         
         if 'record' in dir(self):
