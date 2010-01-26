@@ -58,7 +58,7 @@ from twistedcaldav.config import config
 from twistedcaldav.customxml import TwistedCalendarAccessProperty
 from twistedcaldav.extensions import DAVFile
 from twistedcaldav.extensions import CachingPropertyStore
-from twistedcaldav.memcacheprops import MemcachePropertyCollection
+from twistedcaldav.fileprops import PropertyCollection
 from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.index import Index, IndexSchedule
@@ -330,7 +330,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
     def propertyCollection(self):
         if not hasattr(self, "_propertyCollection"):
-            self._propertyCollection = MemcachePropertyCollection(self)
+            self._propertyCollection = PropertyCollection(self)
         return self._propertyCollection
 
     def createSimilarFile(self, path):
@@ -341,7 +341,7 @@ class CalDAVFile (CalDAVResource, DAVFile):
 
         if isCalendarCollectionResource(self):
 
-			# Short-circuit stat with information we know to be true at this point
+            # Short-circuit stat with information we know to be true at this point
             if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
                 if os.path.basename(path.path) in self.knownChildren:
                     path.existsCached = True
@@ -376,11 +376,24 @@ class CalDAVFile (CalDAVResource, DAVFile):
                     response = (yield original(request))
 
                     # Wipe the cache
-                    similar.deadProperties().flushCache()
+                    similar.deadProperties().deleteAll()
 
                     returnValue(response)
 
                 setattr(similar, method, override)
+
+            #
+            # Flush properties at end of request
+            #
+            def renderHTTP(request, original=similar.renderHTTP):
+                def flushProperties(request, response):
+                    self.propertyCollection().flush()
+                    return response
+                request.addResponseFilter(flushProperties)
+
+                return original(request)
+
+            similar.renderHTTP = renderHTTP
 
         return similar
 

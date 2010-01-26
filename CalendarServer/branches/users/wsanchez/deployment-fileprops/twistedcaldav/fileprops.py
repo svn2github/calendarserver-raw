@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2009 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2010 Apple Computer, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -20,17 +20,14 @@
 # SOFTWARE.
 ##
 
-"""
-DAV Property store using memcache on top of another property store
-implementation.
-"""
-
-__all__ = ["MemcachePropertyCollection"]
+__all__ = ["PropertyCollection"]
 
 try:
     from hashlib import md5
 except ImportError:
     from md5 import new as md5
+
+from cPickle import dumps as pickle, loads as unpickle, UnpicklingError
 
 from memcacheclient import ClientFactory as MemcacheClientFactory, MemcacheError, TokenMismatchError
 
@@ -43,10 +40,8 @@ from twistedcaldav.log import LoggingMixIn, Logger
 
 log = Logger()
 
-NoValue = ""
 
-
-class MemcachePropertyCollection (LoggingMixIn):
+class PropertyCollection (LoggingMixIn):
     """
     Manages a single property store for all resources in a collection.
     """
@@ -57,17 +52,16 @@ class MemcachePropertyCollection (LoggingMixIn):
 
     @classmethod
     def memcacheClient(cls, refresh=False):
-        if not hasattr(MemcachePropertyCollection, "_memcacheClient"):
+        if not hasattr(PropertyCollection, "_memcacheClient"):
+            log.info("Instantiating memcache connection for PropertyCollection")
 
-            log.info("Instantiating memcache connection for MemcachePropertyCollection")
-
-            MemcachePropertyCollection._memcacheClient = MemcacheClientFactory.getClient(["%s:%s" % (config.Memcached.BindAddress, config.Memcached.Port)],
+            PropertyCollection._memcacheClient = MemcacheClientFactory.getClient(["%s:%s" % (config.Memcached.BindAddress, config.Memcached.Port)],
                 debug=0,
                 pickleProtocol=2,
             )
-            assert MemcachePropertyCollection._memcacheClient is not None
+            assert PropertyCollection._memcacheClient is not None
 
-        return MemcachePropertyCollection._memcacheClient
+        return PropertyCollection._memcacheClient
 
     def propertyCache(self):
         # The property cache has this format:
@@ -112,13 +106,9 @@ class MemcachePropertyCollection (LoggingMixIn):
 
     def _loadCache(self, childNames=None):
         if childNames is None:
-            abortIfMissing = False
             childNames = self.collection.listChildren()
-        else:
-            if childNames:
-                abortIfMissing = True
-            else:
-                return {}
+        elif not childNames:
+            return {}
 
         self.log_debug("Loading cache for %s" % (self.collection,))
 
@@ -135,29 +125,10 @@ class MemcachePropertyCollection (LoggingMixIn):
         result = client.gets_multi((key for key, name in keys))
 
         if self.logger.willLogAtLevel("debug"):
-            if abortIfMissing:
-                missing = "missing "
-            else:
-                missing = ""
-            self.log_debug("Loaded keys for %schildren of %s: %s" % (
-                missing,
+            self.log_debug("Loaded keys for children of %s: %s" % (
                 self.collection,
                 [name for key, name in keys],
             ))
-
-        missing = tuple((
-            name for key, name in keys
-            if key not in result
-        ))
-
-        if missing:
-            if abortIfMissing:
-                raise MemcacheError("Unable to fully load cache for %s" % (self.collection,))
-
-            loaded = self._buildCache(childNames=missing)
-            loaded = self._loadCache(childNames=(FilePath(name).basename() for name in loaded.iterkeys()))
-
-            result.update(loaded.iteritems())
 
         return result
 
@@ -174,29 +145,61 @@ class MemcachePropertyCollection (LoggingMixIn):
         if client is not None:
             client.set_multi(values, time=self.cacheTimeout)
 
-    def _buildCache(self, childNames=None):
-        if childNames is None:
-            childNames = self.collection.listChildren()
-        elif not childNames:
-            return {}
+    def _cacheFilePath(self):
+        return self.collection.fp.child(".davprops.xml")
 
-        self.log_debug("Building cache for %s" % (self.collection,))
+    def _buildCache(self):
+        def argh(what):
+            msg = ("Unable to %s property collection store: %s" % (what, cacheFilePath.fp))
+            log.err(msg)
+            raise HTTPError(StatusResponse(responsecode.INTERNAL_SERVER_ERROR, msg))
+
+        cacheFilePath = self._cacheFilePath()
+        try:
+            cacheFile = cacheFilePath.open()
+        except (OSError, IOError):
+            if cacheFilePath.exists():
+                raise
+            else:
+                # No cache file: build from old prop store
+                cache = self._buildCacheOldSchool()
+                self._dirty = True
+                return cache
+
+        try:
+            data = cacheFile.read()
+        except (OSError, IOError):
+            argh("read")
+        finally:
+            cacheFile.close()
+
+        try:
+            return unpickle(data)
+        except UnpicklingError:
+            argh("parse")
+
+    def _buildCacheOldSchool(self):
+        self.log_info("Building property file from xattrs for %s" % (self.collection,))
 
         cache = {}
 
-        for childName in childNames:
+        for childName in self.collection.listChildren():
             child = self.collection.getChild(childName)
             if child is None:
                 continue
 
-            propertyStore = child.deadProperties()
+            # Find the original property store
+            propertyStore = child.deadProperties().oldPropertyStore
+
             props = {}
-            for qname in propertyStore.list(cache=False):
-                props[qname] = propertyStore.get(qname, cache=False)
+            for qname in propertyStore.list():
+                props[qname] = propertyStore.get(qname)
 
             cache[child.fp.path] = props
 
         self._storeCache(cache)
+
+        self.log_info("Done building property file from xattrs for %s" % (self.collection,))
 
         return cache
 
@@ -251,6 +254,26 @@ class MemcachePropertyCollection (LoggingMixIn):
                     % ("delete" if delete else "set",
                     qname[0], qname[1], child))
 
+    def flush(self):
+        if self._dirty:
+            def argh(what):
+                msg = ("Unable to %s property collection store: %s" % (what, cacheFilePath.fp))
+                log.err(msg)
+                raise HTTPError(StatusResponse(responsecode.INTERNAL_SERVER_ERROR, msg))
+
+            cacheFilePath = self._cacheFilePath()
+            try:
+                cacheFile = cacheFilePath.open("w")
+            except (OSError, IOError):
+                argh("open (for writing)")
+
+            try:
+                cacheFile.write(pickle(self.propertyCache()))
+            except (OSError, IOError):
+                argh("write")
+            finally:
+                cacheFile.close()
+
     def deleteProperty(self, child, qname):
         return self.setProperty(child, qname, delete=True)
 
@@ -268,17 +291,14 @@ class MemcachePropertyCollection (LoggingMixIn):
             if not result:
                 raise MemcacheError("Unable to flush cache on %s" % (child,))
 
-    def flush(self):
-        pass
-
-    def propertyStoreForChild(self, child, childPropertyStore):
-        return self.ChildPropertyStore(self, child, childPropertyStore)
+    def propertyStoreForChild(self, child, oldPropertyStore):
+        return self.ChildPropertyStore(self, child, oldPropertyStore)
 
     class ChildPropertyStore (LoggingMixIn):
-        def __init__(self, parentPropertyCollection, child, childPropertyStore):
+        def __init__(self, parentPropertyCollection, child, oldPropertyStore):
             self.parentPropertyCollection = parentPropertyCollection
             self.child = child
-            self.childPropertyStore = childPropertyStore
+            self.oldPropertyStore = oldPropertyStore
 
         def propertyCache(self):
             path = self.child.fp.path
@@ -286,52 +306,27 @@ class MemcachePropertyCollection (LoggingMixIn):
             parentPropertyCache = self.parentPropertyCollection.propertyCache()
             return parentPropertyCache.get(key, ({}, None))[0]
 
-        def get(self, qname, cache=True):
-            if cache:
-                propertyCache = self.propertyCache()
-                if qname in propertyCache:
-                    return propertyCache[qname]
-                else:
-                    raise HTTPError(StatusResponse(
-                        responsecode.NOT_FOUND,
-                        "No such property: {%s}%s" % qname
-                    ))
-
-            self.log_debug("Read for %s on %s"
-                           % (qname, self.childPropertyStore.resource.fp.path))
-            return self.childPropertyStore.get(qname)
+        def get(self, qname):
+            propertyCache = self.propertyCache()
+            if qname in propertyCache:
+                return propertyCache[qname]
+            else:
+                raise HTTPError(StatusResponse(
+                    responsecode.NOT_FOUND,
+                    "No such property: {%s}%s" % qname
+                ))
 
         def deleteAll(self):
             self.parentPropertyCollection.deleteAll(self.child)
 
         def set(self, property):
-            self.log_debug("Write for %s on %s"
-                           % (property.qname(), self.childPropertyStore.resource.fp.path))
-
             self.parentPropertyCollection.setProperty(self.child, property)
-            self.childPropertyStore.set(property)
 
         def delete(self, qname):
-            self.log_debug("Delete for %s on %s"
-                           % (qname, self.childPropertyStore.resource.fp.path))
-
             self.parentPropertyCollection.deleteProperty(self.child, qname)
-            self.childPropertyStore.delete(qname)
 
-        def contains(self, qname, cache=True):
-            if cache:
-                propertyCache = self.propertyCache()
-                return qname in propertyCache
+        def contains(self, qname):
+            return qname in self.propertyCache()
 
-            self.log_debug("Contains for %s"
-                           % (self.childPropertyStore.resource.fp.path,))
-            return self.childPropertyStore.contains(qname)
-
-        def list(self, cache=True):
-            if cache:
-                propertyCache = self.propertyCache()
-                return propertyCache.iterkeys()
-
-            self.log_debug("List for %s"
-                           % (self.childPropertyStore.resource.fp.path,))
-            return self.childPropertyStore.list()
+        def list(self,):
+            return self.propertyCache().iterkeys()
