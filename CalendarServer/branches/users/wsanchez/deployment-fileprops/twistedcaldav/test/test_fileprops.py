@@ -35,13 +35,9 @@ from twisted.web2.dav.davxml import GETContentType
 
 from twistedcaldav.config import config
 from twistedcaldav.static import CalDAVFile, CalendarHomeProvisioningFile
-#from twistedcaldav.fileprops import PropertyCollection
 
-#from twistedcaldav.test.test_memcacheprops import StubCollection, StubResource, StubFP
-from twistedcaldav.test import test_memcacheprops
 from twistedcaldav.test.util import TestCase
 
-#class PropertyCollectionTestCase(test_memcacheprops.MemcachePropertyCollectionTestCase):
 class PropertyCollectionTestCase(TestCase):
     """
     Test PropertyCollection
@@ -100,6 +96,8 @@ class PropertyCollectionTestCase(TestCase):
             )
         )
 
+        self.md5s = {}
+
         for objectName in self.calendarObjectNames:
             data = (
                 """BEGIN:VCALENDAR"""
@@ -128,6 +126,10 @@ class PropertyCollectionTestCase(TestCase):
             finally:
                 fh.close()
 
+            # Get and remember md5 hash
+            hash = md5(data).hexdigest()
+            self.md5s[objectName] = hash
+
             #
             # Instantiate CalDAVFile directory, not through the
             # calendar home, because we want to use the old-style
@@ -136,7 +138,7 @@ class PropertyCollectionTestCase(TestCase):
             # store works.
             #
             child = CalDAVFile(childFP)
-            child.writeDeadProperty(TwistedGETContentMD5.fromString(md5(data).hexdigest()))
+            child.writeDeadProperty(TwistedGETContentMD5.fromString(hash))
             child.writeDeadProperty(GETContentType.fromString("text/calendar"))
 
         #
@@ -144,10 +146,7 @@ class PropertyCollectionTestCase(TestCase):
         #
         self.calendar.fp.child(".db.sqlite").remove()
 
-    def tearDown(self):
-        raise NotImplementedError()
-
-    def test_upgrade(self):
+    def test_upgrade_read(self):
         #print "*"*80
         #print self.calendar
         #print self.calendar.listChildren()
@@ -162,13 +161,47 @@ class PropertyCollectionTestCase(TestCase):
             # and correct via the API
             self.failUnless(child.hasDeadProperty(TwistedGETContentMD5))
             self.failUnless(child.hasDeadProperty(GETContentType))
-            self.assertEquals(len(str(child.readDeadProperty(TwistedGETContentMD5))), 32)
-            self.assertEquals(str(child.readDeadProperty(GETContentType)), "text/calendar")
+            self.assertEquals(child.readDeadProperty(TwistedGETContentMD5), self.md5s[childName])
+            self.assertEquals(child.readDeadProperty(GETContentType), "text/calendar")
 
             # Old dead properties should be gone now
             oldSchool = CalDAVFile(child.fp.path)
             oldProperties = [x for x in oldSchool.deadProperties().list()]
             self.assertEquals(len(oldProperties), 0, oldProperties)
+
+        self.failUnless(self.calendar.fp.child(".davprops.pickle").exists(), self.calendar.fp.listdir())
+
+    def test_upgrade_write(self):
+        child = self.calendar.getChild("Earth.ics")
+
+        # Ensure that write and read works
+        child.writeDeadProperty(TwistedGETContentMD5.fromString("d9baeb281f407f3381089df85e4dc2e5"))
+        self.assertEquals(child.readDeadProperty(TwistedGETContentMD5), "d9baeb281f407f3381089df85e4dc2e5")
+
+        # Old dead properties should be gone now
+        oldSchool = CalDAVFile(child.fp.path)
+        oldProperties = [x for x in oldSchool.deadProperties().list()]
+        self.assertEquals(len(oldProperties), 0, oldProperties)
+
+    def test_readwrite(self):
+        childName = "Earth.ics"
+
+        child = self.calendar.getChild(childName)
+
+        # Ensure that write and read works
+        child.writeDeadProperty(TwistedGETContentMD5.fromString("d9baeb281f407f3381089df85e4dc2e5"))
+        self.assertEquals(child.readDeadProperty(TwistedGETContentMD5), "d9baeb281f407f3381089df85e4dc2e5")
+
+        # Ensure that write and read works (post-upgrade)
+        child.writeDeadProperty(TwistedGETContentMD5.fromString("e5786e7b9a94ad428219c82c9428d1e4"))
+        self.assertEquals(child.readDeadProperty(TwistedGETContentMD5), "e5786e7b9a94ad428219c82c9428d1e4")
+
+        ### Doesn't work; need new calendar home (and cache):
+        # No flush above, so writes should not show up in a new instance
+        child2 = self.calendar.getChild(childName)
+        self.assertEquals(child2.readDeadProperty(TwistedGETContentMD5), self.md5s[childName])
+
+
 
 #
 # Utilities

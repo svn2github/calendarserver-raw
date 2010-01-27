@@ -48,7 +48,7 @@ class PropertyCollection (LoggingMixIn):
     def __init__(self, collection, cacheTimeout=0):
         self.collection = collection
         self.cacheTimeout = cacheTimeout
-        self._dirty = False
+        self._dirty = set()
 
     @classmethod
     def memcacheClient(cls, refresh=False):
@@ -66,7 +66,7 @@ class PropertyCollection (LoggingMixIn):
     def propertyCache(self):
         # The property cache has this format:
         #  {
-        #    "/path/to/resource/file":
+        #    self._keyForPath("/path/to/resource/file"):
         #      (
         #        {
         #          (namespace, name): property,
@@ -186,10 +186,10 @@ class PropertyCollection (LoggingMixIn):
         self.log_info("Building property file from xattrs for %s" % (self.collection,))
 
         cache = {}
-
         propertyStores = []
 
-        for childName in self.collection.listChildren():
+        childNames = self.collection.listChildren()
+        for childName in childNames:
             child = self.collection.getChild(childName)
             if child is None:
                 continue
@@ -201,14 +201,14 @@ class PropertyCollection (LoggingMixIn):
             for qname in propertyStore.list():
                 props[qname] = propertyStore.get(qname)
 
-            cache[self._keyForPath(child.fp.path)] = props
+            cache[self._keyForPath(child.fp.path)] = (props, None)
 
             propertyStores.append(propertyStore)
 
         self.log_info("Done building property file from xattrs for %s" % (self.collection,))
 
         self._propertyCache = cache
-        self._dirty = True
+        self._dirty.update(childNames)
         self.flush()
 
         # Erase old property store
@@ -219,7 +219,7 @@ class PropertyCollection (LoggingMixIn):
     def setProperty(self, child, property, delete=False):
         propertyCache, key, childCache, token = self.childCache(child)
 
-        self._dirty = True
+        self._dirty.add(child)
 
         if delete:
             qname = property
@@ -228,44 +228,6 @@ class PropertyCollection (LoggingMixIn):
         else:
             qname = property.qname()
             childCache[qname] = property
-
-        client = self.memcacheClient()
-
-        if client is not None:
-            retries = 10
-            while retries:
-                try:
-                    if client.set(key, childCache, time=self.cacheTimeout,
-                        token=token):
-                        # Success
-                        break
-
-                except TokenMismatchError:
-                    # The value in memcache has changed since we last
-                    # fetched it
-                    log.debug("memcacheprops setProperty TokenMismatchError; retrying...")
-
-                finally:
-                    # Re-fetch the properties for this child
-                    loaded = self._loadCache(childNames=(child.fp.basename(),))
-                    propertyCache.update(loaded.iteritems())
-
-                retries -= 1
-
-                propertyCache, key, childCache, token = self.childCache(child)
-
-                if delete:
-                    if childCache.has_key(qname):
-                        del childCache[qname]
-                else:
-                    childCache[qname] = property
-
-            else:
-                log.error("memcacheprops setProperty had too many failures")
-                delattr(self, "_propertyCache")
-                raise MemcacheError("Unable to %s property {%s}%s on %s"
-                    % ("delete" if delete else "set",
-                    qname[0], qname[1], child))
 
     def flush(self):
         if self._dirty:
@@ -287,7 +249,48 @@ class PropertyCollection (LoggingMixIn):
             finally:
                 cacheFile.close()
 
-            self._dirty = False
+            return ############################################
+
+            client = self.memcacheClient()
+
+            if client is not None:
+                retries = 10
+                while retries:
+                    try:
+                        if client.set(key, childCache, time=self.cacheTimeout,
+                            token=token):
+                            # Success
+                            break
+
+                    except TokenMismatchError:
+                        # The value in memcache has changed since we last
+                        # fetched it
+                        log.debug("memcacheprops setProperty TokenMismatchError; retrying...")
+
+                    finally:
+                        # Re-fetch the properties for this child
+                        loaded = self._loadCache(childNames=(child.fp.basename(),))
+                        print "-"*10, loaded
+                        propertyCache.update(loaded.iteritems())
+
+                    retries -= 1
+
+                    propertyCache, key, childCache, token = self.childCache(child)
+
+                    if delete:
+                        if childCache.has_key(qname):
+                            del childCache[qname]
+                    else:
+                        childCache[qname] = property
+
+                else:
+                    log.error("memcacheprops setProperty had too many failures")
+                    delattr(self, "_propertyCache")
+                    raise MemcacheError("Unable to %s property {%s}%s on %s"
+                        % ("delete" if delete else "set",
+                        qname[0], qname[1], child))
+
+            self._dirty = set()
 
     def deleteProperty(self, child, qname):
         return self.setProperty(child, qname, delete=True)
@@ -319,7 +322,7 @@ class PropertyCollection (LoggingMixIn):
             path = self.child.fp.path
             key = self.parentPropertyCollection._keyForPath(path)
             parentPropertyCache = self.parentPropertyCollection.propertyCache()
-            return parentPropertyCache.get(key, {})
+            return parentPropertyCache.get(key, ({}, None))[0]
 
         def get(self, qname):
             propertyCache = self.propertyCache()
