@@ -77,7 +77,7 @@ class PropertyCollection (LoggingMixIn):
         #    ...,
         #  }
         if not hasattr(self, "_propertyCache"):
-            self._propertyCache = self._loadCache()
+            self._loadCache()
         return self._propertyCache
 
     def childCache(self, child):
@@ -108,29 +108,35 @@ class PropertyCollection (LoggingMixIn):
         if childNames is None:
             childNames = self.collection.listChildren()
         elif not childNames:
-            return {}
+            self._propertyCache = {}
+            return
 
         self.log_debug("Loading cache for %s" % (self.collection,))
 
         client = self.memcacheClient()
         assert client is not None, "OMG no cache!"
         if client is None:
-            return None
+            self._propertyCache = None
+            return
 
         keys = tuple((
             (self._keyForPath(self.collection.fp.child(childName).path), childName)
             for childName in childNames
         ))
 
-        result = client.gets_multi((key for key, name in keys))
+        cache = client.gets_multi((key for key, name in keys))
 
-        if self.logger.willLogAtLevel("debug"):
-            self.log_debug("Loaded keys for children of %s: %s" % (
-                self.collection,
-                [name for key, name in keys],
-            ))
+        if cache:
+            self._propertyCache = cache
+            if self.logger.willLogAtLevel("debug"):
+                self.log_debug("Loaded keys for children of %s: %s" % (
+                    self.collection,
+                    [name for key, name in keys],
+                ))
+            return
 
-        return result
+        self.log_debug("Loading property cache from disk")
+        self._buildCache()
 
     def _storeCache(self, cache):
         self.log_debug("Storing cache for %s" % (self.collection,))
@@ -146,7 +152,7 @@ class PropertyCollection (LoggingMixIn):
             client.set_multi(values, time=self.cacheTimeout)
 
     def _cacheFilePath(self):
-        return self.collection.fp.child(".davprops.xml")
+        return self.collection.fp.child(".davprops.pickle")
 
     def _buildCache(self):
         def argh(what):
@@ -162,26 +168,26 @@ class PropertyCollection (LoggingMixIn):
                 raise
             else:
                 # No cache file: build from old prop store
-                cache = self._buildCacheOldSchool()
-                self._dirty = True
-                return cache
+                self._buildCacheOldSchool()
+        else:
+            try:
+                data = cacheFile.read()
+            except (OSError, IOError):
+                argh("read")
+            finally:
+                cacheFile.close()
 
-        try:
-            data = cacheFile.read()
-        except (OSError, IOError):
-            argh("read")
-        finally:
-            cacheFile.close()
-
-        try:
-            return unpickle(data)
-        except UnpicklingError:
-            argh("parse")
+            try:
+                self._propertyCache = unpickle(data)
+            except UnpicklingError:
+                argh("parse")
 
     def _buildCacheOldSchool(self):
         self.log_info("Building property file from xattrs for %s" % (self.collection,))
 
         cache = {}
+
+        propertyStores = []
 
         for childName in self.collection.listChildren():
             child = self.collection.getChild(childName)
@@ -195,13 +201,20 @@ class PropertyCollection (LoggingMixIn):
             for qname in propertyStore.list():
                 props[qname] = propertyStore.get(qname)
 
-            cache[child.fp.path] = props
+            cache[self._keyForPath(child.fp.path)] = props
 
-        self._storeCache(cache)
+            propertyStores.append(propertyStore)
 
         self.log_info("Done building property file from xattrs for %s" % (self.collection,))
 
-        return cache
+        self._propertyCache = cache
+        self._dirty = True
+        self.flush()
+
+        # Erase old property store
+        for propertyStore in propertyStores:
+            for qname in propertyStore.list():
+                propertyStore.delete(qname)
 
     def setProperty(self, child, property, delete=False):
         propertyCache, key, childCache, token = self.childCache(child)
@@ -274,6 +287,8 @@ class PropertyCollection (LoggingMixIn):
             finally:
                 cacheFile.close()
 
+            self._dirty = False
+
     def deleteProperty(self, child, qname):
         return self.setProperty(child, qname, delete=True)
 
@@ -304,7 +319,7 @@ class PropertyCollection (LoggingMixIn):
             path = self.child.fp.path
             key = self.parentPropertyCollection._keyForPath(path)
             parentPropertyCache = self.parentPropertyCollection.propertyCache()
-            return parentPropertyCache.get(key, ({}, None))[0]
+            return parentPropertyCache.get(key, {})
 
         def get(self, qname):
             propertyCache = self.propertyCache()
