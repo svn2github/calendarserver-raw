@@ -217,6 +217,9 @@ defaultConfig = {
     "DefaultLogLevel"   : "",
     "LogLevels"         : {},
     "LogID"          : "",
+    "EnableInspection"   : False,
+    "BaseInspectionPort" : 10000,
+    "InspectionPort"     : "",
 
     "AccountingCategories": {
         "iTIP": False,

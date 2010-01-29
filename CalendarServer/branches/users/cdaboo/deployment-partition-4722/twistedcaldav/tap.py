@@ -39,7 +39,6 @@ from twisted.cred.portal import Portal
 from twisted.web2.dav import auth
 from twisted.web2.auth.basic import BasicCredentialFactory
 
-from twisted.web2.server import Site
 
 from twistedcaldav.log import Logger, logLevelForNamespace, setLogLevelForNamespace
 from twistedcaldav.accesslog import DirectoryLogWrapperResource
@@ -55,7 +54,8 @@ from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.aggregate import AggregateDirectoryService
 from twistedcaldav.directory.sudo import SudoDirectoryService
-from twistedcaldav.httpfactory import HTTP503LoggingFactory, LimitingHTTPFactory
+from twistedcaldav.httpfactory import HTTP503LoggingFactory, LimitingHTTPFactory, LimitingSite
+from twistedcaldav.inspection import InspectionFactory
 from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.static import IScheduleInboxFile
 from twistedcaldav.static import TimezoneServiceFile
@@ -763,7 +763,7 @@ class CalDAVServiceMaker(object):
 
         service = CalDAVService(logObserver)
 
-        site = Site(realRoot)
+        site = LimitingSite(realRoot)
 
 
         # If inheriting file descriptors from the master, use those to handle
@@ -880,11 +880,20 @@ class CalDAVServiceMaker(object):
 
         # Register USR1 handler
         def sigusr1_handler(num, frame):
-            log.debug("SIGUSR1 recieved, triggering directory refresh")
-            baseDirectory.refresh()
+            from twisted.internet import reactor
+            log.debug("SIGUSR1 received, triggering directory refresh")
+            reactor.callLater(0, baseDirectory.refresh)
             return
 
         signal.signal(signal.SIGUSR1, sigusr1_handler)
+
+        if config.EnableInspection:
+            inspector = internet.TCPServer(
+                int(config.InspectionPort) if config.InspectionPort else config.BaseInspectionPort,
+                InspectionFactory(),
+                interface="127.0.0.1"
+            )
+            inspector.setServiceParent(service)
 
         return service
 

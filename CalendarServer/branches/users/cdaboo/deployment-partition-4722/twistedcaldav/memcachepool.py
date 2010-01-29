@@ -17,7 +17,8 @@
 from twisted.python.failure import Failure
 from twisted.internet.address import IPv4Address
 from twisted.internet.defer import Deferred, fail
-from twisted.internet.protocol import ReconnectingClientFactory
+from twisted.internet.error import ConnectionLost, ConnectionDone
+from twisted.internet.protocol import ClientFactory
 
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.memcache import MemCacheProtocol, NoSuchCommand
@@ -44,7 +45,7 @@ class PooledMemCacheProtocol(MemCacheProtocol):
 
 
 
-class MemCacheClientFactory(ReconnectingClientFactory, LoggingMixIn):
+class MemCacheClientFactory(ClientFactory, LoggingMixIn):
     """
     A client factory for MemCache that reconnects and notifies a pool of it's
     state.
@@ -71,12 +72,6 @@ class MemCacheClientFactory(ReconnectingClientFactory, LoggingMixIn):
         if self._protocolInstance is not None:
             self.connectionPool.clientBusy(self._protocolInstance)
 
-        ReconnectingClientFactory.clientConnectionLost(
-            self,
-            connector,
-            reason)
-
-
     def clientConnectionFailed(self, connector, reason):
         """
         Notify the connectionPool that we're unable to connect
@@ -84,12 +79,6 @@ class MemCacheClientFactory(ReconnectingClientFactory, LoggingMixIn):
         self.log_error("MemCache connection failed: %s" % (reason,))
         if self._protocolInstance is not None:
             self.connectionPool.clientBusy(self._protocolInstance)
-
-        ReconnectingClientFactory.clientConnectionFailed(
-            self,
-            connector,
-            reason)
-
 
     def buildProtocol(self, addr):
         """
@@ -197,6 +186,12 @@ class MemCachePool(LoggingMixIn):
             self.clientFree(client)
             return result
 
+        def _freeClientAfterError(error):
+            if not error.check(ConnectionLost, ConnectionDone):
+                self.clientFree(client)
+            return error
+
+
         self.clientBusy(client)
         method = getattr(client, command, None)
         if method is not None:
@@ -204,7 +199,7 @@ class MemCachePool(LoggingMixIn):
         else:
             d = fail(Failure(NoSuchCommand()))
 
-        d.addCallback(_freeClientAfterRequest)
+        d.addCallbacks(_freeClientAfterRequest, _freeClientAfterError)
 
         return d
 
