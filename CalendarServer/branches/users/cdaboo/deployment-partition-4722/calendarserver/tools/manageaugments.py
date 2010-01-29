@@ -79,7 +79,8 @@ def doAdd(xmlfile, guid, host, enable_calendar, auto_schedule):
                 error("Cannot add guid '%s' because it already exists in augment file: '%s'" % (guid, xmlfile,))
     
     # Create new record
-    augments_node.getchildren()[-1].tail = "\n  "
+    if len(augments_node.getchildren()):
+        augments_node.getchildren()[-1].tail = "\n  "
     record = addSubElement(augments_node, xmlaugmentsparser.ELEMENT_RECORD, "\n    ")
     addSubElement(record, xmlaugmentsparser.ELEMENT_GUID, guid, 4)
     addSubElement(record, xmlaugmentsparser.ELEMENT_ENABLE, "true", 4)
