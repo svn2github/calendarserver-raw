@@ -110,7 +110,7 @@ class AugmentSqliteTests(AugmentTests):
     @inlineCallbacks
     def test_read(self):
         
-        db = AugmentSqliteDB(self.mktemp())
+        db = AugmentSqliteDB(os.path.abspath(self.mktemp()))
 
         dbxml = AugmentXMLDB((xmlFile,))
         for record in dbxml.db.values():
@@ -124,7 +124,7 @@ class AugmentSqliteTests(AugmentTests):
     @inlineCallbacks
     def test_read_default(self):
         
-        db = AugmentSqliteDB(self.mktemp())
+        db = AugmentSqliteDB(os.path.abspath(self.mktemp()))
 
         dbxml = AugmentXMLDB((xmlFileDefault,))
         for record in dbxml.db.values():

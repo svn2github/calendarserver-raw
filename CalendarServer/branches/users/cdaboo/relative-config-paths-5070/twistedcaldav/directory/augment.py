@@ -24,6 +24,7 @@ from twext.log import Logger
 from twistedcaldav.database import AbstractADBAPIDatabase, ADBAPISqliteMixin,\
     ADBAPIPostgreSQLMixin
 from twistedcaldav.directory.xmlaugmentsparser import XMLAugmentsParser
+from twistedcaldav.config import fullServerPath, config
 
 
 log = Logger()
@@ -113,7 +114,7 @@ class AugmentXMLDB(AugmentDB):
     
     def __init__(self, xmlFiles, cacheTimeout=30):
         
-        self.xmlFiles = xmlFiles
+        self.xmlFiles = [fullServerPath(config.DataRoot, path) for path in xmlFiles]
         self.cacheTimeout = cacheTimeout * 60 # Value is mins we want secs
         self.lastCached = 0
         self.db = {}
@@ -341,7 +342,7 @@ class AugmentSqliteDB(ADBAPISqliteMixin, AugmentADAPI):
     def __init__(self, dbpath):
         
         ADBAPISqliteMixin.__init__(self)
-        AugmentADAPI.__init__(self, "Augments", "sqlite3", (dbpath,))
+        AugmentADAPI.__init__(self, "Augments", "sqlite3", (fullServerPath(config.DataRoot, dbpath),))
 
 class AugmentPostgreSQLDB(ADBAPIPostgreSQLMixin, AugmentADAPI):
     """
