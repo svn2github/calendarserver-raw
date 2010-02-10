@@ -95,7 +95,7 @@
 
     <!-- Run root -->
     <key>RunRoot</key>
-    <string>Tmp</string>
+    <string>Run</string>
 
     <!-- Child aliases -->
     <key>Aliases</key>

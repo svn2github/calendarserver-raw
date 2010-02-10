@@ -264,6 +264,18 @@ class CalDAVOptions (Options, LoggingMixIn):
 
         self.parent["pidfile"] = config.PIDFile
 
+
+        #
+        # Verify that server root actually exists
+        #
+        self.checkDirectory(
+            config.ServerRoot,
+            "Server root",
+            # Require write access because one might not allow editing on /
+            access=os.W_OK,
+            create=(0750, config.UserName, config.GroupName),
+        )
+        
         #
         # Verify that document root, data root actually exist
         #
