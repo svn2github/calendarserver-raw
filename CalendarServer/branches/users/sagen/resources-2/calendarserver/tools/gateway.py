@@ -192,6 +192,8 @@ class Runner(object):
         guid = command['GeneratedUID']
         record = self.dir.recordWithGUID(guid)
         recordDict = recordToDict(record)
+        # principal = principalForPrincipalID(guid, directory=self.dir)
+        # recordDict['AutoSchedule'] = principal.getAutoSchedule()
         respond(command, recordDict)
 
     def command_setLocationAttributes(self, command):
@@ -204,6 +206,11 @@ class Runner(object):
             self.dir.updateRecord("locations", **kwargs)
         except DirectoryError, e:
             abort(str(e))
+
+        # principal = principalForPrincipalID(command['GeneratedUID'],
+        #     directory=self.dir)
+        # principal.setAutoSchedule(command.get('AutoSchedule', False))
+
         respondWithRecordsOfType(self.dir, command, "locations")
 
     def command_deleteLocation(self, command):
@@ -237,6 +244,8 @@ class Runner(object):
         guid = command['GeneratedUID']
         record = self.dir.recordWithGUID(guid)
         recordDict = recordToDict(record)
+        # principal = principalForPrincipalID(guid, directory=self.dir)
+        # recordDict['AutoSchedule'] = principal.getAutoSchedule()
         respond(command, recordDict)
 
     def command_setResourceAttributes(self, command):
@@ -249,6 +258,11 @@ class Runner(object):
             self.dir.updateRecord("resources", **kwargs)
         except DirectoryError, e:
             abort(str(e))
+
+        # principal = principalForPrincipalID(command['GeneratedUID'],
+        #     directory=self.dir)
+        # principal.setAutoSchedule(command.get('AutoSchedule', False))
+
         respondWithRecordsOfType(self.dir, command, "resources")
 
     def command_deleteResource(self, command):

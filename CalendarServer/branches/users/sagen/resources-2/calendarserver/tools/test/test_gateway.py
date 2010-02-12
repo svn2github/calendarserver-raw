@@ -215,13 +215,13 @@ class GatewayTestCase(TestCase):
     def test_createLocation(self):
         directory = getDirectory()
 
-        record = directory.recordWithUID("createdlocation01")
+        record = directory.recordWithUID("836B1B66-2E9A-4F46-8B1C-3DD6772C20B2")
         self.assertEquals(record, None)
 
         yield self.runCommand(command_createLocation)
 
         directory.flushCaches()
-        record = directory.recordWithUID("createdlocation01")
+        record = directory.recordWithUID("836B1B66-2E9A-4F46-8B1C-3DD6772C20B2")
         self.assertNotEquals(record, None)
 
         self.assertEquals(record.extras['comment'], "Test Comment")
@@ -240,10 +240,10 @@ class GatewayTestCase(TestCase):
         directory = getDirectory()
 
         yield self.runCommand(command_createLocation)
-        record = directory.recordWithUID("createdlocation01")
+        record = directory.recordWithUID("836B1B66-2E9A-4F46-8B1C-3DD6772C20B2")
         yield self.runCommand(command_setLocationAttributes)
         directory.flushCaches()
-        record = directory.recordWithUID("createdlocation01")
+        record = directory.recordWithUID("836B1B66-2E9A-4F46-8B1C-3DD6772C20B2")
 
         self.assertEquals(record.extras['comment'], "Updated Test Comment")
         self.assertEquals(record.extras['building'], "Updated Test Building")
@@ -273,13 +273,13 @@ class GatewayTestCase(TestCase):
     def test_createResource(self):
         directory = getDirectory()
 
-        record = directory.recordWithUID("guidlaptop1")
+        record = directory.recordWithUID("AF575A61-CFA6-49E1-A0F6-B5662C9D9801")
         self.assertEquals(record, None)
 
         yield self.runCommand(command_createResource)
 
         directory.flushCaches()
-        record = directory.recordWithUID("guidlaptop1")
+        record = directory.recordWithUID("AF575A61-CFA6-49E1-A0F6-B5662C9D9801")
         self.assertNotEquals(record, None)
 
     @inlineCallbacks
@@ -287,13 +287,13 @@ class GatewayTestCase(TestCase):
         directory = getDirectory()
 
         yield self.runCommand(command_createResource)
-        record = directory.recordWithUID("guidlaptop1")
+        record = directory.recordWithUID("AF575A61-CFA6-49E1-A0F6-B5662C9D9801")
         self.assertEquals(record.fullName, "Laptop 1")
 
         yield self.runCommand(command_setResourceAttributes)
 
         directory.flushCaches()
-        record = directory.recordWithUID("guidlaptop1")
+        record = directory.recordWithUID("AF575A61-CFA6-49E1-A0F6-B5662C9D9801")
         self.assertEquals(record.fullName, "Updated Laptop 1")
 
     @inlineCallbacks
@@ -359,7 +359,7 @@ command_createLocation = """<?xml version="1.0" encoding="UTF-8"?>
         <key>AutoSchedule</key>
         <true/>
         <key>GeneratedUID</key>
-        <string>createdlocation01</string>
+        <string>836B1B66-2E9A-4F46-8B1C-3DD6772C20B2</string>
         <key>RealName</key>
         <string>Created Location 01</string>
         <key>RecordName</key>
@@ -402,7 +402,7 @@ command_createResource = """<?xml version="1.0" encoding="UTF-8"?>
         <key>AutoSchedule</key>
         <true/>
         <key>GeneratedUID</key>
-        <string>guidlaptop1</string>
+        <string>AF575A61-CFA6-49E1-A0F6-B5662C9D9801</string>
         <key>RealName</key>
         <string>Laptop 1</string>
         <key>RecordName</key>
@@ -520,7 +520,7 @@ command_setLocationAttributes = """<?xml version="1.0" encoding="UTF-8"?>
         <key>AutoSchedule</key>
         <false/>
         <key>GeneratedUID</key>
-        <string>createdlocation01</string>
+        <string>836B1B66-2E9A-4F46-8B1C-3DD6772C20B2</string>
         <key>RealName</key>
         <string>Updated Location 01</string>
         <key>RecordName</key>
@@ -560,7 +560,7 @@ command_getLocationAttributes = """<?xml version="1.0" encoding="UTF-8"?>
         <key>command</key>
         <string>getLocationAttributes</string>
         <key>GeneratedUID</key>
-        <string>createdlocation01</string>
+        <string>836B1B66-2E9A-4F46-8B1C-3DD6772C20B2</string>
 </dict>
 </plist>
 """
@@ -574,7 +574,7 @@ command_setResourceAttributes = """<?xml version="1.0" encoding="UTF-8"?>
         <key>AutoSchedule</key>
         <false/>
         <key>GeneratedUID</key>
-        <string>guidlaptop1</string>
+        <string>AF575A61-CFA6-49E1-A0F6-B5662C9D9801</string>
         <key>RealName</key>
         <string>Updated Laptop 1</string>
         <key>RecordName</key>
@@ -592,7 +592,7 @@ command_getResourceAttributes = """<?xml version="1.0" encoding="UTF-8"?>
         <key>command</key>
         <string>getResourceAttributes</string>
         <key>GeneratedUID</key>
-        <string>guidlaptop1</string>
+        <string>AF575A61-CFA6-49E1-A0F6-B5662C9D9801</string>
 </dict>
 </plist>
 """
