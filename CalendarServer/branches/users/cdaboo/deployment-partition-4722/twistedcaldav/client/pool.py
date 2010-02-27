@@ -26,6 +26,7 @@ from twisted.internet.error import ConnectionLost, ConnectionDone, ConnectError
 from twisted.internet.protocol import ClientFactory
 from twisted.internet.ssl import DefaultOpenSSLContextFactory
 from twisted.web2 import responsecode
+from twisted.web2.client import interfaces
 from twisted.web2.client.http import HTTPClientProtocol
 from twisted.web2.dav.util import allDataFromStream
 from twisted.web2.http import StatusResponse, HTTPError
@@ -33,6 +34,7 @@ from twisted.web2.stream import MemoryStream
 from twistedcaldav.log import LoggingMixIn
 import OpenSSL
 import urlparse
+from zope.interface import implements
 
 class PooledHTTPClientFactory(ClientFactory, LoggingMixIn):
     """
@@ -46,7 +48,8 @@ class PooledHTTPClientFactory(ClientFactory, LoggingMixIn):
     protocol = HTTPClientProtocol
     connectionPool = None
 
-    def __init__(self, reactor):
+    def __init__(self, manager, reactor):
+        self.manager = manager
         self.reactor = reactor
         self.instance = None
         self.onConnect = Deferred()
@@ -77,7 +80,7 @@ class PooledHTTPClientFactory(ClientFactory, LoggingMixIn):
             del self.afterConnect
 
     def buildProtocol(self, addr):
-        self.instance = self.protocol()
+        self.instance = self.protocol(manager=self.manager)
         self.reactor.callLater(0, self.onConnect.callback, self.instance)
         del self.onConnect
         return self.instance
@@ -100,6 +103,9 @@ class HTTPClientPool(LoggingMixIn):
     @ivar _pendingConnects: A C{int} indicating how many connections are in
         progress.
     """
+
+    implements(interfaces.IHTTPClientManager)
+
     clientFactory = PooledHTTPClientFactory
     maxRetries = 2
 
@@ -155,7 +161,7 @@ class HTTPClientPool(LoggingMixIn):
         self.log_debug("Initiating new client connection to: %s" % (self._serverAddress,))
         self._logClientStats()
 
-        factory = self.clientFactory(self._reactor)
+        factory = self.clientFactory(self, self._reactor)
         factory.connectionPool = self
 
         if self._scheme == "https":
@@ -172,7 +178,6 @@ class HTTPClientPool(LoggingMixIn):
 
             def _goneClientAfterError(f, client):
                 f.trap(ConnectionLost, ConnectionDone, ConnectError)
-                self.clientGone(client)
 
             d2 = factory.afterConnect
             d2.addErrback(_goneClientAfterError, client)
@@ -204,18 +209,7 @@ class HTTPClientPool(LoggingMixIn):
         @return: A L{Deferred} that fires with the result of the given command.
         """
 
-        def _freeClientAfterRequest(result):
-            self.clientFree(client)
-            return result
-
-        def _goneClientAfterError(result):
-            self.clientGone(client)
-            return result
-
-        self.clientBusy(client)
-        d = client.submitRequest(request, closeAfter=True)
-        d.addCallbacks(_freeClientAfterRequest, _goneClientAfterError)
-        return d
+        return client.submitRequest(request, closeAfter=False)
 
     @inlineCallbacks
     def submitRequest(self, request, *args, **kwargs):
@@ -297,30 +291,12 @@ class HTTPClientPool(LoggingMixIn):
                 len(self._pendingRequests)
         ))
 
-    def clientGone(self, client):
-        """
-        Notify that the given client is to be removed from the pool completely.
-
-        @param client: An instance of L{PooledMemCacheProtocol}.
-        """
-        if client in self._busyClients:
-            self._busyClients.remove(client)
-
-        elif client in self._freeClients:
-            self._freeClients.remove(client)
-
-        self.log_debug("Removed client: %r" % (client,))
-        self._logClientStats()
-
-        self._processPending()
-
     def clientBusy(self, client):
         """
         Notify that the given client is being used to complete a request.
 
-        @param client: An instance of C{self.clientFactory}
+        @param client: An instance of L{HTTPClientProtocol}
         """
-
         if client in self._freeClients:
             self._freeClients.remove(client)
 
@@ -328,12 +304,12 @@ class HTTPClientPool(LoggingMixIn):
 
         self.log_debug("Busied client: %r" % (client,))
         self._logClientStats()
-
-    def clientFree(self, client):
+    
+    def clientIdle(self, client):
         """
         Notify that the given client is free to handle more requests.
 
-        @param client: An instance of C{self.clientFactory}
+        @param client: An instance of L{HTTPClientProtocol}.
         """
         if client in self._busyClients:
             self._busyClients.remove(client)
@@ -344,6 +320,26 @@ class HTTPClientPool(LoggingMixIn):
             self.shutdown_deferred.callback(None)
 
         self.log_debug("Freed client: %r" % (client,))
+        self._logClientStats()
+
+        self._processPending()
+
+    def clientPipelining(self, client):
+        pass
+    
+    def clientGone(self, client):
+        """
+        Notify that the given client is to be removed from the pool completely.
+
+        @param client: An instance of L{HTTPClientProtocol}.
+        """
+        if client in self._busyClients:
+            self._busyClients.remove(client)
+
+        elif client in self._freeClients:
+            self._freeClients.remove(client)
+
+        self.log_debug("Removed client: %r" % (client,))
         self._logClientStats()
 
         self._processPending()
