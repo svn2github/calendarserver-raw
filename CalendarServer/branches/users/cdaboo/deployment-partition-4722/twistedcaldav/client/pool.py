@@ -150,10 +150,10 @@ class HTTPClientPool(LoggingMixIn):
 
         @return: A L{Deferred} that fires with the L{IProtocol} instance.
         """
+        self._pendingConnects += 1
+
         self.log_debug("Initiating new client connection to: %s" % (self._serverAddress,))
         self._logClientStats()
-
-        self._pendingConnects += 1
 
         factory = self.clientFactory(self._reactor)
         factory.connectionPool = self
@@ -213,7 +213,7 @@ class HTTPClientPool(LoggingMixIn):
             return result
 
         self.clientBusy(client)
-        d = client.submitRequest(request, closeAfter=False)
+        d = client.submitRequest(request, closeAfter=True)
         d.addCallbacks(_freeClientAfterRequest, _goneClientAfterError)
         return d
 
@@ -288,12 +288,14 @@ class HTTPClientPool(LoggingMixIn):
         return d
 
     def _logClientStats(self):
-        self.log_debug("Clients #free: %d, #busy: %d, "
+        self.log_debug("Clients for '%s' #free: %d, #busy: %d, "
                        "#pending: %d, #queued: %d" % (
+                self._name,
                 len(self._freeClients),
                 len(self._busyClients),
                 self._pendingConnects,
-                len(self._pendingRequests)))
+                len(self._pendingRequests)
+        ))
 
     def clientGone(self, client):
         """
