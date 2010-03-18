@@ -69,7 +69,7 @@ def doRun(basedir, verbose):
 
 def doClean(basedir):
     
-    cmd("rm -rf %s/data" % (basedir, basedir,))
+    cmd("rm -rf %s/data" % (basedir,))
 
 if __name__ == '__main__':
 
