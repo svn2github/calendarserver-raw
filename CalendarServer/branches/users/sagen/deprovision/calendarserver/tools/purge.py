@@ -31,7 +31,7 @@ from twisted.python.util import switchUID
 from twistedcaldav import caldavxml
 from twistedcaldav.caldavxml import TimeRange
 from twistedcaldav.config import config, ConfigurationError
-from twistedcaldav.directory.directory import DirectoryError
+from twistedcaldav.directory.directory import DirectoryError, DirectoryRecord
 from twistedcaldav.method.delete_common import DeleteResource
 import os
 import sys
@@ -266,7 +266,10 @@ def purgeGUID(guid, directory, root):
         # The user has already been removed from the directory service.  We
         # need to fashion a temporary, fake record
         # FIXME: implement the fake record
-        pass
+        record = DirectoryRecord(directory, "users", guid, shortNames=(guid,),
+            enabledForCalendaring=True)
+        record.enabled = True
+        directory._tmpRecords[guid] = record
 
     principalCollection = directory.principalCollection
     principal = principalCollection.principalForRecord(record)

@@ -412,8 +412,7 @@ class DeprovisionTestCase(TestCase):
         returnValue(plist)
 
     @inlineCallbacks
-    def test_purgeGUID(self):
-        # deprovision, add an event
+    def test_purgeExistingGUID(self):
 
         # Deprovisioned user is E9E78C86-4829-4520-A35D-70DDADAB2092
         # Keeper user is        291C2C29-B663-4342-8EA1-A055E6A04D65
@@ -467,8 +466,6 @@ class DeprovisionTestCase(TestCase):
         count = (yield purgeGUID("E9E78C86-4829-4520-A35D-70DDADAB2092",
             self.directory, self.rootResource))
 
-        # print config.DocumentRoot
-        # import pdb; pdb.set_trace()
         self.assertEquals(count, 3)
 
         after = {
@@ -529,8 +526,122 @@ class DeprovisionTestCase(TestCase):
         )
 
 
+    @inlineCallbacks
+    def test_purgeNonExistentGUID(self):
+
+        before = {
+            "calendars" : {
+                "__uids__" : {
+                    "1C" : {
+                        "B4" : {
+                            "1CB4378B-DD76-462D-B4D4-BD131FE89243" : {
+                                "calendar": {
+                                    "@xattrs" :
+                                    {
+                                        resourceAttr : collectionType,
+                                    },
+                                    "noninvite.ics": {
+                                        "@contents" : NON_INVITE_ICS_2,
+                                    },
+                                    "organizer.ics": {
+                                        "@contents" : ORGANIZER_ICS_2,
+                                    },
+                                    "attendee.ics": {
+                                        "@contents" : ATTENDEE_ICS_2,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "29" : {
+                        "1C" : {
+                            "291C2C29-B663-4342-8EA1-A055E6A04D65" : {
+                                "calendar": {
+                                    "@xattrs" :
+                                    {
+                                        resourceAttr : collectionType,
+                                    },
+                                    "organizer.ics": {
+                                        "@contents" : ORGANIZER_ICS_2,
+                                    },
+                                    "attendee.ics": {
+                                        "@contents" : ATTENDEE_ICS_2,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        self.createHierarchy(before, config.DocumentRoot)
+        count = (yield purgeGUID("1CB4378B-DD76-462D-B4D4-BD131FE89243",
+            self.directory, self.rootResource))
+
+        self.assertEquals(count, 3)
+
+        after = {
+            "__uids__" : {
+                "1C" : {
+                    "B4" : {
+                        "1CB4378B-DD76-462D-B4D4-BD131FE89243" : {
+                            "calendar": {
+                                ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                            },
+                        },
+                    },
+                },
+                "29" : {
+                    "1C" : {
+                        "291C2C29-B663-4342-8EA1-A055E6A04D65" : {
+                            "inbox": {
+                                ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                "*.ics/UID:7ED97931-9A19-4596-9D4D-52B36D6AB803": {
+                                    "@contents" : (
+                                        "METHOD:CANCEL",
+                                        ),
+                                },
+                                "*.ics/UID:1974603C-B2C0-4623-92A0-2436DEAB07EF": {
+                                    "@contents" : (
+                                        "METHOD:REPLY",
+                                        "ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=DECLINED:urn:uuid:1CB4378B-DD76-462D-B\r\n 4D4-BD131FE89243",
+                                        ),
+                                },
+                            },
+                            "calendar": {
+                                ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                "organizer.ics": {
+                                    "@contents" : (
+                                        "STATUS:CANCELLED",
+                                    ),
+                                },
+                                "attendee.ics": {
+                                    "@contents" : (
+                                        "ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=DECLINED;SCHEDULE-STATUS=2.0:urn:uuid:\r\n 1CB4378B-DD76-462D-B4D4-BD131FE89243",
+                                        ),
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        self.assertTrue(self.verifyHierarchy(
+            os.path.join(config.DocumentRoot, "calendars"),
+            after)
+        )
+
+
 future = (datetime.utcnow() + timedelta(days=1)).strftime("%Y%m%dT%H%M%SZ")
 past = (datetime.utcnow() - timedelta(days=1)).strftime("%Y%m%dT%H%M%SZ")
+
+# For test_purgeExistingGUID
 
 NON_INVITE_ICS = """BEGIN:VCALENDAR
 VERSION:2.0
@@ -566,6 +677,48 @@ DTSTART:%s
 DURATION:PT1H
 ORGANIZER:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
 ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:E9E78C86-4829-4520-A35D-70DDADAB2092
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (future,)
+
+
+# For test_purgeNonExistentGUID
+
+NON_INVITE_ICS_2 = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:151AFC76-6036-40EF-952B-97D1840760BF
+SUMMARY:Non Invitation
+DTSTART:%s
+DURATION:PT1H
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (past,)
+
+ORGANIZER_ICS_2 = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:7ED97931-9A19-4596-9D4D-52B36D6AB803
+SUMMARY:Organizer
+DTSTART:%s
+DURATION:PT1H
+ORGANIZER:urn:uuid:1CB4378B-DD76-462D-B4D4-BD131FE89243
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:1CB4378B-DD76-462D-B4D4-BD131FE89243
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (future,)
+
+ATTENDEE_ICS_2 = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:1974603C-B2C0-4623-92A0-2436DEAB07EF
+SUMMARY:Attendee
+DTSTART:%s
+DURATION:PT1H
+ORGANIZER:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:1CB4378B-DD76-462D-B4D4-BD131FE89243
 ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
 END:VEVENT
 END:VCALENDAR
