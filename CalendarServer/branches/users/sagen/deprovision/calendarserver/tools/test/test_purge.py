@@ -638,11 +638,183 @@ class DeprovisionTestCase(TestCase):
         )
 
 
+
+    @inlineCallbacks
+    def test_purgeMultipleNonExistentGUIDs(self):
+
+        before = {
+            "calendars" : {
+                "__uids__" : {
+                    "76" : { # Non-existent
+                        "7F" : {
+                            "767F9EB0-8A58-4F61-8163-4BE0BB72B873" : {
+                                "calendar": {
+                                    "@xattrs" :
+                                    {
+                                        resourceAttr : collectionType,
+                                    },
+                                    "noninvite.ics": {
+                                        "@contents" : NON_INVITE_ICS_3,
+                                    },
+                                    "organizer.ics": {
+                                        "@contents" : ORGANIZER_ICS_3,
+                                    },
+                                    "attendee.ics": {
+                                        "@contents" : ATTENDEE_ICS_3,
+                                    },
+                                    "attendee2.ics": {
+                                        "@contents" : ATTENDEE_ICS_4,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "42" : { # Non-existent
+                        "EB" : {
+                            "42EB074A-F859-4E8F-A4D0-7F0ADCB73D87" : {
+                                "calendar": {
+                                    "@xattrs" :
+                                    {
+                                        resourceAttr : collectionType,
+                                    },
+                                    "organizer.ics": {
+                                        "@contents" : ORGANIZER_ICS_3,
+                                    },
+                                    "attendee.ics": {
+                                        "@contents" : ATTENDEE_ICS_3,
+                                    },
+                                    "attendee2.ics": {
+                                        "@contents" : ATTENDEE_ICS_4,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "29" : { # Existing
+                        "1C" : {
+                            "291C2C29-B663-4342-8EA1-A055E6A04D65" : {
+                                "calendar": {
+                                    "@xattrs" :
+                                    {
+                                        resourceAttr : collectionType,
+                                    },
+                                    "organizer.ics": {
+                                        "@contents" : ORGANIZER_ICS_3,
+                                    },
+                                    "attendee.ics": {
+                                        "@contents" : ATTENDEE_ICS_3,
+                                    },
+                                    "attendee2.ics": {
+                                        "@contents" : ATTENDEE_ICS_4,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        self.createHierarchy(before, config.DocumentRoot)
+        count = (yield purgeGUID("767F9EB0-8A58-4F61-8163-4BE0BB72B873",
+            self.directory, self.rootResource))
+
+        self.assertEquals(count, 4)
+
+        after = {
+            "__uids__" : {
+                "76" : { # Non-existent -- all items purged
+                    "7F" : {
+                        "767F9EB0-8A58-4F61-8163-4BE0BB72B873" : {
+                            "calendar": {
+                                ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                            },
+                        },
+                    },
+                },
+                "42" : { # Non-existent -- untouched
+                    "EB" : {
+                        "42EB074A-F859-4E8F-A4D0-7F0ADCB73D87" : {
+                            "calendar": {
+                                "@xattrs" :
+                                {
+                                    resourceAttr : collectionType,
+                                },
+                                "organizer.ics": {
+                                    "@contents" : ORGANIZER_ICS_3,
+                                },
+                                "attendee.ics": {
+                                    "@contents" : ATTENDEE_ICS_3,
+                                },
+                                "attendee2.ics": {
+                                    "@contents" : ATTENDEE_ICS_4,
+                                },
+                            },
+                        },
+                    },
+                },
+                "29" : {
+                    "1C" : {
+                        "291C2C29-B663-4342-8EA1-A055E6A04D65" : {
+                            "inbox": {
+                                ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                "*.ics/UID:7ED97931-9A19-4596-9D4D-52B36D6AB803": {
+                                    "@contents" : (
+                                        "METHOD:CANCEL",
+                                        ),
+                                },
+                                "*.ics/UID:79F26B10-6ECE-465E-9478-53F2A9FCAFEE": {
+                                    "@contents" : (
+                                        "METHOD:REPLY",
+                                        "ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=DECLINED:urn:uuid:767F9EB0-8A58-4F61-8\r\n 163-4BE0BB72B873",
+                                        ),
+                                },
+                            },
+                            "calendar": {
+                                ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                "organizer.ics": {
+                                    # Purging non-existent organizer; has non-existent
+                                    # and existent attendees
+                                    "@contents" : (
+                                        "STATUS:CANCELLED",
+                                    ),
+                                },
+                                "attendee.ics": {
+                                    # (Note: implicit scheduler doesn't update this)
+                                    # Purging non-existent attendee; has non-existent
+                                    # organizer and existent attendee
+                                    "@contents" : ATTENDEE_ICS_3,
+                                },
+                                "attendee2.ics": {
+                                    # Purging non-existent attendee; has non-existent
+                                    # attendee and existent organizer
+                                    "@contents" : (
+                                        "ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=DECLINED;SCHEDULE-STATUS=2.0:urn:uuid:\r\n 767F9EB0-8A58-4F61-8163-4BE0BB72B873",
+                                    )
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        self.assertTrue(self.verifyHierarchy(
+            os.path.join(config.DocumentRoot, "calendars"),
+            after)
+        )
+
+
 future = (datetime.utcnow() + timedelta(days=1)).strftime("%Y%m%dT%H%M%SZ")
 past = (datetime.utcnow() - timedelta(days=1)).strftime("%Y%m%dT%H%M%SZ")
 
 # For test_purgeExistingGUID
 
+# No organizer/attendee
 NON_INVITE_ICS = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -654,6 +826,7 @@ END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n") % (past,)
 
+# Purging existing organizer; has existing attendee
 ORGANIZER_ICS = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -668,6 +841,7 @@ END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n") % (future,)
 
+# Purging existing attendee; has existing organizer
 ATTENDEE_ICS = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -685,6 +859,7 @@ END:VCALENDAR
 
 # For test_purgeNonExistentGUID
 
+# No organizer/attendee
 NON_INVITE_ICS_2 = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -696,6 +871,7 @@ END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n") % (past,)
 
+# Purging non-existent organizer; has existing attendee
 ORGANIZER_ICS_2 = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -710,6 +886,7 @@ END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n") % (future,)
 
+# Purging non-existent attendee; has existing organizer
 ATTENDEE_ICS_2 = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -720,6 +897,70 @@ DURATION:PT1H
 ORGANIZER:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
 ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:1CB4378B-DD76-462D-B4D4-BD131FE89243
 ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (future,)
+
+
+# For test_purgeMultipleNonExistentGUIDs
+
+# No organizer/attendee
+NON_INVITE_ICS_3 = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:151AFC76-6036-40EF-952B-97D1840760BF
+SUMMARY:Non Invitation
+DTSTART:%s
+DURATION:PT1H
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (past,)
+
+# Purging non-existent organizer; has non-existent and existent attendees
+ORGANIZER_ICS_3 = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:7ED97931-9A19-4596-9D4D-52B36D6AB803
+SUMMARY:Organizer
+DTSTART:%s
+DURATION:PT1H
+ORGANIZER:urn:uuid:767F9EB0-8A58-4F61-8163-4BE0BB72B873
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:767F9EB0-8A58-4F61-8163-4BE0BB72B873
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:42EB074A-F859-4E8F-A4D0-7F0ADCB73D87
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (future,)
+
+# Purging non-existent attendee; has non-existent organizer and existent attendee
+# (Note: Implicit scheduling doesn't update this at all for the existing attendee)
+ATTENDEE_ICS_3 = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:1974603C-B2C0-4623-92A0-2436DEAB07EF
+SUMMARY:Attendee
+DTSTART:%s
+DURATION:PT1H
+ORGANIZER:urn:uuid:42EB074A-F859-4E8F-A4D0-7F0ADCB73D87
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:767F9EB0-8A58-4F61-8163-4BE0BB72B873
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:42EB074A-F859-4E8F-A4D0-7F0ADCB73D87
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (future,)
+
+# Purging non-existent attendee; has non-existent attendee and existent organizer
+ATTENDEE_ICS_4 = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:79F26B10-6ECE-465E-9478-53F2A9FCAFEE
+SUMMARY:2 non-existent attendees
+DTSTART:%s
+DURATION:PT1H
+ORGANIZER:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:767F9EB0-8A58-4F61-8163-4BE0BB72B873
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:42EB074A-F859-4E8F-A4D0-7F0ADCB73D87
 END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n") % (future,)

@@ -69,7 +69,10 @@ class AggregateDirectoryService(DirectoryService):
         self.realmName = realmName
         self._recordTypes = recordTypes
 
-        self._tmpRecords = { }
+        self._tmpRecords = {
+            "guids" : { },
+            "shortNames" : { },
+        }
 
     def __repr__(self):
         return "<%s (%s): %r>" % (self.__class__.__name__, self.realmName, self._recordTypes)
@@ -113,10 +116,13 @@ class AggregateDirectoryService(DirectoryService):
             return records
 
     def recordWithShortName(self, recordType, shortName):
+        record = self._tmpRecords["shortNames"].get(shortName, None)
+        if record:
+            return record
         return self._query("recordWithShortName", recordType, shortName)
 
     def recordWithUID(self, uid):
-        record = self._tmpRecords.get(uid, None)
+        record = self._tmpRecords["guids"].get(uid, None)
         if record:
             return record
         return self._queryAll("recordWithUID", uid)

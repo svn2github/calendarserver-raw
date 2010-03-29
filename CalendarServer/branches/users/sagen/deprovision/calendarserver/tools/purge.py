@@ -269,7 +269,8 @@ def purgeGUID(guid, directory, root):
         record = DirectoryRecord(directory, "users", guid, shortNames=(guid,),
             enabledForCalendaring=True)
         record.enabled = True
-        directory._tmpRecords[guid] = record
+        directory._tmpRecords["shortNames"][guid] = record
+        directory._tmpRecords["guids"][guid] = record
 
     principalCollection = directory.principalCollection
     principal = principalCollection.principalForRecord(record)
