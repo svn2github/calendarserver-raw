@@ -15,13 +15,16 @@
 ##
 
 from calendarserver.tap.util import getRootResource
+from calendarserver.tools.principals import addProxy, removeProxy
 from calendarserver.tools.purge import purgeOldEvents, purgeGUID
 from datetime import datetime, timedelta
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.python.plistlib import readPlistFromString
+from twext.web2.dav import davxml
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, Deferred, returnValue
 from twistedcaldav.config import config
+from twistedcaldav.directory.directory import DirectoryRecord
 from twistedcaldav.test.util import TestCase, CapturingProcessProtocol
 import os
 import xml
@@ -410,6 +413,54 @@ class DeprovisionTestCase(TestCase):
             raise
 
         returnValue(plist)
+
+
+    @inlineCallbacks
+    def test_purgeProxies(self):
+
+        # Set up fake user
+        purging = "5D6ABA3C-3446-4340-8083-7E37C5BC0B26"
+        record = DirectoryRecord(self.directory, "users", purging,
+            shortNames=(purging,), enabledForCalendaring=True)
+        record.enabled = True # Enabling might not be required here
+        self.directory._tmpRecords["shortNames"][purging] = record
+        self.directory._tmpRecords["guids"][purging] = record
+        pc = self.directory.principalCollection
+        purgingPrincipal = pc.principalForRecord(record)
+
+        keeping = "291C2C29-B663-4342-8EA1-A055E6A04D65"
+        keepingPrincipal = pc.principalForUID(keeping)
+
+        # Add purgingPrincipal as a proxy for keepingPrincipal
+        (yield addProxy(keepingPrincipal, "write", purgingPrincipal))
+
+        # Add keepingPrincipal as a proxy for purgingPrincipal
+        (yield addProxy(purgingPrincipal, "write", keepingPrincipal))
+
+        def getProxies(principal, proxyType):
+            subPrincipal = principal.getChild("calendar-proxy-" + proxyType)
+            return subPrincipal.readProperty(davxml.GroupMemberSet, None)
+
+        # Verify the proxy assignments
+        membersProperty = (yield getProxies(keepingPrincipal, "write"))
+        self.assertEquals(len(membersProperty.children), 1)
+        self.assertEquals(membersProperty.children[0],
+            "/principals/__uids__/5D6ABA3C-3446-4340-8083-7E37C5BC0B26/")
+
+        membersProperty = (yield getProxies(purgingPrincipal, "write"))
+        self.assertEquals(len(membersProperty.children), 1)
+        self.assertEquals(membersProperty.children[0],
+            "/principals/__uids__/291C2C29-B663-4342-8EA1-A055E6A04D65/")
+
+
+        # Purging the guid should clear out proxy assignments
+
+        (yield purgeGUID(purging, self.directory, self.rootResource))
+
+        membersProperty = (yield getProxies(keepingPrincipal, "write"))
+        self.assertEquals(len(membersProperty.children), 0)
+        membersProperty = (yield getProxies(purgingPrincipal, "write"))
+        self.assertEquals(len(membersProperty.children), 0)
 
     @inlineCallbacks
     def test_purgeExistingGUID(self):

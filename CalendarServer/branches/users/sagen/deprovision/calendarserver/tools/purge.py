@@ -18,6 +18,7 @@
 
 from calendarserver.tap.util import FakeRequest
 from calendarserver.tap.util import getRootResource
+from calendarserver.tools.principals import removeProxy
 from calendarserver.tools.util import loadConfig, setupMemcached, setupNotifications
 from datetime import date, timedelta, datetime
 from getopt import getopt, GetoptError
@@ -317,4 +318,15 @@ def purgeGUID(guid, directory, root):
                     uri, guid, implicit=(name in ongoingEvents)))
                 count += 1
 
+    # Remove proxy assignments
+    for proxyType in ("read", "write"):
+
+        proxyFor = (yield principal.proxyFor(proxyType))
+        for other in proxyFor:
+            (yield removeProxy(other, principal))
+
+        subPrincipal = principal.getChild("calendar-proxy-" + proxyType)
+        (yield subPrincipal.writeProperty(davxml.GroupMemberSet(), None))
+
     returnValue(count)
+
