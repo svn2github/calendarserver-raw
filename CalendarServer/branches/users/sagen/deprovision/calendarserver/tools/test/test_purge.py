@@ -16,7 +16,7 @@
 
 from calendarserver.tap.util import getRootResource
 from calendarserver.tools.principals import addProxy, removeProxy
-from calendarserver.tools.purge import purgeOldEvents, purgeGUID
+from calendarserver.tools.purge import purgeOldEvents, purgeGUID, purgeProxyAssignments
 from datetime import datetime, timedelta
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.python.plistlib import readPlistFromString
@@ -431,31 +431,36 @@ class DeprovisionTestCase(TestCase):
         keeping = "291C2C29-B663-4342-8EA1-A055E6A04D65"
         keepingPrincipal = pc.principalForUID(keeping)
 
+        def getProxies(principal, proxyType):
+            subPrincipal = principal.getChild("calendar-proxy-" + proxyType)
+            return subPrincipal.readProperty(davxml.GroupMemberSet, None)
+
         # Add purgingPrincipal as a proxy for keepingPrincipal
         (yield addProxy(keepingPrincipal, "write", purgingPrincipal))
 
         # Add keepingPrincipal as a proxy for purgingPrincipal
         (yield addProxy(purgingPrincipal, "write", keepingPrincipal))
 
-        def getProxies(principal, proxyType):
-            subPrincipal = principal.getChild("calendar-proxy-" + proxyType)
-            return subPrincipal.readProperty(davxml.GroupMemberSet, None)
-
         # Verify the proxy assignments
         membersProperty = (yield getProxies(keepingPrincipal, "write"))
         self.assertEquals(len(membersProperty.children), 1)
         self.assertEquals(membersProperty.children[0],
             "/principals/__uids__/5D6ABA3C-3446-4340-8083-7E37C5BC0B26/")
+        membersProperty = (yield getProxies(keepingPrincipal, "read"))
+        self.assertEquals(len(membersProperty.children), 0)
 
         membersProperty = (yield getProxies(purgingPrincipal, "write"))
         self.assertEquals(len(membersProperty.children), 1)
         self.assertEquals(membersProperty.children[0],
             "/principals/__uids__/291C2C29-B663-4342-8EA1-A055E6A04D65/")
-
+        membersProperty = (yield getProxies(purgingPrincipal, "read"))
+        self.assertEquals(len(membersProperty.children), 0)
 
         # Purging the guid should clear out proxy assignments
 
-        (yield purgeGUID(purging, self.directory, self.rootResource))
+        assignments = (yield purgeProxyAssignments(purgingPrincipal))
+        self.assertTrue("5D6ABA3C-3446-4340-8083-7E37C5BC0B26\twrite\t291C2C29-B663-4342-8EA1-A055E6A04D65" in assignments)
+        self.assertTrue("291C2C29-B663-4342-8EA1-A055E6A04D65\twrite\t5D6ABA3C-3446-4340-8083-7E37C5BC0B26" in assignments)
 
         membersProperty = (yield getProxies(keepingPrincipal, "write"))
         self.assertEquals(len(membersProperty.children), 0)
@@ -514,12 +519,16 @@ class DeprovisionTestCase(TestCase):
             },
         }
         self.createHierarchy(before, config.DocumentRoot)
+        tarPath = os.path.join(config.DocumentRoot, "calendars", "tarball.tgz")
         count = (yield purgeGUID("E9E78C86-4829-4520-A35D-70DDADAB2092",
-            self.directory, self.rootResource))
+            self.directory, self.rootResource, tarPath=tarPath))
 
         self.assertEquals(count, 3)
 
         after = {
+            "tarball.tgz" : {
+                "@contents" : None, # ignore contents
+            },
             "__uids__" : {
                 "E9" : {
                     "E7" : {

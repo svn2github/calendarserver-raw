@@ -16,6 +16,7 @@
 # limitations under the License.
 ##
 
+from cStringIO import StringIO
 from calendarserver.tap.util import FakeRequest
 from calendarserver.tap.util import getRootResource
 from calendarserver.tools.principals import removeProxy
@@ -36,6 +37,7 @@ from twistedcaldav.directory.directory import DirectoryError, DirectoryRecord
 from twistedcaldav.method.delete_common import DeleteResource
 import os
 import sys
+import tarfile
 
 log = Logger()
 
@@ -259,14 +261,16 @@ def deleteResource(root, collection, resource, uri, guid, implicit=False):
 
 
 @inlineCallbacks
-def purgeGUID(guid, directory, root):
+def purgeGUID(guid, directory, root, tarPath=None):
 
     # Does the record exist?
     record = directory.recordWithGUID(guid)
     if record is None:
         # The user has already been removed from the directory service.  We
         # need to fashion a temporary, fake record
-        # FIXME: implement the fake record
+
+        # FIXME: probaby want a more elegant way to accomplish this,
+        # since it requires the aggregate directory to examine these first:
         record = DirectoryRecord(directory, "users", guid, shortNames=(guid,),
             enabledForCalendaring=True)
         record.enabled = True
@@ -276,6 +280,11 @@ def purgeGUID(guid, directory, root):
     principalCollection = directory.principalCollection
     principal = principalCollection.principalForRecord(record)
     calendarHome = principal.calendarHome()
+
+    if tarPath:
+        tarFile = tarfile.open(tarPath, mode="w:gz")
+    else:
+        tarFile = None
 
     # Anything in the past should be deleted without implicit scheduling
     now = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -308,6 +317,13 @@ def purgeGUID(guid, directory, root):
 
             for name in allEvents:
                 resource = collection.getChild(name)
+
+                if tarFile:
+                    data = resource.iCalendarText()
+                    tarInfo = tarfile.TarInfo(name="%s/%s" % (collName, name))
+                    tarInfo.size = len(data)
+                    tarFile.addfile(tarInfo, fileobj=StringIO(data))
+
                 uri = "/calendars/__uids__/%s/%s/%s" % (
                     record.uid,
                     collName,
@@ -318,15 +334,39 @@ def purgeGUID(guid, directory, root):
                     uri, guid, implicit=(name in ongoingEvents)))
                 count += 1
 
-    # Remove proxy assignments
+    assignments = (yield purgeProxyAssignments(principal))
+
+    if tarFile:
+        tarInfo = tarfile.TarInfo(name="ProxyAssignments")
+        tarInfo.size = len(assignments)
+        tarFile.addfile(tarInfo, fileobj=StringIO(assignments))
+        tarFile.close()
+
+    returnValue(count)
+
+
+@inlineCallbacks
+def purgeProxyAssignments(principal):
+
+    assignments = []
+
     for proxyType in ("read", "write"):
 
-        proxyFor = (yield principal.proxyFor(proxyType))
+        proxyFor = (yield principal.proxyFor(proxyType == "write"))
         for other in proxyFor:
+            assignments.append("%s\t%s\t%s\n" %
+                (principal.record.guid, proxyType, other.record.guid))
             (yield removeProxy(other, principal))
 
         subPrincipal = principal.getChild("calendar-proxy-" + proxyType)
+        proxies = (yield subPrincipal.readProperty(davxml.GroupMemberSet, None))
+        for other in proxies.children:
+            assignments.append("%s\t%s\t%s\n" %
+                (str(other).split("/")[3], proxyType, principal.record.guid))
+
         (yield subPrincipal.writeProperty(davxml.GroupMemberSet(), None))
 
-    returnValue(count)
+    assignments = "".join(assignments)
+    returnValue(assignments)
+
 
