@@ -15,7 +15,7 @@
 ##
 
 from calendarserver.tap.util import getRootResource
-from calendarserver.tools.principals import addProxy, removeProxy
+from calendarserver.tools.principals import addProxy
 from calendarserver.tools.purge import purgeOldEvents, purgeGUID, purgeProxyAssignments
 from datetime import datetime, timedelta
 from twext.python.filepath import CachingFilePath as FilePath
