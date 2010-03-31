@@ -37,11 +37,10 @@ from twistedcaldav.directory.directory import DirectoryError, DirectoryRecord
 from twistedcaldav.method.delete_common import DeleteResource
 import os
 import sys
-import tarfile
 
 log = Logger()
 
-def usage_purge(e=None):
+def usage_purge_events(e=None):
 
     name = os.path.basename(sys.argv[0])
     print "usage: %s [options]" % (name,)
@@ -61,54 +60,28 @@ def usage_purge(e=None):
     else:
         sys.exit(0)
 
+def usage_purge_principal(e=None):
 
-def main_purge():
+    name = os.path.basename(sys.argv[0])
+    print "usage: %s [options]" % (name,)
+    print ""
+    print "  Remove a principal's events from the calendar server"
+    print ""
+    print "options:"
+    print "  -f --config <path>: Specify caldavd.plist configuration path"
+    print "  -h --help: print this help and exit"
+    print "  -n --dry-run: only calculate how many events to purge"
+    print "  -v --verbose: print progress information"
+    print ""
 
-    try:
-        (optargs, args) = getopt(
-            sys.argv[1:], "d:f:hnv", [
-                "days=",
-                "dry-run",
-                "config=",
-                "help",
-                "verbose",
-            ],
-        )
-    except GetoptError, e:
-        usage_purge(e)
+    if e:
+        sys.exit(64)
+    else:
+        sys.exit(0)
 
-    #
-    # Get configuration
-    #
-    configFileName = None
-    days = 365
-    dryrun = False
-    verbose = False
 
-    for opt, arg in optargs:
-        if opt in ("-h", "--help"):
-            usage_purge()
 
-        elif opt in ("-d", "--days"):
-            try:
-                days = int(arg)
-            except ValueError, e:
-                print "Invalid value for --days: %s" % (arg,)
-                usage_purge(e)
-
-        elif opt in ("-v", "--verbose"):
-            verbose = True
-
-        elif opt in ("-n", "--dry-run"):
-            dryrun = True
-
-        elif opt in ("-f", "--config"):
-            configFileName = arg
-
-        else:
-            raise NotImplementedError(opt)
-
-    cutoff = (date.today()-timedelta(days=days)).strftime("%Y%m%dT000000Z")
+def shared_main(configFileName, method, *args, **kwds):
 
     try:
         loadConfig(configFileName)
@@ -137,10 +110,104 @@ def main_purge():
     #
     # Start the reactor
     #
-    reactor.callLater(0.1, callThenStop, purgeOldEvents, directory,
-        rootResource, cutoff, verbose=verbose, dryrun=dryrun)
+    reactor.callLater(0.1, callThenStop, method, directory,
+        rootResource, *args, **kwds)
 
     reactor.run()
+
+def main_purge_events():
+
+    try:
+        (optargs, args) = getopt(
+            sys.argv[1:], "d:f:hnv", [
+                "days=",
+                "dry-run",
+                "config=",
+                "help",
+                "verbose",
+            ],
+        )
+    except GetoptError, e:
+        usage_purge_events(e)
+
+    #
+    # Get configuration
+    #
+    configFileName = None
+    days = 365
+    dryrun = False
+    verbose = False
+
+    for opt, arg in optargs:
+        if opt in ("-h", "--help"):
+            usage_purge_events()
+
+        elif opt in ("-d", "--days"):
+            try:
+                days = int(arg)
+            except ValueError, e:
+                print "Invalid value for --days: %s" % (arg,)
+                usage_purge_events(e)
+
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+
+        elif opt in ("-n", "--dry-run"):
+            dryrun = True
+
+        elif opt in ("-f", "--config"):
+            configFileName = arg
+
+        else:
+            raise NotImplementedError(opt)
+
+    cutoff = (date.today()-timedelta(days=days)).strftime("%Y%m%dT000000Z")
+
+    shared_main(configFileName, purgeOldEvents, cutoff, verbose=verbose,
+        dryrun=dryrun)
+
+
+def main_purge_principals():
+
+    try:
+        (optargs, args) = getopt(
+            sys.argv[1:], "f:hnv", [
+                "dry-run",
+                "config=",
+                "help",
+                "verbose",
+            ],
+        )
+    except GetoptError, e:
+        usage_purge_principal(e)
+
+    #
+    # Get configuration
+    #
+    configFileName = None
+    dryrun = False
+    verbose = False
+
+    for opt, arg in optargs:
+        if opt in ("-h", "--help"):
+            usage_purge_principal()
+
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+
+        elif opt in ("-n", "--dry-run"):
+            dryrun = True
+
+        elif opt in ("-f", "--config"):
+            configFileName = arg
+
+        else:
+            raise NotImplementedError(opt)
+
+    # args is a list of guids
+
+    shared_main(configFileName, purgeGUIDs, args, verbose=verbose, dryrun=dryrun)
+
 
 @inlineCallbacks
 def callThenStop(method, *args, **kwds):
@@ -261,7 +328,24 @@ def deleteResource(root, collection, resource, uri, guid, implicit=False):
 
 
 @inlineCallbacks
-def purgeGUID(guid, directory, root, tarPath=None):
+def purgeGUIDs(directory, root, guids, verbose=False, dryrun=False):
+    total = 0
+
+    for guid in guids:
+        count, allAssignments[guid] = (yield purgeGUID(guid, directory, root,
+            verbose=verbose, dryrun=dryrun))
+        total += count
+
+
+    # TODO: figure out what to do with the purged proxy assignments...
+    # ...print to stdout?
+    # ...save in a file?
+
+    returnValue(total)
+
+
+@inlineCallbacks
+def purgeGUID(guid, directory, root, verbose=False, dryrun=False):
 
     # Does the record exist?
     record = directory.recordWithGUID(guid)
@@ -281,12 +365,7 @@ def purgeGUID(guid, directory, root, tarPath=None):
     principal = principalCollection.principalForRecord(record)
     calendarHome = principal.calendarHome()
 
-    if tarPath:
-        tarFile = tarfile.open(tarPath, mode="w:gz")
-    else:
-        tarFile = None
-
-    # Anything in the past should be deleted without implicit scheduling
+    # Anything in the past is left alone
     now = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     filter =  caldavxml.Filter(
           caldavxml.ComponentFilter(
@@ -304,45 +383,22 @@ def purgeGUID(guid, directory, root, tarPath=None):
         collection = calendarHome.getChild(collName)
         if collection.isCalendarCollection():
 
-            # To compute past and ongoing events...
-
-            # ...first start with all events...
-            allEvents = set(collection.listChildren())
-
-            ongoingEvents = set()
-
-            # ...and find those that appear *after* the given cutoff
             for name, uid, type in collection.index().indexedSearch(filter):
-                ongoingEvents.add(name)
-
-            for name in allEvents:
                 resource = collection.getChild(name)
-
-                if tarFile:
-                    data = resource.iCalendarText()
-                    tarInfo = tarfile.TarInfo(name="%s/%s" % (collName, name))
-                    tarInfo.size = len(data)
-                    tarFile.addfile(tarInfo, fileobj=StringIO(data))
-
                 uri = "/calendars/__uids__/%s/%s/%s" % (
                     record.uid,
                     collName,
                     name
                 )
-
-                (yield deleteResource(root, collection, resource,
-                    uri, guid, implicit=(name in ongoingEvents)))
+                if not dryrun:
+                    (yield deleteResource(root, collection, resource,
+                        uri, guid, implicit=True))
                 count += 1
 
-    assignments = (yield purgeProxyAssignments(principal))
+    if not dryrun:
+        assignments = (yield purgeProxyAssignments(principal))
 
-    if tarFile:
-        tarInfo = tarfile.TarInfo(name="ProxyAssignments")
-        tarInfo.size = len(assignments)
-        tarFile.addfile(tarInfo, fileobj=StringIO(assignments))
-        tarFile.close()
-
-    returnValue(count)
+    returnValue((count, assignments))
 
 
 @inlineCallbacks
@@ -354,19 +410,16 @@ def purgeProxyAssignments(principal):
 
         proxyFor = (yield principal.proxyFor(proxyType == "write"))
         for other in proxyFor:
-            assignments.append("%s\t%s\t%s\n" %
-                (principal.record.guid, proxyType, other.record.guid))
+            assignments.append((principal.record.guid, proxyType, other.record.guid))
             (yield removeProxy(other, principal))
 
         subPrincipal = principal.getChild("calendar-proxy-" + proxyType)
         proxies = (yield subPrincipal.readProperty(davxml.GroupMemberSet, None))
         for other in proxies.children:
-            assignments.append("%s\t%s\t%s\n" %
-                (str(other).split("/")[3], proxyType, principal.record.guid))
+            assignments.append((str(other).split("/")[3], proxyType, principal.record.guid))
 
         (yield subPrincipal.writeProperty(davxml.GroupMemberSet(), None))
 
-    assignments = "".join(assignments)
     returnValue(assignments)
 
 

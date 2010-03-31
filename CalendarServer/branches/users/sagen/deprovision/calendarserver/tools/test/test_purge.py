@@ -459,8 +459,8 @@ class DeprovisionTestCase(TestCase):
         # Purging the guid should clear out proxy assignments
 
         assignments = (yield purgeProxyAssignments(purgingPrincipal))
-        self.assertTrue("5D6ABA3C-3446-4340-8083-7E37C5BC0B26\twrite\t291C2C29-B663-4342-8EA1-A055E6A04D65" in assignments)
-        self.assertTrue("291C2C29-B663-4342-8EA1-A055E6A04D65\twrite\t5D6ABA3C-3446-4340-8083-7E37C5BC0B26" in assignments)
+        self.assertTrue(("5D6ABA3C-3446-4340-8083-7E37C5BC0B26", "write", "291C2C29-B663-4342-8EA1-A055E6A04D65") in assignments)
+        self.assertTrue(("291C2C29-B663-4342-8EA1-A055E6A04D65", "write", "5D6ABA3C-3446-4340-8083-7E37C5BC0B26") in assignments)
 
         membersProperty = (yield getProxies(keepingPrincipal, "write"))
         self.assertEquals(len(membersProperty.children), 0)
@@ -519,16 +519,13 @@ class DeprovisionTestCase(TestCase):
             },
         }
         self.createHierarchy(before, config.DocumentRoot)
-        tarPath = os.path.join(config.DocumentRoot, "calendars", "tarball.tgz")
-        count = (yield purgeGUID("E9E78C86-4829-4520-A35D-70DDADAB2092",
-            self.directory, self.rootResource, tarPath=tarPath))
+        count, assignments = (yield purgeGUID(
+            "E9E78C86-4829-4520-A35D-70DDADAB2092",
+            self.directory, self.rootResource))
 
-        self.assertEquals(count, 3)
+        self.assertEquals(count, 2)
 
         after = {
-            "tarball.tgz" : {
-                "@contents" : None, # ignore contents
-            },
             "__uids__" : {
                 "E9" : {
                     "E7" : {
@@ -536,6 +533,9 @@ class DeprovisionTestCase(TestCase):
                             "calendar": {
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
+                                },
+                                "noninvite.ics": {
+                                    "@contents" : NON_INVITE_ICS,
                                 },
                             },
                         },
@@ -600,14 +600,24 @@ class DeprovisionTestCase(TestCase):
                                     {
                                         resourceAttr : collectionType,
                                     },
-                                    "noninvite.ics": {
-                                        "@contents" : NON_INVITE_ICS_2,
+                                    # non-repeating, non-invite, in the past
+                                    # = untouched
+                                    "noninvite_past.ics": {
+                                        "@contents" : NON_INVITE_PAST_ICS,
+                                    },
+                                    # non-repeating, non-invite, in the future
+                                    # = removed
+                                    "noninvite_future.ics": {
+                                        "@contents" : NON_INVITE_FUTURE_ICS,
                                     },
                                     "organizer.ics": {
                                         "@contents" : ORGANIZER_ICS_2,
                                     },
                                     "attendee.ics": {
                                         "@contents" : ATTENDEE_ICS_2,
+                                    },
+                                    "repeating_organizer.ics": {
+                                        "@contents" : REPEATING_ORGANIZER_ICS,
                                     },
                                 },
                             },
@@ -627,6 +637,9 @@ class DeprovisionTestCase(TestCase):
                                     "attendee.ics": {
                                         "@contents" : ATTENDEE_ICS_2,
                                     },
+                                    "repeating_organizer.ics": {
+                                        "@contents" : REPEATING_ORGANIZER_ICS,
+                                    },
                                 },
                             },
                         },
@@ -635,10 +648,11 @@ class DeprovisionTestCase(TestCase):
             },
         }
         self.createHierarchy(before, config.DocumentRoot)
-        count = (yield purgeGUID("1CB4378B-DD76-462D-B4D4-BD131FE89243",
+        count, assignments = (yield purgeGUID(
+            "1CB4378B-DD76-462D-B4D4-BD131FE89243",
             self.directory, self.rootResource))
 
-        self.assertEquals(count, 3)
+        self.assertEquals(count, 4)
 
         after = {
             "__uids__" : {
@@ -648,6 +662,9 @@ class DeprovisionTestCase(TestCase):
                             "calendar": {
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
+                                },
+                                "noninvite_past.ics": {
+                                    "@contents" : NON_INVITE_PAST_ICS,
                                 },
                             },
                         },
@@ -671,6 +688,11 @@ class DeprovisionTestCase(TestCase):
                                         "ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=DECLINED:urn:uuid:1CB4378B-DD76-462D-B\r\n 4D4-BD131FE89243",
                                         ),
                                 },
+                                "*.ics/UID:8ED97931-9A19-4596-9D4D-52B36D6AB803": {
+                                    "@contents" : (
+                                        "METHOD:CANCEL",
+                                        ),
+                                },
                             },
                             "calendar": {
                                 ".db.sqlite": {
@@ -685,6 +707,11 @@ class DeprovisionTestCase(TestCase):
                                     "@contents" : (
                                         "ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=DECLINED;SCHEDULE-STATUS=2.0:urn:uuid:\r\n 1CB4378B-DD76-462D-B4D4-BD131FE89243",
                                         ),
+                                },
+                                "repeating_organizer.ics": {
+                                    "@contents" : (
+                                        "STATUS:CANCELLED",
+                                    ),
                                 },
                             },
                         },
@@ -775,19 +802,23 @@ class DeprovisionTestCase(TestCase):
             },
         }
         self.createHierarchy(before, config.DocumentRoot)
-        count = (yield purgeGUID("767F9EB0-8A58-4F61-8163-4BE0BB72B873",
+        count, assignments = (yield purgeGUID(
+            "767F9EB0-8A58-4F61-8163-4BE0BB72B873",
             self.directory, self.rootResource))
 
-        self.assertEquals(count, 4)
+        self.assertEquals(count, 3)
 
         after = {
             "__uids__" : {
-                "76" : { # Non-existent -- all items purged
+                "76" : { # Non-existent
                     "7F" : {
                         "767F9EB0-8A58-4F61-8163-4BE0BB72B873" : {
                             "calendar": {
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
+                                },
+                                "noninvite.ics": { # event in the past
+                                    "@contents" : NON_INVITE_ICS_3,
                                 },
                             },
                         },
@@ -919,8 +950,8 @@ END:VCALENDAR
 
 # For test_purgeNonExistentGUID
 
-# No organizer/attendee
-NON_INVITE_ICS_2 = """BEGIN:VCALENDAR
+# No organizer/attendee, in the past
+NON_INVITE_PAST_ICS = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
 UID:151AFC76-6036-40EF-952B-97D1840760BF
@@ -930,6 +961,19 @@ DURATION:PT1H
 END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n") % (past,)
+
+# No organizer/attendee, in the future
+NON_INVITE_FUTURE_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:251AFC76-6036-40EF-952B-97D1840760BF
+SUMMARY:Non Invitation
+DTSTART:%s
+DURATION:PT1H
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (future,)
+
 
 # Purging non-existent organizer; has existing attendee
 ORGANIZER_ICS_2 = """BEGIN:VCALENDAR
@@ -960,6 +1004,22 @@ ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A0
 END:VEVENT
 END:VCALENDAR
 """.replace("\n", "\r\n") % (future,)
+
+# Purging non-existent organizer; has existing attendee; repeating
+REPEATING_ORGANIZER_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:8ED97931-9A19-4596-9D4D-52B36D6AB803
+SUMMARY:Repeating Organizer
+DTSTART:%s
+DURATION:PT1H
+RRULE:FREQ=DAILY;COUNT=400
+ORGANIZER:urn:uuid:1CB4378B-DD76-462D-B4D4-BD131FE89243
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:1CB4378B-DD76-462D-B4D4-BD131FE89243
+ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:urn:uuid:291C2C29-B663-4342-8EA1-A055E6A04D65
+END:VEVENT
+END:VCALENDAR
+""".replace("\n", "\r\n") % (past,)
 
 
 # For test_purgeMultipleNonExistentGUIDs
