@@ -197,7 +197,7 @@ class ConnectionLimiter(MultiService, object):
             # listening again.
             if result < previousStatus:
                 for f in self.factories:
-                    f.myServer.myPort.startReading()
+                    f.serverService._port.startReading()
         else:
             # '+' is just an acknowledgement of newConnectionStatus, so we can
             # ignore it.
