@@ -66,7 +66,7 @@ class TwistdSlaveProcess(object):
 
     def __init__(self, twistd, tapname, configFile, id,
                  interfaces, port, sslPort,
-                 inheritFDs=None, inheritSSLFDs=None, dispatcher=None):
+                 inheritFDs=None, inheritSSLFDs=None, metaSocket=None):
 
         self.twistd = twistd
 
@@ -86,9 +86,7 @@ class TwistdSlaveProcess(object):
                 return x
         self.inheritFDs = emptyIfNone(inheritFDs)
         self.inheritSSLFDs = emptyIfNone(inheritSSLFDs)
-        self.metaSocket = None
-        self.dispatcher = dispatcher
-
+        self.metaSocket = metaSocket
         self.interfaces = interfaces
 
     def getName(self):
@@ -96,20 +94,11 @@ class TwistdSlaveProcess(object):
             return '%s-%s' % (self.prefix, self.ports[0])
         elif self.sslPorts is not None:
             return '%s-%s' % (self.prefix, self.sslPorts[0])
-        elif self.inheritFDs or self.inheritSSLFDs or self.dispatcher:
+        elif self.inheritFDs or self.inheritSSLFDs or self.metaSocket:
             return '%s-%s' % (self.prefix, self.id)
 
         raise ConfigurationError(
             "Can't create TwistdSlaveProcess without a TCP Port")
-
-
-    def getMetaDescriptor(self):
-        """
-        Get the meta-socket file descriptor to inherit.
-        """
-        if self.metaSocket is None:
-            self.metaSocket = self.dispatcher.addSocket()
-        return self.metaSocket.fileno()
 
 
     def getFileDescriptors(self):
@@ -119,8 +108,8 @@ class TwistdSlaveProcess(object):
         """
         fds = {}
         maybeMetaFD = []
-        if self.dispatcher is not None:
-            maybeMetaFD.append(self.getMetaDescriptor())
+        if self.metaSocket is not None:
+            maybeMetaFD.append(self.metaSocket.fileno())
         for fd in self.inheritSSLFDs + self.inheritFDs + maybeMetaFD:
             fds[fd] = fd
         return fds
@@ -180,11 +169,9 @@ class TwistdSlaveProcess(object):
                     '-o',
                     'InheritSSLFDs=%s' % (','.join(map(str, self.inheritSSLFDs)),)])
  
-        if self.dispatcher is not None:
-            # XXX this FD is never closed in the parent.  should it be?
-            # (should they *all* be?) -glyph
+        if self.metaSocket is not None:
             args.extend([
-                    "-o", "MetaFD=%s" % (self.getMetaDescriptor(),)
+                    "-o", "MetaFD=%s" % (self.metaSocket.fileno(),)
                 ])
 
         return args
@@ -199,7 +186,7 @@ class TwistdSlaveProcess(object):
         if ssl and self.sslPorts is not None:
             port = self.sslPorts
 
-        if self.inheritFDs or self.inheritSSLFDs or self.dispatcher:
+        if self.inheritFDs or self.inheritSSLFDs or self.metaSocket:
             port = [self.id]
 
         if port is None:
@@ -499,7 +486,7 @@ def makeService_Combined(self, options):
         if config.UseMetaFD:
             port = None
             sslPort = None
-            extraArgs = dict(dispatcher=cl.dispatcher)
+            extraArgs = dict(metaSocket=cl.dispatcher.addSocket())
         else:
             extraArgs = dict(inheritFDs=inheritFDs,
                              inheritSSLFDs=inheritSSLFDs)

@@ -887,7 +887,7 @@ class DelayedStartupProcessMonitorTests(CleanupHelper, TestCase):
             port          = None,
             sslPort       = None,
             interfaces = '127.0.0.1',
-            dispatcher = FakeDispatcher()
+            metaSocket = FakeDispatcher().addSocket()
         )
 
         dspm.addProcessObject(slave, {})
