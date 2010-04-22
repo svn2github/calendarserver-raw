@@ -16,11 +16,12 @@
 ##
 
 from twisted.internet.tcp import Server
-from twisted.application.internet import TCPServer
 
 from twisted.application.service import MultiService, Service
 
 from twisted.web2.channel.http import HTTPFactory
+
+from twistedcaldav.maxaccept import MaxAcceptTCPServer
 
 from twistedcaldav.sendfdport import (
     InheritedPort, InheritedSocketDispatcher, InheritingProtocolFactory)
@@ -161,11 +162,11 @@ class ConnectionLimiter(MultiService, object):
 
     def addPortService(self, description, port, interface, backlog):
         """
-        Add a L{TCPServer} to bind a TCP port to a socket description.
+        Add a L{MaxAcceptTCPServer} to bind a TCP port to a socket description.
         """
         lipf = LimitingInheritingProtocolFactory(self, description)
         self.factories.append(lipf)
-        svr = TCPServer(
+        svr = MaxAcceptTCPServer(
             port, lipf,
             interface=interface,
             backlog=backlog
