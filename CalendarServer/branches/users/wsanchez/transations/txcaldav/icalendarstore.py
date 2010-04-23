@@ -18,10 +18,6 @@
 Calendar store interfaces
 """
 
-# FIXME:  Still to do:
-# - Where to defer?
-# - commit() and abort()
-
 __all__ = [
     # Exceptions
     "CalendarStoreError",
@@ -45,12 +41,14 @@ __all__ = [
     "ICalendarObject",
 ]
 
+from datetime import datetime, date, tzinfo
+
 from zope.interface import Interface #, Attribute
 
-from datetime import datetime, date, tzinfo
 from twext.python.vcomponent import VComponent
-from txdav.idav import IPropertyStore
 
+from txdav.idav import IPropertyStore
+from txdav.idav import ITransaction
 
 #
 # Exceptions
@@ -130,6 +128,15 @@ class ICalendarStore(Interface):
     """
     Calendar store
     """
+    def newTransaction():
+        """
+        Create a new transaction.
+        """
+
+class ICalendarStoreTransaction(ITransaction):
+    """
+    Calendar store transaction
+    """
     def calendarHomeWithUID(uid, create=False):
         """
         Retrieve the calendar home for the principal with the given
@@ -141,7 +148,6 @@ class ICalendarStore(Interface):
         @return: an L{ICalendarHome} or C{None} if no such calendar
         home exists.
         """
-
 
 class ICalendarHome(Interface):
     """
