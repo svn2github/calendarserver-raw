@@ -290,7 +290,7 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
             self._checkConsistency
         )
 
-    def signalAll(self, signal, startswithname=None):
+    def signalAll(self, signal, startswithname=None, seconds=0):
         """
         Send a signal to all child processes.
 
@@ -299,10 +299,14 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
         @param startswithname: is set only signal those processes
             whose name starts with this string
         @type signal: C{str}
+        @param seconds: how many seconds to delay between each signal
+        @type seconds: C{int}
         """
+        delay = 0
         for name in self.processes.keys():
             if startswithname is None or name.startswith(startswithname):
-                self.signalProcess(signal, name)
+                reactor.callLater(delay, self.signalProcess, signal, name)
+                delay += seconds
 
     def signalProcess(self, signal, name):
         """
