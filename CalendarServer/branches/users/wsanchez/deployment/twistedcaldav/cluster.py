@@ -64,9 +64,11 @@ hostTemplate = '<host name="%(name)s" ip="%(bindAddress)s:%(port)s" />'
 class TwistdSlaveProcess(object):
     prefix = "caldav"
 
+    metaSocket = None
+
     def __init__(self, twistd, tapname, configFile, id,
                  interfaces, port, sslPort,
-                 inheritFDs=None, inheritSSLFDs=None, metaSocket=None):
+                 inheritFDs=None, inheritSSLFDs=None, dispatcher=None):
 
         self.twistd = twistd
 
@@ -86,8 +88,21 @@ class TwistdSlaveProcess(object):
                 return x
         self.inheritFDs = emptyIfNone(inheritFDs)
         self.inheritSSLFDs = emptyIfNone(inheritSSLFDs)
-        self.metaSocket = metaSocket
+        self.dispatcher = dispatcher
+        self.resocket()
         self.interfaces = interfaces
+
+
+    def resocket(self):
+        """
+        Re-initialize the meta-socket, if this process is using one.
+        """
+        if self.metaSocket is not None:
+            self.dispatcher.removeSocket(self.metaSocket)
+            self.metaSocket = None
+        if self.dispatcher is not None:
+            self.metaSocket = self.dispatcher.addSocket()
+        
 
     def getName(self):
         if self.ports is not None:
@@ -326,6 +341,27 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
         )
 
 
+    def connectionLost(self, name):
+        """
+        A process with the given name has died.
+        """
+        procmon.ProcessMonitor.connectionLost(self, name)
+        for (processObject, env) in self.processObjects:
+            if processObject.getName() == name:
+                break
+        else:
+            # A process without a corresponding object; possibly memcached or
+            # something.  We don't need to manage it.
+            return
+
+        if processObject.metaSocket is not None:
+            processObject.resocket()
+            self._extraFDs[name] = processObject.getFileDescriptors()
+            args, uid, gid, env = self.processes[name]
+            self.processes[name] = processObject.getCommandLine(), uid, gid, env
+            processObject.dispatcher.startDispatching()
+
+
 
 def makeService_Combined(self, options):
 
@@ -486,7 +522,7 @@ def makeService_Combined(self, options):
         if config.UseMetaFD:
             port = None
             sslPort = None
-            extraArgs = dict(metaSocket=cl.dispatcher.addSocket())
+            extraArgs = dict(dispatcher=cl.dispatcher)
         else:
             extraArgs = dict(inheritFDs=inheritFDs,
                              inheritSSLFDs=inheritSSLFDs)

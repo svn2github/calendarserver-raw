@@ -161,6 +161,7 @@ class InheritedSocketDispatcher(object):
         Create a socket dispatcher.
         """
         self._subprocessSockets = []
+        self._subSocketMap = {} # map input-socket to _SubprocessSocket
         self.statusWatcher = statusWatcher
         from twisted.internet import reactor
         self.reactor = reactor
@@ -220,8 +221,23 @@ class InheritedSocketDispatcher(object):
         i, o = socketpair(AF_UNIX, SOCK_DGRAM)
         a = _SubprocessSocket(self, o)
         self._subprocessSockets.append(a)
+        self._subSocketMap[i] = a
         return i
 
+
+    def removeSocket(self, skt):
+        """
+        Remove (and close) a socket previously added with C{addSocket}.
+
+        @param skt: the return value of L{InheritedSocketDispatcher.addSocket}.
+        @type skt: L{socket}
+        """
+        subsock = self._subSocketMap.pop(skt)
+        subsock.skt.close()
+        skt.close()
+        self._subprocessSockets.remove(subsock)
+        subsock.stopReading()
+        subsock.stopWriting()
 
 
 class InheritedPort(FileDescriptor, object):

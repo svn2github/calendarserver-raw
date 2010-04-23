@@ -64,7 +64,6 @@ class ReportingHTTPService(Service, object):
             self.fd, self.createTransport, self.reportingFactory
         )
         inheritedPort.startReading()
-        inheritedPort.reportStatus("0")
 
 
     def stopService(self):
@@ -183,22 +182,13 @@ class ConnectionLimiter(MultiService, object):
         Determine a subprocess socket's status from its previous status and a
         status message.
         """
-        if message in ('-', '0'):
-            if message == '-':
-                # A connection has gone away in a subprocess; we should start
-                # accepting connections again if we paused (see
-                # newConnectionStatus)
-                result = self.intWithNoneAsZero(previousStatus) - 1
-            else:
-                # A new process just started accepting new connections; zero
-                # out its expected load.
-                result = 0
-            # If load has indeed decreased (i.e. in any case except 'a new,
-            # idle process replaced an old, idle process'), then start
-            # listening again.
-            if result < previousStatus:
-                for f in self.factories:
-                    f.serverService._port.startReading()
+        if message == '-':
+            # A connection has gone away in a subprocess; we should start
+            # accepting connections again if we paused (see
+            # newConnectionStatus)
+            result = self.intWithNoneAsZero(previousStatus) - 1
+            for f in self.factories:
+                f.serverService._port.startReading()
         else:
             # '+' is just an acknowledgement of newConnectionStatus, so we can
             # ignore it.
