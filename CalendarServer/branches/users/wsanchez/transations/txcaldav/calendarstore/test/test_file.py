@@ -493,12 +493,13 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.calendarObjectWithName("1.ics").component()
         )
 
-    @featureUnimplemented
+
     def test_calendarObjectWithUID_absent(self):
         """
         Missing calendar object.
         """
         self.assertEquals(self.calendar1.calendarObjectWithUID("xyzzy"), None)
+
 
     def test_createCalendarObjectWithName_absent(self):
         """

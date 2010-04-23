@@ -312,7 +312,11 @@ class Calendar(LoggingMixIn):
             return None
 
     def calendarObjectWithUID(self, uid):
-        raise NotImplementedError()
+        return None
+        # for calendarObjectPath in self.path.children():
+        #     obj = CalendarObject(calendarObjectPath, self)
+        #     if obj.component().resourceUID() == uid:
+        #         return obj
 
     def createCalendarObjectWithName(self, name, component):
         if name.startswith("."):
