@@ -1,3 +1,4 @@
+# -*- test-case-name: txcaldav.calendarstore.test.test_file -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -87,7 +88,7 @@ class Transaction(LoggingMixIn):
         self._operations = []
         self._calendarHomes = {}
 
-    def addOperation(operation):
+    def addOperation(self, operation):
         self._operations.append(operation)
 
     def abort(self):
@@ -146,7 +147,7 @@ class Transaction(LoggingMixIn):
         elif not childPath3.isdir():
             return None
 
-        calendarHome = CalendarHome(childPath, self.calendarStore, self)
+        calendarHome = CalendarHome(childPath3, self.calendarStore, self)
         self._calendarHomes[(uid, self)] = calendarHome
         return calendarHome
 
@@ -178,6 +179,8 @@ class CalendarHome(LoggingMixIn):
         calendar = self._newCalendars.get(name)
         if calendar is not None:
             return calendar
+        if name in self._removedCalendars:
+            return None
 
         if name.startswith("."):
             return None
@@ -215,6 +218,7 @@ class CalendarHome(LoggingMixIn):
         if name.startswith(".") or name in self._removedCalendars:
             raise NoSuchCalendarError(name)
 
+        self._removedCalendars.add(name)
         childPath = self.path.child(name)
         if name not in self._newCalendars and not childPath.isdir():
             raise NoSuchCalendarError(name)
@@ -248,7 +252,7 @@ class CalendarHome(LoggingMixIn):
             return undo
 
     def properties(self):
-        raise NotImplementedError()
+        # raise NotImplementedError()
         if not hasattr(self, "_properties"):
             self._properties = PropertyStore(self.path)
         return self._properties
@@ -260,7 +264,7 @@ class Calendar(LoggingMixIn):
     def __init__(self, path, calendarHome):
         self.path = path
         self.calendarHome = calendarHome
-        self._transaction = calendarHome.transaction
+        self._transaction = calendarHome._transaction
         self._newCalendarObjects = {}
         self._removedCalendarObjects = set()
 
@@ -293,7 +297,7 @@ class Calendar(LoggingMixIn):
             self.calendarObjectWithName(name)
             for name in (
                 set(self._newCalendarObjects.iterkeys()) |
-                set(name in self.path.listdir() if not name.startswith("."))
+                set(name for name in self.path.listdir() if not name.startswith("."))
             )
         )
 
