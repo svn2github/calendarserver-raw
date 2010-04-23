@@ -153,11 +153,12 @@ def setUpCalendarStore(test):
     storePath.copyTo(calendarPath)
 
     test.calendarStore = CalendarStore(calendarPath)
+    test.txn = test.calendarStore.newTransaction()
     assert test.calendarStore is not None, "No calendar store?"
 
 def setUpHome1(test):
     setUpCalendarStore(test)
-    test.home1 = test.calendarStore.calendarHomeWithUID("home1")
+    test.home1 = test.txn.calendarHomeWithUID("home1")
     assert test.home1 is not None, "No calendar home?"
 
 def setUpCalendar1(test):
@@ -192,7 +193,7 @@ class CalendarStoreTest(unittest.TestCase):
         """
         Find an existing calendar home by UID.
         """
-        calendarHome = self.calendarStore.calendarHomeWithUID("home1")
+        calendarHome = self.calendarStore.newTransaction().calendarHomeWithUID("home1")
 
         self.failUnless(isinstance(calendarHome, CalendarHome))
 
@@ -201,7 +202,7 @@ class CalendarStoreTest(unittest.TestCase):
         Missing calendar home.
         """
         self.assertEquals(
-            self.calendarStore.calendarHomeWithUID("xyzzy"),
+            self.calendarStore.newTransaction().calendarHomeWithUID("xyzzy"),
             None
         )
 
@@ -209,19 +210,22 @@ class CalendarStoreTest(unittest.TestCase):
         """
         Create missing calendar home.
         """
-        calendarHome = self.calendarStore.calendarHomeWithUID(
+        txn = self.calendarStore.newTransaction()
+        calendarHome = txn.calendarHomeWithUID(
             "xyzzy",
             create=True
         )
 
         self.failUnless(isinstance(calendarHome, CalendarHome))
+        self.failIf(calendarHome.path.isdir())
+        txn.commit()
         self.failUnless(calendarHome.path.isdir())
 
     def test_calendarHomeWithUID_create_exists(self):
         """
         Create missing calendar home.
         """
-        calendarHome = self.calendarStore.calendarHomeWithUID("home1")
+        calendarHome = self.calendarStore.newTransaction().calendarHomeWithUID("home1")
 
         self.failUnless(isinstance(calendarHome, CalendarHome))
 
@@ -231,7 +235,7 @@ class CalendarStoreTest(unittest.TestCase):
         implementation, so no UIDs may start with ".".
         """
         self.assertEquals(
-            self.calendarStore.calendarHomeWithUID("xyzzy"),
+            self.calendarStore.newTransaction().calendarHomeWithUID("xyzzy"),
             None
         )
 
@@ -343,7 +347,8 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
         Remove an existing calendar.
         """
         for name in home1_calendarNames:
-            assert self.home1.calendarWithName(name) is not None
+            self.assertNotIdentical(self.home1.calendarWithName(name),
+                                    None)
             self.home1.removeCalendarWithName(name)
             self.assertEquals(self.home1.calendarWithName(name), None)
 
@@ -429,6 +434,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             calendar1_objectNames
         )
 
+    @testUnimplemented
     def test_calendarObjects_listdir(self):
         """
         Find all of the calendar objects using the listdir
