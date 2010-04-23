@@ -884,10 +884,10 @@ class DelayedStartupProcessMonitorTests(CleanupHelper, TestCase):
             tapname    = "caldav",
             configFile = "/does/not/exist",
             id         = 10,
-            port          = None,
-            sslPort       = None,
+            port       = None,
+            sslPort    = None,
             interfaces = '127.0.0.1',
-            metaSocket = FakeDispatcher().addSocket()
+            dispatcher = FakeDispatcher()
         )
 
         dspm.addProcessObject(slave, {})
