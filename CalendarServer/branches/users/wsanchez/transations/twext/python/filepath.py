@@ -124,12 +124,9 @@ class CachingFilePath(FilePath, object):
         Override L{FilePath.moveTo}, updating extended cache information if
         necessary.
         """
-        try:
-            return super(CachingFilePath, self).moveTo(destination, followLinks)
-        except OSError:
-            raise
-        else:
-            self.changed()
+        result = super(CachingFilePath, self).moveTo(destination, followLinks)
+        self.changed()
+        destination.changed()
 
 
     def remove(self):
