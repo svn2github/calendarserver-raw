@@ -278,19 +278,23 @@ class Calendar(LoggingMixIn):
     def ownerCalendarHome(self):
         return self.calendarHome
 
-    def _calendarObjects_index(self):
-        return self.index().calendarObjects()
-
-    def _calendarObjects_listdir(self):
-        return (
-            self.calendarObjectWithName(name)
-            for name in self.path.listdir()
-            if not name.startswith(".")
-        )
+#    def _calendarObjects_index(self):
+#        return self.index().calendarObjects()
+#
+#    def _calendarObjects_listdir(self):
+#        return (
+#            self.calendarObjectWithName(name)
+#            for name in self.path.listdir()
+#            if not name.startswith(".")
+#        )
 
     def calendarObjects(self):
-        return set(self._newCalendarObjects.iterkeys()) | set(
-            self._calendarObjects_index()
+        return (
+            self.calendarObjectWithName(name)
+            for name in (
+                set(self._newCalendarObjects.iterkeys()) |
+                set(name in self.path.listdir() if not name.startswith("."))
+            )
         )
 
     def calendarObjectWithName(self, name):
