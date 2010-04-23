@@ -36,8 +36,10 @@ from twext.python.log import LoggingMixIn
 from twext.python.vcomponent import VComponent
 from twext.python.vcomponent import InvalidICalendarDataError
 
+from txdav.idav import AbortedTransactionError
 from txdav.propertystore.xattr import PropertyStore
 
+from txcaldav.icalendarstore import ICalendarStoreTransaction
 from txcaldav.icalendarstore import ICalendarStore, ICalendarHome
 from txcaldav.icalendarstore import ICalendar, ICalendarObject
 from txcaldav.icalendarstore import CalendarNameNotAllowedError
@@ -57,8 +59,6 @@ from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 class CalendarStore(LoggingMixIn):
     implements(ICalendarStore)
 
-    calendarHomeClass = property(lambda _: CalendarHome)
-
     def __init__(self, path):
         """
         @param path: a L{FilePath}
@@ -74,31 +74,92 @@ class CalendarStore(LoggingMixIn):
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self.path.path)
 
+    def newTransaction(self):
+        return Transaction(self)
+
+
+class Transaction(LoggingMixIn):
+    implements(ICalendarStoreTransaction)
+
+    def __init__(self, calendarStore):
+        self.calendarStore = calendarStore
+        self.aborted = False
+        self._operations = []
+        self._calendarHomes = {}
+
+    def addOperation(operation):
+        self._operations.append(operation)
+
+    def abort(self):
+        self.aborted = True
+
+    def commit(self):
+        assert not self.aborted
+
+        undos = []
+
+        for operation in self._operations:
+            try:
+                undo = operation()
+                if undo is not None:
+                    undos.append(undo)
+            except Exception, e:
+                for undo in undos:
+                    try:
+                        undo()
+                    except Exception, e:
+                        self.log_error("Exception while undoing transaction: %s" % (e,))
+                raise
+
     def calendarHomeWithUID(self, uid, create=False):
+        if (uid, self) in self._calendarHomes:
+            return self._calendarHomes[(uid, self)]
+
         if uid.startswith("."):
             return None
 
         assert len(uid) >= 4
 
-        childPath = self.path.child(uid[0:2]).child(uid[2:4]).child(uid)
+        childPath1 = self.calendarStore.path.child(uid[0:2])
+        childPath2 = childPath1.child(uid[2:4])
+        childPath3 = childPath2.child(uid)
 
-        if not childPath.isdir():
-            if create:
-                childPath.makedirs()
-            else:
-                return None
+        def do():
+            def createDirectory(path):
+                try:
+                    path.createDirectory()
+                except (IOError, OSError), e:
+                    if e.errno != errno.EEXIST:
+                        # Ignore, in case someone else created the
+                        # directory while we were trying to as well.
+                        raise
 
-        return CalendarHome(childPath, self)
+            if not childPath3.isdir():
+                if not childPath2.isdir():
+                    if not childPath1.isdir():
+                        createDirectory(childPath1)
+                    createDirectory(childPath2)
+                createDirectory(childPath3)
+
+        if create:
+            self.addOperation(do)
+        elif not childPath3.isdir():
+            return None
+
+        calendarHome = CalendarHome(childPath, self.calendarStore, self)
+        self._calendarHomes[(uid, self)] = calendarHome
+        return calendarHome
 
 
 class CalendarHome(LoggingMixIn):
     implements(ICalendarHome)
 
-    calendarClass = property(lambda _: Calendar)
-
-    def __init__(self, path, calendarStore):
+    def __init__(self, path, calendarStore, transaction):
         self.path = path
         self.calendarStore = calendarStore
+        self._transaction = transaction
+        self._newCalendars = {}
+        self._removedCalendars = set()
 
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self.path)
@@ -107,13 +168,17 @@ class CalendarHome(LoggingMixIn):
         return self.path.basename()
 
     def calendars(self):
-        return (
+        return set(self._newCalendars.itervalues()) | set(
             self.calendarWithName(name)
             for name in self.path.listdir()
             if not name.startswith(".")
         )
 
     def calendarWithName(self, name):
+        calendar = self._newCalendars.get(name)
+        if calendar is not None:
+            return calendar
+
         if name.startswith("."):
             return None
 
@@ -129,26 +194,61 @@ class CalendarHome(LoggingMixIn):
 
         childPath = self.path.child(name)
 
-        try:
-            childPath.createDirectory()
-        except (IOError, OSError), e:
-            if e.errno == errno.EEXIST:
-                raise CalendarAlreadyExistsError(name)
-            raise
+        if name not in self._removedCalendars and childPath.isdir():
+            raise CalendarAlreadyExistsError(name)
+
+        def do():
+            try:
+                childPath.createDirectory()
+
+                # Return undo
+                return lambda: childPath.remove()
+            except (IOError, OSError), e:
+                if e.errno == errno.EEXIST and childPath.isdir():
+                    raise CalendarAlreadyExistsError(name)
+                raise
+
+        self._transaction.addOperation(do)
+        self._newCalendars[name] = Calendar(self.path.child(name), self)
 
     def removeCalendarWithName(self, name):
-        if name.startswith("."):
+        if name.startswith(".") or name in self._removedCalendars:
             raise NoSuchCalendarError(name)
 
         childPath = self.path.child(name)
-        try:
-            childPath.remove()
-        except (IOError, OSError), e:
-            if e.errno == errno.ENOENT:
-                raise NoSuchCalendarError(name)
-            raise
+        if name not in self._newCalendars and not childPath.isdir():
+            raise NoSuchCalendarError(name)
+
+        def do(transaction=self._transaction):
+            for i in xrange(1000):
+                trash = childPath.sibling("._del_%s_%d" % (childPath.basename(), i))
+                if not trash.exists():
+                    break
+            else:
+                raise InternalDataStoreError("Unable to create trash target for calendar at %s" % (childPath,))
+
+            try:
+                childPath.moveTo(trash)
+            except (IOError, OSError), e:
+                if e.errno == errno.ENOENT:
+                    raise NoSuchCalendarError(name)
+                raise
+
+            def cleanup():
+                try:
+                    trash.remove()
+                except Exception, e:
+                    self.log_error("Unable to delete trashed calendar at %s: %s" % (trash.fp, e))
+
+            transaction.addOperation(cleanup)
+
+            def undo():
+                trash.moveTo(childPath)
+
+            return undo
 
     def properties(self):
+        raise NotImplementedError()
         if not hasattr(self, "_properties"):
             self._properties = PropertyStore(self.path)
         return self._properties
@@ -157,11 +257,12 @@ class CalendarHome(LoggingMixIn):
 class Calendar(LoggingMixIn):
     implements(ICalendar)
 
-    calendarObjectClass = property(lambda _: CalendarObject)
-
     def __init__(self, path, calendarHome):
         self.path = path
         self.calendarHome = calendarHome
+        self._transaction = calendarHome.transaction
+        self._newCalendarObjects = {}
+        self._removedCalendarObjects = set()
 
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self.path.path)
@@ -187,12 +288,18 @@ class Calendar(LoggingMixIn):
             if not name.startswith(".")
         )
 
-    calendarObjects = _calendarObjects_index
+    def calendarObjects(self):
+        return set(self._newCalendarObjects.iterkeys()) | set(
+            self._calendarObjects_index()
+        )
 
     def calendarObjectWithName(self, name):
-        childPath = self.path.child(name)
-        if childPath.isfile():
-            return CalendarObject(childPath, self)
+        if name in self._newCalendarObjects:
+            return self._newCalendarObjects[name]
+
+        calendarObjectPath = self.path.child(name)
+        if calendarObjectPath.isfile():
+            return CalendarObject(calendarObjectPath, self)
         else:
             return None
 
@@ -203,20 +310,20 @@ class Calendar(LoggingMixIn):
         if name.startswith("."):
             raise CalendarObjectNameNotAllowedError(name)
 
-        childPath = self.path.child(name)
-        if childPath.exists():
+        calendarObjectPath = self.path.child(name)
+        if calendarObjectPath.exists():
             raise CalendarObjectNameAlreadyExistsError(name)
 
-        calendarObject = CalendarObject(childPath, self)
+        calendarObject = CalendarObject(calendarObjectPath, self)
         calendarObject.setComponent(component)
 
     def removeCalendarObjectWithName(self, name):
         if name.startswith("."):
             raise NoSuchCalendarObjectError(name)
 
-        childPath = self.path.child(name)
-        if childPath.isfile():
-            childPath.remove()
+        calendarObjectPath = self.path.child(name)
+        if calendarObjectPath.isfile():
+            calendarObjectPath.remove()
         else:
             raise NoSuchCalendarObjectError(name)
 
@@ -258,6 +365,7 @@ class Calendar(LoggingMixIn):
         raise NotImplementedError()
 
     def properties(self):
+        raise NotImplementedError()
         if not hasattr(self, "_properties"):
             self._properties = PropertyStore(self.path)
         return self._properties
@@ -371,6 +479,7 @@ class CalendarObject(LoggingMixIn):
         return self.component().getOrganizer()
 
     def properties(self):
+        raise NotImplementedError()
         if not hasattr(self, "_properties"):
             self._properties = PropertyStore(self.path)
         return self._properties
