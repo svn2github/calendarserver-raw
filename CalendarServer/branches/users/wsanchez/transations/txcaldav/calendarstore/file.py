@@ -312,11 +312,12 @@ class Calendar(LoggingMixIn):
             return None
 
     def calendarObjectWithUID(self, uid):
-        return None
-        # for calendarObjectPath in self.path.children():
-        #     obj = CalendarObject(calendarObjectPath, self)
-        #     if obj.component().resourceUID() == uid:
-        #         return obj
+        # FIXME: This _really_ needs to be inspecting an index, not parsing
+        # every resource.
+        for calendarObjectPath in self.path.children():
+            obj = CalendarObject(calendarObjectPath, self)
+            if obj.component().resourceUID() == uid:
+                return obj
 
     def createCalendarObjectWithName(self, name, component):
         if name.startswith("."):
@@ -340,7 +341,7 @@ class Calendar(LoggingMixIn):
             raise NoSuchCalendarObjectError(name)
 
     def removeCalendarObjectWithUID(self, uid):
-        raise NotImplementedError()
+        self.removeCalendarObjectWithName(self.calendarObjectWithUID(uid).path.basename())
 
     def syncToken(self):
         raise NotImplementedError()

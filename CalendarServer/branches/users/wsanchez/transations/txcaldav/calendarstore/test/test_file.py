@@ -595,14 +595,16 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.removeCalendarObjectWithName, name
         )
 
-    @featureUnimplemented
+
     def test_removeCalendarObjectWithUID_exists(self):
         """
         Remove an existing calendar object.
         """
         for name in calendar1_objectNames:
-            uid = name.rstrip(".ics")
-            assert self.calendar1.calendarObjectWithUID(uid) is not None
+            uid = (u'uid' + name.rstrip(".ics"))
+            
+            self.assertNotIdentical(self.calendar1.calendarObjectWithUID(uid),
+                                    None)
             self.calendar1.removeCalendarObjectWithUID(uid)
             self.assertEquals(
                 self.calendar1.calendarObjectWithUID(uid),
@@ -612,6 +614,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
                 self.calendar1.calendarObjectWithName(name),
                 None
             )
+
 
     @featureUnimplemented
     def test_removeCalendarObjectWithUID_absent(self):
