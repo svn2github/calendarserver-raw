@@ -1,3 +1,4 @@
+# -*- test-case-name: txcaldav.calendarstore -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -17,6 +18,10 @@
 """
 Calendar store interfaces
 """
+
+from zope.interface import Interface
+from txdav.idav import ITransaction
+
 
 __all__ = [
     # Exceptions
@@ -41,14 +46,16 @@ __all__ = [
     "ICalendarObject",
 ]
 
-from datetime import datetime, date, tzinfo
 
-from zope.interface import Interface #, Attribute
+# The following imports are used by the L{} links below, but shouldn't actually
+# be imported.as they're not really needed.
 
-from twext.python.vcomponent import VComponent
+# from datetime import datetime, date, tzinfo
 
-from txdav.idav import IPropertyStore
-from txdav.idav import ITransaction
+# from twext.python.vcomponent import VComponent
+
+# from txdav.idav import IPropertyStore
+# from txdav.idav import ITransaction
 
 #
 # Exceptions
@@ -158,14 +165,6 @@ class ICalendarHome(Interface):
     includes both calendars owned by the principal as well as
     calendars that have been shared with and accepts by the principal.
     """
-    # FIXME: We need a principal interface somewhere, possibly part of
-    # an idirectory rework.  IDirectoryRecord may be close...
-    #def owner():
-    #    """
-    #    Retrieve the owner principal for this calendar home.
-    #    @return: a ???
-    #    """
-
     def uid():
         """
         Retrieve the unique identifier for this calendar home.
@@ -345,6 +344,7 @@ class ICalendarObject(Interface):
     A calendar object decribes an event, to-do, or other iCalendar
     object.
     """
+
     def setComponent(component):
         """
         Rewrite this calendar object to match the given C{component}.
