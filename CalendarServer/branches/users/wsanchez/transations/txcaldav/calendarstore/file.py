@@ -30,14 +30,12 @@ import errno
 
 from zope.interface import implements
 
-from twext.python.filepath import CachingFilePath as FilePath
 from twisted.internet.defer import inlineCallbacks
 
 from twext.python.log import LoggingMixIn
 from twext.python.vcomponent import VComponent
 from twext.python.vcomponent import InvalidICalendarDataError
 
-# from txdav.idav import AbortedTransactionError
 from txdav.propertystore.xattr import PropertyStore
 
 from txcaldav.icalendarstore import ICalendarStoreTransaction
@@ -66,36 +64,94 @@ def _isValidName(name):
     return not name.startswith(".")
 
 
+_unset = object()
+
+class _cached(object):
+    """
+    This object is a decorator for a 0-argument method which should be called
+    only once, and its result cached so that future invocations just return the
+    same result without calling the underlying method again.
+
+    @ivar thunk: the function to call to generate a cached value.
+    """
+
+    def __init__(self, thunk):
+        self.thunk = thunk
+
+
+    def __get__(self, oself, name):
+        def inner():
+            cacheKey = "_"+name+"_cached"
+            cached = getattr(oself, cacheKey, _unset)
+            if cached is _unset:
+                value = self.thunk(oself)
+                setattr(oself, cacheKey, value)
+                return value
+            else:
+                return cached
+        return inner
+
+
+
 class CalendarStore(LoggingMixIn):
+    """
+    An implementation of L{ICalendarObject} backed by a
+    L{twext.python.filepath.CachingFilePath}.
+
+    @ivar _path: A L{CachingFilePath} referencing a directory on disk that
+        stores all calendar data for a group of uids.
+    """
     implements(ICalendarStore)
 
     def __init__(self, path):
         """
-        @param path: a L{FilePath}
-        """
-        assert isinstance(path, FilePath)
+        Create a calendar store.
 
+        @param path: a L{FilePath} pointing at a directory on disk.
+        """
         self._path = path
 
-        if not path.isdir():
+#        if not path.isdir():
             # FIXME: Add CalendarStoreNotFoundError?
-            raise NotFoundError("No such calendar store")
+#            raise NotFoundError("No such calendar store")
 
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self._path.path)
 
     def newTransaction(self):
+        """
+        Create a new filesystem-based transaction.
+
+        @see Transaction
+        """
         return Transaction(self)
 
 
+
 class Transaction(LoggingMixIn):
+    """
+    In-memory implementation of
+
+    Note that this provides basic 'undo' support, but not truly transactional
+    operations.
+    """
+
     implements(ICalendarStoreTransaction)
 
     def __init__(self, calendarStore):
+        """
+        Initialize a transaction; do not call this directly, instead call
+        L{CalendarStore.newTransaction}.
+
+        @param calendarStore: The store that created this transaction.
+
+        @type calendarStore: L{CalendarStore}
+        """
         self.calendarStore = calendarStore
         self.aborted = False
         self._operations = []
         self._calendarHomes = {}
+
 
     def addOperation(self, operation):
         self._operations.append(operation)
@@ -261,10 +317,10 @@ class CalendarHome(LoggingMixIn):
             return undo
 
     def properties(self):
-        # raise NotImplementedError()
-        if not hasattr(self, "_properties"):
-            self._properties = PropertyStore(self._path)
-        return self._properties
+        # FIXME: needs tests for actual functionality
+        # FIXME: needs to be cached
+        return PropertyStore(self._path)
+
 
 
 class Calendar(LoggingMixIn):
@@ -281,19 +337,18 @@ class Calendar(LoggingMixIn):
         self._cachedCalendarObjects = {}
         self._removedCalendarObjects = set()
 
+
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self._path.path)
 
-    def index(self):
-        if not hasattr(self, "_index"):
-            self._index = Index(self)
-        return self._index
 
     def name(self):
         return self._path.basename()
 
+
     def ownerCalendarHome(self):
         return self.calendarHome
+
 
 #    def _calendarObjects_index(self):
 #        return self.index().calendarObjects()
@@ -407,10 +462,10 @@ class Calendar(LoggingMixIn):
         raise NotImplementedError()
 
     def properties(self):
+        # FIXME: needs tests
+        # FIXME: needs implementation
         raise NotImplementedError()
-        if not hasattr(self, "_properties"):
-            self._properties = PropertyStore(self._path)
-        return self._properties
+
 
 
 class CalendarObject(LoggingMixIn):
@@ -424,6 +479,7 @@ class CalendarObject(LoggingMixIn):
     def __init__(self, path, calendar):
         self._path = path
         self.calendar = calendar
+        self._component = None
 
 
     def __repr__(self):
@@ -454,8 +510,7 @@ class CalendarObject(LoggingMixIn):
             raise InvalidCalendarComponentError(e)
 
         self._component = component
-        if hasattr(self, "_text"):
-            del self._text
+        # FIXME: needs to clear text cache
 
         def do():
             backup = None
@@ -479,58 +534,46 @@ class CalendarObject(LoggingMixIn):
 
 
     def component(self):
-        if not hasattr(self, "_component"):
-            text = self.iCalendarText()
+        if self._component is not None:
+            return self._component
+        text = self.iCalendarText()
 
-            try:
-                component = VComponent.fromString(text)
-            except InvalidICalendarDataError, e:
-                raise InternalDataStoreError(
-                    "File corruption detected (%s) in file: %s"
-                    % (e, self._path.path)
-                )
+        try:
+            component = VComponent.fromString(text)
+        except InvalidICalendarDataError, e:
+            raise InternalDataStoreError(
+                "File corruption detected (%s) in file: %s"
+                % (e, self._path.path)
+            )
+        return component
 
-            del self._text
-            self._component = component
-
-        return self._component
 
     def iCalendarText(self):
-        #
-        # Note I'm making an assumption here that caching both is
-        # redundant, so we're caching the text if it's asked for and
-        # we don't have the component cached, then tossing it and
-        # relying on the component if we have that cached. -wsv
-        #
-        if not hasattr(self, "_text"):
-            if hasattr(self, "_component"):
-                return str(self._component)
+        if self._component is not None:
+            return str(self._component)
+        try:
+            fh = self._path.open()
+        except IOError, e:
+            if e[0] == errno.ENOENT:
+                raise NoSuchCalendarObjectError(self)
+            else:
+                raise
 
-            try:
-                fh = self._path.open()
-            except IOError, e:
-                if e[0] == errno.ENOENT:
-                    raise NoSuchCalendarObjectError(self)
-                else:
-                    raise
+        try:
+            text = fh.read()
+        finally:
+            fh.close()
 
-            try:
-                text = fh.read()
-            finally:
-                fh.close()
+        if not (
+            text.startswith("BEGIN:VCALENDAR\r\n") or
+            text.endswith("\r\nEND:VCALENDAR\r\n")
+        ):
+            raise InternalDataStoreError(
+                "File corruption detected (improper start) in file: %s"
+                % (self._path.path,)
+            )
+        return text
 
-            if not (
-                text.startswith("BEGIN:VCALENDAR\r\n") or
-                text.endswith("\r\nEND:VCALENDAR\r\n")
-            ):
-                raise InternalDataStoreError(
-                    "File corruption detected (improper start) in file: %s"
-                    % (self._path.path,)
-                )
-
-            self._text = text
-
-        return self._text
 
     def uid(self):
         if not hasattr(self, "_uid"):
@@ -550,6 +593,7 @@ class CalendarObject(LoggingMixIn):
         if not hasattr(self, "_properties"):
             self._properties = PropertyStore(self._path)
         return self._properties
+
 
 
 class Index (object):
