@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.test -*-
 ##
 # Copyright (c) 2005-2010 Apple Inc. All rights reserved.
 #
@@ -107,6 +108,8 @@ from twistedcaldav.notify import getPubSubHeartbeatURI, getPubSubPath
 from twistedcaldav.notify import ClientNotifier, getNodeCacher
 from twistedcaldav.notifications import NotificationCollectionResource,\
     NotificationResource
+
+from txcaldav.calendarstore.file import CalendarStore
 
 log = Logger()
 
@@ -834,6 +837,9 @@ class CalendarHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendar
         """
         DAVFile.__init__(self, path)
         DirectoryCalendarHomeProvisioningResource.__init__(self, directory, url)
+        storagePath = self.fp.child(uidsResourceName)
+        self._newStore = CalendarStore(storagePath)
+
 
     def provisionChild(self, name):
         if name == uidsResourceName:
@@ -841,8 +847,11 @@ class CalendarHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendar
 
         return CalendarHomeTypeProvisioningFile(self.fp.child(name).path, self, name)
 
+
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
+
+
 
 class CalendarHomeTypeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeTypeProvisioningResource, DAVFile):
     def __init__(self, path, parent, recordType):
@@ -853,6 +862,8 @@ class CalendarHomeTypeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCale
         """
         DAVFile.__init__(self, path)
         DirectoryCalendarHomeTypeProvisioningResource.__init__(self, parent, recordType)
+
+
 
 class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeUIDProvisioningResource, DAVFile):
     def __init__(self, path, parent, homeResourceClass=None):
@@ -969,6 +980,9 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryCal
         self.clientNotifier = ClientNotifier(self)
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
+        self._newStoreCalendar = (self.parent.parent._newStore.newTransaction()
+                                  .calendarHomeWithUID(self.record.uid,
+                                                       create=True))
 
     def provision(self):
         result = super(CalendarHomeFile, self).provision()
