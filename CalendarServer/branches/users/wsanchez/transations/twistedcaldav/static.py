@@ -961,7 +961,8 @@ class CalendarHomeReverseProxyFile(ReverseProxyResource):
     def url(self):
         return joinURL(self.parent.url(), self.record.uid)
 
-class CalendarHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryCalendarHomeResource, CalDAVFile):
+class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin, 
+                       DirectoryCalendarHomeResource, CalDAVFile):
     """
     Calendar home collection resource.
     """
@@ -980,9 +981,11 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryCal
         self.clientNotifier = ClientNotifier(self)
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
-        self._newStoreCalendar = (self.parent.parent._newStore.newTransaction()
-                                  .calendarHomeWithUID(self.record.uid,
-                                                       create=True))
+        self._newStoreCalendarHome = (
+            self.parent.parent._newStore.newTransaction()
+            .calendarHomeWithUID(self.record.uid,
+                                 create=True)
+        )
 
     def provision(self):
         result = super(CalendarHomeFile, self).provision()
@@ -1024,8 +1027,15 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryCal
         if self.comparePath(path):
             return self
         else:
-            similar = CalDAVFile(path, principalCollections=self.principalCollections())
+            similar = CalDAVFile(
+                path, principalCollections=self.principalCollections()
+            )
             similar.clientNotifier = self.clientNotifier
+            similar._newStoreCalendar = (
+                self._newStoreCalendarHome.calendarWithName(
+                    similar.fp.basename()
+                )
+            )
             return similar
 
     def getChild(self, name):
