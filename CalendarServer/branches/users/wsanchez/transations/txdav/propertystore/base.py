@@ -49,8 +49,30 @@ class PropertyName(LoggingMixIn):
         self.namespace = namespace
         self.name = name
 
+
+    def _cmpval(self):
+        """
+        Return a value to use for hashing and comparisons.
+        """
+        return (self.namespace, self.name)
+
+
+    # FIXME: need direct tests for presence-in-dictionary
     def __hash__(self):
-        return hash((self.namespace, self.name))
+        return hash(self._cmpval())
+
+
+    def __eq__(self, other):
+        if not isinstance(other, PropertyName):
+            return NotImplemented
+        return self._cmpval() == other._cmpval()
+
+
+    def __ne__(self, other):
+        if not isinstance(other, PropertyName):
+            return NotImplemented
+        return self._cmpval() != other._cmpval()
+
 
     def __repr__(self):
         return "<%s: %s>" % (
