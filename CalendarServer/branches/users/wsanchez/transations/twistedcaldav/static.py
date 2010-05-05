@@ -205,11 +205,19 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
     ##
 
     def createCalendar(self, request):
-        #
-        # request object is required because we need to validate against parent
-        # resources, and we need the request in order to locate the parents.
-        #
+        """
+        External API for creating a calendar.  Verify that the parent is a
+        collection, exists, is I{not} a calendar collection; that this resource
+        does not yet exist, then create it.
 
+        @param request: the request used to look up parent resources to
+            validate.
+
+        @type request: L{twext.web2.iweb.IRequest}
+
+        @return: a deferred that fires when a calendar collection has been
+            created in this resource.
+        """
         if self.fp.exists():
             log.err("Attempt to create collection where file exists: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.NOT_ALLOWED, "File exists"))
@@ -237,7 +245,14 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         parent.addCallback(_defer)
         return parent
 
+
     def createCalendarCollection(self):
+        """
+        Internal API for creating a calendar collection.
+
+        This will immediately create the collection without performing any
+        verification.  For the normal API, see L{CalDAVFile.createCalendar}.
+        """
         #
         # Create the collection once we know it is safe to do so
         #
