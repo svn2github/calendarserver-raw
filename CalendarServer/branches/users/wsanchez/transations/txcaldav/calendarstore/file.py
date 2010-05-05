@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twext.web2.dav.element.rfc2518 import ResourceType
+from txdav.propertystore.base import PropertyName
 
 """
 File calendar store.
@@ -79,9 +81,9 @@ class _cached(object):
         self.thunk = thunk
 
 
-    def __get__(self, oself, name):
+    def __get__(self, oself, owner):
         def inner():
-            cacheKey = "_"+name+"_cached"
+            cacheKey = "_" + self.thunk.__name__ + "_cached"
             cached = getattr(oself, cacheKey, _unset)
             if cached is _unset:
                 value = self.thunk(oself)
@@ -217,6 +219,7 @@ class Transaction(LoggingMixIn):
         return calendarHome
 
 
+
 class CalendarHome(LoggingMixIn):
     implements(ICalendarHome)
 
@@ -277,7 +280,15 @@ class CalendarHome(LoggingMixIn):
                 raise
 
         self._transaction.addOperation(do)
-        self._newCalendars[name] = Calendar(self._path.child(name), self)
+        c = self._newCalendars[name] = Calendar(self._path.child(name), self)
+        c.properties()[PropertyName.fromString(ResourceType.sname())] = \
+            ResourceType.calendar
+        # FIXME: there's no need for 'flush' to be a public method of the
+        # property store any more.  It should just be transactional like
+        # everything else; the API here would better be expressed as
+        # c.properties().participateInTxn(txn)
+        self._transaction.addOperation(c.properties().flush)
+        # FIXME: return c # maybe ?
 
     def removeCalendarWithName(self, name):
         if name.startswith(".") or name in self._removedCalendars:
@@ -315,6 +326,7 @@ class CalendarHome(LoggingMixIn):
                 trash.moveTo(childPath)
 
             return undo
+
 
     def properties(self):
         # FIXME: needs tests for actual functionality
@@ -364,7 +376,7 @@ class Calendar(LoggingMixIn):
         return (
             self.calendarObjectWithName(name)
             for name in (
-                set(self._newCalendarObjects.iterkeys()) |
+                set(self._newCalendarObjects.iterkeys()) | 
                 set(name for name in self._path.listdir() if not name.startswith("."))
             )
         )
@@ -461,10 +473,12 @@ class Calendar(LoggingMixIn):
     def calendarObjectsSinceToken(self, token):
         raise NotImplementedError()
 
+
+    @_cached
     def properties(self):
-        # FIXME: needs tests
-        # FIXME: needs implementation
-        raise NotImplementedError()
+        # FIXME: needs direct tests - only covered by calendar store tests
+        # FIXME: transactions
+        return PropertyStore(self._path)
 
 
 
@@ -492,7 +506,7 @@ class CalendarObject(LoggingMixIn):
 
     def setComponent(self, component):
         if not isinstance(component, VComponent):
-            raise TypeError(VComponent)
+            raise TypeError(type(component))
 
         try:
             if component.resourceUID() != self.uid():

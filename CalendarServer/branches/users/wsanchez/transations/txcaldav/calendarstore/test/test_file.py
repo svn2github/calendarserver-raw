@@ -25,7 +25,10 @@ from twisted.trial import unittest
 
 from twext.python.vcomponent import VComponent
 
+from twext.web2.dav import davxml
+
 from txdav.idav import IPropertyStore
+from txdav.propertystore.base import PropertyName
 
 from txcaldav.icalendarstore import ICalendarStore, ICalendarHome
 from txcaldav.icalendarstore import ICalendar, ICalendarObject
@@ -353,6 +356,20 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
         assert self.home1.calendarWithName(name) is None
         self.home1.createCalendarWithName(name)
         self.failUnless(self.home1.calendarWithName(name) is not None)
+        def checkProperties():
+            calendarProperties = self.home1.calendarWithName(name).properties()
+            self.assertEquals(
+                calendarProperties[
+                    PropertyName.fromString(davxml.ResourceType.sname())
+                ],
+                davxml.ResourceType.calendar)
+        checkProperties()
+        self.txn.commit()
+        self.home1 = self.calendarStore.newTransaction().calendarHomeWithUID(
+            "home1")
+        # Sanity check: are the properties actually persisted?
+        # FIXME: no independent testing of this right now
+        checkProperties()
 
 
     def test_createCalendarWithName_exists(self):
