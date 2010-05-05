@@ -623,10 +623,12 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         similar = super(CalDAVFile, self).createSimilarFile(path)
 
         if isCalendarCollectionResource(self):
+            similar._newStoreObject = \
+                self._newStoreCalendar.calendarObjectWithName(path.basename())
 
             # Short-circuit stat with information we know to be true at this point
             if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
-                if os.path.basename(path.path) in self.knownChildren:
+                if path.basename() in self.knownChildren:
                     path.existsCached = True
                     path.isDirCached = False
 

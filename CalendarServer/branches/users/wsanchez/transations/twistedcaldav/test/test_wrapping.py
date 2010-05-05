@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-
 """
 Tests for the interaction between model-level and protocol-level logic.
 """
@@ -24,13 +23,15 @@ from twisted.internet.defer import inlineCallbacks, returnValue
 from twistedcaldav.config import config
 from twistedcaldav.directory import augment
 from twistedcaldav.directory.calendar import uidsResourceName
-from twistedcaldav.directory.principal import \
-    DirectoryPrincipalProvisioningResource
+from twistedcaldav.directory.principal import (
+    DirectoryPrincipalProvisioningResource)
 from twistedcaldav.directory.test.test_xmlfile import augmentsFile, xmlFile
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.test.util import TestCase
 from txcaldav.calendarstore.file import CalendarStore, CalendarHome
+from txcaldav.calendarstore.test.test_file import event4_text
+from twistedcaldav.ical import Component as VComponent
 
 
 
@@ -66,6 +67,33 @@ class WrappingTests(TestCase):
         )
         self.site.resource.putChild("calendars", self.calendarCollection)
         self.site.resource.setAccessControlList(davxml.ACL())
+
+
+    def populateOneObject(self, objectName, objectText):
+        """
+        Populate one calendar object in the test user's calendar.
+
+        @param objectName: The name of a calendar object.
+        @type objectName: str
+        @param objectText: Some iCalendar text to populate it with.
+        @type objectText: str 
+        """
+        record = self.directoryService.recordWithShortName("users", "wsanchez")
+        uid = record.uid
+        # XXX there should be a more test-friendly way to ensure the directory
+        # actually exists
+        try:
+            self.calendarCollection._newStore._path.createDirectory()
+        except:
+            pass
+        txn = self.calendarCollection._newStore.newTransaction()
+        home = txn.calendarHomeWithUID(uid, True)
+        cal = home.calendarWithName("calendar")
+        if cal is None:
+            home.createCalendarWithName("calendar")
+            cal = home.calendarWithName("calendar")
+        cal.createCalendarObjectWithName(objectName, VComponent.fromString(objectText))
+        txn.commit()
 
 
     @inlineCallbacks
@@ -133,3 +161,18 @@ class WrappingTests(TestCase):
             self.assertIdentical(
                 getattr(calDavFile, "_newStoreCalendar", None), None
             )
+
+
+    @inlineCallbacks
+    def test_lookupCalendarObject(self):
+        """
+        When a L{CalDAVFile} representing an existing calendar object is looked
+        up on a L{CalDAVFile} representing a calendar collection, a parallel
+        L{CalendarObject} will be created (with a matching FilePath).
+        """
+        self.populateOneObject("1.ics", event4_text)
+        calDavFileCalendar = yield self.getResource(
+            "calendars/users/wsanchez/calendar/1.ics"
+        )
+        self.assertEquals(calDavFileCalendar._newStoreObject._path, 
+                          calDavFileCalendar.fp)
