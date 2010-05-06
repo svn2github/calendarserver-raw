@@ -252,6 +252,9 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
         This will immediately create the collection without performing any
         verification.  For the normal API, see L{CalDAVFile.createCalendar}.
+
+        @return: a L{Deferred} which fires when the underlying collection has
+            actually been created.
         """
         #
         # Create the collection once we know it is safe to do so
@@ -264,15 +267,23 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
             d1 = self.bumpSyncToken()
 
             # Calendar is initially transparent to freebusy
-            self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Transparent()))
+            self.writeDeadProperty(
+                caldavxml.ScheduleCalendarTransp(caldavxml.Transparent())
+            )
 
             # Create the index so its ready when the first PUTs come in
             d1.addCallback(lambda _: self.index().create())
             d1.addCallback(lambda _: status)
             return d1
 
-        d = self.createSpecialCollection(davxml.ResourceType.calendar)
-        d.addCallback(onCalendarCollection)
+        # d = self.createSpecialCollection(davxml.ResourceType.calendar)
+        d = succeed(responsecode.CREATED)
+        calendarName = self.fp.basename()
+        self._newStoreParentHome.createCalendarWithName(calendarName)
+        self._newStoreCalendar = self._newStoreParentHome.calendarWithName(
+            calendarName
+        )
+        # d.addCallback(onCalendarCollection)
         return d
 
     def createSpecialCollection(self, resourceType=None):
@@ -1048,6 +1059,7 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
                 path, principalCollections=self.principalCollections()
             )
             similar.clientNotifier = self.clientNotifier
+            similar._newStoreParentHome = self._newStoreCalendarHome
             similar._newStoreCalendar = (
                 self._newStoreCalendarHome.calendarWithName(
                     similar.fp.basename()

@@ -136,13 +136,28 @@ class WrappingTests(TestCase):
 
 
     @inlineCallbacks
-    def test_lookupCalendar(self):
+    def test_lookupExistingCalendar(self):
         """
-        When a L{CalDAVFile} representing a calendar collection is looked up in
-        a L{CalendarHomeFile} representing a calendar home, it will create a
-        corresponding L{Calendar} via C{CalendarHome.calendarWithName}.
+        When a L{CalDAVFile} representing an existing calendar collection is
+        looked up in a L{CalendarHomeFile} representing a calendar home, it will
+        create a corresponding L{Calendar} via C{CalendarHome.calendarWithName}.
         """
         calDavFile = yield self.getResource("calendars/users/wsanchez/calendar")
+        self.assertEquals(calDavFile.fp, calDavFile._newStoreCalendar._path)
+
+
+    @inlineCallbacks
+    def test_lookupNewCalendar(self):
+        """
+        When a L{CalDAVFile} which represents a not-yet-created calendar
+        collection is looked up in a L{CalendarHomeFile} representing a calendar
+        home, it will initially have a new storage backend set to C{None}, but
+        when the calendar is created via a protocol action, the backend will be
+        initialized to match.
+        """
+        calDavFile = yield self.getResource("calendars/users/wsanchez/frobozz")
+        self.assertIdentical(calDavFile._newStoreCalendar, None)
+        calDavFile.createCalendarCollection()
         self.assertEquals(calDavFile.fp, calDavFile._newStoreCalendar._path)
 
 
