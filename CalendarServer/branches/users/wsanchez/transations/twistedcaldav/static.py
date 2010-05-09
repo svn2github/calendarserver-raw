@@ -650,7 +650,9 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
         if isCalendarCollectionResource(self):
             similar._newStoreObject = \
-                self._newStoreCalendar.calendarObjectWithName(path.basename())
+                self._newStoreCalendar.calendarObjectWithName(
+                    similar.fp.basename()
+                )
 
             # Short-circuit stat with information we know to be true at this point
             if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
@@ -853,15 +855,26 @@ class AutoProvisioningFileMixIn (LinkFollowerMixIn, AutoProvisioningResourceMixI
             super(AutoProvisioningFileMixIn, self)._initTypeAndEncoding()
 
 
-class CalendarHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeProvisioningResource, DAVFile):
+class CalendarHomeProvisioningFile(AutoProvisioningFileMixIn, 
+                                   DirectoryCalendarHomeProvisioningResource,
+                                   DAVFile):
     """
     Resource which provisions calendar home collections as needed.
     """
+
     def __init__(self, path, directory, url):
         """
-        @param path: the path to the file which will back the resource.
+        Initialize this L{CalendarHomeProvisioningFile}.
+
+        @param path: the path to the filesystem directory which will back the
+            resource.
+
+        @type path: L{FilePath}
+
         @param directory: an L{IDirectoryService} to provision calendars from.
-        @param url: the canonical URL for the resource.
+
+        @param url: the canonical URL for this L{CalendarHomeProvisioningFile} 
+            resource.
         """
         DAVFile.__init__(self, path)
         DirectoryCalendarHomeProvisioningResource.__init__(self, directory, url)
