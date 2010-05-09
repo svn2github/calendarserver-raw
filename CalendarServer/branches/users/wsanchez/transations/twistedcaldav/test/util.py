@@ -15,6 +15,9 @@
 ##
 
 from __future__ import with_statement
+from twistedcaldav.directory.xmlfile import XMLDirectoryService
+from twistedcaldav.directory import augment
+from twext.python.filepath import CachingFilePath as FilePath
 
 __all__ = [
     "featureUnimplemented",
@@ -33,6 +36,7 @@ from twisted.internet.error import ProcessDone
 from twisted.internet.protocol import ProcessProtocol
 
 from twext.python.memcacheclient import ClientFactory
+from twext.python.filepath import CachingFilePath as FilePath
 import twext.web2.dav.test.util
 from twext.web2.http import HTTPError, StatusResponse
 
@@ -50,8 +54,33 @@ featureUnimplemented = lambda f: _todo(f, "Feature unimplemented")
 testUnimplemented = lambda f: _todo(f, "Test unimplemented")
 todo = lambda why: lambda f: _todo(f, why)
 
+dirTest = FilePath(__file__).parent().sibling("directory").child("test")
+
+xmlFile = dirTest.child("accounts.xml")
+augmentsFile = dirTest.child("augments.xml")
+proxiesFile = dirTest.sibling("proxies.xml")
+
 class TestCase(twext.web2.dav.test.util.TestCase):
     resource_class = CalDAVFile
+
+    def createStockDirectoryService(self):
+        """
+        Create a stock C{directoryService} attribute and assign it.
+        """
+        self.xmlFile = FilePath(config.DataRoot).child("accounts.xml")
+        self.xmlFile.setContent(xmlFile.getContent())
+
+        # *temporarily* set up an augment service so this directory service will
+        # work.
+        self.patch(augment, "AugmentService", augment.AugmentXMLDB(
+                xmlFiles=(augmentsFile.path,)
+            )
+        )
+
+        self.directoryService = XMLDirectoryService(
+            {'xmlFile' : "accounts.xml"}
+        )
+
 
     def setUp(self):
         super(TestCase, self).setUp()
