@@ -48,13 +48,10 @@ class WrappingTests(TestCase):
         # should probably be refactored, perhaps even to call (some part of) the
         # actual root-resource construction logic?
         super(WrappingTests, self).setUp()
+
         # Setup the initial directory
-        self.xmlFile = FilePath(config.DataRoot).child("accounts.xml")
-        self.xmlFile.setContent(xmlFile.getContent())
-        self.directoryService = XMLDirectoryService({'xmlFile' :
-                                                     "accounts.xml"})
-        augment.AugmentService = augment.AugmentXMLDB(
-            xmlFiles=(augmentsFile.path,))
+        self.createStockDirectoryService()
+
         # Set up a principals hierarchy for each service we're testing with
         provisioningResource = DirectoryPrincipalProvisioningResource(
             "/principals/", self.directoryService
