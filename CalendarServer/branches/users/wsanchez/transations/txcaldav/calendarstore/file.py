@@ -16,6 +16,7 @@
 ##
 from twext.web2.dav.element.rfc2518 import ResourceType
 from txdav.propertystore.base import PropertyName
+from twistedcaldav.caldavxml import ScheduleCalendarTransp, Transparent
 
 """
 File calendar store.
@@ -151,6 +152,7 @@ class Transaction(LoggingMixIn):
         """
         self.calendarStore = calendarStore
         self.aborted = False
+        self.committed = False
         self._operations = []
         self._calendarHomes = {}
 
@@ -159,11 +161,19 @@ class Transaction(LoggingMixIn):
         self._operations.append(operation)
 
     def abort(self):
+        if self.aborted:
+            raise RuntimeError("already aborted")
+        if self.committed:
+            raise RuntimeError("already committed")
         self.aborted = True
 
     def commit(self):
-        assert not self.aborted
+        if self.aborted:
+            raise RuntimeError("already aborted")
+        if self.committed:
+            raise RuntimeError("already committed")
 
+        self.committed = True
         undos = []
 
         for operation in self._operations:
@@ -235,6 +245,10 @@ class CalendarHome(LoggingMixIn):
 
     def uid(self):
         return self._path.basename()
+    
+    
+    def _updateSyncToken(self, reset=False):
+        "Stub for updating sync token."
 
     def calendars(self):
         return set(self._newCalendars.itervalues()) | set(
@@ -268,9 +282,12 @@ class CalendarHome(LoggingMixIn):
         if name not in self._removedCalendars and childPath.isdir():
             raise CalendarAlreadyExistsError(name)
 
+        c = self._newCalendars[name] = Calendar(childPath, self)
         def do():
             try:
                 childPath.createDirectory()
+                # FIXME: direct tests, undo for index creation
+                Index(c)._oldIndex.create()
 
                 # Return undo
                 return lambda: childPath.remove()
@@ -280,9 +297,14 @@ class CalendarHome(LoggingMixIn):
                 raise
 
         self._transaction.addOperation(do)
-        c = self._newCalendars[name] = Calendar(self._path.child(name), self)
-        c.properties()[PropertyName.fromString(ResourceType.sname())] = \
-            ResourceType.calendar
+        props = c.properties()
+        PN = PropertyName.fromString
+        CalendarType = ResourceType.calendar #@UndefinedVariable
+        props[PN(ResourceType.sname())] = CalendarType
+
+        # Calendars are initially transparent to freebusy.  FIXME: freebusy
+        # needs more structured support than this.
+        props[PN(ScheduleCalendarTransp.sname())] = Transparent()
         # FIXME: there's no need for 'flush' to be a public method of the
         # property store any more.  It should just be transactional like
         # everything else; the API here would better be expressed as
@@ -376,7 +398,7 @@ class Calendar(LoggingMixIn):
         return (
             self.calendarObjectWithName(name)
             for name in (
-                set(self._newCalendarObjects.iterkeys()) | 
+                set(self._newCalendarObjects.iterkeys()) |
                 set(name for name in self._path.listdir() if not name.startswith("."))
             )
         )
@@ -603,7 +625,6 @@ class CalendarObject(LoggingMixIn):
         return self.component().getOrganizer()
 
     def properties(self):
-        raise NotImplementedError()
         if not hasattr(self, "_properties"):
             self._properties = PropertyStore(self._path)
         return self._properties
@@ -641,7 +662,13 @@ class Index (object):
                 return None
 
         def bumpSyncToken(self, reset=False):
+            # FIXME: needs direct tests
             return self.calendar._updateSyncToken(reset)
+
+
+        def initSyncToken(self):
+            # FIXME: needs direct tests
+            self.bumpSyncToken(True)
 
 
     def __init__(self, calendar):

@@ -17,21 +17,22 @@
 Tests for the interaction between model-level and protocol-level logic.
 """
 
+from twisted.internet.defer import inlineCallbacks, returnValue
+
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2.dav import davxml
-from twisted.internet.defer import inlineCallbacks, returnValue
-from twistedcaldav.config import config
-from twistedcaldav.directory import augment
+
 from twistedcaldav.directory.calendar import uidsResourceName
 from twistedcaldav.directory.principal import (
     DirectoryPrincipalProvisioningResource)
-from twistedcaldav.directory.test.test_xmlfile import augmentsFile, xmlFile
-from twistedcaldav.directory.xmlfile import XMLDirectoryService
+from twistedcaldav.ical import Component as VComponent
+
 from twistedcaldav.static import CalendarHomeProvisioningFile
+
 from twistedcaldav.test.util import TestCase
+
 from txcaldav.calendarstore.file import CalendarStore, CalendarHome
 from txcaldav.calendarstore.test.test_file import event4_text
-from twistedcaldav.ical import Component as VComponent
 
 
 
@@ -52,11 +53,6 @@ class WrappingTests(TestCase):
         # Setup the initial directory
         self.createStockDirectoryService()
 
-        # Set up a principals hierarchy for each service we're testing with
-        provisioningResource = DirectoryPrincipalProvisioningResource(
-            "/principals/", self.directoryService
-        )
-        self.site.resource.putChild("principals", provisioningResource)
         calendarsPath = FilePath(self.docroot).child("calendars")
         calendarsPath.makedirs()
         self.calendarCollection = CalendarHomeProvisioningFile(

@@ -110,6 +110,7 @@ from twistedcaldav.notifications import NotificationCollectionResource,\
     NotificationResource
 
 from txcaldav.calendarstore.file import CalendarStore
+from txdav.propertystore.base import PropertyName
 
 log = Logger()
 
@@ -126,6 +127,70 @@ class ReadOnlyResourceMixIn(object):
             responsecode.FORBIDDEN,
             (caldav_namespace, "calendar-collection-location-ok")
         )
+
+
+class _NewStorePropertiesWrapper(object):
+    """
+    Wrap a new-style property store (a L{txdav.idav.IPropertyStore}) in the old-
+    style interface for compatibility with existing code.
+    """
+    
+    def __init__(self, newPropertyStore):
+        """
+        Initialize an old-style property store from a new one.
+
+        @param newPropertyStore: the new-style property store.
+        @type newPropertyStore: L{txdav.idav.IPropertyStore}
+        """
+        self._newPropertyStore = newPropertyStore
+
+    @classmethod
+    def _convertKey(cls, qname):
+        namespace, name = qname
+        return PropertyName(namespace, name)
+
+
+    # FIXME 'uid' here should be verifying something.
+    def get(self, qname, uid=None):
+        """
+        
+        """
+        try:
+            return self._newPropertyStore[self._convertKey(qname)]
+        except KeyError:
+            raise HTTPError(StatusResponse(
+                    responsecode.NOT_FOUND,
+                    "No such property: {%s}%s" % qname))
+
+
+    def set(self, property, uid=None):
+        """
+        
+        """
+        self._newPropertyStore[self._convertKey(property.qname())] = property
+
+
+    def delete(self, qname, uid=None):
+        """
+        
+        """
+        del self._newPropertyStore[self._convertKey(qname)]
+
+
+    def contains(self, qname, uid=None, cache=True):
+        """
+        
+        """
+        return (self._convertKey(qname) in self._newPropertyStore)
+
+
+    def list(self, uid=None, filterByUID=True, cache=True):
+        """
+        
+        """
+        return [(pname.namespace, pname.name) for pname in 
+                self._newPropertyStore.keys()]
+
 
 class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
     """
@@ -189,12 +254,15 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
     def deadProperties(self, caching=True):
         if not hasattr(self, "_dead_properties"):
+            # FIXME: this code should actually be dead, as the property store
+            # should be initialized as part of the traversal process.
+ 
             # Get the property store from super
             deadProperties = super(CalDAVFile, self).deadProperties()
 
             if caching:
                 # Wrap the property store in a memory store
-                deadProperties = CachingPropertyStore(deadProperties)
+                 deadProperties = CachingPropertyStore(deadProperties)
 
             self._dead_properties = deadProperties
 
@@ -256,26 +324,6 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         @return: a L{Deferred} which fires when the underlying collection has
             actually been created.
         """
-        #
-        # Create the collection once we know it is safe to do so
-        #
-        def onCalendarCollection(status):
-            if status != responsecode.CREATED:
-                raise HTTPError(status)
-
-            # Initialize CTag on the calendar collection
-            d1 = self.bumpSyncToken()
-
-            # Calendar is initially transparent to freebusy
-            self.writeDeadProperty(
-                caldavxml.ScheduleCalendarTransp(caldavxml.Transparent())
-            )
-
-            # Create the index so its ready when the first PUTs come in
-            d1.addCallback(lambda _: self.index().create())
-            d1.addCallback(lambda _: status)
-            return d1
-
         # d = self.createSpecialCollection(davxml.ResourceType.calendar)
         d = succeed(responsecode.CREATED)
         calendarName = self.fp.basename()
@@ -283,8 +331,18 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         self._newStoreCalendar = self._newStoreParentHome.calendarWithName(
             calendarName
         )
-        # d.addCallback(onCalendarCollection)
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreCalendar.properties()
+        )
         return d
+
+
+    def isCollection(self):
+        if getattr(self, "_newStoreCalendar", None) is not None:
+            # FIXME: this should really be represented by a separate class
+            return True
+        return super(CalDAVFile, self).isCollection()
+
 
     def createSpecialCollection(self, resourceType=None):
         #
@@ -653,6 +711,13 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
                 self._newStoreCalendar.calendarObjectWithName(
                     similar.fp.basename()
                 )
+            if similar._newStoreObject is not None:
+                # FIXME: what about creation in http_PUT?
+                similar._dead_properties = _NewStorePropertiesWrapper(
+                    similar._newStoreObject.properties()
+                )
+            # FIXME: tests should fail without this:
+            # self.propagateTransaction(similar)
 
             # Short-circuit stat with information we know to be true at this point
             if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
@@ -1022,11 +1087,12 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         self.clientNotifier = ClientNotifier(self)
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
+        txn = self.parent.parent._newStore.newTransaction()
         self._newStoreCalendarHome = (
-            self.parent.parent._newStore.newTransaction()
-            .calendarHomeWithUID(self.record.uid,
-                                 create=True)
+            txn.calendarHomeWithUID(self.record.uid, create=True)
         )
+        self.associateWithTransaction(txn)
+
 
     def provision(self):
         result = super(CalendarHomeFile, self).provision()
@@ -1078,6 +1144,11 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
                     similar.fp.basename()
                 )
             )
+            if similar._newStoreCalendar is not None:
+                similar._dead_properties = _NewStorePropertiesWrapper(
+                    similar._newStoreCalendar.properties()
+                )
+            self.propagateTransaction(similar)
             return similar
 
     def getChild(self, name):

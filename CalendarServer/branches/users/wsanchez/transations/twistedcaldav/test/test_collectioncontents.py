@@ -30,34 +30,29 @@ from twistedcaldav.memcacher import Memcacher
 from twistedcaldav.method.put_common import StoreCalendarObjectResource
 
 
-import twistedcaldav.test.util
-from twistedcaldav.static import CalendarHomeUIDProvisioningFile,\
-    CalendarHomeProvisioningFile
-from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
-from twext.web2.dav import davxml
+from twistedcaldav.test.util import HomeTestCase
 
-class CollectionContents (twistedcaldav.test.util.TestCase):
+class CollectionContents(HomeTestCase):
     """
     PUT request
     """
     data_dir = FilePath(__file__).sibling("data").path
 
     def setUp(self):
-
         # Need to fake out memcache
         def _getFakeMemcacheProtocol(self):
-
             result = super(MemcacheLock, self)._getMemcacheProtocol()
             if isinstance(result, Memcacher.nullCacher):
                 result = self._memcacheProtocol = Memcacher.memoryCacher()
-
             return result
 
-        MemcacheLock._getMemcacheProtocol = _getFakeMemcacheProtocol
+        self.patch(MemcacheLock, "_getMemcacheProtocol", 
+                   _getFakeMemcacheProtocol)
 
         # Need to not do implicit behavior during these tests
         def _fakeDoImplicitScheduling(self):
             return False, False, False
+
         self.patch(StoreCalendarObjectResource , "doImplicitScheduling",
                    _fakeDoImplicitScheduling)
 
@@ -65,35 +60,6 @@ class CollectionContents (twistedcaldav.test.util.TestCase):
         # FIXME: there should be a centralized way of saying 'make this look
         # like a calendar home'
         super(CollectionContents, self).setUp()
-
-        fp = FilePath(self.mktemp())
-
-        self.createStockDirectoryService()
-
-        # FIXME: see FIXME in DirectoryPrincipalProvisioningResource.__init__;
-        # this performs a necessary modification to the directory service
-        # object.
-        DirectoryPrincipalProvisioningResource(
-            "/principals/", self.directoryService
-        )
-        provFile = CalendarHomeProvisioningFile(fp, self.directoryService, "/")
-
-        users = provFile.getChild("users")
-        user = users.getChild("wsanchez")
-
-        # Fix the site to point directly at the user's calendar home so that we
-        # can focus on testing just that rather than hierarchy traversal..
-        self.site.resource = user
-
-        # Fix the docroot so that 'mkdtemp' will create directories in the right
-        # place (beneath the calendar).
-        self.docroot = user.fp.path
-
-        # Force the request to succeed regardless of the implementation of
-        # accessControlList.
-        user.accessControlList = lambda request, *a, **k: succeed(
-            self.grantInherit(davxml.All())
-        ) 
 
 
     def test_collection_in_calendar(self):

@@ -156,6 +156,22 @@ class ICalendarStoreTransaction(ITransaction):
         home exists.
         """
 
+
+    def abort():
+        """
+        Mark this transaction as invalid, reversing all of its effects.
+        """
+        # FIXME: probably needs to be deferred.
+
+
+    def commit():
+        """
+        Persist the effects of this transaction.
+        """
+        # FIXME: probably needs to be deferred.
+
+
+
 class ICalendarHome(Interface):
     """
     Calendar home

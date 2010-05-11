@@ -110,9 +110,4 @@ def http_MKCALENDAR(self, request):
             errors.error()
             raise HTTPError(MultiStatusResponse([errors.response()]))
 
-    # FIXME: this should really be handled by higher-level machinery.  Even
-    # forgetting the obvious abstraction violation, there's no clear way to
-    # ensure that the rollback will be called at all the appropriate times if
-    # it's the responsibility of each method.  A response-filter, maybe?
-    self._newStoreCalendar._transaction.commit()
     returnValue(responsecode.CREATED)

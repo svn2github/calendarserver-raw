@@ -38,7 +38,7 @@ from twext.web2.dav.davxml import SyncCollection
 from twext.web2.dav.http import ErrorResponse
 
 from twisted.internet import reactor
-from twisted.internet.defer import Deferred, succeed
+from twisted.internet.defer import Deferred, succeed, maybeDeferred
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
@@ -151,6 +151,54 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
             return d
 
         return super(CalDAVResource, self).render(request)
+
+
+    _associatedTransaction = None
+
+    def associateWithTransaction(self, transaction):
+        """
+        Associate this resource with a L{txcaldav.idav.ITransaction}; when this
+        resource (or any of its children) are rendered successfully, commit the
+        transaction.  Otherwise, abort the transaction.
+
+        @param transaction: the transaction to associate this resource and its
+            children with.
+
+        @type transaction: L{txcaldav.idav.ITransaction} 
+        """
+        # FIXME: needs to reject association with transaction if it's already
+        # got one (resources associated with a transaction are not reusable)
+        self._associatedTransaction = transaction
+
+
+    def propagateTransaction(self, otherResource):
+        """
+        Propagate the transaction associated with this resource to another
+        resource (which should ostensibly be a child resource).
+
+        @param otherResource: Another L{CalDAVResource}, usually one being
+            constructed as a child of this one.
+
+        @type otherResource: L{CalDAVResource} (or a subclass thereof)
+        """
+        otherResource.associateWithTransaction(self._associatedTransaction)
+
+
+    def renderHTTP(self, request):
+        """
+        Override C{renderHTTP} to commit the transaction when the resource is
+        successfully rendered.
+
+        @param request: the request to generate a response for.
+        @type request: L{twext.web2.iweb.IRequest}
+        """
+        d = maybeDeferred(super(CalDAVResource, self).renderHTTP, request)
+        def succeeded(result):
+            if self._associatedTransaction is not None:
+                self._associatedTransaction.commit()
+            return result
+        # FIXME: needs a failure handler
+        return d.addCallback(succeeded)
 
 
     ##

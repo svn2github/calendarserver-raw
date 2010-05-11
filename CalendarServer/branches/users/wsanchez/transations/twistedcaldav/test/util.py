@@ -15,9 +15,7 @@
 ##
 
 from __future__ import with_statement
-from twistedcaldav.directory.xmlfile import XMLDirectoryService
-from twistedcaldav.directory import augment
-from twext.python.filepath import CachingFilePath as FilePath
+from twext.web2.dav import davxml
 
 __all__ = [
     "featureUnimplemented",
@@ -42,7 +40,11 @@ from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav import memcacher
 from twistedcaldav.config import config
-from twistedcaldav.static import CalDAVFile
+from twistedcaldav.static import CalDAVFile, CalendarHomeProvisioningFile
+from twistedcaldav.directory.xmlfile import XMLDirectoryService
+from twistedcaldav.directory import augment
+from twistedcaldav.directory.principal import (
+    DirectoryPrincipalProvisioningResource)
 
 DelayedCall.debug = True
 
@@ -79,6 +81,13 @@ class TestCase(twext.web2.dav.test.util.TestCase):
 
         self.directoryService = XMLDirectoryService(
             {'xmlFile' : "accounts.xml"}
+        )
+
+        # FIXME: see FIXME in DirectoryPrincipalProvisioningResource.__init__;
+        # this performs a necessary modification to the directory service
+        # object for it to be fully functional.
+        self.principalsResource = DirectoryPrincipalProvisioningResource(
+            "/principals/", self.directoryService
         )
 
 
@@ -237,6 +246,65 @@ class TestCase(twext.web2.dav.test.util.TestCase):
             return True
 
         return verifyChildren(root, structure)
+
+
+
+class HomeTestCase(TestCase):
+    """
+    Utility class for tests which wish to interact with a calendar home rather
+    than a top-level resource hierarchy.
+    """
+
+    def setUp(self):
+        """
+        Replace self.site.resource with an appropriately provisioned
+        CalendarHomeFile, and replace self.docroot with a path pointing at that
+        file.
+        """
+        super(HomeTestCase, self).setUp()
+
+        fp = FilePath(self.mktemp())
+
+        self.createStockDirectoryService()
+
+        self.homeProvisioner = CalendarHomeProvisioningFile(
+            fp, self.directoryService, "/"
+        )
+        self._refreshRoot()
+
+
+    def _refreshRoot(self):
+        """
+        Refresh the user resource positioned at the root of this site, to give
+        it a new transaction.
+        """
+        users = self.homeProvisioner.getChild("users")
+        user = users.getChild("wsanchez")
+
+        # Force the request to succeed regardless of the implementation of
+        # accessControlList.
+        user.accessControlList = lambda request, *a, **k: succeed(
+            self.grantInherit(davxml.All())
+        )
+
+        # Fix the site to point directly at the user's calendar home so that we
+        # can focus on testing just that rather than hierarchy traversal..
+        self.site.resource = user
+
+        # Fix the docroot so that 'mkdtemp' will create directories in the right
+        # place (beneath the calendar).
+        self.docroot = user.fp.path
+
+
+    def send(self, request, callback):
+        """
+        Override C{send} in order to refresh the 'user' resource each time, to
+        get a new transaction to associate with the calendar home.
+        """
+        self._refreshRoot()
+        return super(HomeTestCase, self).send(request, callback)
+
+
 
 
 class InMemoryPropertyStore(object):
