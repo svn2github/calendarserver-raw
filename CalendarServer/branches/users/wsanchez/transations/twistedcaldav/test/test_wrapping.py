@@ -19,15 +19,8 @@ Tests for the interaction between model-level and protocol-level logic.
 
 from twisted.internet.defer import inlineCallbacks, returnValue
 
-from twext.python.filepath import CachingFilePath as FilePath
-from twext.web2.dav import davxml
-
 from twistedcaldav.directory.calendar import uidsResourceName
-from twistedcaldav.directory.principal import (
-    DirectoryPrincipalProvisioningResource)
 from twistedcaldav.ical import Component as VComponent
-
-from twistedcaldav.static import CalendarHomeProvisioningFile
 
 from twistedcaldav.test.util import TestCase
 
@@ -52,14 +45,7 @@ class WrappingTests(TestCase):
 
         # Setup the initial directory
         self.createStockDirectoryService()
-
-        calendarsPath = FilePath(self.docroot).child("calendars")
-        calendarsPath.makedirs()
-        self.calendarCollection = CalendarHomeProvisioningFile(
-            calendarsPath, self.directoryService, "/calendars/"
-        )
-        self.site.resource.putChild("calendars", self.calendarCollection)
-        self.site.resource.setAccessControlList(davxml.ACL())
+        self.setupCalendars()
 
 
     def populateOneObject(self, objectName, objectText):

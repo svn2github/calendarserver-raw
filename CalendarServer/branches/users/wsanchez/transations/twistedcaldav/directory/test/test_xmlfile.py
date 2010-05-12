@@ -14,15 +14,13 @@
 # limitations under the License.
 ##
 
-import os
-
 from twext.python.filepath import CachingFilePath as FilePath
 
 from twistedcaldav.directory import augment
 from twistedcaldav.directory.directory import DirectoryService
 import twistedcaldav.directory.test.util
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
-from twistedcaldav.test.util import TestCase, xmlFile, augmentsFile, proxiesFile
+from twistedcaldav.test.util import TestCase, xmlFile, augmentsFile
 
 # FIXME: Add tests for GUID hooey, once we figure out what that means here
 
@@ -100,7 +98,8 @@ class XMLFile (
     """
     def service(self):
         directory = XMLDirectoryService({'xmlFile' : self.xmlFile()}, alwaysStat=True)
-        augment.AugmentService = augment.AugmentXMLDB(xmlFiles=(self.augmentsFile().path,))
+        self.patch(augment, "AugmentService",
+                   augment.AugmentXMLDB(xmlFiles=(self.augmentsFile().path,)))
         return directory
 
     def test_changedXML(self):

@@ -91,6 +91,21 @@ class TestCase(twext.web2.dav.test.util.TestCase):
         )
 
 
+    def setupCalendars(self):
+        """
+        Set up the resource at /calendars (a L{CalendarHomeProvisioningFile}),
+        and assign it as C{self.calendarCollection}.
+        """
+        path = self.site.resource.fp.child("calendars")
+        path.createDirectory()
+        self.calendarCollection = CalendarHomeProvisioningFile(
+            path,
+            self.directoryService,
+            "/calendars/"
+        )
+        self.site.resource.putChild("calendars", self.calendarCollection)
+
+
     def setUp(self):
         super(TestCase, self).setUp()
 
