@@ -1,3 +1,4 @@
+# -*- test-case-name: txcaldav.calendarstore.test.test_file -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -13,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twext.web2.dav.element.rfc2518 import ResourceType
+from txdav.propertystore.base import PropertyName
+from twistedcaldav.caldavxml import ScheduleCalendarTransp, Transparent
 
 """
 File calendar store.
@@ -29,7 +33,6 @@ import errno
 
 from zope.interface import implements
 
-from twext.python.filepath import CachingFilePath as FilePath
 from twisted.internet.defer import inlineCallbacks
 
 from twext.python.log import LoggingMixIn
@@ -38,6 +41,7 @@ from twext.python.vcomponent import InvalidICalendarDataError
 
 from txdav.propertystore.xattr import PropertyStore
 
+from txcaldav.icalendarstore import ICalendarStoreTransaction
 from txcaldav.icalendarstore import ICalendarStore, ICalendarHome
 from txcaldav.icalendarstore import ICalendar, ICalendarObject
 from txcaldav.icalendarstore import CalendarNameNotAllowedError
@@ -53,71 +57,217 @@ from txcaldav.icalendarstore import InternalDataStoreError
 from twistedcaldav.index import Index as OldIndex
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 
+def _isValidName(name):
+    """
+    Determine if the given string is a valid name.  i.e. does it conflict with
+    any of the other entities which may be on the filesystem?
+
+    @param name: a name which might be given to a calendar.
+    """
+    return not name.startswith(".")
+
+
+_unset = object()
+
+class _cached(object):
+    """
+    This object is a decorator for a 0-argument method which should be called
+    only once, and its result cached so that future invocations just return the
+    same result without calling the underlying method again.
+
+    @ivar thunk: the function to call to generate a cached value.
+    """
+
+    def __init__(self, thunk):
+        self.thunk = thunk
+
+
+    def __get__(self, oself, owner):
+        def inner():
+            cacheKey = "_" + self.thunk.__name__ + "_cached"
+            cached = getattr(oself, cacheKey, _unset)
+            if cached is _unset:
+                value = self.thunk(oself)
+                setattr(oself, cacheKey, value)
+                return value
+            else:
+                return cached
+        return inner
+
+
 
 class CalendarStore(LoggingMixIn):
-    implements(ICalendarStore)
+    """
+    An implementation of L{ICalendarObject} backed by a
+    L{twext.python.filepath.CachingFilePath}.
 
-    calendarHomeClass = property(lambda _: CalendarHome)
+    @ivar _path: A L{CachingFilePath} referencing a directory on disk that
+        stores all calendar data for a group of uids.
+    """
+    implements(ICalendarStore)
 
     def __init__(self, path):
         """
-        @param path: a L{FilePath}
+        Create a calendar store.
+
+        @param path: a L{FilePath} pointing at a directory on disk.
         """
-        assert isinstance(path, FilePath)
+        self._path = path
 
-        self.path = path
-
-        if not path.isdir():
+#        if not path.isdir():
             # FIXME: Add CalendarStoreNotFoundError?
-            raise NotFoundError("No such calendar store")
+#            raise NotFoundError("No such calendar store")
 
     def __repr__(self):
-        return "<%s: %s>" % (self.__class__.__name__, self.path.path)
+        return "<%s: %s>" % (self.__class__.__name__, self._path.path)
+
+    def newTransaction(self):
+        """
+        Create a new filesystem-based transaction.
+
+        @see Transaction
+        """
+        return Transaction(self)
+
+
+
+class Transaction(LoggingMixIn):
+    """
+    In-memory implementation of
+
+    Note that this provides basic 'undo' support, but not truly transactional
+    operations.
+    """
+
+    implements(ICalendarStoreTransaction)
+
+    def __init__(self, calendarStore):
+        """
+        Initialize a transaction; do not call this directly, instead call
+        L{CalendarStore.newTransaction}.
+
+        @param calendarStore: The store that created this transaction.
+
+        @type calendarStore: L{CalendarStore}
+        """
+        self.calendarStore = calendarStore
+        self.aborted = False
+        self.committed = False
+        self._operations = []
+        self._calendarHomes = {}
+
+
+    def addOperation(self, operation):
+        self._operations.append(operation)
+
+    def abort(self):
+        if self.aborted:
+            raise RuntimeError("already aborted")
+        if self.committed:
+            raise RuntimeError("already committed")
+        self.aborted = True
+
+    def commit(self):
+        if self.aborted:
+            raise RuntimeError("already aborted")
+        if self.committed:
+            raise RuntimeError("already committed")
+
+        self.committed = True
+        undos = []
+
+        for operation in self._operations:
+            try:
+                undo = operation()
+                if undo is not None:
+                    undos.append(undo)
+            except Exception, e:
+                for undo in undos:
+                    try:
+                        undo()
+                    except Exception, e:
+                        self.log_error("Exception while undoing transaction: %s" % (e,))
+                raise
 
     def calendarHomeWithUID(self, uid, create=False):
+        if (uid, self) in self._calendarHomes:
+            return self._calendarHomes[(uid, self)]
+
         if uid.startswith("."):
             return None
 
         assert len(uid) >= 4
 
-        childPath = self.path.child(uid[0:2]).child(uid[2:4]).child(uid)
+        childPath1 = self.calendarStore._path.child(uid[0:2])
+        childPath2 = childPath1.child(uid[2:4])
+        childPath3 = childPath2.child(uid)
 
-        if not childPath.isdir():
-            if create:
-                childPath.makedirs()
-            else:
-                return None
+        def do():
+            def createDirectory(path):
+                try:
+                    path.createDirectory()
+                except (IOError, OSError), e:
+                    if e.errno != errno.EEXIST:
+                        # Ignore, in case someone else created the
+                        # directory while we were trying to as well.
+                        raise
 
-        return CalendarHome(childPath, self)
+            if not childPath3.isdir():
+                if not childPath2.isdir():
+                    if not childPath1.isdir():
+                        createDirectory(childPath1)
+                    createDirectory(childPath2)
+                createDirectory(childPath3)
+
+        if create:
+            self.addOperation(do)
+        elif not childPath3.isdir():
+            return None
+
+        calendarHome = CalendarHome(childPath3, self.calendarStore, self)
+        self._calendarHomes[(uid, self)] = calendarHome
+        return calendarHome
+
 
 
 class CalendarHome(LoggingMixIn):
     implements(ICalendarHome)
 
-    calendarClass = property(lambda _: Calendar)
-
-    def __init__(self, path, calendarStore):
-        self.path = path
+    def __init__(self, path, calendarStore, transaction):
+        self._path = path
         self.calendarStore = calendarStore
+        self._transaction = transaction
+        self._newCalendars = {}
+        self._removedCalendars = set()
 
     def __repr__(self):
-        return "<%s: %s>" % (self.__class__.__name__, self.path)
+        return "<%s: %s>" % (self.__class__.__name__, self._path)
 
     def uid(self):
-        return self.path.basename()
+        return self._path.basename()
+    
+    
+    def _updateSyncToken(self, reset=False):
+        "Stub for updating sync token."
 
     def calendars(self):
-        return (
+        return set(self._newCalendars.itervalues()) | set(
             self.calendarWithName(name)
-            for name in self.path.listdir()
+            for name in self._path.listdir()
             if not name.startswith(".")
         )
 
     def calendarWithName(self, name):
+        calendar = self._newCalendars.get(name)
+        if calendar is not None:
+            return calendar
+        if name in self._removedCalendars:
+            return None
+
         if name.startswith("."):
             return None
 
-        childPath = self.path.child(name)
+        childPath = self._path.child(name)
         if childPath.isdir():
             return Calendar(childPath, self)
         else:
@@ -127,101 +277,189 @@ class CalendarHome(LoggingMixIn):
         if name.startswith("."):
             raise CalendarNameNotAllowedError(name)
 
-        childPath = self.path.child(name)
+        childPath = self._path.child(name)
 
-        try:
-            childPath.createDirectory()
-        except (IOError, OSError), e:
-            if e.errno == errno.EEXIST:
-                raise CalendarAlreadyExistsError(name)
-            raise
+        if name not in self._removedCalendars and childPath.isdir():
+            raise CalendarAlreadyExistsError(name)
+
+        c = self._newCalendars[name] = Calendar(childPath, self)
+        def do():
+            try:
+                childPath.createDirectory()
+                # FIXME: direct tests, undo for index creation
+                Index(c)._oldIndex.create()
+
+                # Return undo
+                return lambda: childPath.remove()
+            except (IOError, OSError), e:
+                if e.errno == errno.EEXIST and childPath.isdir():
+                    raise CalendarAlreadyExistsError(name)
+                raise
+
+        self._transaction.addOperation(do)
+        props = c.properties()
+        PN = PropertyName.fromString
+        CalendarType = ResourceType.calendar #@UndefinedVariable
+        props[PN(ResourceType.sname())] = CalendarType
+
+        # Calendars are initially transparent to freebusy.  FIXME: freebusy
+        # needs more structured support than this.
+        props[PN(ScheduleCalendarTransp.sname())] = Transparent()
+        # FIXME: there's no need for 'flush' to be a public method of the
+        # property store any more.  It should just be transactional like
+        # everything else; the API here would better be expressed as
+        # c.properties().participateInTxn(txn)
+        self._transaction.addOperation(c.properties().flush)
+        # FIXME: return c # maybe ?
 
     def removeCalendarWithName(self, name):
-        if name.startswith("."):
+        if name.startswith(".") or name in self._removedCalendars:
             raise NoSuchCalendarError(name)
 
-        childPath = self.path.child(name)
-        try:
-            childPath.remove()
-        except (IOError, OSError), e:
-            if e.errno == errno.ENOENT:
-                raise NoSuchCalendarError(name)
-            raise
+        self._removedCalendars.add(name)
+        childPath = self._path.child(name)
+        if name not in self._newCalendars and not childPath.isdir():
+            raise NoSuchCalendarError(name)
+
+        def do(transaction=self._transaction):
+            for i in xrange(1000):
+                trash = childPath.sibling("._del_%s_%d" % (childPath.basename(), i))
+                if not trash.exists():
+                    break
+            else:
+                raise InternalDataStoreError("Unable to create trash target for calendar at %s" % (childPath,))
+
+            try:
+                childPath.moveTo(trash)
+            except (IOError, OSError), e:
+                if e.errno == errno.ENOENT:
+                    raise NoSuchCalendarError(name)
+                raise
+
+            def cleanup():
+                try:
+                    trash.remove()
+                except Exception, e:
+                    self.log_error("Unable to delete trashed calendar at %s: %s" % (trash.fp, e))
+
+            transaction.addOperation(cleanup)
+
+            def undo():
+                trash.moveTo(childPath)
+
+            return undo
+
 
     def properties(self):
-        if not hasattr(self, "_properties"):
-            self._properties = PropertyStore(self.path)
-        return self._properties
+        # FIXME: needs tests for actual functionality
+        # FIXME: needs to be cached
+        return PropertyStore(self._path)
+
 
 
 class Calendar(LoggingMixIn):
+    """
+    File-based implementation of L{ICalendar}.
+    """
     implements(ICalendar)
 
-    calendarObjectClass = property(lambda _: CalendarObject)
-
     def __init__(self, path, calendarHome):
-        self.path = path
+        self._path = path
         self.calendarHome = calendarHome
+        self._transaction = calendarHome._transaction
+        self._newCalendarObjects = {}
+        self._cachedCalendarObjects = {}
+        self._removedCalendarObjects = set()
+
 
     def __repr__(self):
-        return "<%s: %s>" % (self.__class__.__name__, self.path.path)
+        return "<%s: %s>" % (self.__class__.__name__, self._path.path)
 
-    def index(self):
-        if not hasattr(self, "_index"):
-            self._index = Index(self)
-        return self._index
 
     def name(self):
-        return self.path.basename()
+        return self._path.basename()
+
 
     def ownerCalendarHome(self):
         return self.calendarHome
 
-    def _calendarObjects_index(self):
-        return self.index().calendarObjects()
 
-    def _calendarObjects_listdir(self):
+#    def _calendarObjects_index(self):
+#        return self.index().calendarObjects()
+#
+#    def _calendarObjects_listdir(self):
+#        return (
+#            self.calendarObjectWithName(name)
+#            for name in self.path.listdir()
+#            if not name.startswith(".")
+#        )
+
+    def calendarObjects(self):
         return (
             self.calendarObjectWithName(name)
-            for name in self.path.listdir()
-            if not name.startswith(".")
+            for name in (
+                set(self._newCalendarObjects.iterkeys()) |
+                set(name for name in self._path.listdir() if not name.startswith("."))
+            )
         )
 
-    calendarObjects = _calendarObjects_index
 
     def calendarObjectWithName(self, name):
-        childPath = self.path.child(name)
-        if childPath.isfile():
-            return CalendarObject(childPath, self)
+        if name in self._removedCalendarObjects:
+            return None
+        if name in self._newCalendarObjects:
+            return self._newCalendarObjects[name]
+        if name in self._cachedCalendarObjects:
+            return self._cachedCalendarObjects[name]
+
+
+        calendarObjectPath = self._path.child(name)
+        if calendarObjectPath.isfile():
+            obj = CalendarObject(calendarObjectPath, self)
+            self._cachedCalendarObjects[name] = obj
+            return obj
         else:
             return None
 
+
     def calendarObjectWithUID(self, uid):
-        raise NotImplementedError()
+        # FIXME: This _really_ needs to be inspecting an index, not parsing
+        # every resource.
+        for calendarObjectPath in self._path.children():
+            if not _isValidName(calendarObjectPath.basename()):
+                continue
+            obj = CalendarObject(calendarObjectPath, self)
+            if obj.component().resourceUID() == uid:
+                return obj
+
 
     def createCalendarObjectWithName(self, name, component):
         if name.startswith("."):
             raise CalendarObjectNameNotAllowedError(name)
 
-        childPath = self.path.child(name)
-        if childPath.exists():
+        calendarObjectPath = self._path.child(name)
+        if calendarObjectPath.exists():
             raise CalendarObjectNameAlreadyExistsError(name)
 
-        calendarObject = CalendarObject(childPath, self)
+        calendarObject = CalendarObject(calendarObjectPath, self)
         calendarObject.setComponent(component)
+        self._cachedCalendarObjects[name] = calendarObject
+
 
     def removeCalendarObjectWithName(self, name):
         if name.startswith("."):
             raise NoSuchCalendarObjectError(name)
 
-        childPath = self.path.child(name)
-        if childPath.isfile():
-            childPath.remove()
+        calendarObjectPath = self._path.child(name)
+        if calendarObjectPath.isfile():
+            self._removedCalendarObjects.add(name)
+            # FIXME: test for undo
+            calendarObjectPath.remove()
         else:
             raise NoSuchCalendarObjectError(name)
 
     def removeCalendarObjectWithUID(self, uid):
-        raise NotImplementedError()
+        self.removeCalendarObjectWithName(self.calendarObjectWithUID(uid)._path.basename())
 
     def syncToken(self):
         raise NotImplementedError()
@@ -257,28 +495,40 @@ class Calendar(LoggingMixIn):
     def calendarObjectsSinceToken(self, token):
         raise NotImplementedError()
 
+
+    @_cached
     def properties(self):
-        if not hasattr(self, "_properties"):
-            self._properties = PropertyStore(self.path)
-        return self._properties
+        # FIXME: needs direct tests - only covered by calendar store tests
+        # FIXME: transactions
+        return PropertyStore(self._path)
+
 
 
 class CalendarObject(LoggingMixIn):
+    """
+    @ivar path: The path of the .ics file on disk
+
+    @type path: L{FilePath}
+    """
     implements(ICalendarObject)
 
     def __init__(self, path, calendar):
-        self.path = path
+        self._path = path
         self.calendar = calendar
+        self._component = None
+
 
     def __repr__(self):
-        return "<%s: %s>" % (self.__class__.__name__, self.path.path)
+        return "<%s: %s>" % (self.__class__.__name__, self._path.path)
+
 
     def name(self):
-        return self.path.basename()
+        return self._path.basename()
+
 
     def setComponent(self, component):
         if not isinstance(component, VComponent):
-            raise TypeError(VComponent)
+            raise TypeError(type(component))
 
         try:
             if component.resourceUID() != self.uid():
@@ -296,66 +546,70 @@ class CalendarObject(LoggingMixIn):
             raise InvalidCalendarComponentError(e)
 
         self._component = component
-        if hasattr(self, "_text"):
-            del self._text
+        # FIXME: needs to clear text cache
 
-        fh = self.path.open("w")
+        def do():
+            backup = None
+            if self._path.exists():
+                backup = self._path.temporarySibling()
+                self._path.moveTo(backup)
+            fh = self._path.open("w")
+            try:
+                # FIXME: concurrency problem; if this write is interrupted
+                # halfway through, the underlying file will be corrupt.
+                fh.write(str(component))
+            finally:
+                fh.close()
+            def undo():
+                if backup:
+                    backup.moveTo(self._path)
+                else:
+                    self._path.remove()
+            return undo
+        self.calendar._transaction.addOperation(do)
+
+
+    def component(self):
+        if self._component is not None:
+            return self._component
+        text = self.iCalendarText()
+
         try:
-            fh.write(str(component))
+            component = VComponent.fromString(text)
+        except InvalidICalendarDataError, e:
+            raise InternalDataStoreError(
+                "File corruption detected (%s) in file: %s"
+                % (e, self._path.path)
+            )
+        return component
+
+
+    def iCalendarText(self):
+        if self._component is not None:
+            return str(self._component)
+        try:
+            fh = self._path.open()
+        except IOError, e:
+            if e[0] == errno.ENOENT:
+                raise NoSuchCalendarObjectError(self)
+            else:
+                raise
+
+        try:
+            text = fh.read()
         finally:
             fh.close()
 
-    def component(self):
-        if not hasattr(self, "_component"):
-            text = self.iCalendarText()
+        if not (
+            text.startswith("BEGIN:VCALENDAR\r\n") or
+            text.endswith("\r\nEND:VCALENDAR\r\n")
+        ):
+            raise InternalDataStoreError(
+                "File corruption detected (improper start) in file: %s"
+                % (self._path.path,)
+            )
+        return text
 
-            try:
-                component = VComponent.fromString(text)
-            except InvalidICalendarDataError, e:
-                raise InternalDataStoreError(
-                    "File corruption detected (%s) in file: %s"
-                    % (e, self.path.path)
-                )
-
-            del self._text
-            self._component = component
-
-        return self._component
-
-    def iCalendarText(self):
-        #
-        # Note I'm making an assumption here that caching both is
-        # redundant, so we're caching the text if it's asked for and
-        # we don't have the component cached, then tossing it and
-        # relying on the component if we have that cached. -wsv
-        #
-        if not hasattr(self, "_text"):
-            if hasattr(self, "_component"):
-                return str(self._component)
-
-            try:
-                fh = self.path.open()
-            except IOError, e:
-                if e[0] == errno.ENOENT:
-                    raise NoSuchCalendarObjectError(self)
-
-            try:
-                text = fh.read()
-            finally:
-                fh.close()
-
-            if not (
-                text.startswith("BEGIN:VCALENDAR\r\n") or
-                text.endswith("\r\nEND:VCALENDAR\r\n")
-            ):
-                raise InternalDataStoreError(
-                    "File corruption detected (improper start) in file: %s"
-                    % (self.path.path,)
-                )
-
-            self._text = text
-
-        return self._text
 
     def uid(self):
         if not hasattr(self, "_uid"):
@@ -372,8 +626,9 @@ class CalendarObject(LoggingMixIn):
 
     def properties(self):
         if not hasattr(self, "_properties"):
-            self._properties = PropertyStore(self.path)
+            self._properties = PropertyStore(self._path)
         return self._properties
+
 
 
 class Index (object):
@@ -387,7 +642,7 @@ class Index (object):
         """
         def __init__(self, calendar):
             self.calendar = calendar
-            self.fp = self.calendar.path
+            self.fp = self.calendar._path
 
         def isCalendarCollection(self):
             return True
@@ -407,7 +662,13 @@ class Index (object):
                 return None
 
         def bumpSyncToken(self, reset=False):
+            # FIXME: needs direct tests
             return self.calendar._updateSyncToken(reset)
+
+
+        def initSyncToken(self):
+            # FIXME: needs direct tests
+            self.bumpSyncToken(True)
 
 
     def __init__(self, calendar):

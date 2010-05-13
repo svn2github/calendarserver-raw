@@ -18,7 +18,7 @@
 Property store tests.
 """
 
-from twext.python.filepath import FilePath
+from twext.python.filepath import CachingFilePath as FilePath
 
 from txdav.propertystore.base import PropertyName
 from txdav.propertystore.test.base import propertyName

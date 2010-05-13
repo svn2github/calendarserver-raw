@@ -25,11 +25,11 @@ from twext.web2.dav import davxml
 from twext.web2.dav.fileop import rmdir
 from twext.web2.test.test_server import SimpleRequest
 
-import twistedcaldav.test.util
 from twistedcaldav import caldavxml
 from twistedcaldav.static import CalDAVFile
+from twistedcaldav.test.util import HomeTestCase
 
-class MKCALENDAR (twistedcaldav.test.util.TestCase):
+class MKCALENDAR (HomeTestCase):
     """
     MKCALENDAR request
     """

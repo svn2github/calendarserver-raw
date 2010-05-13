@@ -1,3 +1,4 @@
+# -*- test-case-name: txcaldav.calendarstore -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -18,9 +19,9 @@
 Calendar store interfaces
 """
 
-# FIXME:  Still to do:
-# - Where to defer?
-# - commit() and abort()
+from zope.interface import Interface
+from txdav.idav import ITransaction
+
 
 __all__ = [
     # Exceptions
@@ -45,12 +46,16 @@ __all__ = [
     "ICalendarObject",
 ]
 
-from zope.interface import Interface #, Attribute
 
-from datetime import datetime, date, tzinfo
-from twext.python.vcomponent import VComponent
-from txdav.idav import IPropertyStore
+# The following imports are used by the L{} links below, but shouldn't actually
+# be imported.as they're not really needed.
 
+# from datetime import datetime, date, tzinfo
+
+# from twext.python.vcomponent import VComponent
+
+# from txdav.idav import IPropertyStore
+# from txdav.idav import ITransaction
 
 #
 # Exceptions
@@ -130,6 +135,15 @@ class ICalendarStore(Interface):
     """
     Calendar store
     """
+    def newTransaction():
+        """
+        Create a new transaction.
+        """
+
+class ICalendarStoreTransaction(ITransaction):
+    """
+    Calendar store transaction
+    """
     def calendarHomeWithUID(uid, create=False):
         """
         Retrieve the calendar home for the principal with the given
@@ -143,6 +157,21 @@ class ICalendarStore(Interface):
         """
 
 
+    def abort():
+        """
+        Mark this transaction as invalid, reversing all of its effects.
+        """
+        # FIXME: probably needs to be deferred.
+
+
+    def commit():
+        """
+        Persist the effects of this transaction.
+        """
+        # FIXME: probably needs to be deferred.
+
+
+
 class ICalendarHome(Interface):
     """
     Calendar home
@@ -152,14 +181,6 @@ class ICalendarHome(Interface):
     includes both calendars owned by the principal as well as
     calendars that have been shared with and accepts by the principal.
     """
-    # FIXME: We need a principal interface somewhere, possibly part of
-    # an idirectory rework.  IDirectoryRecord may be close...
-    #def owner():
-    #    """
-    #    Retrieve the owner principal for this calendar home.
-    #    @return: a ???
-    #    """
-
     def uid():
         """
         Retrieve the unique identifier for this calendar home.
@@ -339,6 +360,7 @@ class ICalendarObject(Interface):
     A calendar object decribes an event, to-do, or other iCalendar
     object.
     """
+
     def setComponent(component):
         """
         Rewrite this calendar object to match the given C{component}.

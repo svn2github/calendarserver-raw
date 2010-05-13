@@ -25,7 +25,10 @@ from twisted.trial import unittest
 
 from twext.python.vcomponent import VComponent
 
+from twext.web2.dav import davxml
+
 from txdav.idav import IPropertyStore
+from txdav.propertystore.base import PropertyName
 
 from txcaldav.icalendarstore import ICalendarStore, ICalendarHome
 from txcaldav.icalendarstore import ICalendar, ICalendarObject
@@ -126,9 +129,12 @@ event4notCalDAV_text = (
 )
 
 
+
 def _todo(f, why):
     f.todo = why
     return f
+
+
 
 featureUnimplemented = lambda f: _todo(f, "Feature unimplemented")
 testUnimplemented = lambda f: _todo(f, "Test unimplemented")
@@ -136,6 +142,7 @@ todo = lambda why: lambda f: _todo(f, why)
 
 
 class PropertiesTestMixin(object):
+
     def test_properties(self):
         properties = self.home1.properties()
 
@@ -145,6 +152,7 @@ class PropertiesTestMixin(object):
         )
 
 
+
 def setUpCalendarStore(test):
     test.root = FilePath(test.mktemp())
     test.root.createDirectory()
@@ -152,13 +160,19 @@ def setUpCalendarStore(test):
     calendarPath = test.root.child("store")
     storePath.copyTo(calendarPath)
 
+
     test.calendarStore = CalendarStore(calendarPath)
+    test.txn = test.calendarStore.newTransaction()
     assert test.calendarStore is not None, "No calendar store?"
+
+
 
 def setUpHome1(test):
     setUpCalendarStore(test)
-    test.home1 = test.calendarStore.calendarHomeWithUID("home1")
+    test.home1 = test.txn.calendarHomeWithUID("home1")
     assert test.home1 is not None, "No calendar home?"
+
+
 
 def setUpCalendar1(test):
     setUpHome1(test)
@@ -166,9 +180,15 @@ def setUpCalendar1(test):
     assert test.calendar1 is not None, "No calendar?"
 
 
+
 class CalendarStoreTest(unittest.TestCase):
+    """
+    Test cases for L{CalendarStore}.
+    """
+
     def setUp(self):
         setUpCalendarStore(self)
+
 
     def test_interface(self):
         """
@@ -179,51 +199,60 @@ class CalendarStoreTest(unittest.TestCase):
         except BrokenMethodImplementation, e:
             self.fail(e)
 
+
     def test_init(self):
         """
         Ivars are correctly initialized.
         """
         self.failUnless(
-            isinstance(self.calendarStore.path, FilePath),
-            self.calendarStore.path
+            isinstance(self.calendarStore._path, FilePath),
+            self.calendarStore._path
         )
+
 
     def test_calendarHomeWithUID_exists(self):
         """
         Find an existing calendar home by UID.
         """
-        calendarHome = self.calendarStore.calendarHomeWithUID("home1")
+        calendarHome = self.calendarStore.newTransaction().calendarHomeWithUID("home1")
 
         self.failUnless(isinstance(calendarHome, CalendarHome))
+
 
     def test_calendarHomeWithUID_absent(self):
         """
         Missing calendar home.
         """
         self.assertEquals(
-            self.calendarStore.calendarHomeWithUID("xyzzy"),
+            self.calendarStore.newTransaction().calendarHomeWithUID("xyzzy"),
             None
         )
+
 
     def test_calendarHomeWithUID_create(self):
         """
         Create missing calendar home.
         """
-        calendarHome = self.calendarStore.calendarHomeWithUID(
+        txn = self.calendarStore.newTransaction()
+        calendarHome = txn.calendarHomeWithUID(
             "xyzzy",
             create=True
         )
 
         self.failUnless(isinstance(calendarHome, CalendarHome))
-        self.failUnless(calendarHome.path.isdir())
+        self.failIf(calendarHome._path.isdir())
+        txn.commit()
+        self.failUnless(calendarHome._path.isdir())
+
 
     def test_calendarHomeWithUID_create_exists(self):
         """
         Create missing calendar home.
         """
-        calendarHome = self.calendarStore.calendarHomeWithUID("home1")
+        calendarHome = self.calendarStore.newTransaction().calendarHomeWithUID("home1")
 
         self.failUnless(isinstance(calendarHome, CalendarHome))
+
 
     def test_calendarHomeWithUID_dot(self):
         """
@@ -231,14 +260,17 @@ class CalendarStoreTest(unittest.TestCase):
         implementation, so no UIDs may start with ".".
         """
         self.assertEquals(
-            self.calendarStore.calendarHomeWithUID("xyzzy"),
+            self.calendarStore.newTransaction().calendarHomeWithUID("xyzzy"),
             None
         )
 
 
+
 class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
+
     def setUp(self):
         setUpHome1(self)
+
 
     def test_interface(self):
         """
@@ -249,18 +281,20 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
         except BrokenMethodImplementation, e:
             self.fail(e)
 
+
     def test_init(self):
         """
         Ivars are correctly initialized.
         """
         self.failUnless(
-            isinstance(self.home1.path, FilePath),
-            self.home1.path
+            isinstance(self.home1._path, FilePath),
+            self.home1._path
         )
         self.assertEquals(
             self.home1.calendarStore,
             self.calendarStore
         )
+
 
     def test_uid(self):
         """
@@ -268,12 +302,13 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
         """
         self.assertEquals(self.home1.uid(), "home1")
 
+
     def test_calendars(self):
         """
         Find all of the calendars.
         """
         # Add a dot directory to make sure we don't find it
-        self.home1.path.child(".foo").createDirectory()
+        self.home1._path.child(".foo").createDirectory()
 
         calendars = tuple(self.home1.calendars())
 
@@ -285,6 +320,7 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
             home1_calendarNames
         )
 
+
     def test_calendarWithName_exists(self):
         """
         Find existing calendar by name.
@@ -294,11 +330,13 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
             self.failUnless(isinstance(calendar, Calendar), calendar)
             self.assertEquals(calendar.name(), name)
 
+
     def test_calendarWithName_absent(self):
         """
         Missing calendar.
         """
         self.assertEquals(self.home1.calendarWithName("xyzzy"), None)
+
 
     def test_calendarWithName_dot(self):
         """
@@ -306,8 +344,9 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
         implementation, so no calendar names may start with ".".
         """
         name = ".foo"
-        self.home1.path.child(name).createDirectory()
+        self.home1._path.child(name).createDirectory()
         self.assertEquals(self.home1.calendarWithName(name), None)
+
 
     def test_createCalendarWithName_absent(self):
         """
@@ -317,6 +356,21 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
         assert self.home1.calendarWithName(name) is None
         self.home1.createCalendarWithName(name)
         self.failUnless(self.home1.calendarWithName(name) is not None)
+        def checkProperties():
+            calendarProperties = self.home1.calendarWithName(name).properties()
+            self.assertEquals(
+                calendarProperties[
+                    PropertyName.fromString(davxml.ResourceType.sname())
+                ],
+                davxml.ResourceType.calendar)
+        checkProperties()
+        self.txn.commit()
+        self.home1 = self.calendarStore.newTransaction().calendarHomeWithUID(
+            "home1")
+        # Sanity check: are the properties actually persisted?
+        # FIXME: no independent testing of this right now
+        checkProperties()
+
 
     def test_createCalendarWithName_exists(self):
         """
@@ -328,6 +382,7 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
                 self.home1.createCalendarWithName, name
             )
 
+
     def test_createCalendarWithName_dot(self):
         """
         Filenames starting with "." are reserved by this
@@ -338,14 +393,17 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
             self.home1.createCalendarWithName, ".foo"
         )
 
+
     def test_removeCalendarWithName_exists(self):
         """
         Remove an existing calendar.
         """
         for name in home1_calendarNames:
-            assert self.home1.calendarWithName(name) is not None
+            self.assertNotIdentical(self.home1.calendarWithName(name),
+                                    None)
             self.home1.removeCalendarWithName(name)
             self.assertEquals(self.home1.calendarWithName(name), None)
+
 
     def test_removeCalendarWithName_absent(self):
         """
@@ -356,21 +414,26 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
             self.home1.removeCalendarWithName, "xyzzy"
         )
 
+
     def test_removeCalendarWithName_dot(self):
         """
         Filenames starting with "." are reserved by this
         implementation, so no calendar names may start with ".".
         """
         name = ".foo"
-        self.home1.path.child(name).createDirectory()
+        self.home1._path.child(name).createDirectory()
         self.assertRaises(
             NoSuchCalendarError,
             self.home1.removeCalendarWithName, name
         )
 
+
+
 class CalendarTest(unittest.TestCase, PropertiesTestMixin):
+
     def setUp(self):
         setUpCalendar1(self)
+
 
     def test_interface(self):
         """
@@ -381,12 +444,13 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
         except BrokenMethodImplementation, e:
             self.fail(e)
 
+
     def test_init(self):
         """
         Ivars are correctly initialized.
         """
         self.failUnless(
-            isinstance(self.calendar1.path, FilePath),
+            isinstance(self.calendar1._path, FilePath),
             self.calendar1
         )
         self.failUnless(
@@ -394,11 +458,13 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.calendarHome
         )
 
+
     def test_name(self):
         """
         Name is correct.
         """
         self.assertEquals(self.calendar1.name(), "calendar_1")
+
 
     def test_ownerCalendarHome(self):
         """
@@ -410,9 +476,10 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.home1.uid()
         )
 
+
     def _test_calendarObjects(self, which):
         # Add a dot file to make sure we don't find it
-        self.home1.path.child(".foo").createDirectory()
+        self.home1._path.child(".foo").createDirectory()
 
         methodName = "_calendarObjects_%s" % (which,)
         method = getattr(self.calendar1, methodName)
@@ -429,6 +496,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             calendar1_objectNames
         )
 
+    @featureUnimplemented
     def test_calendarObjects_listdir(self):
         """
         Find all of the calendar objects using the listdir
@@ -436,13 +504,15 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
         """
         return self._test_calendarObjects("listdir")
 
-    @todo("Index is missing 1.ics?")
+
+    @featureUnimplemented
     def test_calendarObjects_index(self):
         """
         Find all of the calendar objects using the index
         implementation.
         """
         return self._test_calendarObjects("index")
+
 
     def test_calendarObjectWithName_exists(self):
         """
@@ -456,11 +526,13 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             )
             self.assertEquals(calendarObject.name(), name)
 
+
     def test_calendarObjectWithName_absent(self):
         """
         Missing calendar object.
         """
         self.assertEquals(self.calendar1.calendarObjectWithName("xyzzy"), None)
+
 
     def test_calendarObjectWithName_dot(self):
         """
@@ -469,8 +541,9 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
         ".".
         """
         name = ".foo.ics"
-        self.home1.path.child(name).touch()
+        self.home1._path.child(name).touch()
         self.assertEquals(self.calendar1.calendarObjectWithName(name), None)
+
 
     @featureUnimplemented
     def test_calendarObjectWithUID_exists(self):
@@ -487,24 +560,26 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.calendarObjectWithName("1.ics").component()
         )
 
-    @featureUnimplemented
+
     def test_calendarObjectWithUID_absent(self):
         """
         Missing calendar object.
         """
         self.assertEquals(self.calendar1.calendarObjectWithUID("xyzzy"), None)
 
+
     def test_createCalendarObjectWithName_absent(self):
         """
         Create a new calendar object.
         """
         name = "4.ics"
-        assert self.calendar1.calendarObjectWithName(name) is None
+        self.assertIdentical(self.calendar1.calendarObjectWithName(name), None)
         component = VComponent.fromString(event4_text)
         self.calendar1.createCalendarObjectWithName(name, component)
 
         calendarObject = self.calendar1.calendarObjectWithName(name)
         self.assertEquals(calendarObject.component(), component)
+
 
     def test_createCalendarObjectWithName_exists(self):
         """
@@ -515,6 +590,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.createCalendarObjectWithName,
             "1.ics", VComponent.fromString(event4_text)
         )
+
 
     def test_createCalendarObjectWithName_dot(self):
         """
@@ -527,6 +603,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.createCalendarObjectWithName,
             ".foo", VComponent.fromString(event4_text)
         )
+
 
     @featureUnimplemented
     def test_createCalendarObjectWithName_uidconflict(self):
@@ -543,6 +620,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             name, component
         )
 
+
     def test_createCalendarObjectWithName_invalid(self):
         """
         Attempt to create a calendar object with a invalid iCalendar text
@@ -554,17 +632,20 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             "new", VComponent.fromString(event4notCalDAV_text)
         )
 
+
     def test_removeCalendarObjectWithName_exists(self):
         """
         Remove an existing calendar object.
         """
         for name in calendar1_objectNames:
-            assert self.calendar1.calendarObjectWithName(name) is not None
-            self.calendar1.removeCalendarObjectWithName(name)
-            self.assertEquals(
-                self.calendar1.calendarObjectWithName(name),
-                None
+            self.assertNotIdentical(
+                self.calendar1.calendarObjectWithName(name), None
             )
+            self.calendar1.removeCalendarObjectWithName(name)
+            self.assertIdentical(
+                self.calendar1.calendarObjectWithName(name), None
+            )
+
 
     def test_removeCalendarObjectWithName_absent(self):
         """
@@ -575,6 +656,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.removeCalendarObjectWithName, "xyzzy"
         )
 
+
     def test_removeCalendarObjectWithName_dot(self):
         """
         Filenames starting with "." are reserved by this
@@ -582,20 +664,21 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
         ".".
         """
         name = ".foo"
-        self.calendar1.path.child(name).touch()
+        self.calendar1._path.child(name).touch()
         self.assertRaises(
             NoSuchCalendarObjectError,
             self.calendar1.removeCalendarObjectWithName, name
         )
 
-    @featureUnimplemented
+
     def test_removeCalendarObjectWithUID_exists(self):
         """
         Remove an existing calendar object.
         """
         for name in calendar1_objectNames:
-            uid = name.rstrip(".ics")
-            assert self.calendar1.calendarObjectWithUID(uid) is not None
+            uid = (u'uid' + name.rstrip(".ics"))
+            self.assertNotIdentical(self.calendar1.calendarObjectWithUID(uid),
+                                    None)
             self.calendar1.removeCalendarObjectWithUID(uid)
             self.assertEquals(
                 self.calendar1.calendarObjectWithUID(uid),
@@ -605,6 +688,88 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
                 self.calendar1.calendarObjectWithName(name),
                 None
             )
+
+
+    def _refresh(self):
+        """
+        Re-read the (committed) home1 and calendar1 objects in a new
+        transaction.
+        """
+        self.txn = self.calendarStore.newTransaction()
+        self.home1 = self.txn.calendarHomeWithUID("home1")
+        self.calendar1 = self.home1.calendarWithName("calendar_1")
+
+
+    def test_undoCreateCalendarObject(self):
+        """
+        If a calendar object is created as part of a transaction, it will be
+        removed if that transaction has to be aborted.
+        """
+        # Make sure that the calendar home is actually committed; rolling back
+        # calendar home creation will remove the whole directory.
+        self.txn.commit()
+        self._refresh()
+        self.calendar1.createCalendarObjectWithName(
+            "sample.ics",
+            VComponent.fromString(event4_text)
+        )
+        self._refresh()
+        self.assertIdentical(
+            self.calendar1.calendarObjectWithName("sample.ics"),
+            None
+        )
+
+
+    def doThenUndo(self):
+        """
+        Commit the current transaction, but add an operation that will cause it
+        to fail at the end.  Finally, refresh all attributes with a new
+        transaction so that further oparations can be performed in a valid
+        context.
+        """
+        def fail():
+            raise RuntimeError("oops")
+        self.txn.addOperation(fail)
+        self.assertRaises(RuntimeError, self.txn.commit)
+        self._refresh()
+
+
+    def test_undoModifyCalendarObject(self):
+        """
+        If an existing calendar object is modified as part of a transaction, it
+        should be restored to its previous status if the transaction aborts.
+        """
+        originalComponent = self.calendar1.calendarObjectWithName(
+            "1.ics").component()
+        self.calendar1.calendarObjectWithName("1.ics").setComponent(
+            VComponent.fromString(event1modified_text)
+        )
+        # Sanity check.
+        self.assertEquals(
+            self.calendar1.calendarObjectWithName("1.ics").component(),
+            VComponent.fromString(event1modified_text)
+        )
+        self.doThenUndo()
+        self.assertEquals(
+            self.calendar1.calendarObjectWithName("1.ics").component(),
+            originalComponent
+        )
+
+
+    def test_modifyCalendarObjectCaches(self):
+        """
+        Modifying a calendar object should cache the modified component in
+        memory, to avoid unnecessary parsing round-trips.
+        """
+        modifiedComponent = VComponent.fromString(event1modified_text)
+        self.calendar1.calendarObjectWithName("1.ics").setComponent(
+            modifiedComponent
+        )
+        self.assertIdentical(
+            modifiedComponent,
+            self.calendar1.calendarObjectWithName("1.ics").component()
+        )
+
 
     @featureUnimplemented
     def test_removeCalendarObjectWithUID_absent(self):
@@ -616,6 +781,7 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             self.calendar1.removeCalendarObjectWithUID, "xyzzy"
         )
 
+
     @testUnimplemented
     def test_syncToken(self):
         """
@@ -623,12 +789,14 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
         """
         raise NotImplementedError()
 
+
     @testUnimplemented
     def test_calendarObjectsInTimeRange(self):
         """
         Find calendar objects occuring in a given time range.
         """
         raise NotImplementedError()
+
 
     @testUnimplemented
     def test_calendarObjectsSinceToken(self):
@@ -639,10 +807,12 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
         raise NotImplementedError()
 
 
+
 class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
     def setUp(self):
         setUpCalendar1(self)
         self.object1 = self.calendar1.calendarObjectWithName("1.ics")
+
 
     def test_interface(self):
         """
@@ -653,18 +823,20 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
         except BrokenMethodImplementation, e:
             self.fail(e)
 
+
     def test_init(self):
         """
         Ivars are correctly initialized.
         """
         self.failUnless(
-            isinstance(self.object1.path, FilePath),
-            self.object1.path
+            isinstance(self.object1._path, FilePath),
+            self.object1._path
         )
         self.failUnless(
             isinstance(self.object1.calendar, Calendar),
             self.object1.calendar
         )
+
 
     def test_name(self):
         """
@@ -672,21 +844,24 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
         """
         self.assertEquals(self.object1.name(), "1.ics")
 
+
     def test_setComponent(self):
         """
-        Rewrite component.
+        L{CalendarObject.setComponent} changes the result of
+        L{CalendarObject.component} within the same transaction.
         """
         component = VComponent.fromString(event1modified_text)
 
         calendarObject = self.calendar1.calendarObjectWithName("1.ics")
-        oldComponent = calendarObject.component() # Trigger caching
-        assert component != oldComponent
+        oldComponent = calendarObject.component()
+        self.assertNotEqual(component, oldComponent)
         calendarObject.setComponent(component)
         self.assertEquals(calendarObject.component(), component)
 
         # Also check a new instance
         calendarObject = self.calendar1.calendarObjectWithName("1.ics")
         self.assertEquals(calendarObject.component(), component)
+
 
     def test_setComponent_uidchanged(self):
         component = VComponent.fromString(event4_text)
@@ -697,6 +872,7 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
             calendarObject.setComponent, component
         )
 
+
     def test_setComponent_invalid(self):
         calendarObject = self.calendar1.calendarObjectWithName("1.ics")
         self.assertRaises(
@@ -704,6 +880,7 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
             calendarObject.setComponent,
             VComponent.fromString(event4notCalDAV_text)
         )
+
 
     def test_component(self):
         """
@@ -720,6 +897,7 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
         self.assertEquals(component.mainType(), "VEVENT")
         self.assertEquals(component.resourceUID(), "uid1")
 
+
     def text_iCalendarText(self):
         """
         iCalendar text is correct.
@@ -730,17 +908,20 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
         self.failUnless("\r\nUID:uid-1\r\n" in text)
         self.failUnless(text.endswith("\r\nEND:VCALENDAR\r\n"))
 
+
     def test_uid(self):
         """
         UID is correct.
         """
         self.assertEquals(self.object1.uid(), "uid1")
 
+
     def test_componentType(self):
         """
         Component type is correct.
         """
         self.assertEquals(self.object1.componentType(), "VEVENT")
+
 
     def test_organizer(self):
         """

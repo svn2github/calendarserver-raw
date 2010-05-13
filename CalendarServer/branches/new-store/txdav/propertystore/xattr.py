@@ -83,6 +83,12 @@ class PropertyStore(AbstractPropertyStore):
         )
 
     def __init__(self, path):
+        """
+        Initialize a L{PropertyStore}.
+
+        @param path: the path to set extended attributes on.
+        @type path: L{CachingFilePath}
+        """
         self.path = path
         self.attrs = xattr(path.path)
         self.removed = set()
@@ -117,7 +123,7 @@ class PropertyStore(AbstractPropertyStore):
         try:
             data = self.attrs[self._encodeKey(key)]
         except IOError, e:
-            if e.errno in _ERRNO_NO_ATTR:
+            if e.errno in [_ERRNO_NO_ATTR]:
                 raise KeyError(key)
             raise PropertyStoreError(e)
 

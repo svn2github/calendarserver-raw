@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.test -*-
 ##
 # Copyright (c) 2005-2010 Apple Inc. All rights reserved.
 #
@@ -108,6 +109,9 @@ from twistedcaldav.notify import ClientNotifier, getNodeCacher
 from twistedcaldav.notifications import NotificationCollectionResource,\
     NotificationResource
 
+from txcaldav.calendarstore.file import CalendarStore
+from txdav.propertystore.base import PropertyName
+
 log = Logger()
 
 class ReadOnlyResourceMixIn(object):
@@ -123,6 +127,70 @@ class ReadOnlyResourceMixIn(object):
             responsecode.FORBIDDEN,
             (caldav_namespace, "calendar-collection-location-ok")
         )
+
+
+class _NewStorePropertiesWrapper(object):
+    """
+    Wrap a new-style property store (a L{txdav.idav.IPropertyStore}) in the old-
+    style interface for compatibility with existing code.
+    """
+    
+    def __init__(self, newPropertyStore):
+        """
+        Initialize an old-style property store from a new one.
+
+        @param newPropertyStore: the new-style property store.
+        @type newPropertyStore: L{txdav.idav.IPropertyStore}
+        """
+        self._newPropertyStore = newPropertyStore
+
+    @classmethod
+    def _convertKey(cls, qname):
+        namespace, name = qname
+        return PropertyName(namespace, name)
+
+
+    # FIXME 'uid' here should be verifying something.
+    def get(self, qname, uid=None):
+        """
+        
+        """
+        try:
+            return self._newPropertyStore[self._convertKey(qname)]
+        except KeyError:
+            raise HTTPError(StatusResponse(
+                    responsecode.NOT_FOUND,
+                    "No such property: {%s}%s" % qname))
+
+
+    def set(self, property, uid=None):
+        """
+        
+        """
+        self._newPropertyStore[self._convertKey(property.qname())] = property
+
+
+    def delete(self, qname, uid=None):
+        """
+        
+        """
+        del self._newPropertyStore[self._convertKey(qname)]
+
+
+    def contains(self, qname, uid=None, cache=True):
+        """
+        
+        """
+        return (self._convertKey(qname) in self._newPropertyStore)
+
+
+    def list(self, uid=None, filterByUID=True, cache=True):
+        """
+        
+        """
+        return [(pname.namespace, pname.name) for pname in 
+                self._newPropertyStore.keys()]
+
 
 class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
     """
@@ -186,12 +254,15 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
     def deadProperties(self, caching=True):
         if not hasattr(self, "_dead_properties"):
+            # FIXME: this code should actually be dead, as the property store
+            # should be initialized as part of the traversal process.
+ 
             # Get the property store from super
             deadProperties = super(CalDAVFile, self).deadProperties()
 
             if caching:
                 # Wrap the property store in a memory store
-                deadProperties = CachingPropertyStore(deadProperties)
+                 deadProperties = CachingPropertyStore(deadProperties)
 
             self._dead_properties = deadProperties
 
@@ -202,11 +273,19 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
     ##
 
     def createCalendar(self, request):
-        #
-        # request object is required because we need to validate against parent
-        # resources, and we need the request in order to locate the parents.
-        #
+        """
+        External API for creating a calendar.  Verify that the parent is a
+        collection, exists, is I{not} a calendar collection; that this resource
+        does not yet exist, then create it.
 
+        @param request: the request used to look up parent resources to
+            validate.
+
+        @type request: L{twext.web2.iweb.IRequest}
+
+        @return: a deferred that fires when a calendar collection has been
+            created in this resource.
+        """
         if self.fp.exists():
             log.err("Attempt to create collection where file exists: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.NOT_ALLOWED, "File exists"))
@@ -234,28 +313,36 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         parent.addCallback(_defer)
         return parent
 
+
     def createCalendarCollection(self):
-        #
-        # Create the collection once we know it is safe to do so
-        #
-        def onCalendarCollection(status):
-            if status != responsecode.CREATED:
-                raise HTTPError(status)
+        """
+        Internal API for creating a calendar collection.
 
-            # Initialize CTag on the calendar collection
-            d1 = self.bumpSyncToken()
+        This will immediately create the collection without performing any
+        verification.  For the normal API, see L{CalDAVFile.createCalendar}.
 
-            # Calendar is initially transparent to freebusy
-            self.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Transparent()))
-
-            # Create the index so its ready when the first PUTs come in
-            d1.addCallback(lambda _: self.index().create())
-            d1.addCallback(lambda _: status)
-            return d1
-
-        d = self.createSpecialCollection(davxml.ResourceType.calendar)
-        d.addCallback(onCalendarCollection)
+        @return: a L{Deferred} which fires when the underlying collection has
+            actually been created.
+        """
+        # d = self.createSpecialCollection(davxml.ResourceType.calendar)
+        d = succeed(responsecode.CREATED)
+        calendarName = self.fp.basename()
+        self._newStoreParentHome.createCalendarWithName(calendarName)
+        self._newStoreCalendar = self._newStoreParentHome.calendarWithName(
+            calendarName
+        )
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreCalendar.properties()
+        )
         return d
+
+
+    def isCollection(self):
+        if getattr(self, "_newStoreCalendar", None) is not None:
+            # FIXME: this should really be represented by a separate class
+            return True
+        return super(CalDAVFile, self).isCollection()
+
 
     def createSpecialCollection(self, resourceType=None):
         #
@@ -620,10 +707,21 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         similar = super(CalDAVFile, self).createSimilarFile(path)
 
         if isCalendarCollectionResource(self):
+            similar._newStoreObject = \
+                self._newStoreCalendar.calendarObjectWithName(
+                    similar.fp.basename()
+                )
+            if similar._newStoreObject is not None:
+                # FIXME: what about creation in http_PUT?
+                similar._dead_properties = _NewStorePropertiesWrapper(
+                    similar._newStoreObject.properties()
+                )
+            # FIXME: tests should fail without this:
+            # self.propagateTransaction(similar)
 
             # Short-circuit stat with information we know to be true at this point
             if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
-                if os.path.basename(path.path) in self.knownChildren:
+                if path.basename() in self.knownChildren:
                     path.existsCached = True
                     path.isDirCached = False
 
@@ -822,18 +920,32 @@ class AutoProvisioningFileMixIn (LinkFollowerMixIn, AutoProvisioningResourceMixI
             super(AutoProvisioningFileMixIn, self)._initTypeAndEncoding()
 
 
-class CalendarHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeProvisioningResource, DAVFile):
+class CalendarHomeProvisioningFile(AutoProvisioningFileMixIn, 
+                                   DirectoryCalendarHomeProvisioningResource,
+                                   DAVFile):
     """
     Resource which provisions calendar home collections as needed.
     """
+
     def __init__(self, path, directory, url):
         """
-        @param path: the path to the file which will back the resource.
+        Initialize this L{CalendarHomeProvisioningFile}.
+
+        @param path: the path to the filesystem directory which will back the
+            resource.
+
+        @type path: L{FilePath}
+
         @param directory: an L{IDirectoryService} to provision calendars from.
-        @param url: the canonical URL for the resource.
+
+        @param url: the canonical URL for this L{CalendarHomeProvisioningFile} 
+            resource.
         """
         DAVFile.__init__(self, path)
         DirectoryCalendarHomeProvisioningResource.__init__(self, directory, url)
+        storagePath = self.fp.child(uidsResourceName)
+        self._newStore = CalendarStore(storagePath)
+
 
     def provisionChild(self, name):
         if name == uidsResourceName:
@@ -841,8 +953,11 @@ class CalendarHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendar
 
         return CalendarHomeTypeProvisioningFile(self.fp.child(name).path, self, name)
 
+
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
+
+
 
 class CalendarHomeTypeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeTypeProvisioningResource, DAVFile):
     def __init__(self, path, parent, recordType):
@@ -853,6 +968,8 @@ class CalendarHomeTypeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCale
         """
         DAVFile.__init__(self, path)
         DirectoryCalendarHomeTypeProvisioningResource.__init__(self, parent, recordType)
+
+
 
 class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeUIDProvisioningResource, DAVFile):
     def __init__(self, path, parent, homeResourceClass=None):
@@ -950,7 +1067,8 @@ class CalendarHomeReverseProxyFile(ReverseProxyResource):
     def url(self):
         return joinURL(self.parent.url(), self.record.uid)
 
-class CalendarHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryCalendarHomeResource, CalDAVFile):
+class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin, 
+                       DirectoryCalendarHomeResource, CalDAVFile):
     """
     Calendar home collection resource.
     """
@@ -969,6 +1087,12 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryCal
         self.clientNotifier = ClientNotifier(self)
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
+        txn = self.parent.parent._newStore.newTransaction()
+        self._newStoreCalendarHome = (
+            txn.calendarHomeWithUID(self.record.uid, create=True)
+        )
+        self.associateWithTransaction(txn)
+
 
     def provision(self):
         result = super(CalendarHomeFile, self).provision()
@@ -1010,8 +1134,21 @@ class CalendarHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryCal
         if self.comparePath(path):
             return self
         else:
-            similar = CalDAVFile(path, principalCollections=self.principalCollections())
+            similar = CalDAVFile(
+                path, principalCollections=self.principalCollections()
+            )
             similar.clientNotifier = self.clientNotifier
+            similar._newStoreParentHome = self._newStoreCalendarHome
+            similar._newStoreCalendar = (
+                self._newStoreCalendarHome.calendarWithName(
+                    similar.fp.basename()
+                )
+            )
+            if similar._newStoreCalendar is not None:
+                similar._dead_properties = _NewStorePropertiesWrapper(
+                    similar._newStoreCalendar.properties()
+                )
+            self.propagateTransaction(similar)
             return similar
 
     def getChild(self, name):

@@ -26,12 +26,12 @@ from twext.web2.dav.fileop import rmdir
 from twext.web2.dav.util import davXMLFromStream
 from twext.web2.test.test_server import SimpleRequest
 
-import twistedcaldav.test.util
 from twistedcaldav import caldavxml
 from twistedcaldav import ical
 from twistedcaldav.index import db_basename
+from twistedcaldav.test.util import HomeTestCase
 
-class CalendarMultiget (twistedcaldav.test.util.TestCase):
+class CalendarMultiget (HomeTestCase):
     """
     calendar-multiget REPORT
     """

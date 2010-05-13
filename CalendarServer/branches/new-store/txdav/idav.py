@@ -84,3 +84,25 @@ class IPropertyStore(IMapping):
         """
         Abort any pending changes.
         """
+
+
+class ITransaction(Interface):
+    """
+    Transaction that can be aborted and either succeeds or fails in
+    its entirety.
+    """
+    def abort():
+        """
+        Abort this transaction.
+        """
+
+    def commit():
+        """
+        Perform this transaction.
+        """
+
+
+class AbortedTransactionError(RuntimeError):
+    """
+    This transaction has aborted.  Go away.
+    """
