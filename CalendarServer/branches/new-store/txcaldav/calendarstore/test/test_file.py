@@ -291,7 +291,7 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
             self.home1._path
         )
         self.assertEquals(
-            self.home1.calendarStore,
+            self.home1._calendarStore,
             self.calendarStore
         )
 
@@ -362,7 +362,7 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
                 calendarProperties[
                     PropertyName.fromString(davxml.ResourceType.sname())
                 ],
-                davxml.ResourceType.calendar)
+                davxml.ResourceType.calendar) #@UndefinedVariable
         checkProperties()
         self.txn.commit()
         self.home1 = self.calendarStore.newTransaction().calendarHomeWithUID(
@@ -447,21 +447,22 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
 
     def test_init(self):
         """
-        Ivars are correctly initialized.
+        L{Calendar.__init__} sets private attributes to reflect its constructor
+        arguments.
         """
         self.failUnless(
             isinstance(self.calendar1._path, FilePath),
             self.calendar1
         )
         self.failUnless(
-            isinstance(self.calendar1.calendarHome, CalendarHome),
-            self.calendar1.calendarHome
+            isinstance(self.calendar1._calendarHome, CalendarHome),
+            self.calendar1._calendarHome
         )
 
 
     def test_name(self):
         """
-        Name is correct.
+        L{Calendar.name} reflects the name of the calendar.
         """
         self.assertEquals(self.calendar1.name(), "calendar_1")
 
@@ -477,13 +478,15 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
         )
 
 
-    def _test_calendarObjects(self, which):
+    def test_calendarObjects(self):
+        """
+        L{Calendar.calendarObjects} will enumerate the calendar objects present
+        in the filesystem, in name order, but skip those with hidden names.
+        """
         # Add a dot file to make sure we don't find it
         self.home1._path.child(".foo").createDirectory()
 
-        methodName = "_calendarObjects_%s" % (which,)
-        method = getattr(self.calendar1, methodName)
-        calendarObjects = tuple(method())
+        calendarObjects = tuple(self.calendar1.calendarObjects())
 
         for calendarObject in calendarObjects:
             self.failUnless(
@@ -496,22 +499,17 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             calendar1_objectNames
         )
 
-    @featureUnimplemented
-    def test_calendarObjects_listdir(self):
-        """
-        Find all of the calendar objects using the listdir
-        implementation.
-        """
-        return self._test_calendarObjects("listdir")
 
-
-    @featureUnimplemented
-    def test_calendarObjects_index(self):
+    def test_calendarObjectsWithRemovedObject(self):
         """
-        Find all of the calendar objects using the index
-        implementation.
+        L{Calendar.calendarObjects will skip those objects which have been
+        removed by L{Calendar.removeCalendarObjectWithName} in the same
+        transaction, even if it has not yet been committed.
         """
-        return self._test_calendarObjects("index")
+        self.calendar1.removeCalendarObjectWithName("2.ics")
+        calendarObjects = list(self.calendar1.calendarObjects())
+        self.assertEquals(set(o.name() for o in calendarObjects),
+                          set(calendar1_objectNames) - set(["2.ics"]))
 
 
     def test_calendarObjectWithName_exists(self):
@@ -655,6 +653,17 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
             NoSuchCalendarObjectError,
             self.calendar1.removeCalendarObjectWithName, "xyzzy"
         )
+
+
+    def test_removeCalendarObject_delayedEffect(self):
+        """
+        Removing a calendar object should not immediately remove the underlying
+        file; it should only be removed upon commit() of the transaction.
+        """
+        self.calendar1.removeCalendarObjectWithName("2.ics")
+        self.failUnless(self.calendar1._path.child("2.ics").exists())
+        self.txn.commit()
+        self.failIf(self.calendar1._path.child("2.ics").exists())
 
 
     def test_removeCalendarObjectWithName_dot(self):
