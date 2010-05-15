@@ -110,7 +110,6 @@ from twistedcaldav.notifications import NotificationCollectionResource,\
     NotificationResource
 
 from txcaldav.calendarstore.file import CalendarStore
-from txdav.propertystore.base import PropertyName
 
 log = Logger()
 
@@ -128,68 +127,6 @@ class ReadOnlyResourceMixIn(object):
             (caldav_namespace, "calendar-collection-location-ok")
         )
 
-
-class _NewStorePropertiesWrapper(object):
-    """
-    Wrap a new-style property store (a L{txdav.idav.IPropertyStore}) in the old-
-    style interface for compatibility with existing code.
-    """
-    
-    def __init__(self, newPropertyStore):
-        """
-        Initialize an old-style property store from a new one.
-
-        @param newPropertyStore: the new-style property store.
-        @type newPropertyStore: L{txdav.idav.IPropertyStore}
-        """
-        self._newPropertyStore = newPropertyStore
-
-    @classmethod
-    def _convertKey(cls, qname):
-        namespace, name = qname
-        return PropertyName(namespace, name)
-
-
-    # FIXME 'uid' here should be verifying something.
-    def get(self, qname, uid=None):
-        """
-        
-        """
-        try:
-            return self._newPropertyStore[self._convertKey(qname)]
-        except KeyError:
-            raise HTTPError(StatusResponse(
-                    responsecode.NOT_FOUND,
-                    "No such property: {%s}%s" % qname))
-
-
-    def set(self, property, uid=None):
-        """
-        
-        """
-        self._newPropertyStore[self._convertKey(property.qname())] = property
-
-
-    def delete(self, qname, uid=None):
-        """
-        
-        """
-        del self._newPropertyStore[self._convertKey(qname)]
-
-
-    def contains(self, qname, uid=None, cache=True):
-        """
-        
-        """
-        return (self._convertKey(qname) in self._newPropertyStore)
-
-
-    def list(self, uid=None, filterByUID=True, cache=True):
-        """
-        
-        """
-        return [(pname.namespace, pname.name) for pname in 
-                self._newPropertyStore.keys()]
 
 
 class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
@@ -262,7 +199,7 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
             if caching:
                 # Wrap the property store in a memory store
-                 deadProperties = CachingPropertyStore(deadProperties)
+                deadProperties = CachingPropertyStore(deadProperties)
 
             self._dead_properties = deadProperties
 
@@ -321,20 +258,13 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         This will immediately create the collection without performing any
         verification.  For the normal API, see L{CalDAVFile.createCalendar}.
 
+        The default behavior is to return a failing Deferred; for a working
+        implementation, see L{twistedcaldav.legacy}.
+
         @return: a L{Deferred} which fires when the underlying collection has
             actually been created.
         """
-        # d = self.createSpecialCollection(davxml.ResourceType.calendar)
-        d = succeed(responsecode.CREATED)
-        calendarName = self.fp.basename()
-        self._newStoreParentHome.createCalendarWithName(calendarName)
-        self._newStoreCalendar = self._newStoreParentHome.calendarWithName(
-            calendarName
-        )
-        self._dead_properties = _NewStorePropertiesWrapper(
-            self._newStoreCalendar.properties()
-        )
-        return d
+        return fail(NotImplementedError())
 
 
     def isCollection(self):
@@ -707,58 +637,8 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         similar = super(CalDAVFile, self).createSimilarFile(path)
 
         if isCalendarCollectionResource(self):
-            similar._newStoreObject = \
-                self._newStoreCalendar.calendarObjectWithName(
-                    similar.fp.basename()
-                )
-            if similar._newStoreObject is not None:
-                # FIXME: what about creation in http_PUT?
-                similar._dead_properties = _NewStorePropertiesWrapper(
-                    similar._newStoreObject.properties()
-                )
-            # FIXME: tests should fail without this:
-            # self.propagateTransaction(similar)
-
-            # Short-circuit stat with information we know to be true at this point
-            if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
-                if path.basename() in self.knownChildren:
-                    path.existsCached = True
-                    path.isDirCached = False
-
-            #
-            # Override the dead property store
-            #
-            superDeadProperties = similar.deadProperties
-
-            def deadProperties():
-                if not hasattr(similar, "_dead_properties"):
-                    similar._dead_properties = self.propertyCollection().propertyStoreForChild(
-                        similar,
-                        superDeadProperties(caching=False)
-                    )
-                return similar._dead_properties
-
-            similar.deadProperties = deadProperties
-
-            #
-            # Override DELETE, MOVE
-            #
-            for method in ("DELETE", "MOVE"):
-                method = "http_" + method
-                original = getattr(similar, method)
-
-                @inlineCallbacks
-                def override(request, original=original):
-
-                    # Call original method (which is deferred)
-                    response = (yield original(request))
-
-                    # Wipe the cache
-                    similar.deadProperties().flushCache()
-
-                    returnValue(response)
-
-                setattr(similar, method, override)
+            raise RuntimeError("Calendar collection resources should really "
+                               "be represented by a different class.")
 
         return similar
 
@@ -1131,24 +1011,31 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         return self.createSimilarFile(self.fp.child(name).path)
 
     def createSimilarFile(self, path):
+
         if self.comparePath(path):
             return self
         else:
-            similar = CalDAVFile(
-                path, principalCollections=self.principalCollections()
+            if not isinstance(path, FilePath):
+                path = FilePath(path)
+            newCalendar = self._newStoreCalendarHome.calendarWithName(
+                path.basename()
             )
-            similar.clientNotifier = self.clientNotifier
-            similar._newStoreParentHome = self._newStoreCalendarHome
-            similar._newStoreCalendar = (
-                self._newStoreCalendarHome.calendarWithName(
-                    similar.fp.basename()
+            if newCalendar is None:
+                # Local imports.due to circular dependency between modules.
+                from twistedcaldav.storebridge import (
+                     ProtoCalendarCollectionFile)
+                similar = ProtoCalendarCollectionFile(
+                    self._newStoreCalendarHome,
+                    path, principalCollections=self.principalCollections()
                 )
-            )
-            if similar._newStoreCalendar is not None:
-                similar._dead_properties = _NewStorePropertiesWrapper(
-                    similar._newStoreCalendar.properties()
+            else:
+                from twistedcaldav.storebridge import CalendarCollectionFile
+                similar = CalendarCollectionFile(
+                    newCalendar, self._newStoreCalendarHome,
+                    path, principalCollections=self.principalCollections()
                 )
             self.propagateTransaction(similar)
+            similar.clientNotifier = self.clientNotifier
             return similar
 
     def getChild(self, name):

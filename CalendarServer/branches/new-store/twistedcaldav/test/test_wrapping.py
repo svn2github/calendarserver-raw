@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+
 """
 Tests for the interaction between model-level and protocol-level logic.
 """
@@ -21,6 +22,8 @@ from twisted.internet.defer import inlineCallbacks, returnValue
 
 from twistedcaldav.directory.calendar import uidsResourceName
 from twistedcaldav.ical import Component as VComponent
+
+from twistedcaldav.storebridge import ProtoCalendarCollectionFile
 
 from twistedcaldav.test.util import TestCase
 
@@ -135,7 +138,7 @@ class WrappingTests(TestCase):
         initialized to match.
         """
         calDavFile = yield self.getResource("calendars/users/wsanchez/frobozz")
-        self.assertIdentical(calDavFile._newStoreCalendar, None)
+        self.assertIsInstance(calDavFile, ProtoCalendarCollectionFile)
         calDavFile.createCalendarCollection()
         self.assertEquals(calDavFile.fp, calDavFile._newStoreCalendar._path)
 
