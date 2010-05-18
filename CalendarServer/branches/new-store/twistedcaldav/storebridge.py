@@ -1,4 +1,4 @@
-# -*- test-case-name: twistedcaldav.test -*-
+# -*- test-case-name: twistedcaldav -*-
 ##
 # Copyright (c) 2005-2010 Apple Inc. All rights reserved.
 #
@@ -20,7 +20,7 @@ Wrappers to translate between the APIs in L{txcaldav.icalendarstore} and those
 in L{twistedcaldav}.
 """
 
-from twisted.internet.defer import inlineCallbacks, returnValue, succeed
+from twisted.internet.defer import succeed
 
 from twext.python.filepath import CachingFilePath as FilePath
 
@@ -151,56 +151,15 @@ class CalendarCollectionFile(CalDAVFile):
         )
 
         if newStoreObject is not None:
-            # FIXME: what about creation in http_PUT?
             similar = CalendarObjectFile(newStoreObject, path)
         else:
+            # FIXME: creation in http_PUT should talk to a specific resource
+            # type; this is the domain of StoreCalendarObjectResource.
             # similar = ProtoCalendarObjectFile(self._newStoreCalendar, path)
             similar = CalDAVFile(path)
 
-        # FIXME: tests should fail without this:
+        # FIXME: tests should be failing without this line.
         # self.propagateTransaction(similar)
-
-        # Short-circuit stat with information we know to be true at this point
-        if isinstance(path, FilePath) and hasattr(self, "knownChildren"):
-            if path.basename() in self.knownChildren:
-                path.existsCached = True
-                path.isDirCached = False
-
-        #
-        # Override the dead property store
-        #
-        superDeadProperties = similar.deadProperties
-
-        def deadProperties():
-            if not hasattr(similar, "_dead_properties"):
-                similar._dead_properties = self.propertyCollection().propertyStoreForChild(
-                    similar,
-                    superDeadProperties(caching=False)
-                )
-            return similar._dead_properties
-
-        similar.deadProperties = deadProperties
-
-        #
-        # Override DELETE, MOVE
-        #
-        for method in ("DELETE", "MOVE"):
-            method = "http_" + method
-            original = getattr(similar, method)
-
-            @inlineCallbacks
-            def override(request, original=original):
-
-                # Call original method (which is deferred)
-                response = (yield original(request))
-
-                # Wipe the cache
-                similar.deadProperties().flushCache()
-
-                returnValue(response)
-
-            setattr(similar, method, override)
-        self.propagateTransaction(similar)
         return similar
 
 

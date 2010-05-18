@@ -77,7 +77,7 @@ from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
 from twistedcaldav.extensions import DAVFile, CachingPropertyStore
 from twistedcaldav.linkresource import LinkResource, LinkFollowerMixIn
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
-from twistedcaldav.memcacheprops import MemcachePropertyCollection
+
 from twistedcaldav.freebusyurl import FreeBusyURLResource
 from twistedcaldav.ical import Component as iComponent
 from twistedcaldav.ical import Property as iProperty
@@ -624,11 +624,6 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
             child for child in super(CalDAVFile, self).listChildren()
             if not child.startswith(".")
         ]
-
-    def propertyCollection(self):
-        if not hasattr(self, "_propertyCollection"):
-            self._propertyCollection = MemcachePropertyCollection(self)
-        return self._propertyCollection
 
     def createSimilarFile(self, path):
         if self.comparePath(path):
