@@ -144,31 +144,17 @@ class ICalendarStoreTransaction(ITransaction):
     """
     Calendar store transaction
     """
+
     def calendarHomeWithUID(uid, create=False):
         """
-        Retrieve the calendar home for the principal with the given
-        C{uid}.
+        Retrieve the calendar home for the principal with the given C{uid}.
 
-        If C{create} is true, create the calendar home if it doesn't
-        already exist.
+        If C{create} is C{True}, create the calendar home if it doesn't already
+        exist.
 
         @return: an L{ICalendarHome} or C{None} if no such calendar
-        home exists.
+            home exists.
         """
-
-
-    def abort():
-        """
-        Mark this transaction as invalid, reversing all of its effects.
-        """
-        # FIXME: probably needs to be deferred.
-
-
-    def commit():
-        """
-        Persist the effects of this transaction.
-        """
-        # FIXME: probably needs to be deferred.
 
 
 
