@@ -18,8 +18,6 @@
 File calendar store tests.
 """
 
-from zope.interface.verify import verifyObject, BrokenMethodImplementation
-
 from twext.python.filepath import CachingFilePath as FilePath
 from twisted.trial import unittest
 
@@ -30,8 +28,6 @@ from twext.web2.dav import davxml
 from txdav.idav import IPropertyStore
 from txdav.propertystore.base import PropertyName
 
-from txcaldav.icalendarstore import ICalendarStore, ICalendarHome
-from txcaldav.icalendarstore import ICalendar, ICalendarObject
 from txcaldav.icalendarstore import CalendarNameNotAllowedError
 from txcaldav.icalendarstore import CalendarObjectNameNotAllowedError
 from txcaldav.icalendarstore import CalendarAlreadyExistsError
@@ -43,6 +39,8 @@ from txcaldav.icalendarstore import InvalidCalendarComponentError
 
 from txcaldav.calendarstore.file import CalendarStore, CalendarHome
 from txcaldav.calendarstore.file import Calendar, CalendarObject
+
+from txcaldav.calendarstore.test.test_common import CommonTests
 
 storePath = FilePath(__file__).parent().child("calendar_store")
 
@@ -190,16 +188,6 @@ class CalendarStoreTest(unittest.TestCase):
         setUpCalendarStore(self)
 
 
-    def test_interface(self):
-        """
-        Interface is completed and conforming.
-        """
-        try:
-            verifyObject(ICalendarStore, self.calendarStore)
-        except BrokenMethodImplementation, e:
-            self.fail(e)
-
-
     def test_init(self):
         """
         Ivars are correctly initialized.
@@ -270,16 +258,6 @@ class CalendarHomeTest(unittest.TestCase, PropertiesTestMixin):
 
     def setUp(self):
         setUpHome1(self)
-
-
-    def test_interface(self):
-        """
-        Interface is completed and conforming.
-        """
-        try:
-            verifyObject(ICalendarHome, self.home1)
-        except BrokenMethodImplementation, e:
-            self.fail(e)
 
 
     def test_init(self):
@@ -433,16 +411,6 @@ class CalendarTest(unittest.TestCase, PropertiesTestMixin):
 
     def setUp(self):
         setUpCalendar1(self)
-
-
-    def test_interface(self):
-        """
-        Interface is completed and conforming.
-        """
-        try:
-            verifyObject(ICalendar, self.calendar1)
-        except BrokenMethodImplementation, e:
-            self.fail(e)
 
 
     def test_init(self):
@@ -823,16 +791,6 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
         self.object1 = self.calendar1.calendarObjectWithName("1.ics")
 
 
-    def test_interface(self):
-        """
-        Interface is completed and conforming.
-        """
-        try:
-            verifyObject(ICalendarObject, self.object1)
-        except BrokenMethodImplementation, e:
-            self.fail(e)
-
-
     def test_init(self):
         """
         Ivars are correctly initialized.
@@ -940,3 +898,17 @@ class CalendarObjectTest(unittest.TestCase, PropertiesTestMixin):
             self.object1.organizer(),
             "mailto:wsanchez@apple.com"
         )
+
+
+
+class FileStorageTests(unittest.TestCase, CommonTests):
+    """
+    File storage tests.
+    """
+
+    def storeUnderTest(self):
+        """
+        Create and return a L{CalendarStore} for testing.
+        """
+        setUpCalendarStore(self)
+        return self.calendarStore
