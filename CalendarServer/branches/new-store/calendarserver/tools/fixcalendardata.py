@@ -25,7 +25,7 @@ import sys
 import time
 import xattr
 
-from twext.python.plistlib import readPlist
+from plistlib import readPlist
 
 PLIST_FILE = "/etc/caldavd/caldavd.plist"
 SCAN_FILE = "problems.txt"
@@ -33,6 +33,8 @@ SCAN_FILE = "problems.txt"
 totalProblems = 0
 totalErrors = 0
 totalScanned = 0
+
+verbose = False
 
 def usage(e=None):
     if e:
@@ -49,6 +51,7 @@ def usage(e=None):
     print "  -h --help: print this help and exit"
     print "  -f --config: Specify caldavd.plist configuration path"
     print "  -o <path>: path to file for scan results [problems.txt]"
+    print "  -v: print each calendar home scanned"
     print "  --scan: Scan for problems"
     print "  --fix: Apply fixes"
     print ""
@@ -97,7 +100,8 @@ def scanData(basePath, scanFile, doFix):
                             scanCalendarHome(basePath, calendarHome, scanFile, doFix)
 
 def scanCalendarHome(basePath, calendarHome, scanFile, doFix):
-    print "Scanning: %s" % (calendarHome,)
+    if verbose:
+        print "Scanning: %s" % (calendarHome,)
     
     for item in os.listdir(calendarHome):
         calendarPath = os.path.join(calendarHome, item)
@@ -146,8 +150,9 @@ def scanCalendar(basePath, calendarPath, scanFile, doFix):
         if testICSData_TZIDs(icsData):
             problems.append("tzids")
             fixTZIDs = True
-        if testICSData_MultipleVALARMS(icsData):
-            problems.append("multi-valarms")
+        valarms = testICSData_MultipleVALARMS(icsData)
+        if valarms != 0:
+            problems.append("multi-valarms-%d" % valarms)
             fixMultiVALARMs = True
         if problems:
             if doFix:
@@ -178,7 +183,31 @@ def testICSData_TZIDs(icsData):
 
 def testICSData_MultipleVALARMS(icsData):
     
-    return icsData.find("END:VALARM\r\nBEGIN:VALARM") != -1
+    if icsData.count("END:VALARM\r\nBEGIN:VALARM") > 0:
+        
+        # More detailed scan
+        lines = icsData.split("\r\n")
+        badcount = 0
+        inevent = False
+        for line in lines:
+            line = line.upper()
+            if line == "BEGIN:VEVENT":
+                duplicate_count = 0
+                alarm_ids = set()
+                inevent = True
+            elif line == "END:VEVENT":
+                if duplicate_count > badcount:
+                    badcount = duplicate_count
+                inevent = False
+            elif inevent and line.startswith("X-WR-ALARMUID"):
+                new_id = line
+                if new_id in alarm_ids:
+                    duplicate_count += 1
+                else:
+                    alarm_ids.add(new_id)
+        return badcount
+    else:
+        return 0
 
 def fixData(basePath, scanPath):
     
@@ -293,7 +322,7 @@ def main():
     doFix = False
     
     # Parse command line options
-    opts, _ignore_args = getopt.getopt(sys.argv[1:], "f:ho:", ["config", "scan", "fix", "help",])
+    opts, _ignore_args = getopt.getopt(sys.argv[1:], "f:ho:v", ["config", "scan", "fix", "help",])
     for option, value in opts:
         if option in ("-h", "--help"):
             usage()
@@ -303,6 +332,8 @@ def main():
                 usage("Path does not exist: %s" % (plistPath,))
         elif option == "-o":
             scanPath = value
+        elif option == "-v":
+            verbose = True
         elif option == "--scan":
             doScan = True
         elif option == "--fix":

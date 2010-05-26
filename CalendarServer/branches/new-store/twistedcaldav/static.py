@@ -609,9 +609,6 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
         if hasattr(self, 'clientNotifier'):
             self.clientNotifier.notify(op="update")
-        else:
-            log.debug("%r does not have a clientNotifier but the CTag changed"
-                      % (self,))
 
         return succeed(True)
 
@@ -950,6 +947,7 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
     def liveProperties(self):
         
         return super(CalendarHomeFile, self).liveProperties() + (
+            (customxml.calendarserver_namespace, "push-transports"),
             (customxml.calendarserver_namespace, "xmpp-uri"),
             (customxml.calendarserver_namespace, "xmpp-heartbeat-uri"),
             (customxml.calendarserver_namespace, "xmpp-server"),
@@ -959,7 +957,11 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         """
         @param path: the path to the file which will back the resource.
         """
-        self.clientNotifier = ClientNotifier(self)
+
+        # TODO: when calendar home gets a resourceID( ) method, remove
+        # the "id=record.uid" keyword from this call:
+        self.clientNotifier = ClientNotifier(self, id=record.uid)
+
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
         txn = self.parent.parent._newStore.newTransaction()
@@ -971,7 +973,7 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
 
     def provision(self):
         result = super(CalendarHomeFile, self).provision()
-        if config.Sharing.Enabled:
+        if config.Sharing.Enabled and config.Sharing.Calendars.Enabled:
             self.provisionShares()
         return result
 
@@ -986,7 +988,7 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         else:
             FreeBusyURLFileClass = None
             
-        if config.Sharing.Enabled:
+        if config.Sharing.Enabled and config.Sharing.Calendars.Enabled:
             NotificationCollectionFileClass = NotificationCollectionFile
         else:
             NotificationCollectionFileClass = None
@@ -1001,7 +1003,8 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
 
         if cls is not None:
             child = cls(self.fp.child(name).path, self)
-            child.clientNotifier = self.clientNotifier
+            child.clientNotifier = self.clientNotifier.clone(child,
+                label="collection")
             return child
         return self.createSimilarFile(self.fp.child(name).path)
 
@@ -1030,7 +1033,8 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
                     path, principalCollections=self.principalCollections()
                 )
             self.propagateTransaction(similar)
-            similar.clientNotifier = self.clientNotifier
+            similar.clientNotifier = self.clientNotifier.clone(similar,
+                label="collection")
             return similar
 
     def getChild(self, name):
@@ -1047,22 +1051,81 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         else:
             qname = property.qname()
 
-        def doneWaiting(result, propVal):
-            return propVal
+        if qname == (customxml.calendarserver_namespace, "push-transports"):
+            pubSubConfiguration = getPubSubConfiguration(config)
+            if (pubSubConfiguration['enabled'] and
+                getattr(self, "clientNotifier", None) is not None):
+                    id = self.clientNotifier.getID()
+                    nodeName = getPubSubPath(id, pubSubConfiguration)
+                    children = []
+                    if pubSubConfiguration['aps-bundle-id']:
+                        children.append(
+                            customxml.PubSubTransportProperty(
+                                customxml.PubSubSubscriptionProperty(
+                                    davxml.HRef(
+                                        pubSubConfiguration['subscription-url']
+                                    ),
+                                ),
+                                customxml.PubSubAPSBundleIDProperty(
+                                    pubSubConfiguration['aps-bundle-id']
+                                ),
+                                type="APSD",
+                            )
+                        )
+                    if pubSubConfiguration['xmpp-server']:
+                        children.append(
+                            customxml.PubSubTransportProperty(
+                                customxml.PubSubXMPPServerProperty(
+                                    pubSubConfiguration['xmpp-server']
+                                ),
+                                customxml.PubSubXMPPURIProperty(
+                                    getPubSubXMPPURI(id, pubSubConfiguration)
+                                ),
+                                type="XMPP",
+                            )
+                        )
+
+                    propVal = customxml.PubSubPushTransportsProperty(*children)
+                    nodeCacher = getNodeCacher()
+                    d = nodeCacher.waitForNode(self.clientNotifier, nodeName)
+                    # In either case we're going to return the value
+                    d.addBoth(lambda ignored: propVal)
+                    return d
+
+
+            else:
+                return succeed(customxml.PubSubPushTransportsProperty())
+
+
+        if qname == (customxml.calendarserver_namespace, "pushkey"):
+            pubSubConfiguration = getPubSubConfiguration(config)
+            if pubSubConfiguration['enabled']:
+                if getattr(self, "clientNotifier", None) is not None:
+                    id = self.clientNotifier.getID()
+                    nodeName = getPubSubPath(id, pubSubConfiguration)
+                    propVal = customxml.PubSubXMPPPushKeyProperty(nodeName)
+                    nodeCacher = getNodeCacher()
+                    d = nodeCacher.waitForNode(self.clientNotifier, nodeName)
+                    # In either case we're going to return the xmpp-uri value
+                    d.addBoth(lambda ignored: propVal)
+                    return d
+            else:
+                return succeed(customxml.PubSubXMPPPushKeyProperty())
+
+
 
         if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
             pubSubConfiguration = getPubSubConfiguration(config)
             if pubSubConfiguration['enabled']:
                 if getattr(self, "clientNotifier", None) is not None:
-                    url = self.url()
-                    nodeName = getPubSubPath(url, pubSubConfiguration)
+                    id = self.clientNotifier.getID()
+                    nodeName = getPubSubPath(id, pubSubConfiguration)
                     propVal = customxml.PubSubXMPPURIProperty(
-                        getPubSubXMPPURI(url, pubSubConfiguration))
+                        getPubSubXMPPURI(id, pubSubConfiguration))
                     nodeCacher = getNodeCacher()
                     d = nodeCacher.waitForNode(self.clientNotifier, nodeName)
                     # In either case we're going to return the xmpp-uri value
-                    d.addCallback(doneWaiting, propVal)
-                    d.addErrback(doneWaiting, propVal)
+                    d.addBoth(lambda ignored: propVal)
                     return d
             else:
                 return succeed(customxml.PubSubXMPPURIProperty())
@@ -1469,7 +1532,7 @@ class AddressBookHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryAd
     def createSimilarFile(self, path):
         raise HTTPError(responsecode.NOT_FOUND)
 
-class AddressBookHomeFile (AutoProvisioningFileMixIn, DirectoryAddressBookHomeResource, CalDAVFile):
+class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, DirectoryAddressBookHomeResource, CalDAVFile):
     """
     Address book home collection resource.
     """
@@ -1485,12 +1548,18 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, DirectoryAddressBookHomeRe
         """
         @param path: the path to the file which will back the resource.
         """
-        self.clientNotifier = ClientNotifier(self)
+
+        # TODO: when addressbook home gets a resourceID( ) method, remove
+        # the "id=record.uid" keyword from this call:
+        self.clientNotifier = ClientNotifier(self, id=record.uid)
+
         CalDAVFile.__init__(self, path)
         DirectoryAddressBookHomeResource.__init__(self, parent, record)
 
     def provision(self):
         result = super(AddressBookHomeFile, self).provision()
+        if config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled:
+            self.provisionShares()
         self.provisionLinks()
         return result
 
@@ -1506,7 +1575,7 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, DirectoryAddressBookHomeRe
 
     def provisionChild(self, name):
  
-        if config.Sharing.Enabled:
+        if config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled and not config.Sharing.Calendars.Enabled:
             NotificationCollectionFileClass = NotificationCollectionFile
         else:
             NotificationCollectionFileClass = None
@@ -1517,7 +1586,8 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, DirectoryAddressBookHomeRe
 
         if cls is not None:
             child = cls(self.fp.child(name).path, self)
-            child.clientNotifier = self.clientNotifier
+            child.clientNotifier = self.clientNotifier.clone(child,
+                label="collection")
             return child
         return self.createSimilarFile(self.fp.child(name).path)
 
@@ -1526,7 +1596,8 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, DirectoryAddressBookHomeRe
             return self
         else:
             similar = CalDAVFile(path, principalCollections=self.principalCollections())
-            similar.clientNotifier = self.clientNotifier
+            similar.clientNotifier = self.clientNotifier.clone(similar,
+                label="collection")
             return similar
 
     def getChild(self, name):
@@ -1543,22 +1614,18 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, DirectoryAddressBookHomeRe
         else:
             qname = property.qname()
 
-        def doneWaiting(result, propVal):
-            return propVal
-
         if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
             pubSubConfiguration = getPubSubConfiguration(config)
             if pubSubConfiguration['enabled']:
                 if getattr(self, "clientNotifier", None) is not None:
-                    url = self.url()
-                    nodeName = getPubSubPath(url, pubSubConfiguration)
+                    id = self.clientNotifier.getID()
+                    nodeName = getPubSubPath(id, pubSubConfiguration)
                     propVal = customxml.PubSubXMPPURIProperty(
-                        getPubSubXMPPURI(url, pubSubConfiguration))
+                        getPubSubXMPPURI(id, pubSubConfiguration))
                     nodeCacher = getNodeCacher()
                     d = nodeCacher.waitForNode(self.clientNotifier, nodeName)
                     # In either case we're going to return the xmpp-uri value
-                    d.addCallback(doneWaiting, propVal)
-                    d.addErrback(doneWaiting, propVal)
+                    d.addBoth(lambda ignored: propVal)
                     return d
             else:
                 return succeed(customxml.PubSubXMPPURIProperty())
@@ -1623,11 +1690,15 @@ class DirectoryBackedAddressBookFile (ReadOnlyResourceMixIn, DirectoryBackedAddr
         if name is "":
             return self
         else:
-            return CalDAVFile(
-                self.fp,
-                principalCollections=self.principalCollections()
-            ).getChild(name)
+            from twistedcaldav.simpleresource import SimpleCalDAVResource
+            return SimpleCalDAVResource(principalCollections=self.principalCollections())
        
+    def createSimilarFile(self, path):
+        if self.comparePath(path):
+            return self
+        else:
+            from twistedcaldav.simpleresource import SimpleCalDAVResource
+            return SimpleCalDAVResource(principalCollections=self.principalCollections())
  
 class GlobalAddressBookFile (ReadOnlyResourceMixIn, GlobalAddressBookResource, CalDAVFile):
     """
@@ -1642,7 +1713,8 @@ class GlobalAddressBookFile (ReadOnlyResourceMixIn, GlobalAddressBookResource, C
             return self
         else:
             similar = CalDAVFile(path, principalCollections=self.principalCollections())
-            similar.clientNotifier = self.clientNotifier
+            similar.clientNotifier = self.clientNotifier.clone(similar,
+                label="collection")
             return similar
 
 ##
@@ -1747,6 +1819,9 @@ import twistedcaldav.method
 bindMethods(twistedcaldav.method, CalDAVFile)
 
 # Some resources do not support some methods
+setattr(CalendarHomeFile, "http_ACL", None)
+setattr(AddressBookHomeFile, "http_ACL", None)
+
 setattr(DropBoxCollectionFile, "http_MKCALENDAR", None)
 setattr(DropBoxChildFile, "http_MKCOL", None)
 setattr(DropBoxChildFile, "http_MKCALENDAR", None)

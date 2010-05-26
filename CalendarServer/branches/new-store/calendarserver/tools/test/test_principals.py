@@ -50,8 +50,6 @@ class ManagePrincipalsTestCase(TestCase):
         self.configFileName = configFilePath.path
         config.load(self.configFileName)
 
-        os.makedirs(config.DataRoot)
-
         origUsersFile = FilePath(os.path.join(os.path.dirname(__file__),
             "principals", "users-groups.xml"))
         copyUsersFile = FilePath(os.path.join(config.DataRoot, "accounts.xml"))
@@ -73,6 +71,7 @@ class ManagePrincipalsTestCase(TestCase):
         reactor.callLater(0, d.callback, True)
         return d
 
+
     @inlineCallbacks
     def runCommand(self, *additional):
         """
@@ -87,7 +86,6 @@ class ManagePrincipalsTestCase(TestCase):
         cwd = sourceRoot
 
         deferred = Deferred()
-        e = os.environ
         reactor.spawnProcess(CapturingProcessProtocol(deferred, None), python, args, env=os.environ, path=cwd)
         output = yield deferred
         returnValue(output)
@@ -126,7 +124,7 @@ class ManagePrincipalsTestCase(TestCase):
 
         results = yield self.runCommand("--get-auto-schedule",
             "resources:newresource")
-        self.assertTrue(results.startswith("Autoschedule for (resources)newresource is true"))
+        self.assertTrue(results.startswith('Autoschedule for "New Resource" (resources:newresource) is true'))
 
         results = yield self.runCommand("--list-principals=resources")
         self.assertTrue("newresource" in results)
@@ -181,7 +179,7 @@ class ManagePrincipalsTestCase(TestCase):
     def test_modifyWriteProxies(self):
         results = yield self.runCommand("--add-write-proxy=users:user01",
             "locations:location01")
-        self.assertTrue(results.startswith("Added (users)user01 as a write proxy for (locations)location01"))
+        self.assertTrue(results.startswith('Added "Test User 01" (users:user01) as a write proxy for "Room 01" (locations:location01)'))
 
         results = yield self.runCommand("--list-write-proxies",
             "locations:location01")
@@ -192,13 +190,13 @@ class ManagePrincipalsTestCase(TestCase):
 
         results = yield self.runCommand("--list-write-proxies",
             "locations:location01")
-        self.assertTrue("No write proxies for (locations)location01" in results)
+        self.assertTrue('No write proxies for "Room 01" (locations:location01)' in results)
 
     @inlineCallbacks
     def test_modifyReadProxies(self):
         results = yield self.runCommand("--add-read-proxy=users:user01",
             "locations:location01")
-        self.assertTrue(results.startswith("Added (users)user01 as a read proxy for (locations)location01"))
+        self.assertTrue(results.startswith('Added "Test User 01" (users:user01) as a read proxy for "Room 01" (locations:location01)'))
 
         results = yield self.runCommand("--list-read-proxies",
             "locations:location01")
@@ -209,22 +207,22 @@ class ManagePrincipalsTestCase(TestCase):
 
         results = yield self.runCommand("--list-read-proxies",
             "locations:location01")
-        self.assertTrue("No read proxies for (locations)location01" in results)
+        self.assertTrue('No read proxies for "Room 01" (locations:location01)' in results)
 
 
     @inlineCallbacks
     def test_autoSchedule(self):
         results = yield self.runCommand("--get-auto-schedule",
             "locations:location01")
-        self.assertTrue(results.startswith("Autoschedule for (locations)location01 is false"))
+        self.assertTrue(results.startswith('Autoschedule for "Room 01" (locations:location01) is false'))
 
         results = yield self.runCommand("--set-auto-schedule=true",
             "locations:location01")
-        self.assertTrue(results.startswith("Setting auto-schedule to true for (locations)location01"))
+        self.assertTrue(results.startswith('Setting auto-schedule to true for "Room 01" (locations:location01)'))
 
         results = yield self.runCommand("--get-auto-schedule",
             "locations:location01")
-        self.assertTrue(results.startswith("Autoschedule for (locations)location01 is true"))
+        self.assertTrue(results.startswith('Autoschedule for "Room 01" (locations:location01) is true'))
 
     @inlineCallbacks
     def test_updateRecord(self):

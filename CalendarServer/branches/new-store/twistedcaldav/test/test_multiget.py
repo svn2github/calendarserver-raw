@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2008 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ from twistedcaldav import caldavxml
 from twistedcaldav import ical
 from twistedcaldav.index import db_basename
 from twistedcaldav.test.util import HomeTestCase
+from twistedcaldav.config import config
 
 class CalendarMultiget (HomeTestCase):
     """
@@ -60,6 +61,50 @@ class CalendarMultiget (HomeTestCase):
         baduids = ["12345@example.com", "67890@example.com"]
 
         return self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids)
+
+    def test_multiget_limited_with_data(self):
+        """
+        All events.
+        (CalDAV-access-09, section 7.6.8)
+        """
+        oldValue = config.MaxMultigetWithDataHrefs
+        config.MaxMultigetWithDataHrefs = 1
+        def _restoreValueOK(f):
+            config.MaxMultigetWithDataHrefs = oldValue
+            self.fail("REPORT must fail with 403")
+
+        def _restoreValueError(f):
+            config.MaxMultigetWithDataHrefs = oldValue
+            return None
+
+        okuids = [r[0] for r in (os.path.splitext(f) for f in os.listdir(self.holidays_dir)) if r[1] == ".ics"]
+
+        baduids = ["12345@example.com", "67890@example.com"]
+
+        d = self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids)
+        d.addCallbacks(_restoreValueOK, _restoreValueError)
+        return d
+
+    def test_multiget_limited_no_data(self):
+        """
+        All events.
+        (CalDAV-access-09, section 7.6.8)
+        """
+        oldValue = config.MaxMultigetWithDataHrefs
+        config.MaxMultigetWithDataHrefs = 1
+        def _restoreValueOK(f):
+            config.MaxMultigetWithDataHrefs = oldValue
+            return None
+
+        def _restoreValueError(f):
+            config.MaxMultigetWithDataHrefs = oldValue
+            self.fail("REPORT must not fail with 403")
+
+        okuids = [r[0] for r in (os.path.splitext(f) for f in os.listdir(self.holidays_dir)) if r[1] == ".ics"]
+
+        baduids = ["12345@example.com", "67890@example.com"]
+
+        return self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids, withData=False)
 
     @inlineCallbacks
     def test_multiget_one_broken_event(self):
@@ -117,11 +162,16 @@ DTEND;VALUE=DATE:20020""")
         baduids = ["bad", ]
         yield self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids, data, no_init=True)
 
-    def simple_event_multiget(self, cal_uri, okuids, baduids, data=None, no_init=False):
+    def simple_event_multiget(self, cal_uri, okuids, baduids, data=None, no_init=False, withData=True):
+        props = (
+            davxml.GETETag(),
+        )
+        if withData:
+            props += (
+                caldavxml.CalendarData(),
+            )
         children = []
-        children.append(davxml.PropertyContainer(
-                        davxml.GETETag(),
-                        caldavxml.CalendarData()))
+        children.append(davxml.PropertyContainer(*props))
         
         okhrefs = [cal_uri + x + ".ics" for x in okuids]
         badhrefs = [cal_uri + x + ".ics" for x in baduids]
@@ -189,7 +239,7 @@ DTEND;VALUE=DATE:20020""")
                         else:
                             self.fail("Got unexpected href %r" % (href,))
         
-            if len(okuids) + len(badhrefs):
+            if withData and (len(okuids) + len(badhrefs)):
                 self.fail("Some components were not returned: %r, %r" % (okuids, badhrefs))
 
         return self.calendar_query(cal_uri, query, got_xml, data, no_init)

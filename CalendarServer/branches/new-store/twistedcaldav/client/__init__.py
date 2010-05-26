@@ -14,3 +14,16 @@
 # limitations under the License.
 ##
 
+from twext.web2.http_headers import DefaultHTTPHandler, tokenize, generateList, singleHeader
+
+DefaultHTTPHandler.updateParsers({
+    "x-forwarded-for": (tokenize, list),
+    "x-forwarded-host": (tokenize, list),
+    "x-forwarded-server": (tokenize, list),
+})
+DefaultHTTPHandler.updateGenerators({
+    "x-forwarded-for": (generateList, singleHeader),
+    "x-forwarded-host": (generateList, singleHeader),
+    "x-forwarded-server": (generateList, singleHeader),
+})
+

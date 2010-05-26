@@ -69,6 +69,11 @@ shift $((${OPTIND} - 1));
 
 export PYTHONPATH="${wd}";
 dependencies;
+if [ -d "${wd}/../Twisted" ]; then
+  trial="${wd}/../Twisted/bin/trial";
+else
+  trial="$(type -p trial)";
+fi;
 
 if [ $# -gt 0 ]; then
     test_modules="$@";
@@ -76,4 +81,4 @@ else
     test_modules="calendarserver twistedcaldav twext txdav txcaldav txcarddav ${m_twisted}";
 fi;
 
-cd "${wd}" && "trial" --rterrors ${random} ${until_fail} ${no_colour} ${coverage} ${test_modules};
+cd "${wd}" && "${python}" "${trial}" --rterrors ${random} ${until_fail} ${no_colour} ${coverage} ${test_modules};
