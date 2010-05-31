@@ -948,6 +948,7 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         
         return super(CalendarHomeFile, self).liveProperties() + (
             (customxml.calendarserver_namespace, "push-transports"),
+            (customxml.calendarserver_namespace, "pushkey"),
             (customxml.calendarserver_namespace, "xmpp-uri"),
             (customxml.calendarserver_namespace, "xmpp-heartbeat-uri"),
             (customxml.calendarserver_namespace, "xmpp-server"),
@@ -1096,7 +1097,6 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
             else:
                 return succeed(customxml.PubSubPushTransportsProperty())
 
-
         if qname == (customxml.calendarserver_namespace, "pushkey"):
             pubSubConfiguration = getPubSubConfiguration(config)
             if pubSubConfiguration['enabled']:
@@ -1111,7 +1111,6 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
                     return d
             else:
                 return succeed(customxml.PubSubXMPPPushKeyProperty())
-
 
 
         if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
@@ -1539,6 +1538,8 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
     
     def liveProperties(self):
         return super(AddressBookHomeFile, self).liveProperties() + (
+            (customxml.calendarserver_namespace, "push-transports"),
+            (customxml.calendarserver_namespace, "pushkey"),
             (customxml.calendarserver_namespace, "xmpp-uri"),
             (customxml.calendarserver_namespace, "xmpp-heartbeat-uri"),
             (customxml.calendarserver_namespace, "xmpp-server"),
@@ -1613,6 +1614,67 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
             qname = property
         else:
             qname = property.qname()
+
+        if qname == (customxml.calendarserver_namespace, "push-transports"):
+            pubSubConfiguration = getPubSubConfiguration(config)
+            if (pubSubConfiguration['enabled'] and
+                getattr(self, "clientNotifier", None) is not None):
+                    id = self.clientNotifier.getID()
+                    nodeName = getPubSubPath(id, pubSubConfiguration)
+                    children = []
+                    if pubSubConfiguration['aps-bundle-id']:
+                        children.append(
+                            customxml.PubSubTransportProperty(
+                                customxml.PubSubSubscriptionProperty(
+                                    davxml.HRef(
+                                        pubSubConfiguration['subscription-url']
+                                    ),
+                                ),
+                                customxml.PubSubAPSBundleIDProperty(
+                                    pubSubConfiguration['aps-bundle-id']
+                                ),
+                                type="APSD",
+                            )
+                        )
+                    if pubSubConfiguration['xmpp-server']:
+                        children.append(
+                            customxml.PubSubTransportProperty(
+                                customxml.PubSubXMPPServerProperty(
+                                    pubSubConfiguration['xmpp-server']
+                                ),
+                                customxml.PubSubXMPPURIProperty(
+                                    getPubSubXMPPURI(id, pubSubConfiguration)
+                                ),
+                                type="XMPP",
+                            )
+                        )
+
+                    propVal = customxml.PubSubPushTransportsProperty(*children)
+                    nodeCacher = getNodeCacher()
+                    d = nodeCacher.waitForNode(self.clientNotifier, nodeName)
+                    # In either case we're going to return the value
+                    d.addBoth(lambda ignored: propVal)
+                    return d
+
+
+            else:
+                return succeed(customxml.PubSubPushTransportsProperty())
+
+        if qname == (customxml.calendarserver_namespace, "pushkey"):
+            pubSubConfiguration = getPubSubConfiguration(config)
+            if pubSubConfiguration['enabled']:
+                if getattr(self, "clientNotifier", None) is not None:
+                    id = self.clientNotifier.getID()
+                    nodeName = getPubSubPath(id, pubSubConfiguration)
+                    propVal = customxml.PubSubXMPPPushKeyProperty(nodeName)
+                    nodeCacher = getNodeCacher()
+                    d = nodeCacher.waitForNode(self.clientNotifier, nodeName)
+                    # In either case we're going to return the xmpp-uri value
+                    d.addBoth(lambda ignored: propVal)
+                    return d
+            else:
+                return succeed(customxml.PubSubXMPPPushKeyProperty())
+
 
         if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
             pubSubConfiguration = getPubSubConfiguration(config)
