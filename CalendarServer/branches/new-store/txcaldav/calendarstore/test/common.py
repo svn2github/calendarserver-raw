@@ -18,12 +18,20 @@
 Tests for common calendar store API functions.
 """
 
-from txcaldav.icalendarstore import ICalendarStore, ICalendarStoreTransaction, \
-    ICalendarObject, ICalendarHome, ICalendar, InvalidCalendarComponentError
-from twext.python.filepath import CachingFilePath as FilePath
 from zope.interface.verify import verifyObject
-from zope.interface.exceptions import BrokenMethodImplementation
+from zope.interface.exceptions import (
+    BrokenMethodImplementation, DoesNotImplement)
+
+from txdav.idav import IPropertyStore
 from txdav.propertystore.base import PropertyName
+
+from txcaldav.icalendarstore import (
+    ICalendarStore, ICalendarStoreTransaction, ICalendarObject, ICalendarHome,
+    ICalendar, InvalidCalendarComponentError,
+    CalendarObjectNameAlreadyExistsError, CalendarAlreadyExistsError,
+    NoSuchCalendarError, NoSuchCalendarObjectError)
+
+from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2.dav import davxml
 from twext.python.vcomponent import VComponent
 
@@ -34,11 +42,18 @@ homeRoot = storePath.child("ho").child("me").child("home1")
 
 cal1Root = homeRoot.child("calendar_1")
 
-calendar1_objectNames = (
+calendar1_objectNames = [
     "1.ics",
     "2.ics",
     "3.ics",
-)
+]
+
+
+home1_calendarNames = [
+    "calendar_1",
+    "calendar_2",
+    "calendar_empty",
+]
 
 
 event4_text = (
@@ -81,6 +96,41 @@ event4_text = (
       "END:VEVENT\r\n"
     "END:VCALENDAR\r\n"
 )
+
+
+
+event4notCalDAV_text = (
+    "BEGIN:VCALENDAR\r\n"
+      "VERSION:2.0\r\n"
+      "PRODID:-//Apple Inc.//iCal 4.0.1//EN\r\n"
+      "CALSCALE:GREGORIAN\r\n"
+      "BEGIN:VEVENT\r\n"
+        "CREATED:20100203T013849Z\r\n"
+        "UID:4\r\n"
+        "DTEND;TZID=US/Pacific:20100207T173000\r\n" # TZID without VTIMEZONE
+        "TRANSP:OPAQUE\r\n"
+        "SUMMARY:New Event\r\n"
+        "DTSTART;TZID=US/Pacific:20100207T170000\r\n"
+        "DTSTAMP:20100203T013909Z\r\n"
+        "SEQUENCE:3\r\n"
+        "BEGIN:VALARM\r\n"
+          "X-WR-ALARMUID:1377CCC7-F85C-4610-8583-9513D4B364E1\r\n"
+          "TRIGGER:-PT20M\r\n"
+          "ATTACH;VALUE=URI:Basso\r\n"
+          "ACTION:AUDIO\r\n"
+        "END:VALARM\r\n"
+      "END:VEVENT\r\n"
+    "END:VCALENDAR\r\n"
+)
+
+
+
+event1modified_text = event4_text.replace(
+    "\r\nUID:uid4\r\n",
+    "\r\nUID:uid1\r\n"
+)
+
+
 
 class CommonTests(object):
     """
@@ -182,6 +232,9 @@ class CommonTests(object):
             verifyObject(interface, provider)
         except BrokenMethodImplementation, e:
             self.fail(e)
+        except DoesNotImplement, e:
+            self.fail("%r does not provide %s.%s" %
+                (provider, interface.__module__, interface.getName()))
 
 
     def test_calendarStoreProvides(self):
@@ -251,6 +304,27 @@ class CommonTests(object):
         )
 
 
+    def test_calendarWithName_exists(self):
+        """
+        L{ICalendarHome.calendarWithName} returns an L{ICalendar} provider,
+        whose name matches the one passed in.
+        """
+        home = self.homeUnderTest()
+        for name in home1_calendarNames:
+            calendar = home.calendarWithName(name)
+            self.assertProvides(ICalendar, calendar)
+            self.assertEquals(calendar.name(), name)
+
+
+    def test_calendarWithName_absent(self):
+        """
+        L{ICalendarHome.calendarWithName} returns C{None} for calendars which
+        do not exist.
+        """
+        self.assertEquals(self.homeUnderTest().calendarWithName("xyzzy"),
+                          None)
+
+
     def test_createCalendarWithName_absent(self):
         """
         L{ICalendarHome.createCalendarWithName} creates a new L{ICalendar} that
@@ -281,26 +355,65 @@ class CommonTests(object):
         checkProperties()
 
 
+    def test_createCalendarWithName_exists(self):
+        """
+        L{ICalendarHome.createCalendarWithName} raises
+        L{CalendarAlreadyExistsError} when the name conflicts with an already-
+        existing 
+        """
+        for name in home1_calendarNames:
+            self.assertRaises(
+                CalendarAlreadyExistsError,
+                self.homeUnderTest().createCalendarWithName, name
+            )
+
+
+    def test_removeCalendarWithName_exists(self):
+        """
+        L{ICalendarHome.removeCalendarWithName} removes a calendar that already
+        exists.
+        """
+        home = self.homeUnderTest()
+        # FIXME: test transactions
+        for name in home1_calendarNames:
+            self.assertNotIdentical(home.calendarWithName(name), None)
+            home.removeCalendarWithName(name)
+            self.assertEquals(home.calendarWithName(name), None)
+
+
+    def test_removeCalendarWithName_absent(self):
+        """
+        Attempt to remove an non-existing calendar should raise.
+        """
+        home = self.homeUnderTest()
+        self.assertRaises(NoSuchCalendarError,
+                          home.removeCalendarWithName, "xyzzy")
+
+
     def test_calendarObjects(self):
         """
         L{ICalendar.calendarObjects} will enumerate the calendar objects present
         in the filesystem, in name order, but skip those with hidden names.
         """
         calendar1 = self.calendarUnderTest()
-        calendarObjects = tuple(calendar1.calendarObjects())
+        calendarObjects = list(calendar1.calendarObjects())
 
         for calendarObject in calendarObjects:
             self.assertProvides(ICalendarObject, calendarObject)
+            self.assertEquals(
+                calendar1.calendarObjectWithName(calendarObject.name()),
+                calendarObject
+            )
 
         self.assertEquals(
-            tuple(o.name() for o in calendarObjects),
+            list(o.name() for o in calendarObjects),
             calendar1_objectNames
         )
 
 
     def test_calendarObjectsWithRemovedObject(self):
         """
-        L{ICalendar.calendarObjects} will skip those objects which have been
+        L{ICalendar.calendarObjects} skips those objects which have been
         removed by L{Calendar.removeCalendarObjectWithName} in the same
         transaction, even if it has not yet been committed.
         """
@@ -321,6 +434,19 @@ class CommonTests(object):
         )
 
 
+    def test_calendarObjectWithName_exists(self):
+        """
+        L{ICalendar.calendarObjectWithName} returns an L{ICalendarObject}
+        provider for calendars which already exist.
+        """
+        calendar1 = self.calendarUnderTest()
+        for name in calendar1_objectNames:
+            calendarObject = calendar1.calendarObjectWithName(name)
+            self.assertProvides(ICalendarObject, calendarObject)
+            self.assertEquals(calendarObject.name(), name)
+            # FIXME: add more tests based on CommonTests.requirements
+
+
     def test_calendarObjectWithName_absent(self):
         """
         L{ICalendar.calendarObjectWithName} returns C{None} for calendars which
@@ -330,11 +456,113 @@ class CommonTests(object):
         self.assertEquals(calendar1.calendarObjectWithName("xyzzy"), None)
 
 
-    def test_name(self):
+    def test_removeCalendarObjectWithUID_exists(self):
+        """
+        Remove an existing calendar object.
+        """
+        calendar = self.calendarUnderTest()
+        for name in calendar1_objectNames:
+            uid = (u'uid' + name.rstrip(".ics"))
+            self.assertNotIdentical(calendar.calendarObjectWithUID(uid),
+                                    None)
+            calendar.removeCalendarObjectWithUID(uid)
+            self.assertEquals(
+                calendar.calendarObjectWithUID(uid),
+                None
+            )
+            self.assertEquals(
+                calendar.calendarObjectWithName(name),
+                None
+            )
+
+
+    def test_removeCalendarObjectWithName_exists(self):
+        """
+        Remove an existing calendar object.
+        """
+        calendar = self.calendarUnderTest()
+        for name in calendar1_objectNames:
+            self.assertNotIdentical(
+                calendar.calendarObjectWithName(name), None
+            )
+            calendar.removeCalendarObjectWithName(name)
+            self.assertIdentical(
+                calendar.calendarObjectWithName(name), None
+            )
+
+
+    def test_removeCalendarObjectWithName_absent(self):
+        """
+        Attempt to remove an non-existing calendar object should raise.
+        """
+        calendar = self.calendarUnderTest()
+        self.assertRaises(
+            NoSuchCalendarObjectError,
+            calendar.removeCalendarObjectWithName, "xyzzy"
+        )
+
+
+    def test_calendarName(self):
         """
         L{Calendar.name} reflects the name of the calendar.
         """
         self.assertEquals(self.calendarUnderTest().name(), "calendar_1")
+
+
+    def test_calendarObjectName(self):
+        """
+        L{ICalendarObject.name} reflects the name of the calendar object.
+        """
+        self.assertEquals(self.calendarObjectUnderTest().name(), "1.ics")
+
+
+    def test_component(self):
+        """
+        L{ICalendarObject.component} returns a L{VComponent} describing the
+        calendar data underlying that calendar object.
+        """
+        component = self.calendarObjectUnderTest().component()
+
+        self.failUnless(
+            isinstance(component, VComponent),
+            component
+        )
+
+        self.assertEquals(component.name(), "VCALENDAR")
+        self.assertEquals(component.mainType(), "VEVENT")
+        self.assertEquals(component.resourceUID(), "uid1")
+
+
+    def test_iCalendarText(self):
+        """
+        L{ICalendarObject.iCalendarText} returns a C{str} describing the same
+        data provided by L{ICalendarObject.component}.
+        """
+        text = self.calendarObjectUnderTest().iCalendarText()
+        self.assertIsInstance(text, str)
+        self.failUnless(text.startswith("BEGIN:VCALENDAR\r\n"))
+        self.assertIn("\r\nUID:uid1\r\n", text)
+        self.failUnless(text.endswith("\r\nEND:VCALENDAR\r\n"))
+
+
+    def test_calendarObjectUID(self):
+        """
+        L{ICalendarObject.uid} returns a C{str} describing the C{UID} property
+        of the calendar object's component.
+        """
+        self.assertEquals(self.calendarObjectUnderTest().uid(), "uid1")
+
+
+    def test_organizer(self):
+        """
+        L{ICalendarObject.organizer} returns a C{str} describing the calendar
+        user address of the C{ORGANIZER} property of the calendar object's
+        component.
+        """
+        self.assertEquals(
+            self.calendarObjectUnderTest().organizer(),
+            "mailto:wsanchez@apple.com"
+        )
 
 
     def test_calendarObjectWithUID_absent(self):
@@ -346,9 +574,31 @@ class CommonTests(object):
         self.assertEquals(calendar1.calendarObjectWithUID("xyzzy"), None)
 
 
+    def test_calendars(self):
+        """
+        L{ICalendarHome.calendars} returns an iterable of L{ICalendar}
+        providers, which are consistent with the results from
+        L{ICalendar.calendarWithName}.
+        """
+        # Add a dot directory to make sure we don't find it
+        # self.home1._path.child(".foo").createDirectory()
+        home = self.homeUnderTest()
+        calendars = list(home.calendars())
+
+        for calendar in calendars:
+            self.assertProvides(ICalendar, calendar)
+            self.assertEquals(calendar,
+                              home.calendarWithName(calendar.name()))
+
+        self.assertEquals(
+            list(c.name() for c in calendars),
+            home1_calendarNames
+        )
+
+
     def test_createCalendarObjectWithName_absent(self):
         """
-        L{ICalendar.createCalendarObjectWithName} will create a new
+        L{ICalendar.createCalendarObjectWithName} creates a new
         L{ICalendarObject}.
         """
         calendar1 = self.calendarUnderTest()
@@ -359,6 +609,45 @@ class CommonTests(object):
 
         calendarObject = calendar1.calendarObjectWithName(name)
         self.assertEquals(calendarObject.component(), component)
+
+
+    def test_createCalendarObjectWithName_exists(self):
+        """
+        L{ICalendar.createCalendarObjectWithName} raises
+        L{CalendarObjectNameAlreadyExistsError} if a calendar object with the
+        given name already exists in that calendar.
+        """
+        self.assertRaises(
+            CalendarObjectNameAlreadyExistsError,
+            self.calendarUnderTest().createCalendarObjectWithName,
+            "1.ics", VComponent.fromString(event4_text)
+        )
+
+
+    def test_createCalendarObjectWithName_invalid(self):
+        """
+        L{ICalendar.createCalendarObjectWithName} raises
+        L{InvalidCalendarComponentError} if presented with invalid iCalendar
+        text.
+        """
+        self.assertRaises(
+            InvalidCalendarComponentError,
+            self.calendarUnderTest().createCalendarObjectWithName,
+            "new", VComponent.fromString(event4notCalDAV_text)
+        )
+
+
+    def test_setComponent_invalid(self):
+        """
+        L{ICalendarObject.setComponent} raises L{InvalidICalendarDataError} if
+        presented with invalid iCalendar text.
+        """
+        calendarObject = self.calendarObjectUnderTest()
+        self.assertRaises(
+            InvalidCalendarComponentError,
+            calendarObject.setComponent,
+            VComponent.fromString(event4notCalDAV_text)
+        )
 
 
     def test_setComponent_uidchanged(self):
@@ -375,3 +664,72 @@ class CommonTests(object):
         )
 
 
+    def test_calendarHomeWithUID_create(self):
+        """
+        L{ICalendarStoreTransaction.calendarHomeWithUID} with C{create=True}
+        will create a calendar home that doesn't exist yet.
+        """
+        txn = self.transactionUnderTest()
+        noHomeUID = "xyzzy"
+        calendarHome = txn.calendarHomeWithUID(
+            noHomeUID,
+            create=True
+        )
+        def readOtherTxn():
+            return self.savedStore.newTransaction().calendarHomeWithUID(
+                noHomeUID)
+        self.assertProvides(ICalendarHome, calendarHome)
+        # A concurrent transaction shouldn't be able to read it yet:
+        self.assertIdentical(readOtherTxn(), None)
+        txn.commit()
+        # But once it's committed, other transactions should see it.
+        self.assertProvides(ICalendarHome, readOtherTxn())
+
+
+    def test_setComponent(self):
+        """
+        L{CalendarObject.setComponent} changes the result of
+        L{CalendarObject.component} within the same transaction.
+        """
+        component = VComponent.fromString(event1modified_text)
+
+        calendar1 = self.calendarUnderTest()
+        calendarObject = calendar1.calendarObjectWithName("1.ics")
+        oldComponent = calendarObject.component()
+        self.assertNotEqual(component, oldComponent)
+        calendarObject.setComponent(component)
+        self.assertEquals(calendarObject.component(), component)
+
+        # Also check a new instance
+        calendarObject = calendar1.calendarObjectWithName("1.ics")
+        self.assertEquals(calendarObject.component(), component)
+
+
+    def checkPropertiesMethod(self, thunk):
+        """
+        Verify that the given object has a properties method that returns an
+        L{IPropertyStore}.
+        """
+        properties = thunk.properties()
+        self.assertProvides(IPropertyStore, properties)
+
+
+    def test_homeProperties(self):
+        """
+        L{ICalendarHome.properties} returns a property store.
+        """
+        self.checkPropertiesMethod(self.homeUnderTest())
+
+
+    def test_calendarProperties(self):
+        """
+        L{ICalendar.properties} returns a property store.
+        """
+        self.checkPropertiesMethod(self.calendarUnderTest())
+
+
+    def test_calendarObjectProperties(self):
+        """
+        L{ICalendarObject.properties} returns a proprety store.
+        """
+        self.checkPropertiesMethod(self.calendarObjectUnderTest())

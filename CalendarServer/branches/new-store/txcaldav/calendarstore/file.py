@@ -29,6 +29,8 @@ from errno import EEXIST, ENOENT
 
 from zope.interface import implements
 
+from twisted.python.util import FancyEqMixin
+
 from twisted.internet.defer import inlineCallbacks
 
 from twext.python.log import LoggingMixIn
@@ -372,11 +374,13 @@ class CalendarHome(LoggingMixIn):
 
 
 
-class Calendar(LoggingMixIn):
+class Calendar(LoggingMixIn, FancyEqMixin):
     """
     File-based implementation of L{ICalendar}.
     """
     implements(ICalendar)
+
+    compareAttributes = '_path _calendarHome _transaction'.split()
 
     def __init__(self, path, calendarHome):
         self._path = path
@@ -520,15 +524,15 @@ class Calendar(LoggingMixIn):
 
 class CalendarObject(LoggingMixIn):
     """
-    @ivar path: The path of the .ics file on disk
+    @ivar _path: The path of the .ics file on disk
 
-    @type path: L{FilePath}
+    @type _path: L{FilePath}
     """
     implements(ICalendarObject)
 
     def __init__(self, path, calendar):
         self._path = path
-        self.calendar = calendar
+        self._calendar = calendar
         self._component = None
 
 
@@ -580,7 +584,7 @@ class CalendarObject(LoggingMixIn):
                 else:
                     self._path.remove()
             return undo
-        self.calendar._transaction.addOperation(do)
+        self._calendar._transaction.addOperation(do)
 
 
     def component(self):

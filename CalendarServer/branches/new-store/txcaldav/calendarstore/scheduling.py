@@ -17,86 +17,80 @@
 from zope.interface.declarations import implements
 from txcaldav.icalendarstore import ICalendarStore, ICalendarStoreTransaction, \
     ICalendarHome, ICalendar, ICalendarObject
+from twisted.python.util import FancyEqMixin
+from twisted.python.components import proxyForInterface
 
 
 
-class ImplicitSchedulingTransaction(object):
+class ImplicitTransaction(
+        proxyForInterface(ICalendarStoreTransaction,
+                          originalAttribute="_transaction")):
     """
     Wrapper around an L{ICalendarStoreTransaction}.
     """
-    implements(ICalendarStoreTransaction)
 
     def __init__(self, transaction):
         """
-        Initialize an L{ImplicitSchedulingTransaction}.
+        Initialize an L{ImplicitTransaction}.
 
         @type transaction: L{ICalendarStoreTransaction}
         """
         self._transaction = transaction
 
 
-    def abort(self):
-        """
-        Abort the underlying transaction.
-        """
-        return self._transaction.abort()
-
-
-    def commit(self):
-        """
-        Commit the underlying transaction.
-        """
-        return self._transaction.commit()
-
-
     def calendarHomeWithUID(self, uid, create=False):
         # FIXME: 'create' flag
-        newHome = self._transaction.calendarHomeWithUID(uid)
-#        return ImplicitSchedulingCalendarHome(newHome, self)
+        newHome = super(ImplicitTransaction, self
+            ).calendarHomeWithUID(uid, create)
+#        return ImplicitCalendarHome(newHome, self)
         if newHome is None:
             return None
         else:
             # FIXME: relay transaction
-            return ImplicitSchedulingCalendarHome(newHome, None)
+            return ImplicitCalendarHome(newHome, None)
 
 
 
-class ImplicitSchedulingCalendarHome(object):
+class ImplicitCalendarHome(
+        proxyForInterface(ICalendarHome, "_calendarHome")
+    ):
+
     implements(ICalendarHome)
 
     def __init__(self, calendarHome, transaction):
         """
-        L{ImplicitSchedulingCalendarHome}
+        Initialize L{ImplicitCalendarHome} with an underlying
+        calendar home and L{ImplicitTransaction}.
         """
         self._calendarHome = calendarHome
         self._transaction = transaction
 
 
-    def uid(self):
-        return self._calendarHome.uid()
+#    def properties(self):
+#        # FIXME: wrap?
+#        return self._calendarHome.properties()
 
-    def properties(self): ""
-        # FIXME: implement
-        # return self._calendarHome.properties()
+    def calendars(self):
+        for calendar in super(ImplicitCalendarHome, self).calendars():
+            yield ImplicitCalendar(self, calendar)
 
-    def calendars(self): ""
-        # FIXME: implement
     def createCalendarWithName(self, name):
         self._calendarHome.createCalendarWithName(name)
-    def removeCalendarWithName(self, name): ""
-        # FIXME: implement
+
+    def removeCalendarWithName(self, name):
+        self._calendarHome.removeCalendarWithName(name)
 
 
     def calendarWithName(self, name):
         calendar = self._calendarHome.calendarWithName(name)
         if calendar is not None:
-            return ImplicitSchedulingCalendar(self, calendar)
+            return ImplicitCalendar(self, calendar)
         else:
             return None
 
 
 
-class ImplicitSchedulingCalendarObject(object):
+class ImplicitCalendarObject(object):
     implements(ICalendarObject)
     def setComponent(self, component): ""
     def component(self): ""
@@ -108,43 +102,41 @@ class ImplicitSchedulingCalendarObject(object):
 
 
 
-class ImplicitSchedulingCalendar(object):
-    implements(ICalendar)
+class ImplicitCalendar(FancyEqMixin,
+                       proxyForInterface(ICalendar, "_subCalendar")):
+
+    compareAttributes = ['_subCalendar', '_parentHome']
 
     def __init__(self, parentHome, subCalendar):
         self._parentHome = parentHome
         self._subCalendar = subCalendar
 
-    def name(self):
-        return self._subCalendar.name()
-
-    def ownerCalendarHome(self):
-        return self._parentHome
-    def calendarObjects(self):
-        # FIXME: wrap
-        return self._subCalendar.calendarObjects()
-    def calendarObjectWithUID(self, uid): ""
-    def createCalendarObjectWithName(self, name, component):
-        # FIXME: implement most of StoreCalendarObjectResource here!
-        self._subCalendar.createCalendarObjectWithName(name, component)
-    def removeCalendarObjectWithName(self, name):
-        # FIXME: implement deletion logic here!
-        return self._subCalendar.removeCalendarObjectWithName(name)
-    def removeCalendarObjectWithUID(self, uid): ""
-    def syncToken(self): ""
-    def calendarObjectsInTimeRange(self, start, end, timeZone): ""
-    def calendarObjectsSinceToken(self, token): ""
-    def properties(self):
-        # FIXME: probably need to wrap this as well
-        return self._subCalendar.properties()
-
-
-    def calendarObjectWithName(self, name):
-        #FIXME: wrap
-        return self._subCalendar.calendarObjectWithName(name)
+#    def ownerCalendarHome(self):
+#        return self._parentHome
+#    def calendarObjects(self):
+#        # FIXME: wrap
+#        return self._subCalendar.calendarObjects()
+#    def calendarObjectWithUID(self, uid): ""
+#    def createCalendarObjectWithName(self, name, component):
+#        # FIXME: implement most of StoreCalendarObjectResource here!
+#        self._subCalendar.createCalendarObjectWithName(name, component)
+#    def removeCalendarObjectWithName(self, name):
+#        # FIXME: implement deletion logic here!
+#        return self._subCalendar.removeCalendarObjectWithName(name)
+#    def removeCalendarObjectWithUID(self, uid): ""
+#    def syncToken(self): ""
+#    def calendarObjectsInTimeRange(self, start, end, timeZone): ""
+#    def calendarObjectsSinceToken(self, token): ""
+#    def properties(self):
+#        # FIXME: probably need to wrap this as well
+#        return self._subCalendar.properties()
+#
+#    def calendarObjectWithName(self, name):
+#        #FIXME: wrap
+#        return self._subCalendar.calendarObjectWithName(name)
 
 
-class ImplicitSchedulingStore(object):
+class ImplicitStore(object):
     """
     This is a wrapper around an L{ICalendarStore} that implements implicit
     scheduling.
@@ -154,7 +146,7 @@ class ImplicitSchedulingStore(object):
 
     def __init__(self, calendarStore):
         """
-        Create an L{ImplicitSchedulingStore} wrapped around another
+        Create an L{ImplicitStore} wrapped around another
         L{ICalendarStore} provider.
         """
         self._calendarStore = calendarStore
@@ -164,5 +156,5 @@ class ImplicitSchedulingStore(object):
         """
         Wrap an underlying L{ITransaction}.
         """
-        return ImplicitSchedulingTransaction(
+        return ImplicitTransaction(
                     self._calendarStore.newTransaction())

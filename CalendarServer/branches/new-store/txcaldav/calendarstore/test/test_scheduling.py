@@ -21,15 +21,28 @@ Tests for L{txcaldav.calendarstore.scheduling}.
 from twisted.trial.unittest import TestCase
 from txcaldav.calendarstore.test.common import CommonTests
 from txcaldav.calendarstore.test.test_file import setUpCalendarStore
-from txcaldav.calendarstore.scheduling import ImplicitSchedulingStore
+from txcaldav.calendarstore.scheduling import ImplicitStore
 
+simpleEvent = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+ORGANIZER:mailto:user1@example.com
+ATTENDEE:mailto:user1@example.com
+ATTENDEE:mailto:user2@example.com
+END:VEVENT
+END:VCALENDAR
+"""
 
-class ImplicitSchedulingStoreTests(TestCase, CommonTests):
+class ImplicitStoreTests(TestCase, CommonTests):
     """
     Tests for L{ImplicitSchedulingStore}.
     """
 
     def storeUnderTest(self):
         setUpCalendarStore(self)
-        self.implicitStore = ImplicitSchedulingStore(self.calendarStore)
+        self.implicitStore = ImplicitStore(self.calendarStore)
         return self.implicitStore
