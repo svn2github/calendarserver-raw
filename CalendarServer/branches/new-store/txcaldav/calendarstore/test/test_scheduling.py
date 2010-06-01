@@ -13,8 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+
+"""
+Tests for L{txcaldav.calendarstore.scheduling}.
+"""
+
 from twisted.trial.unittest import TestCase
-from txcaldav.calendarstore.test.test_common import CommonTests
+from txcaldav.calendarstore.test.common import CommonTests
 from txcaldav.calendarstore.test.test_file import setUpCalendarStore
 from txcaldav.calendarstore.scheduling import ImplicitSchedulingStore
 

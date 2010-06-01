@@ -37,7 +37,7 @@ from txcaldav.icalendarstore import InvalidCalendarComponentError
 from txcaldav.calendarstore.file import CalendarStore, CalendarHome
 from txcaldav.calendarstore.file import Calendar, CalendarObject
 
-from txcaldav.calendarstore.test.test_common import (
+from txcaldav.calendarstore.test.common import (
     CommonTests, calendar1_objectNames, event4_text)
 
 storePath = FilePath(__file__).parent().child("calendar_store")
