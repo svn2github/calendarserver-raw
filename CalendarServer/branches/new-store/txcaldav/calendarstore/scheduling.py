@@ -50,10 +50,14 @@ class ImplicitSchedulingTransaction(object):
 
 
     def calendarHomeWithUID(self, uid, create=False):
-        # FIXME: implement
-#        newHome = self._transaction.calendarHomeWithUID()
+        # FIXME: 'create' flag
+        newHome = self._transaction.calendarHomeWithUID(uid)
 #        return ImplicitSchedulingCalendarHome(newHome, self)
-        return ImplicitSchedulingCalendarHome(None, None)
+        if newHome is None:
+            return None
+        else:
+            # FIXME: relay transaction
+            return ImplicitSchedulingCalendarHome(newHome, None)
 
 
 
@@ -68,21 +72,27 @@ class ImplicitSchedulingCalendarHome(object):
         self._transaction = transaction
 
 
-    def uid(self): ""
-        # FIXME: implement
+    def uid(self):
+        return self._calendarHome.uid()
+
     def properties(self): ""
         # FIXME: implement
+        # return self._calendarHome.properties()
+
     def calendars(self): ""
         # FIXME: implement
-    def createCalendarWithName(self, name): ""
-        # FIXME: implement
+    def createCalendarWithName(self, name):
+        self._calendarHome.createCalendarWithName(name)
     def removeCalendarWithName(self, name): ""
         # FIXME: implement
 
 
     def calendarWithName(self, name):
-        # FIXME: implement
-        return ImplicitSchedulingCalendar(self, None)
+        calendar = self._calendarHome.calendarWithName(name)
+        if calendar is not None:
+            return ImplicitSchedulingCalendar(self, calendar)
+        else:
+            return None
 
 
 
@@ -105,21 +115,33 @@ class ImplicitSchedulingCalendar(object):
         self._parentHome = parentHome
         self._subCalendar = subCalendar
 
+    def name(self):
+        return self._subCalendar.name()
 
-    def ownerCalendarHome(self): ""
-    def calendarObjects(self): ""
+    def ownerCalendarHome(self):
+        return self._parentHome
+    def calendarObjects(self):
+        # FIXME: wrap
+        return self._subCalendar.calendarObjects()
     def calendarObjectWithUID(self, uid): ""
-    def createCalendarObjectWithName(self, name, component): ""
-    def removeCalendarObjectWithName(self, name): ""
+    def createCalendarObjectWithName(self, name, component):
+        # FIXME: implement most of StoreCalendarObjectResource here!
+        self._subCalendar.createCalendarObjectWithName(name, component)
+    def removeCalendarObjectWithName(self, name):
+        # FIXME: implement deletion logic here!
+        return self._subCalendar.removeCalendarObjectWithName(name)
     def removeCalendarObjectWithUID(self, uid): ""
     def syncToken(self): ""
     def calendarObjectsInTimeRange(self, start, end, timeZone): ""
     def calendarObjectsSinceToken(self, token): ""
-    def properties(self): ""
+    def properties(self):
+        # FIXME: probably need to wrap this as well
+        return self._subCalendar.properties()
 
 
     def calendarObjectWithName(self, name):
-        return ImplicitSchedulingCalendarObject()
+        #FIXME: wrap
+        return self._subCalendar.calendarObjectWithName(name)
 
 
 class ImplicitSchedulingStore(object):
@@ -142,4 +164,5 @@ class ImplicitSchedulingStore(object):
         """
         Wrap an underlying L{ITransaction}.
         """
-        return ImplicitSchedulingTransaction(None)
+        return ImplicitSchedulingTransaction(
+                    self._calendarStore.newTransaction())

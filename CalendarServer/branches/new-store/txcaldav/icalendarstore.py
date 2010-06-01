@@ -228,6 +228,16 @@ class ICalendar(Interface):
     shared with other principals, granting them read-only or
     read/write access.
     """
+
+    def name():
+        """
+        Identify this calendar uniquely, as with
+        L{ICalendarHome.calendarWithName}.
+
+        @return: the name of this calendar.
+        @rtype: C{str}
+        """
+
     def ownerCalendarHome():
         """
         Retrieve the calendar home for the owner of this calendar.
