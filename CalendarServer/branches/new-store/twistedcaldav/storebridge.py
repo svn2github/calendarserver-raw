@@ -1,4 +1,4 @@
-# -*- test-case-name: twistedcaldav -*-
+# -*- test-case-name: twistedcaldav.test.test_wrapping -*-
 ##
 # Copyright (c) 2005-2010 Apple Inc. All rights reserved.
 #
@@ -151,12 +151,14 @@ class CalendarCollectionFile(CalDAVFile):
         )
 
         if newStoreObject is not None:
-            similar = CalendarObjectFile(newStoreObject, path)
+            similar = CalendarObjectFile(newStoreObject, path,
+                principalCollections=self._principalCollections)
         else:
             # FIXME: creation in http_PUT should talk to a specific resource
             # type; this is the domain of StoreCalendarObjectResource.
             # similar = ProtoCalendarObjectFile(self._newStoreCalendar, path)
-            similar = CalDAVFile(path)
+            similar = CalDAVFile(path,
+                principalCollections=self._principalCollections)
 
         # FIXME: tests should be failing without this line.
         # self.propagateTransaction(similar)

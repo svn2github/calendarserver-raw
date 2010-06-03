@@ -173,3 +173,19 @@ class WrappingTests(TestCase):
         )
         self.assertEquals(calDavFileCalendar._newStoreObject._path, 
                           calDavFileCalendar.fp)
+        self.assertEquals(calDavFileCalendar._principalCollections,
+                          frozenset([self.principalsResource]))
+
+
+    @inlineCallbacks
+    def test_lookupNewCalendarObject(self):
+        """
+        When a L{CalDAVFile} representing a new calendar object on a
+        L{CalDAVFile} representing an existing calendar collection, the list of
+        principal collections will be propagated down to it.
+        """
+        calDavFileCalendar = yield self.getResource(
+            "calendars/users/wsanchez/calendar/xyzzy.ics"
+        )
+        self.assertEquals(calDavFileCalendar._principalCollections,
+                          frozenset([self.principalsResource]))
