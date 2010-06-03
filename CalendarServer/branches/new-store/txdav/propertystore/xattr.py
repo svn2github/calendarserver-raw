@@ -161,7 +161,8 @@ class PropertyStore(AbstractPropertyStore):
                 legacy = True
 
         if legacy:
-            self.set(doc.root_element)
+            # XXX untested: CDT catches this though.
+            self[key] = doc.root_element
 
         return doc.root_element
 
