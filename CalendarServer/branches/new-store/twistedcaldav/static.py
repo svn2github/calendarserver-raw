@@ -227,7 +227,7 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
             log.err("Attempt to create collection where file exists: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.NOT_ALLOWED, "File exists"))
 
-        if not os.path.isdir(os.path.dirname(self.fp.path)):
+        if not self.fp.parent().isdir():
             log.err("Attempt to create collection with no parent: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.CONFLICT, "No parent collection"))
 
