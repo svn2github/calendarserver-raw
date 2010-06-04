@@ -20,12 +20,15 @@ Wrappers to translate between the APIs in L{txcaldav.icalendarstore} and those
 in L{twistedcaldav}.
 """
 
-from twisted.internet.defer import succeed
+from urlparse import urlsplit
+
+from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 
 from twext.python.filepath import CachingFilePath as FilePath
 
+from twext.web2.responsecode import FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED
+from twext.web2.dav.util import parentForURL
 from twext.web2.http import HTTPError, StatusResponse
-from twext.web2 import responsecode
 
 from twistedcaldav.static import CalDAVFile
 
@@ -64,7 +67,7 @@ class _NewStorePropertiesWrapper(object):
             return self._newPropertyStore[self._convertKey(qname)]
         except KeyError:
             raise HTTPError(StatusResponse(
-                    responsecode.NOT_FOUND,
+                    NOT_FOUND,
                     "No such property: {%s}%s" % qname))
 
 
@@ -161,8 +164,40 @@ class CalendarCollectionFile(CalDAVFile):
                 principalCollections=self._principalCollections)
 
         # FIXME: tests should be failing without this line.
+        # Specifically, http_PUT won't be committing its transaction properly.
         # self.propagateTransaction(similar)
         return similar
+
+
+    def http_COPY(self, request):
+        """
+        Copying of calendar collections isn't allowed.
+        """
+        # FIXME: no direct tests
+        return FORBIDDEN
+
+
+    @inlineCallbacks
+    def http_MOVE(self, request):
+        """
+        Moving a calendar collection is allowed for the purposes of changing
+        that calendar's name.
+        """
+        # FIXME: created to fix CDT test, no unit tests yet
+        sourceURI = request.uri
+        destinationURI = urlsplit(request.headers.getHeader("destination"))[2]
+        if parentForURL(sourceURI) != parentForURL(destinationURI):
+            returnValue(FORBIDDEN)
+        destination = yield request.locateResource(destinationURI)
+        # FIXME: should really use something other than 'fp' attribute.
+        basename = destination.fp.basename()
+        calendar = self._newStoreCalendar
+        calendar.rename(basename)
+        CalendarCollectionFile.transform(destination, calendar,
+                                         self._newStoreParentHome)
+        del self._newStoreCalendar
+        self.__class__ = ProtoCalendarCollectionFile
+        returnValue(NO_CONTENT)
 
 
 
@@ -197,7 +232,7 @@ class ProtoCalendarCollectionFile(CalDAVFile):
         """
         Override C{createCalendarCollection} to actually do the work.
         """
-        d = succeed(responsecode.CREATED)
+        d = succeed(CREATED)
 
         calendarName = self.fp.basename()
         self._newStoreParentHome.createCalendarWithName(calendarName)
