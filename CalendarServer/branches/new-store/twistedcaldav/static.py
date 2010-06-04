@@ -133,11 +133,11 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
     """
     CalDAV-accessible L{DAVFile} resource.
     """
-    def __repr__(self):
-        if self.isCalendarCollection():
-            return "<%s (calendar collection): %s>" % (self.__class__.__name__, self.fp.path)
-        else:
-            return super(CalDAVFile, self).__repr__()
+#    def __repr__(self):
+#        if self.isCalendarCollection():
+#            return "<%s (calendar collection): %s>" % (self.__class__.__name__, self.fp.path)
+#        else:
+#            return super(CalDAVFile, self).__repr__()
 
     def __eq__(self, other):
         if not isinstance(other, CalDAVFile):
@@ -578,8 +578,9 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         """
         Create a new sync-token which is also the ctag.
         """
+        # FIXME: new implementation is in txcaldav.file, this should be
+        # deleted.
         assert self.isCollection()
-        
         # Initialise it
         caluuid = uuid4()
         revision = 1
