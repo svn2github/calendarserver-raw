@@ -396,7 +396,23 @@ class Calendar(LoggingMixIn, FancyEqMixin):
 
 
     def name(self):
+        if self._renamedName is not None:
+            return self._renamedName
         return self._path.basename()
+
+
+    _renamedName = None
+
+    def rename(self, name):
+        oldName = self.name()
+        self._renamedName = name
+        self._calendarHome
+        self._calendarHome._newCalendars[name] = self
+        self._calendarHome._removedCalendars.add(oldName)
+        def doIt():
+            self._path.moveTo(self._path.sibling(name))
+            return lambda : None # FIXME: revert
+        self._transaction.addOperation(doIt)
 
 
     def ownerCalendarHome(self):

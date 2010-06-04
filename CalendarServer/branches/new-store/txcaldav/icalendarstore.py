@@ -238,6 +238,11 @@ class ICalendar(Interface):
         @rtype: C{str}
         """
 
+    def rename(name):
+        """
+        Change the name of this calendar.
+        """
+
     def ownerCalendarHome():
         """
         Retrieve the calendar home for the owner of this calendar.

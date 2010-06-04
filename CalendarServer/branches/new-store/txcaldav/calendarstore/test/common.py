@@ -316,6 +316,27 @@ class CommonTests(object):
             self.assertEquals(calendar.name(), name)
 
 
+    def test_calendarRename(self):
+        """
+        L{ICalendar.rename} changes the name of the L{ICalendar}.
+        """
+        home = self.homeUnderTest()
+        calendar = home.calendarWithName("calendar_1")
+        calendar.rename("some_other_name")
+        def positiveAssertions():
+            self.assertEquals(calendar.name(), "some_other_name")
+            self.assertEquals(calendar, home.calendarWithName("some_other_name"))
+            self.assertEquals(None, home.calendarWithName("calendar_1"))
+        positiveAssertions()
+        self.commit()
+        home = self.homeUnderTest()
+        calendar = home.calendarWithName("some_other_name")
+        positiveAssertions()
+        # FIXME: revert
+        # FIXME: test for multiple renames
+        # FIXME: test for conflicting renames (a->b, c->a in the same txn)
+
+
     def test_calendarWithName_absent(self):
         """
         L{ICalendarHome.calendarWithName} returns C{None} for calendars which
