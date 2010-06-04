@@ -35,17 +35,17 @@ from twistedcaldav.caldavxml import caldav_namespace, ScheduleTag
 from twistedcaldav.config import config
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.method.report_common import applyToAddressBookCollections, applyToCalendarCollections
-from twistedcaldav.resource import isCalendarCollectionResource,\
+from twistedcaldav.resource import isCalendarCollectionResource, \
     isPseudoCalendarCollectionResource, isAddressBookCollectionResource
 from twistedcaldav.scheduling.implicit import ImplicitScheduler
 
 log = Logger()
 
 class DeleteResource(object):
-    
+
     def __init__(self, request, resource, resource_uri, parent, depth,
         internal_request=False, allowImplicitSchedule=True):
-        
+
         self.request = request
         self.resource = resource
         self.resource_uri = resource_uri
@@ -58,7 +58,7 @@ class DeleteResource(object):
         """
         Check for If-ScheduleTag-Match header behavior.
         """
-        
+
         # Only when a direct request
         if not self.internal_request:
             header = self.request.headers.getHeader("If-Schedule-Tag-Match")
@@ -71,7 +71,7 @@ class DeleteResource(object):
                 if not matched:
                     log.debug("If-Schedule-Tag-Match: header value '%s' does not match resource value '%s'" % (header, scheduletag,))
                     raise HTTPError(responsecode.PRECONDITION_FAILED)
-            
+
             elif config.Scheduling.CalDAV.ScheduleTagCompatibility:
                 # Actually by the time we get here the pre-condition will already have been tested and found to be OK
                 # (CalDAVFile.checkPreconditions) so we can ignore this case.
@@ -97,7 +97,7 @@ class DeleteResource(object):
             old_size = (yield delresource.quotaSize(self.request))
         else:
             old_size = 0
-        
+
         # Do delete
         response = (yield delete(deluri, delresource.fp, self.depth))
 
@@ -128,7 +128,7 @@ class DeleteResource(object):
 
         # TODO: need to use transaction based delete on live scheduling object resources
         # as the iTIP operation may fail and may need to prevent the delete from happening.
-    
+
         # Do If-Schedule-Tag-Match behavior first
         self.validIfScheduleMatch()
 
@@ -138,7 +138,7 @@ class DeleteResource(object):
             old_size = (yield delresource.quotaSize(self.request))
         else:
             old_size = 0
-        
+
         scheduler = None
         lock = None
         if not self.internal_request and self.allowImplicitSchedule:
@@ -152,30 +152,30 @@ class DeleteResource(object):
         try:
             if lock:
                 yield lock.acquire()
-    
+
             # Do delete
             response = (yield delete(deluri, delresource.fp, self.depth))
 
             # Adjust quota
             if myquota is not None:
                 yield delresource.quotaSizeAdjust(self.request, -old_size)
-    
+
             if response == responsecode.NO_CONTENT:
                 newrevision = (yield parent.bumpSyncToken())
                 index = parent.index()
                 index.deleteResource(delresource.fp.basename(), newrevision)
-    
+
                 # Do scheduling
                 if scheduler and not self.internal_request and self.allowImplicitSchedule:
                     yield scheduler.doImplicitScheduling()
     
         except MemcacheLockTimeoutError:
             raise HTTPError(StatusResponse(responsecode.CONFLICT, "Resource: %s currently in use on the server." % (deluri,)))
-    
+
         finally:
             if lock:
                 yield lock.clean()
-                
+
         returnValue(response)
 
     @inlineCallbacks
@@ -218,6 +218,7 @@ class DeleteResource(object):
             try:
                 yield self.deleteCalendarResource(child, childurl, delresource)
             except:
+                log.err()
                 errors.add(childurl, responsecode.BAD_REQUEST)
 
         # Now do normal delete
@@ -230,13 +231,13 @@ class DeleteResource(object):
         # Change CTag
         yield delresource.bumpSyncToken()
         more_responses = (yield self.deleteResource(delresource, deluri, parent))
-        
+
         if isinstance(more_responses, MultiStatusResponse):
             # Merge errors
-            errors.responses.update(more_responses.children)                
+            errors.responses.update(more_responses.children)
 
         response = errors.response()
-        
+
         if response == responsecode.NO_CONTENT:
             # Do some clean up
             yield delresource.deletedCalendar(self.request)
@@ -257,17 +258,17 @@ class DeleteResource(object):
         log.debug("Deleting collection %s" % (self.resource.fp.path,))
 
         errors = ResponseQueue(self.resource_uri, "DELETE", responsecode.NO_CONTENT)
- 
+
         @inlineCallbacks
         def doDeleteCalendar(delresource, deluri):
-            
+
             delparent = (yield delresource.locateParent(self.request, deluri))
 
             response = (yield self.deleteCalendar(delresource, deluri, delparent))
 
             if isinstance(response, MultiStatusResponse):
                 # Merge errors
-                errors.responses.update(response.children)                
+                errors.responses.update(response.children)
 
             returnValue(True)
 
@@ -275,10 +276,10 @@ class DeleteResource(object):
 
         # Now do normal delete
         more_responses = (yield self.deleteResource(self.resource, self.resource_uri, self.parent))
-        
+
         if isinstance(more_responses, MultiStatusResponse):
             # Merge errors
-            errors.responses.update(more_responses.children)                
+            errors.responses.update(more_responses.children)
 
         response = errors.response()
 
@@ -299,32 +300,32 @@ class DeleteResource(object):
 
         # TODO: need to use transaction based delete on live scheduling object resources
         # as the iTIP operation may fail and may need to prevent the delete from happening.
-    
+
         # Do quota checks before we start deleting things
         myquota = (yield delresource.quota(self.request))
         if myquota is not None:
             old_size = (yield delresource.quotaSize(self.request))
         else:
             old_size = 0
-        
+
         try:
-    
+
             # Do delete
             response = (yield delete(deluri, delresource.fp, self.depth))
 
             # Adjust quota
             if myquota is not None:
                 yield delresource.quotaSizeAdjust(self.request, -old_size)
-    
+
             if response == responsecode.NO_CONTENT:
                 newrevision = (yield parent.bumpSyncToken())
                 index = parent.index()
-                index.deleteResource(delresource.fp.basename(), newrevision)    
-    
+                index.deleteResource(delresource.fp.basename(), newrevision)
+
         except MemcacheLockTimeoutError:
             raise HTTPError(StatusResponse(responsecode.CONFLICT, "Resource: %s currently in use on the server." % (deluri,)))
-    
-                
+
+
         returnValue(response)
 
     @inlineCallbacks
@@ -373,13 +374,13 @@ class DeleteResource(object):
 
         yield delresource.bumpSyncToken()
         more_responses = (yield self.deleteResource(delresource, deluri, parent))
-        
+
         if isinstance(more_responses, MultiStatusResponse):
             # Merge errors
-            errors.responses.update(more_responses.children)                
+            errors.responses.update(more_responses.children)
 
         response = errors.response()
-        
+
         returnValue(response)
 
     @inlineCallbacks
@@ -397,17 +398,17 @@ class DeleteResource(object):
         log.debug("Deleting collection %s" % (self.resource.fp.path,))
 
         errors = ResponseQueue(self.resource_uri, "DELETE", responsecode.NO_CONTENT)
- 
+
         @inlineCallbacks
         def doDeleteAddressBook(delresource, deluri):
-            
+
             delparent = (yield delresource.locateParent(self.request, deluri))
 
             response = (yield self.deleteAddressBook(delresource, deluri, delparent))
 
             if isinstance(response, MultiStatusResponse):
                 # Merge errors
-                errors.responses.update(response.children)                
+                errors.responses.update(response.children)
 
             returnValue(True)
 
@@ -415,10 +416,10 @@ class DeleteResource(object):
 
         # Now do normal delete
         more_responses = (yield self.deleteResource(self.resource, self.resource_uri, self.parent))
-        
+
         if isinstance(more_responses, MultiStatusResponse):
             # Merge errors
-            errors.responses.update(more_responses.children)                
+            errors.responses.update(more_responses.children)
 
         response = errors.response()
 
@@ -429,7 +430,7 @@ class DeleteResource(object):
 
         if isCalendarCollectionResource(self.parent):
             response = (yield self.deleteCalendarResource(self.resource, self.resource_uri, self.parent))
-            
+
         elif isCalendarCollectionResource(self.resource):
             response = (yield self.deleteCalendar(self.resource, self.resource_uri, self.parent))
 
