@@ -165,7 +165,7 @@ class CalendarCollectionFile(CalDAVFile):
 
         # FIXME: tests should be failing without this line.
         # Specifically, http_PUT won't be committing its transaction properly.
-        # self.propagateTransaction(similar)
+        self.propagateTransaction(similar)
         return similar
 
 
