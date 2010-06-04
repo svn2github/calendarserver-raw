@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+
 """
 File calendar store.
 """
@@ -25,13 +26,14 @@ __all__ = [
     "CalendarObject",
 ]
 
+from uuid import uuid4
 from errno import EEXIST, ENOENT
 
 from zope.interface import implements
 
 from twisted.python.util import FancyEqMixin
 
-from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import succeed
 
 from twext.python.log import LoggingMixIn
 from twext.python.vcomponent import VComponent
@@ -54,9 +56,9 @@ from txcaldav.icalendarstore import InvalidCalendarComponentError
 from txcaldav.icalendarstore import InternalDataStoreError
 
 from twistedcaldav.caldavxml import ScheduleCalendarTransp, Transparent
+from twistedcaldav.customxml import GETCTag
 
 from twistedcaldav.index import Index as OldIndex
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 
 def _isValidName(name):
     """
@@ -321,12 +323,12 @@ class CalendarHome(LoggingMixIn):
 
         # Calendars are initially transparent to freebusy.  FIXME: freebusy
         # needs more structured support than this.
-        props[PN(ScheduleCalendarTransp.sname())] = Transparent()
+        props[PN(ScheduleCalendarTransp.sname())] = ScheduleCalendarTransp(
+            Transparent())
         # FIXME: there's no need for 'flush' to be a public method of the
         # property store any more.  It should just be transactional like
         # everything else; the API here would better be expressed as
         # c.properties().participateInTxn(txn)
-        self._transaction.addOperation(c.properties().flush)
         # FIXME: return c # maybe ?
 
     def removeCalendarWithName(self, name):
@@ -366,11 +368,14 @@ class CalendarHome(LoggingMixIn):
 
             return undo
 
-
+    # @_cached
     def properties(self):
         # FIXME: needs tests for actual functionality
         # FIXME: needs to be cached
-        return PropertyStore(self._path)
+        # FIXME: transaction tests
+        props = PropertyStore(self._path)
+        self._transaction.addOperation(props.flush)
+        return props
 
 
 
@@ -498,30 +503,23 @@ class Calendar(LoggingMixIn, FancyEqMixin):
     def syncToken(self):
         raise NotImplementedError()
 
-    @inlineCallbacks
     def _updateSyncToken(self, reset=False):
-        return
+        # FIXME: add locking a-la CalDAVFile.bumpSyncToken
+        # FIXME: tests for desired concurrency properties
+        ctag = PropertyName.fromString(GETCTag.sname())
+        props = self.properties()
+        token = props.get(ctag)
+        if token is None or reset:
+            caluuid = uuid4()
+            revision = 1
+        else:
+            caluuid, revision = token.split("#", 1)
+            revision = int(revision) + 1
+        token = "%s#%d" % (caluuid, revision)
+        props[ctag] = GETCTag(token)
+        # FIXME: no direct tests for commit
+        succeed(token)
 
-        lock = MemcacheLock("Calendar", self.fp.path, timeout=60.0)
-        try:
-            try:
-                yield lock.acquire()
-            except MemcacheLockTimeoutError:
-                raise InternalDataStoreError("Timed out on calendar lock")
-
-            def newToken():
-                raise NotImplementedError()
-
-            if reset:
-                token = newToken()
-
-            raise NotImplementedError(token)
-
-        finally:
-            yield lock.clean()
-
-
-        raise NotImplementedError()
 
     def calendarObjectsInTimeRange(self, start, end, timeZone):
         raise NotImplementedError()
@@ -534,7 +532,9 @@ class Calendar(LoggingMixIn, FancyEqMixin):
     def properties(self):
         # FIXME: needs direct tests - only covered by calendar store tests
         # FIXME: transactions
-        return PropertyStore(self._path)
+        props = PropertyStore(self._path)
+        self._transaction.addOperation(props.flush)
+        return props
 
 
 
@@ -658,10 +658,11 @@ class CalendarObject(LoggingMixIn):
     def organizer(self):
         return self.component().getOrganizer()
 
+    @_cached
     def properties(self):
-        if not hasattr(self, "_properties"):
-            self._properties = PropertyStore(self._path)
-        return self._properties
+        props = PropertyStore(self._path)
+        self._calendar._transaction.addOperation(props.flush)
+        return props
 
 
 

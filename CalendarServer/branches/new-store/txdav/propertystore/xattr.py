@@ -123,7 +123,7 @@ class PropertyStore(AbstractPropertyStore):
         try:
             data = self.attrs[self._encodeKey(key)]
         except IOError, e:
-            if e.errno in [_ERRNO_NO_ATTR]:
+            if e.errno in [_ERRNO_NO_ATTR, errno.ENOENT]:
                 raise KeyError(key)
             raise PropertyStoreError(e)
 
@@ -207,6 +207,16 @@ class PropertyStore(AbstractPropertyStore):
     #
 
     def flush(self):
+        # FIXME: The transaction may have deleted the file, and then obviously
+        # flushing would fail.  Let's try to detect that scenario.  The
+        # transaction should not attempt to flush properties if it is also
+        # deleting the resource, though, and there are other reasons we might
+        # want to know about that the file doesn't exist, so this should be
+        # fixed.
+        self.path.changed()
+        if not self.path.exists():
+            return
+
         attrs    = self.attrs
         removed  = self.removed
         modified = self.modified
