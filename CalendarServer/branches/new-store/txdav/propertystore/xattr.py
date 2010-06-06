@@ -68,7 +68,7 @@ class PropertyStore(AbstractPropertyStore):
 
     # Linux seems to require that attribute names use a "user." prefix.
     if sys.platform == "linux2":
-        deadPropertyXattrPrefix = "user.%s" % (deadPropertyXattrPrefix,)
+        deadPropertyXattrPrefix = "user."
 
     @classmethod
     def _encodeKey(cls, name):
