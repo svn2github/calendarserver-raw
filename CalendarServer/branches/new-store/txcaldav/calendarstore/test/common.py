@@ -33,6 +33,7 @@ from txcaldav.icalendarstore import (
 
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2.dav import davxml
+from twext.web2.dav.element.base import WebDAVUnknownElement
 from twext.python.vcomponent import VComponent
 
 
@@ -751,6 +752,49 @@ class CommonTests(object):
 
     def test_calendarObjectProperties(self):
         """
-        L{ICalendarObject.properties} returns a proprety store.
+        L{ICalendarObject.properties} returns a property store.
         """
         self.checkPropertiesMethod(self.calendarObjectUnderTest())
+
+
+    def test_setComponentPreservesProperties(self):
+        """
+        L{ICalendarObject.setComponent} preserves properties.
+
+        (Some implementations must go to extra trouble to provide this
+        behavior; for example, file storage must copy extended attributes from
+        the existing file to the temporary file replacing it.)
+        """
+        propertyName = PropertyName("http://example.com/ns", "example")
+        propertyContent = WebDAVUnknownElement("sample content")
+        propertyContent.name = propertyName.name
+        propertyContent.namespace = propertyName.namespace
+        
+        self.calendarObjectUnderTest().properties()[
+            propertyName] = propertyContent
+        self.commit()
+        # Sanity check; are properties even readable in a separate transaction?
+        # Should probably be a separate test.
+        self.assertEquals(
+            self.calendarObjectUnderTest().properties()[propertyName],
+            propertyContent)
+        obj = self.calendarObjectUnderTest()
+        event1_text = obj.iCalendarText()
+        event1_text_withDifferentSubject = event1_text.replace(
+            "SUMMARY:CalDAV protocol updates",
+            "SUMMARY:Changed"
+        )
+        # Sanity check; make sure the test has the right idea of the subject.
+        self.assertNotEquals(event1_text, event1_text_withDifferentSubject)
+        newComponent = VComponent.fromString(event1_text_withDifferentSubject)
+        obj.setComponent(newComponent)
+
+        # Putting everything into a separate transaction to account for any
+        # caching that may take place.
+        self.commit()
+        self.assertEquals(
+            self.calendarObjectUnderTest().properties()[propertyName],
+            propertyContent)
+
+
+
