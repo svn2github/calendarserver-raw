@@ -757,6 +757,19 @@ class CommonTests(object):
         self.checkPropertiesMethod(self.calendarObjectUnderTest())
 
 
+    def test_newCalendarObjectProperties(self):
+        """
+        L{ICalendarObject.properties} returns an empty property store for a
+        calendar object which has been created but not committed.
+        """
+        calendar = self.calendarUnderTest()
+        calendar.createCalendarObjectWithName(
+            "4.ics", VComponent.fromString(event4_text)
+        )
+        newEvent = calendar.calendarObjectWithName("4.ics")
+        self.assertEquals(newEvent.properties().items(), [])
+
+
     def test_setComponentPreservesProperties(self):
         """
         L{ICalendarObject.setComponent} preserves properties.
@@ -794,7 +807,7 @@ class CommonTests(object):
         self.commit()
         self.assertEquals(
             self.calendarObjectUnderTest().properties()[propertyName],
-            propertyContent)
-
+            propertyContent
+        )
 
 
