@@ -601,6 +601,17 @@ class CalendarObject(LoggingMixIn):
                     self._path.remove()
             return undo
         self._calendar._transaction.addOperation(do)
+        # Mark all properties as dirty, so they will be re-added to the
+        # temporary file when the main file is deleted. NOTE: if there were a
+        # temporary file and a rename() as there should be, this should really
+        # happen after the write but before the rename.
+        self.properties().update(self.properties())
+        # FIXME: the property store's flush() method may already have been
+        # added to the transaction, but we need to add it again to make sure it
+        # happens _after_ the new file has been written.  we may end up doing
+        # the work multiple times, and external callers to property-
+        # manipulation methods won't work.
+        self._calendar._transaction.addOperation(self.properties().flush)
 
 
     def component(self):

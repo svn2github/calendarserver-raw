@@ -135,9 +135,6 @@ class AbstractPropertyStore(LoggingMixIn):
         else:
             return default
 
-    def iter(self):
-        return self.__iter__()
-
     def iteritems(self):
         return (
             (key, self.get(key))
@@ -187,9 +184,12 @@ class AbstractPropertyStore(LoggingMixIn):
 
         return default
 
-    def update(other=None):
-        # FIXME
-        raise NotImplementedError()
+    def update(self, other):
+        # FIXME: direct tests.
+        # FIXME: support positional signature (although since strings aren't
+        # valid, it should just raise an error.
+        for key in other:
+            self[key] = other[key]
 
 
 # FIXME: Actually, we should replace this with calls to IPropertyName()

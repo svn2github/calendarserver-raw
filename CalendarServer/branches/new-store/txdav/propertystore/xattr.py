@@ -185,7 +185,14 @@ class PropertyStore(AbstractPropertyStore):
     def __iter__(self):
         seen = set()
 
-        for key in self.attrs:
+        try:
+            iterattr = iter(self.attrs)
+        except IOError, e:
+            if e.errno != errno.ENOENT:
+                raise
+            iterattr = iter(())
+
+        for key in iterattr:
             key = self._decodeKey(key)
             if key not in self.removed:
                 seen.add(key)
@@ -195,12 +202,9 @@ class PropertyStore(AbstractPropertyStore):
             if key not in seen:
                 yield key
 
+
     def __len__(self):
-        keys = (
-            set(self.attrs.keys()) |
-            set(self._encodeKey(key) for key in self.modified)
-        )
-        return len(keys)
+        return len(self.keys())
 
     #
     # I/O
