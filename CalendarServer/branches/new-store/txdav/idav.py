@@ -74,7 +74,13 @@ class IPropertyStore(IMapping):
     This interface is based on L{IMapping}, but any changed to data
     are not persisted until C{flush()} is called, and can be undone
     using C{abort()}.
+
+    Also, keys must be L{IPropertyName} providers and values must be
+    L{twext.web2.element.dav.base.WeDAVElement}s.
     """
+    # FIXME: the type for values isn't quite right, there should be some more
+    # specific interface for that.
+
     def flush():
         """
         Write out any pending changes.
