@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.test.test_resource -*-
 ##
 # Copyright (c) 2005-2010 Apple Inc. All rights reserved.
 #
@@ -200,9 +201,53 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
             if self._associatedTransaction is not None:
                 self._associatedTransaction.commit()
             return result
-        # FIXME: needs a failure handler
+        # FIXME: needs a failure handler (that rolls back the transaction)
         return d.addCallback(succeeded)
 
+    # Begin transitional new-store resource interface:
+
+    def copyDeadPropertiesTo(self, other):
+        """
+        Copy this resource's dead properties to another resource.  This requires
+        that the new resource have a back-end store.
+
+        @param other: a resource to copy all properites to.
+        @type other: subclass of L{CalDAVResource}
+        """
+        self.newStoreProperties().update(other.newStoreProperties())
+
+
+    def newStoreProperties(self):
+        """
+        Return an L{IMapping} that represents properties.  Only available on
+        new-storage objects.
+        """
+        raise NotImplementedError("%s does not implement newStoreProperties" %
+                                  (self,))
+        
+    
+    def storeRemove(self):
+        """
+        Remove this resource from storage.
+        """
+        raise NotImplementedError("%s does not implement storeRemove" %
+                                  (self,))
+
+
+    def storeStream(self, stream):
+        """
+        Store the content of the stream in this resource, as it would via a PUT.
+
+        @param stream: The stream containing the data to be stored.
+        @type stream: L{IStream}
+        
+        @return: a L{Deferred} which fires with an HTTP response.
+        @rtype: L{Deferred}
+        """
+        raise NotImplementedError("%s does not implement storeStream"  %
+                                  (self,))
+
+    # End transitional new-store interface 
 
     ##
     # WebDAV

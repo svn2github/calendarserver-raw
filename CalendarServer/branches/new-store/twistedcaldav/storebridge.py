@@ -20,19 +20,24 @@ Wrappers to translate between the APIs in L{txcaldav.icalendarstore} and those
 in L{twistedcaldav}.
 """
 
+import hashlib
+
 from urlparse import urlsplit
 
 from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 
 from twext.python.filepath import CachingFilePath as FilePath
+from twext.python import vcomponent
 
+from twext.web2.http_headers import ETag
 from twext.web2.responsecode import FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED
-from twext.web2.dav.util import parentForURL
+from twext.web2.dav.util import parentForURL, allDataFromStream
 from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.static import CalDAVFile
 
 from txdav.propertystore.base import PropertyName
+from txcaldav.icalendarstore import NoSuchCalendarObjectError
 
 
 
@@ -160,7 +165,7 @@ class CalendarCollectionFile(CalDAVFile):
             # FIXME: creation in http_PUT should talk to a specific resource
             # type; this is the domain of StoreCalendarObjectResource.
             # similar = ProtoCalendarObjectFile(self._newStoreCalendar, path)
-            similar = CalDAVFile(path,
+            similar = ProtoCalendarObjectFile(self._newStoreCalendar, path,
                 principalCollections=self._principalCollections)
 
         # FIXME: tests should be failing without this line.
@@ -258,8 +263,94 @@ class CalendarObjectFile(CalDAVFile):
         @param calendarObject: The storage for the calendar object.
         @type calendarObject: L{txcaldav.icalendarstore.ICalendarObject}
         """
-        self._newStoreObject = calendarObject
         super(CalendarObjectFile, self).__init__(*args, **kw)
+        self._initializeWithObject(calendarObject)
 
+
+    def etag(self):
+        # FIXME: far too slow to be used for real, but I needed something to
+        # placate the etag computation in the case where the file doesn't exist
+        # yet (an uncommited transaction creating this calendar file)
+
+        # FIXME: direct tests
+        try:
+            return ETag(
+                hashlib.new("sha1", self.iCalendarText()).hexdigest(),
+                weak=False
+            )
+        except NoSuchCalendarObjectError:
+            # FIXME: a workaround for the fact that DELETE still rudely vanishes
+            # the calendar object out from underneath the store, and doesn't
+            # call storeRemove.
+            return None
+
+
+    def newStoreProperties(self):
+        return self._newStoreObject.properties()
+
+
+    def quotaSize(self, request):
+        return len(self._newStoreObject.iCalendarText())
+
+
+    def iCalendarText(self, ignored=None):
+        assert ignored is None, "This is a calendar object, not a calendar"
+        return self._newStoreObject.iCalendarText()
+
+
+    @inlineCallbacks
+    def storeStream(self, stream):
+        # FIXME: direct tests
+        component = vcomponent.VComponent.fromString(
+            (yield allDataFromStream(stream))
+        )
+        self._newStoreObject.setComponent(component)
+        returnValue(NO_CONTENT)
+
+
+    def storeRemove(self):
+        """
+        Remove this calendar object.
+        """
+        # FIXME: public attribute please
+        self._newStoreObject._calendar.removeCalendarObjectWithName(self._newStoreObject.name())
+        # FIXME: clean this up with a 'transform' method
+        self._newStoreParentCalendar = self._newStoreObject._calendar
+        del self._newStoreObject
+        self.__class__ = ProtoCalendarObjectFile
+
+
+    def _initializeWithObject(self, calendarObject):
+        self._newStoreObject = calendarObject
+
+
+    @classmethod
+    def transform(cls, self, calendarObject):
+        self.__class__ = cls
+        self._initializeWithObject(calendarObject)
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreObject.properties()
+        )
+
+
+
+class ProtoCalendarObjectFile(CalDAVFile):
+
+    def __init__(self, parentCalendar, *a, **kw):
+        super(ProtoCalendarObjectFile, self).__init__(*a, **kw)
+        self._newStoreParentCalendar = parentCalendar
+
+
+    @inlineCallbacks
+    def storeStream(self, stream):
+        # FIXME: direct tests 
+        component = vcomponent.VComponent.fromString(
+            (yield allDataFromStream(stream))
+        )
+        self._newStoreParentCalendar.createCalendarObjectWithName(
+            self.fp.basename(), component
+        )
+        CalendarObjectFile.transform(self, self._newStoreParentCalendar.calendarObjectWithName(self.fp.basename()))
+        returnValue(CREATED)
 
 

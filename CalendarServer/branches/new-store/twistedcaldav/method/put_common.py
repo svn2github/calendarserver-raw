@@ -21,23 +21,21 @@ PUT/COPY/MOVE common behavior.
 
 __all__ = ["StoreCalendarObjectResource"]
 
-import os
 import types
 import uuid
 
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred, inlineCallbacks, succeed
 from twisted.internet.defer import returnValue
-from twisted.python import failure
-from twext.python.filepath import CachingFilePath as FilePath
+from twisted.python.failure import Failure
+
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
 from twext.web2.dav.element.base import dav_namespace
 from twext.web2.dav.element.base import PCDATAElement
-from twext.web2.dav.fileop import delete
+
 from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.stream import MD5StreamWrapper
-from twext.web2.dav.util import joinURL, parentForURL
 from twext.web2.http import HTTPError
 from twext.web2.http import StatusResponse
 from twext.web2.http_headers import generateContentType, MimeType
@@ -48,7 +46,7 @@ from twext.python.log import Logger
 from twext.web2.dav.http import ErrorResponse
 
 from twistedcaldav.config import config
-from twistedcaldav.caldavxml import NoUIDConflict, ScheduleTag
+from twistedcaldav.caldavxml import ScheduleTag
 from twistedcaldav.caldavxml import NumberOfRecurrencesWithinLimits
 from twistedcaldav.caldavxml import caldav_namespace, MaxAttendeesPerInstance
 from twistedcaldav.customxml import calendarserver_namespace ,\
@@ -56,9 +54,7 @@ from twistedcaldav.customxml import calendarserver_namespace ,\
     TwistedScheduleMatchETags
 from twistedcaldav.customxml import TwistedCalendarAccessProperty
 from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
-from twistedcaldav.fileops import copyToWithXAttrs, copyXAttrs
-from twistedcaldav.fileops import putWithXAttrs
-from twistedcaldav.fileops import copyWithXAttrs
+
 from twistedcaldav.ical import Component, Property
 from twistedcaldav.index import ReservationError
 from twistedcaldav.instance import TooManyInstancesError,\
@@ -70,83 +66,6 @@ from twistedcaldav.scheduling.implicit import ImplicitScheduler
 log = Logger()
 
 class StoreCalendarObjectResource(object):
-    
-    class RollbackState(object):
-        """
-        This class encapsulates the state needed to rollback the entire PUT/COPY/MOVE
-        transaction, leaving the server state the same as it was before the request was
-        processed. The DoRollback method will actually execute the rollback operations.
-        """
-        
-        def __init__(self, storer):
-            self.storer = storer
-            self.active = True
-            self.source_copy = None
-            self.destination_copy = None
-            self.destination_created = False
-            self.source_deleted = False
-            self.source_index_deleted = False
-            self.destination_index_deleted = False
-        
-        def Rollback(self):
-            """
-            Rollback the server state. Do not allow this to raise another exception. If
-            rollback fails then we are going to be left in an awkward state that will need
-            to be cleaned up eventually.
-            """
-            if self.active:
-                self.active = False
-                log.debug("Rollback: rollback")
-                try:
-                    if self.source_copy and self.source_deleted:
-                        self.source_copy.moveTo(self.storer.source.fp)
-                        log.debug("Rollback: source restored %s to %s" % (self.source_copy.path, self.storer.source.fp.path))
-                        self.source_copy = None
-                        self.source_deleted = False
-                    if self.destination_copy:
-                        self.storer.destination.fp.remove()
-                        log.debug("Rollback: destination restored %s to %s" % (self.destination_copy.path, self.storer.destination.fp.path))
-                        self.destination_copy.moveTo(self.storer.destination.fp)
-                        self.destination_copy = None
-                    elif self.destination_created:
-                        if self.storer.destinationcal:
-                            self.storer.doRemoveDestinationIndex()
-                            log.debug("Rollback: destination index removed %s" % (self.storer.destination.fp.path,))
-                            self.destination_index_deleted = False
-                        self.storer.destination.fp.remove()
-                        log.debug("Rollback: destination removed %s" % (self.storer.destination.fp.path,))
-                        self.destination_created = False
-                    if self.destination_index_deleted:
-                        # Must read in calendar for destination being re-indexed
-                        self.storer.doDestinationIndex(self.storer.destination.iCalendar())
-                        self.destination_index_deleted = False
-                        log.debug("Rollback: destination re-indexed %s" % (self.storer.destination.fp.path,))
-                    if self.source_index_deleted:
-                        self.storer.doSourceIndexRecover()
-                        self.destination_index_deleted = False
-                        log.debug("Rollback: source re-indexed %s" % (self.storer.source.fp.path,))
-                except:
-                    log.err("Rollback: exception caught and not handled: %s" % failure.Failure())
-
-        def Commit(self):
-            """
-            Commit the resource changes by wiping the rollback state.
-            """
-            if self.active:
-                log.debug("Rollback: commit")
-                self.active = False
-                if self.source_copy:
-                    self.source_copy.remove()
-                    log.debug("Rollback: removed source backup %s" % (self.source_copy.path,))
-                    self.source_copy = None
-                if self.destination_copy:
-                    self.destination_copy.remove()
-                    log.debug("Rollback: removed destination backup %s" % (self.destination_copy.path,))
-                    self.destination_copy = None
-                self.destination_created = False
-                self.source_deleted = False
-                self.source_index_deleted = False
-                self.destination_index_deleted = False
 
     class UIDReservation(object):
         
@@ -254,7 +173,7 @@ class StoreCalendarObjectResource(object):
             log.err("deletesource=%s\n" % (deletesource,))
             log.err("isiTIP=%s\n" % (isiTIP,))
             raise
-    
+
         self.request = request
         self.sourcecal = sourcecal
         self.destinationcal = destinationcal
@@ -271,8 +190,7 @@ class StoreCalendarObjectResource(object):
         self.allowImplicitSchedule = allowImplicitSchedule
         self.internal_request = internal_request
         self.processing_organizer = processing_organizer
-        
-        self.rollback = None
+
         self.access = None
         self.newrevision = None
 
@@ -585,47 +503,6 @@ class StoreCalendarObjectResource(object):
                 
         return succeed(None)
 
-    def noUIDConflict(self, uid):
-        """
-        Check that the UID of the new calendar object conforms to the requirements of
-        CalDAV, i.e. it must be unique in the collection and we must not overwrite a
-        different UID.
-        @param uid: the UID for the resource being stored.
-        @return: tuple: (True/False if the UID is valid, log message string,
-            name of conflicted resource).
-        """
-
-        result = True
-        message = ""
-        rname = ""
-
-        # Adjust for a move into same calendar collection
-        oldname = None
-        if self.sourceparent and (self.sourceparent.fp.path == self.destinationparent.fp.path) and self.deletesource:
-            oldname = self.source.fp.basename()
-
-        # UID must be unique
-        index = self.destinationparent.index()
-        if not index.isAllowedUID(uid, oldname, self.destination.fp.basename()):
-            rname = index.resourceNameForUID(uid)
-            # This can happen if two simultaneous PUTs occur with the same UID.
-            # i.e. one PUT has reserved the UID but has not yet written the resource,
-            # the other PUT tries to reserve and fails but no index entry exists yet.
-            if rname is None:
-                rname = "<<Unknown Resource>>"
-            
-            result = False
-            message = "Calendar resource %s already exists with same UID %s" % (rname, uid)
-        else:
-            # Cannot overwrite a resource with different UID
-            if self.destination.fp.exists():
-                olduid = index.resourceUIDForName(self.destination.fp.basename())
-                if olduid != uid:
-                    rname = self.destination.fp.basename()
-                    result = False
-                    message = "Cannot overwrite calendar resource %s with different UID %s" % (rname, olduid)
-        
-        return result, message, rname
 
     @inlineCallbacks
     def checkQuota(self):
@@ -656,31 +533,6 @@ class StoreCalendarObjectResource(object):
 
         returnValue(None)
 
-    def setupRollback(self):
-        """
-        We may need to restore the original resource data if the PUT/COPY/MOVE fails,
-        so rename the original file in case we need to rollback.
-        """
-
-        def _createRollbackPath(path):
-            parent, child = os.path.split(path)
-            child = "." + child + ".rollback"
-            return os.path.join(parent, child)
-
-        self.rollback = StoreCalendarObjectResource.RollbackState(self)
-        self.overwrite = self.destination.exists()
-        if self.overwrite:
-            self.rollback.destination_copy = FilePath(_createRollbackPath(self.destination.fp.path))
-            copyToWithXAttrs(self.destination.fp, self.rollback.destination_copy)
-            log.debug("Rollback: backing up destination %s to %s" % (self.destination.fp.path, self.rollback.destination_copy.path))
-        else:
-            self.rollback.destination_created = True
-            log.debug("Rollback: will create new destination %s" % (self.destination.fp.path,))
-
-        if self.deletesource:
-            self.rollback.source_copy = FilePath(_createRollbackPath(self.source.fp.path))
-            copyToWithXAttrs(self.source.fp, self.rollback.source_copy)
-            log.debug("Rollback: backing up source %s to %s" % (self.source.fp.path, self.rollback.source_copy.path))
 
     def truncateRecurrence(self):
         
@@ -819,9 +671,10 @@ class StoreCalendarObjectResource(object):
         if self.source is not None:
             if implicit:
                 response = (yield self.doStorePut())
-                copyXAttrs(self.source.fp, self.destination.fp)
+                self.source.copyDeadPropertiesTo(self.destination)
             else:
-                response = (yield copyWithXAttrs(self.source.fp, self.destination.fp, self.destination_uri))
+                response = (yield self.destination.storeStream(MemoryStream(self.source.iCalendarText())))
+                self.source.copyDeadPropertiesTo(self.destination)
         else:
             response = (yield self.doStorePut())
     
@@ -843,7 +696,7 @@ class StoreCalendarObjectResource(object):
         if self.calendardata is None:
             self.calendardata = str(self.calendar)
         md5 = MD5StreamWrapper(MemoryStream(self.calendardata))
-        response = (yield putWithXAttrs(md5, self.destination.fp))
+        response = yield self.destination.storeStream(md5)
 
         # Finish MD5 calculation and write dead property
         md5.close()
@@ -858,12 +711,10 @@ class StoreCalendarObjectResource(object):
         if self.sourcecal:
             self.newrevision = (yield self.sourceparent.bumpSyncToken())
             self.source_index.deleteResource(self.source.fp.basename(), self.newrevision)
-            self.rollback.source_index_deleted = True
             log.debug("Source index removed %s" % (self.source.fp.path,))
 
         # Delete the source resource
-        delete(self.source_uri, self.source.fp, "0")
-        self.rollback.source_deleted = True
+        self.source.storeRemove()
         log.debug("Source removed %s" % (self.source.fp.path,))
   
         returnValue(None)
@@ -909,18 +760,14 @@ class StoreCalendarObjectResource(object):
                 ))
             return None
 
-    def doDestinationIndex(self, caltoindex):
+    def doDestinationIndex(self):
         """
         Do destination resource indexing, replacing any index previous stored.
         
         @return: None if successful, ErrorResponse on failure
         """
-        
-        # Delete index for original item
-        if self.overwrite:
-            self.doRemoveDestinationIndex()
-        
         # Add or update the index for this resource.
+        caltoindex = self.calendar
         try:
             self.destination_index.addResource(self.destination.fp.basename(), caltoindex, self.newrevision)
             log.debug("Destination indexed %s" % (self.destination.fp.path,))
@@ -950,7 +797,6 @@ class StoreCalendarObjectResource(object):
         # Delete index for original item
         if self.destinationcal:
             self.destination_index.deleteResource(self.destination.fp.basename(), None)
-            self.rollback.destination_index_deleted = True
             log.debug("Destination index removed %s" % (self.destination.fp.path,))
 
     @inlineCallbacks
@@ -973,17 +819,7 @@ class StoreCalendarObjectResource(object):
                 self.destination_index = self.destinationparent.index()
                 reservation = StoreCalendarObjectResource.UIDReservation(self.destination_index, self.uid, self.destination_uri, self.internal_request or self.isiTIP)
                 yield reservation.reserve()
-            
-                # UID conflict check - note we do this after reserving the UID to avoid a race condition where two requests
-                # try to write the same calendar data to two different resource URIs.
-                if not self.isiTIP:
-                    result, message, rname = self.noUIDConflict(self.uid)
-                    if not result:
-                        log.err(message)
-                        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN,
-                            NoUIDConflict(davxml.HRef.fromString(joinURL(parentForURL(self.destination_uri), rname.encode("utf-8"))))
-                        ))
-            
+
             # Get current quota state.
             yield self.checkQuota()
     
@@ -1023,9 +859,6 @@ class StoreCalendarObjectResource(object):
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data"), description=msg))
             else:
                 is_scheduling_resource, data_changed, did_implicit_action = implicit_result
-
-            # Initialize the rollback system
-            self.setupRollback()
 
             """
             Handle actual store operations here.
@@ -1117,9 +950,10 @@ class StoreCalendarObjectResource(object):
             # Index the new resource if storing to a calendar.
             if self.destinationcal:
                 self.newrevision = (yield self.destinationparent.bumpSyncToken())
-                result = self.doDestinationIndex(self.calendar)
+                result = self.doDestinationIndex()
                 if result is not None:
-                    self.rollback.Rollback()
+                    # FIXME: transaction needs to be rolled back; should we have
+                    # ErrorResponse detection in renderHTTP?  Hmm. -glyph
                     returnValue(result)
     
             # Delete the original source if needed.
@@ -1130,22 +964,20 @@ class StoreCalendarObjectResource(object):
             if self.destquota is not None:
                 yield self.doDestinationQuotaCheck()
     
-            # Can now commit changes and forget the rollback details
-            self.rollback.Commit()
-    
             if reservation:
                 yield reservation.unreserve()
     
             returnValue(response)
     
         except Exception, err:
+            # Preserve the real traceback to display later, since the error-
+            # handling here yields out of the generator and thereby shreds the
+            # stack.
+            f = Failure()
             if reservation:
                 yield reservation.unreserve()
     
-            # Roll back changes to original server state. Note this may do nothing
-            # if the rollback has already occurred or changes already committed.
-            if self.rollback:
-                self.rollback.Rollback()
+            # FIXME: transaction needs to be rolled back.
 
             if isinstance(err, InvalidOverriddenInstanceError):
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data"), description="Invalid overridden instance"))
@@ -1155,4 +987,9 @@ class StoreCalendarObjectResource(object):
                         NumberOfRecurrencesWithinLimits(PCDATAElement(str(err.max_allowed)))
                     ))
             else:
+                # Display the traceback.  Unfortunately this will usually be
+                # duplicated by the higher-level exception handler that captures
+                # the thing that raises here, but it's better than losing the
+                # information.
+                f.printTraceback()
                 raise err
