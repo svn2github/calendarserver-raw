@@ -99,6 +99,10 @@ class PurgeOldEventsTestCase(TestCase):
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
                                 },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
+                                    "@contents" : None, # ignore contents
+                                },
                                 "endless.ics": {
                                     "@contents" : ENDLESS_ICS,
                                 },
@@ -528,6 +532,10 @@ class DeprovisionTestCase(TestCase):
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
                                 },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
+                                    "@contents" : None, # ignore contents
+                                },
                                 "noninvite.ics": {
                                     "@contents" : NON_INVITE_ICS,
                                 },
@@ -540,6 +548,10 @@ class DeprovisionTestCase(TestCase):
                         "291C2C29-B663-4342-8EA1-A055E6A04D65" : {
                             "inbox": {
                                 ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
                                     "@contents" : None, # ignore contents
                                 },
                                 "*.ics/UID:7ED97931-9A19-4596-9D4D-52B36D6AB803": {
@@ -556,6 +568,10 @@ class DeprovisionTestCase(TestCase):
                             },
                             "calendar": {
                                 ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
                                     "@contents" : None, # ignore contents
                                 },
                                 "organizer.ics": {
@@ -657,6 +673,10 @@ class DeprovisionTestCase(TestCase):
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
                                 },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
+                                    "@contents" : None, # ignore contents
+                                },
                                 "noninvite_past.ics": {
                                     "@contents" : NON_INVITE_PAST_ICS,
                                 },
@@ -669,6 +689,10 @@ class DeprovisionTestCase(TestCase):
                         "291C2C29-B663-4342-8EA1-A055E6A04D65" : {
                             "inbox": {
                                 ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
                                     "@contents" : None, # ignore contents
                                 },
                                 "*.ics/UID:7ED97931-9A19-4596-9D4D-52B36D6AB803": {
@@ -690,6 +714,10 @@ class DeprovisionTestCase(TestCase):
                             },
                             "calendar": {
                                 ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
                                     "@contents" : None, # ignore contents
                                 },
                                 "organizer.ics": {
@@ -811,6 +839,10 @@ class DeprovisionTestCase(TestCase):
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
                                 },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
+                                    "@contents" : None, # ignore contents
+                                },
                                 "noninvite.ics": { # event in the past
                                     "@contents" : NON_INVITE_ICS_3,
                                 },
@@ -846,6 +878,10 @@ class DeprovisionTestCase(TestCase):
                                 ".db.sqlite": {
                                     "@contents" : None, # ignore contents
                                 },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
+                                    "@contents" : None, # ignore contents
+                                },
                                 "*.ics/UID:7ED97931-9A19-4596-9D4D-52B36D6AB803": {
                                     "@contents" : (
                                         "METHOD:CANCEL",
@@ -860,6 +896,10 @@ class DeprovisionTestCase(TestCase):
                             },
                             "calendar": {
                                 ".db.sqlite": {
+                                    "@contents" : None, # ignore contents
+                                },
+                                ".db.sqlite-journal": {
+                                    "@optional" : None, # not in old sqlite
                                     "@contents" : None, # ignore contents
                                 },
                                 "organizer.ics": {

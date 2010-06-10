@@ -77,7 +77,6 @@ from twistedcaldav.static import IScheduleInboxFile
 from twistedcaldav.static import TimezoneServiceFile
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
 from twistedcaldav.upgrade import upgradeData
-from twistedcaldav.util import getNCPU
 
 from twext.web2.metafd import ConnectionLimiter, ReportingHTTPService
 
@@ -93,7 +92,8 @@ from calendarserver.accesslog import RotatingFileAccessLoggingObserver
 from calendarserver.provision.root import RootResource
 from calendarserver.webadmin.resource import WebAdminResource
 from calendarserver.webcal.resource import WebCalendarResource
-from calendarserver.tap.util import getRootResource
+from calendarserver.tap.util import getRootResource, computeProcessCount
+from calendarserver.tools.util import checkDirectory
 
 log = Logger()
 
@@ -250,6 +250,9 @@ class CalDAVOptions (Options, LoggingMixIn):
 
         config.updateDefaults(self.overrides)
         
+    def checkDirectory(self, dirpath, description, access=None, create=None):
+        checkDirectory(dirpath, description, access=access, create=create)
+
     def checkConfiguration(self):
         uid, gid = None, None
 
@@ -336,51 +339,6 @@ class CalDAVOptions (Options, LoggingMixIn):
         if oldmask != config.umask:
             self.log_info("WARNING: changing umask from: 0%03o to 0%03o"
                           % (oldmask, config.umask))
-
-    def checkDirectory(self, dirpath, description, access=None, create=None):
-        if not os.path.exists(dirpath):
-            try:
-                mode, username, groupname = create
-            except TypeError:
-                raise ConfigurationError("%s does not exist: %s"
-                                         % (description, dirpath))
-            try:
-                os.mkdir(dirpath)
-            except (OSError, IOError), e:
-                self.log_error("Could not create %s: %s" % (dirpath, e))
-                raise ConfigurationError(
-                    "%s does not exist and cannot be created: %s"
-                    % (description, dirpath)
-                )
-
-            if username:
-                uid = getpwnam(username).pw_uid
-            else:
-                uid = -1
-
-            if groupname:
-                gid = getgrnam(groupname).gr_gid
-            else:
-                gid = -1
-
-            try:
-                os.chmod(dirpath, mode)
-                os.chown(dirpath, uid, gid)
-            except (OSError, IOError), e:
-                self.log_error("Unable to change mode/owner of %s: %s"
-                               % (dirpath, e))
-
-            self.log_info("Created directory: %s" % (dirpath,))
-
-        if not os.path.isdir(dirpath):
-            raise ConfigurationError("%s is not a directory: %s"
-                                     % (description, dirpath))
-
-        if access and not os.access(dirpath, access):
-            raise ConfigurationError(
-                "Insufficient permissions for server on %s directory: %s"
-                % (description, dirpath)
-            )
 
 
 
@@ -775,30 +733,16 @@ class CalDAVServiceMaker (LoggingMixIn):
             parentEnv["KRB5_KTNAME"] = os.environ["KRB5_KTNAME"]
 
         #
-        # Attempt to calculate the number of processes to use 1 per processor
+        # Calculate the number of processes to spawn
         #
         if config.MultiProcess.ProcessCount == 0:
-            try:
-                cpuCount = getNCPU()
-            except NotImplementedError, e:
-                self.log_error("Unable to detect number of CPUs: %s"
-                               % (str(e),))
-                cpuCount = 0
-            else:
-                if cpuCount < 1:
-                    self.log_error(
-                        "%d processors detected, which is hard to believe."
-                        % (cpuCount,)
-                    )
-
-            processCount = config.MultiProcess.MinProcessCount
-            if 2 * cpuCount > processCount:
-                processCount = 2 * cpuCount
-
-            self.log_info("%d processors found. Configuring %d processes."
-                          % (cpuCount, processCount))
-
+            processCount = computeProcessCount(
+                config.MultiProcess.MinProcessCount,
+                config.MultiProcess.PerCPU,
+                config.MultiProcess.PerGB,
+            )
             config.MultiProcess.ProcessCount = processCount
+            self.log_info("Configuring %d processes." % (processCount,))
 
 
         # Open the socket(s) to be inherited by the slaves

@@ -48,6 +48,8 @@ DEFAULT_SERVICE_PARAMS = {
     "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
         "node": "/Search",
         "cacheTimeout": 30,
+        "restrictEnabledRecords": False,
+        "restrictToGroup": "",
         "recordTypes": ("users", "groups"),
     },
 }
@@ -302,7 +304,9 @@ DEFAULT_CONFIG = {
     "ProcessType": "Combined",
     "MultiProcess": {
         "ProcessCount": 0,
-        "MinProcessCount": 4,
+        "MinProcessCount": 2,
+        "PerCPU": 1,
+        "PerGB": 2,
         "StaggeredStartup": {
             "Enabled": False,
             "Interval": 15,
@@ -418,6 +422,7 @@ DEFAULT_CONFIG = {
             "AllowGroupAsOrganizer"      : False, # Allow groups to be Organizers
             "AllowLocationAsOrganizer"   : False, # Allow locations to be Organizers
             "AllowResourceAsOrganizer"   : False, # Allow resources to be Organizers
+            "LimitFreeBusyAttendees"     : 30,    # Maximum number of attendees to request freebusy for
         }
     },
 

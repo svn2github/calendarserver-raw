@@ -69,7 +69,7 @@ def accountingEnabledForPrincipal(principal):
 
     return False
 
-def emitAccounting(category, principal, data):
+def emitAccounting(category, principal, data, tag=None):
     """
     Write the supplied data to the appropriate location for the given
     category and principal.
@@ -111,10 +111,16 @@ def emitAccounting(category, principal, data):
         if not os.path.isdir(os.path.join(logRoot, logDirectory)):
             os.makedirs(os.path.join(logRoot, logDirectory))
             logFilename = "%s-01" % (logFilename,)
+            if tag:
+                logFilename += " (%s)" % (tag,)
+            logFilename += ".txt"
         else:
             index = 1
             while True:
                 path = "%s-%02d" % (logFilename, index)
+                if tag:
+                    path += " (%s)" % (tag,)
+                path += ".txt"
                 if not os.path.isfile(os.path.join(logRoot, path)):
                     logFilename = path
                     break
