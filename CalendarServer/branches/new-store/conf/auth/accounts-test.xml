@@ -39,7 +39,7 @@ limitations under the License.
     <uid>wsanchez</uid>
     <guid>wsanchez</guid>
     <email-address>wsanchez@apple.com</email-address>
-    <password>demo</password>
+    <password>test</password>
     <name>Wilfredo Sanchez Vega</name>
     <first-name>Wilfredo</first-name>
     <last-name>Sanchez Vega</last-name>
@@ -48,7 +48,7 @@ limitations under the License.
     <uid>cdaboo</uid>
     <guid>cdaboo</guid>
     <email-address>cdaboo@apple.com</email-address>
-    <password>demo</password>
+    <password>test</password>
     <name>Cyrus Daboo</name>
     <first-name>Cyrus</first-name>
     <last-name>Daboo</last-name>
@@ -57,7 +57,7 @@ limitations under the License.
     <uid>sagen</uid>
     <guid>sagen</guid>
     <email-address>sagen@apple.com</email-address>
-    <password>demo</password>
+    <password>test</password>
     <name>Morgen Sagen</name>
     <first-name>Morgen</first-name>
     <last-name>Sagen</last-name>
@@ -66,7 +66,7 @@ limitations under the License.
     <uid>dre</uid>
     <guid>andre</guid>
     <email-address>dre@apple.com</email-address>
-    <password>demo</password>
+    <password>test</password>
     <name>Andre LaBranche</name>
     <first-name>Andre</first-name>
     <last-name>LaBranche</last-name>
@@ -75,7 +75,7 @@ limitations under the License.
     <uid>glyph</uid>
     <guid>glyph</guid>
     <email-address>glyph@apple.com</email-address>
-    <password>demo</password>
+    <password>test</password>
     <name>Glyph Lefkowitz</name>
     <first-name>Glyph</first-name>
     <last-name>Lefkowitz</last-name>
@@ -150,55 +150,55 @@ limitations under the License.
   <location>
     <uid>mercury</uid>
     <guid>mercury</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Mecury Conference Room, Building 1, 2nd Floor</name>
   </location>
   <location>
     <uid>venus</uid>
     <guid>venus</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Venus Conference Room, Building 1, 2nd Floor</name>
   </location>
   <location>
     <uid>Earth</uid>
     <guid>Earth</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Earth Conference Room, Building 1, 1st Floor</name>
   </location>
   <location>
     <uid>mars</uid>
     <guid>mars</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Mars Conference Room, Building 1, 1st Floor</name>
   </location>
   <location>
     <uid>jupiter</uid>
     <guid>jupiter</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Jupiter Conference Room, Building 2, 1st Floor</name>
   </location>
   <location>
     <uid>neptune</uid>
     <guid>neptune</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Neptune Conference Room, Building 2, 1st Floor</name>
   </location>
   <location>
     <uid>pluto</uid>
     <guid>pluto</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Pluto Conference Room, Building 2, 1st Floor</name>
   </location>
   <location>
     <uid>saturn</uid>
     <guid>saturn</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Saturn Conference Room, Building 2, 1st Floor</name>
   </location>
   <location>
     <uid>uranus</uid>
     <guid>uranus</guid>
-    <password>demo</password>
+    <password>test</password>
     <name>Uranus Conference Room, Building 3, 1st Floor</name>
   </location>
 </accounts>
