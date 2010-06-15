@@ -244,6 +244,7 @@ class Transaction(LoggingMixIn):
                         calendarPath.moveTo(childPath3)
                         # calendarHome._path = calendarPath
                         # do this _after_ all other file operations
+                        calendarHome._path = childPath3
                         return lambda : None
                     self.addOperation(lastly)
                     return lambda : None
