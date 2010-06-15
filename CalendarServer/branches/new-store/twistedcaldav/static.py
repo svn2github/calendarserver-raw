@@ -302,37 +302,39 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
     def iCalendarRolledup(self, request):
         if self.isPseudoCalendarCollection():
 
+
+# FIXME: move cache implementation!
             # Determine the cache key
-            isvirt = (yield self.isVirtualShare(request))
-            if isvirt:
-                principal = (yield self.resourceOwnerPrincipal(request))
-                if principal:
-                    cacheKey = principal.principalUID()
-                else:
-                    cacheKey = "unknown"
-            else:
-                isowner = (yield self.isOwner(request, adminprincipals=True, readprincipals=True))
-                cacheKey = "owner" if isowner else "notowner"
+#            isvirt = (yield self.isVirtualShare(request))
+#            if isvirt:
+#                principal = (yield self.resourceOwnerPrincipal(request))
+#                if principal:
+#                    cacheKey = principal.principalUID()
+#                else:
+#                    cacheKey = "unknown"
+#            else:
+#                isowner = (yield self.isOwner(request, adminprincipals=True, readprincipals=True))
+#                cacheKey = "owner" if isowner else "notowner"
                 
             # Now check for a cached .ics
-            rolled = self.fp.child(".subscriptions")
-            if not rolled.exists():
-                try:
-                    rolled.makedirs()
-                except IOError, e:
-                    log.err("Unable to create internet calendar subscription cache directory: %s because of: %s" % (rolled.path, e,))
-                    raise HTTPError(ErrorResponse(responsecode.INTERNAL_SERVER_ERROR))
-            cached = rolled.child(cacheKey)
-            if cached.exists():
-                try:
-                    cachedData = cached.open().read()
-                except IOError, e:
-                    log.err("Unable to open or read internet calendar subscription cache file: %s because of: %s" % (cached.path, e,))
-                else:
-                    # Check the cache token
-                    token, data = cachedData.split("\r\n", 1)
-                    if token == self.getSyncToken():
-                        returnValue(data)
+#            rolled = self.fp.child(".subscriptions")
+#            if not rolled.exists():
+#                try:
+#                    rolled.makedirs()
+#                except IOError, e:
+#                    log.err("Unable to create internet calendar subscription cache directory: %s because of: %s" % (rolled.path, e,))
+#                    raise HTTPError(ErrorResponse(responsecode.INTERNAL_SERVER_ERROR))
+#            cached = rolled.child(cacheKey)
+#            if cached.exists():
+#                try:
+#                    cachedData = cached.open().read()
+#                except IOError, e:
+#                    log.err("Unable to open or read internet calendar subscription cache file: %s because of: %s" % (cached.path, e,))
+#                else:
+#                    # Check the cache token
+#                    token, data = cachedData.split("\r\n", 1)
+#                    if token == self.getSyncToken():
+#                        returnValue(data)
 
             # Generate a monolithic calendar
             calendar = iComponent("VCALENDAR")
@@ -382,10 +384,10 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
             # Cache the data
             data = str(calendar)
             data = self.getSyncToken() + "\r\n" + data
-            try:
-                cached.open(mode='w').write(data)
-            except IOError, e:
-                log.err("Unable to open or write internet calendar subscription cache file: %s because of: %s" % (cached.path, e,))
+#            try:
+#                cached.open(mode='w').write(data)
+#            except IOError, e:
+#                log.err("Unable to open or write internet calendar subscription cache file: %s because of: %s" % (cached.path, e,))
                 
             returnValue(calendar)
 
