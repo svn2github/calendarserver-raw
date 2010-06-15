@@ -30,11 +30,12 @@ from twext.python.filepath import CachingFilePath as FilePath
 from twext.python import vcomponent
 
 from twext.web2.http_headers import ETag
-from twext.web2.responsecode import FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED
+from twext.web2.responsecode import FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, \
+    CONFLICT
 from twext.web2.dav.util import parentForURL, allDataFromStream
 from twext.web2.http import HTTPError, StatusResponse
 
-from twistedcaldav.static import CalDAVFile
+from twistedcaldav.static import CalDAVFile, ScheduleInboxFile
 
 from txdav.propertystore.base import PropertyName
 from txcaldav.icalendarstore import NoSuchCalendarObjectError
@@ -105,20 +106,10 @@ class _NewStorePropertiesWrapper(object):
                 self._newPropertyStore.keys()]
 
 
-
-class CalendarCollectionFile(CalDAVFile):
+class _CalendarChildHelper(object):
     """
-    Wrapper around a L{txcaldav.icalendar.ICalendar}.
+    Methods for things which are like calendars.
     """
-
-    def __init__(self, calendar, home, *args, **kw):
-        """
-        Create a CalendarCollectionFile from a L{txcaldav.icalendar.ICalendar}
-        and the arguments required for L{CalDAVFile}.
-        """
-        super(CalendarCollectionFile, self).__init__(*args, **kw)
-        self._initializeWithCalendar(calendar, home)
-
 
     def _initializeWithCalendar(self, calendar, home):
         """
@@ -135,6 +126,18 @@ class CalendarCollectionFile(CalDAVFile):
         self._dead_properties = _NewStorePropertiesWrapper(
             self._newStoreCalendar.properties()
         )
+
+
+    def index(self):
+        """
+        Retrieve the new-style index wrapper.
+        """
+        return self._newStoreCalendar.retrieveOldIndex()
+
+
+    def exists(self):
+        # FIXME: tests
+        return True
 
 
     @classmethod
@@ -174,6 +177,46 @@ class CalendarCollectionFile(CalDAVFile):
         return similar
 
 
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
+
+class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
+
+    def __init__(self, *a, **kw):
+        super(StoreScheduleInboxFile, self).__init__(*a, **kw)
+        home = self.parent._newStoreCalendarHome
+        storage = home.calendarWithName("inbox")
+        if storage is None:
+            # FIXME: spurious error, sanity check, should not be needed
+            raise RuntimeError("backend should be handling this for us")
+            storage = home.calendarWithName("inbox")
+        self._initializeWithCalendar(
+            storage,
+            self.parent._newStoreCalendarHome
+        )
+
+
+    def provisionFile(self):
+        pass
+
+
+class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
+    """
+    Wrapper around a L{txcaldav.icalendar.ICalendar}.
+    """
+
+    def __init__(self, calendar, home, *args, **kw):
+        """
+        Create a CalendarCollectionFile from a L{txcaldav.icalendar.ICalendar}
+        and the arguments required for L{CalDAVFile}.
+        """
+        super(CalendarCollectionFile, self).__init__(*args, **kw)
+        self._initializeWithCalendar(calendar, home)
+
+
     def http_COPY(self, request):
         """
         Copying of calendar collections isn't allowed.
@@ -206,6 +249,16 @@ class CalendarCollectionFile(CalDAVFile):
 
 
 
+class NoParent(CalDAVFile):
+    def http_MKCALENDAR(self, request):
+        return CONFLICT
+
+
+    def http_PUT(self, request):
+        return CONFLICT
+
+
+
 class ProtoCalendarCollectionFile(CalDAVFile):
     """
     A resource representing a calendar collection which hasn't yet been created.
@@ -230,7 +283,16 @@ class ProtoCalendarCollectionFile(CalDAVFile):
         # twistedcaldav.test.test_mkcalendar.
         #     MKCALENDAR.test_make_calendar_no_parent - there should be a more
         # structured way to refuse creation with a non-existent parent.
-        return CalDAVFile(path)
+        return NoParent(path)
+
+
+    def provisionFile(self):
+        """
+        Create a calendar collection.
+        """
+        # FIXME: this should be done in the backend; provisionDefaultCalendars
+        # should go away.
+        return self.createCalendarCollection()
 
 
     def createCalendarCollection(self):
@@ -250,6 +312,23 @@ class ProtoCalendarCollectionFile(CalDAVFile):
         return d
 
 
+    def exists(self):
+        # FIXME: tests
+        return False
+
+
+    def provision(self):
+        """
+        This resource should do nothing if it's provisioned.
+        """
+        # FIXME: should be deleted, or raise an exception
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
 
 class CalendarObjectFile(CalDAVFile):
     """
@@ -265,6 +344,11 @@ class CalendarObjectFile(CalDAVFile):
         """
         super(CalendarObjectFile, self).__init__(*args, **kw)
         self._initializeWithObject(calendarObject)
+
+
+    def exists(self):
+        # FIXME: Tests
+        return True
 
 
     def etag(self):
@@ -290,7 +374,8 @@ class CalendarObjectFile(CalDAVFile):
 
 
     def quotaSize(self, request):
-        return len(self._newStoreObject.iCalendarText())
+        # FIXME: tests
+        return succeed(len(self._newStoreObject.iCalendarText()))
 
 
     def iCalendarText(self, ignored=None):
@@ -354,3 +439,11 @@ class ProtoCalendarObjectFile(CalDAVFile):
         returnValue(CREATED)
 
 
+    def exists(self):
+        # FIXME: tests
+        return False
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)

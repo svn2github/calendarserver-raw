@@ -687,6 +687,7 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
         @return: an L{Deferred} with a C{int} result containing the size of the resource.
         """
+        raise RuntimeError("quotaSize called on %r" % (self,))
         if self.isCollection():
             @inlineCallbacks
             def walktree(top):
@@ -1004,17 +1005,33 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         # TODO: when calendar home gets a resourceID( ) method, remove
         # the "id=record.uid" keyword from this call:
         self.clientNotifier = ClientNotifier(self, id=record.uid)
-
+        txn = parent.parent._newStore.newTransaction()
+        self._newStoreCalendarHome = (
+            txn.calendarHomeWithUID(record.uid, create=True)
+        )
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
-        txn = self.parent.parent._newStore.newTransaction()
-        self._newStoreCalendarHome = (
-            txn.calendarHomeWithUID(self.record.uid, create=True)
+
+        from twistedcaldav.storebridge import _NewStorePropertiesWrapper
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreCalendarHome.properties()
         )
+
         self.associateWithTransaction(txn)
 
 
+    def exists(self):
+        # FIXME: tests
+        return True
+    
+    
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
     def provision(self):
+        return
         result = super(CalendarHomeFile, self).provision()
         if config.Sharing.Enabled and config.Sharing.Calendars.Enabled:
             self.provisionShares()
@@ -1036,8 +1053,9 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         else:
             NotificationCollectionFileClass = None
 
+        from twistedcaldav.storebridge import StoreScheduleInboxFile
         cls = {
-            "inbox"        : ScheduleInboxFile,
+            "inbox"        : StoreScheduleInboxFile,
             "outbox"       : ScheduleOutboxFile,
             "dropbox"      : DropBoxHomeFileClass,
             "freebusy"     : FreeBusyURLFileClass,
@@ -1259,8 +1277,10 @@ class ScheduleOutboxFile (ScheduleOutboxResource, ScheduleFile):
         ScheduleOutboxResource.__init__(self, parent)
 
     def provision(self):
-        self.provisionFile()
-        return super(ScheduleOutboxFile, self).provision()
+        """
+        Schedule outboxes do not need to be provisioned; they shouldn't store
+        anything.
+        """
 
     def __repr__(self):
         return "<%s (calendar outbox collection): %s>" % (self.__class__.__name__, self.fp.path)

@@ -35,6 +35,7 @@ from twisted.python.util import FancyEqMixin
 
 from twisted.internet.defer import succeed
 
+from twisted.python import log
 from twext.python.log import LoggingMixIn
 from twext.python.vcomponent import VComponent
 from twext.python.vcomponent import InvalidICalendarDataError
@@ -195,12 +196,13 @@ class Transaction(LoggingMixIn):
                 undo = operation()
                 if undo is not None:
                     undos.append(undo)
-            except Exception, e:
+            except:
+                log.err()
                 for undo in undos:
                     try:
                         undo()
-                    except Exception, e:
-                        self.log_error("Exception while undoing transaction: %s" % (e,))
+                    except:
+                        log.err()
                 raise
 
 
@@ -216,31 +218,47 @@ class Transaction(LoggingMixIn):
         childPath1 = self._calendarStore._path.child(uid[0:2])
         childPath2 = childPath1.child(uid[2:4])
         childPath3 = childPath2.child(uid)
+        def createDirectory(path):
+            try:
+                path.createDirectory()
+            except (IOError, OSError), e:
+                if e.errno != EEXIST:
+                    # Ignore, in case someone else created the
+                    # directory while we were trying to as well.
+                    raise
 
-        def do():
-            def createDirectory(path):
-                try:
-                    path.createDirectory()
-                except (IOError, OSError), e:
-                    if e.errno != EEXIST:
-                        # Ignore, in case someone else created the
-                        # directory while we were trying to as well.
-                        raise
-
-            if not childPath3.isdir():
-                if not childPath2.isdir():
-                    if not childPath1.isdir():
-                        createDirectory(childPath1)
-                    createDirectory(childPath2)
-                createDirectory(childPath3)
-
+        creating = False
         if create:
-            self.addOperation(do)
+            if not childPath2.isdir():
+                if not childPath1.isdir():
+                    createDirectory(childPath1)
+                createDirectory(childPath2)
+            if childPath3.isdir():
+                calendarPath = childPath3
+            else:
+                creating = True
+                calendarPath = childPath3.temporarySibling()
+                createDirectory(calendarPath)
+                def do():
+                    def lastly():
+                        calendarPath.moveTo(childPath3)
+                        # calendarHome._path = calendarPath
+                        # do this _after_ all other file operations
+                        return lambda : None
+                    self.addOperation(lastly)
+                    return lambda : None
+                self.addOperation(do)
+
         elif not childPath3.isdir():
             return None
+        else:
+            calendarPath = childPath3
 
-        calendarHome = CalendarHome(childPath3, self._calendarStore, self)
+        calendarHome = CalendarHome(calendarPath, self._calendarStore, self)
         self._calendarHomes[(uid, self)] = calendarHome
+        if creating:
+            calendarHome.createCalendarWithName("calendar")
+            calendarHome.createCalendarWithName("inbox")
         return calendarHome
 
 
@@ -288,9 +306,10 @@ class CalendarHome(LoggingMixIn):
 
         childPath = self._path.child(name)
         if childPath.isdir():
-            return Calendar(childPath, self)
+            return Calendar(name, self)
         else:
             return None
+
 
     def createCalendarWithName(self, name):
         if name.startswith("."):
@@ -301,19 +320,30 @@ class CalendarHome(LoggingMixIn):
         if name not in self._removedCalendars and childPath.isdir():
             raise CalendarAlreadyExistsError(name)
 
-        c = self._newCalendars[name] = Calendar(childPath, self)
+        temporary = childPath.temporarySibling()
+        temporary.createDirectory()
+        # In order for the index to work (which is doing real file ops on disk
+        # via SQLite) we need to create a real directory _immediately_.
+
+        # FIXME: some way to roll this back.
+
+        c = self._newCalendars[name] = Calendar(temporary.basename(), self, name)
+        c.retrieveOldIndex().create()
         def do():
             try:
-                childPath.createDirectory()
-                # FIXME: direct tests, undo for index creation
-                Index(c)._oldIndex.create()
-
-                # Return undo
-                return lambda: childPath.remove()
+                props = c.properties()
+                temporary.moveTo(childPath)
+                c._name = name
+                # FIXME: _lots_ of duplication of work here.
+                props.path = childPath
+                props.flush()
             except (IOError, OSError), e:
                 if e.errno == EEXIST and childPath.isdir():
                     raise CalendarAlreadyExistsError(name)
                 raise
+            # FIXME: direct tests, undo for index creation
+            # Return undo
+            return lambda: childPath.remove()
 
         self._transaction.addOperation(do)
         props = c.properties()
@@ -330,6 +360,7 @@ class CalendarHome(LoggingMixIn):
         # everything else; the API here would better be expressed as
         # c.properties().participateInTxn(txn)
         # FIXME: return c # maybe ?
+
 
     def removeCalendarWithName(self, name):
         if name.startswith(".") or name in self._removedCalendars:
@@ -368,6 +399,7 @@ class CalendarHome(LoggingMixIn):
 
             return undo
 
+
     # @_cached
     def properties(self):
         # FIXME: needs tests for actual functionality
@@ -385,15 +417,43 @@ class Calendar(LoggingMixIn, FancyEqMixin):
     """
     implements(ICalendar)
 
-    compareAttributes = '_path _calendarHome _transaction'.split()
+    compareAttributes = '_name _calendarHome _transaction'.split()
 
-    def __init__(self, path, calendarHome):
-        self._path = path
+    def __init__(self, name, calendarHome, realName=None):
+        """
+        Initialize a calendar pointing at a path on disk.
+
+        @param name: the subdirectory of calendarHome where this calendar
+            resides.
+        @type name: C{str}
+
+        @param calendarHome: the home containing this calendar.
+        @type calendarHome: L{CalendarHome}
+
+        @param realName: If this calendar was just created, the name which it
+        will eventually have on disk.
+        @type realName: C{str}
+        """
+        self._name = name
         self._calendarHome = calendarHome
         self._transaction = calendarHome._transaction
         self._newCalendarObjects = {}
         self._cachedCalendarObjects = {}
         self._removedCalendarObjects = set()
+        self._index = Index(self)
+        self._renamedName = realName
+
+
+    @property
+    def _path(self):
+        return self._calendarHome._path.child(self._name)
+
+
+    def retrieveOldIndex(self):
+        """
+        Retrieve the old Index object.
+        """
+        return self._index._oldIndex
 
 
     def __repr__(self):
@@ -411,7 +471,6 @@ class Calendar(LoggingMixIn, FancyEqMixin):
     def rename(self, name):
         oldName = self.name()
         self._renamedName = name
-        self._calendarHome
         self._calendarHome._newCalendars[name] = self
         self._calendarHome._removedCalendars.add(oldName)
         def doIt():
@@ -429,7 +488,7 @@ class Calendar(LoggingMixIn, FancyEqMixin):
             self.calendarObjectWithName(name)
             for name in (
                 set(self._newCalendarObjects.iterkeys()) |
-                set(name for name in self._path.listdir() 
+                set(name for name in self._path.listdir()
                     if not name.startswith(".")) -
                 set(self._removedCalendarObjects)
             )),
@@ -447,7 +506,7 @@ class Calendar(LoggingMixIn, FancyEqMixin):
 
         calendarObjectPath = self._path.child(name)
         if calendarObjectPath.isfile():
-            obj = CalendarObject(calendarObjectPath, self)
+            obj = CalendarObject(name, self)
             self._cachedCalendarObjects[name] = obj
             return obj
         else:
@@ -460,7 +519,7 @@ class Calendar(LoggingMixIn, FancyEqMixin):
         for calendarObjectPath in self._path.children():
             if not _isValidName(calendarObjectPath.basename()):
                 continue
-            obj = CalendarObject(calendarObjectPath, self)
+            obj = CalendarObject(calendarObjectPath.basename(), self)
             if obj.component().resourceUID() == uid:
                 if obj.name() in self._removedCalendarObjects:
                     return None
@@ -475,7 +534,7 @@ class Calendar(LoggingMixIn, FancyEqMixin):
         if calendarObjectPath.exists():
             raise CalendarObjectNameAlreadyExistsError(name)
 
-        calendarObject = CalendarObject(calendarObjectPath, self)
+        calendarObject = CalendarObject(name, self)
         calendarObject.setComponent(component)
         self._cachedCalendarObjects[name] = calendarObject
 
@@ -535,6 +594,14 @@ class Calendar(LoggingMixIn, FancyEqMixin):
         props = PropertyStore(self._path)
         self._transaction.addOperation(props.flush)
         return props
+    
+    
+    def _doValidate(self, component):
+        # FIXME: should be separate class, not separate case!
+        if self.name() == 'inbox':
+            component.validateComponentsForCalDAV(True)
+        else:
+            component.validateForCalDAV()
 
 
 
@@ -546,10 +613,15 @@ class CalendarObject(LoggingMixIn):
     """
     implements(ICalendarObject)
 
-    def __init__(self, path, calendar):
-        self._path = path
+    def __init__(self, name, calendar):
+        self._name = name
         self._calendar = calendar
         self._component = None
+
+
+    @property
+    def _path(self):
+        return self._calendar._path.child(self._name)
 
 
     def __repr__(self):
@@ -575,7 +647,7 @@ class CalendarObject(LoggingMixIn):
             pass
 
         try:
-            component.validateForCalDAV()
+            self._calendar._doValidate(component)
         except InvalidICalendarDataError, e:
             raise InvalidCalendarComponentError(e)
 
@@ -677,7 +749,7 @@ class CalendarObject(LoggingMixIn):
 
 
 
-class Index (object):
+class Index(object):
     #
     # OK, here's where we get ugly.
     # The index code needs to be rewritten also, but in the meantime...
@@ -720,6 +792,7 @@ class Index (object):
     def __init__(self, calendar):
         self.calendar = calendar
         self._oldIndex = OldIndex(Index.StubResource(calendar))
+
 
     def calendarObjects(self):
         calendar = self.calendar

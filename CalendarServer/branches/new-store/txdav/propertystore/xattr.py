@@ -90,9 +90,14 @@ class PropertyStore(AbstractPropertyStore):
         @type path: L{CachingFilePath}
         """
         self.path = path
-        self.attrs = xattr(path.path)
+        # self.attrs = xattr(path.path)
         self.removed = set()
         self.modified = {}
+        
+        
+    @property
+    def attrs(self):
+        return xattr(self.path.path)
 
     def __str__(self):
         return "<%s %s>" % (self.__class__.__name__, self.path.path)

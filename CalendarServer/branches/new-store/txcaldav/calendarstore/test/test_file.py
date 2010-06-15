@@ -25,7 +25,6 @@ from twext.python.vcomponent import VComponent
 
 from txcaldav.icalendarstore import CalendarNameNotAllowedError
 from txcaldav.icalendarstore import CalendarObjectNameNotAllowedError
-from txcaldav.icalendarstore import CalendarAlreadyExistsError
 from txcaldav.icalendarstore import CalendarObjectUIDAlreadyExistsError
 from txcaldav.icalendarstore import NoSuchCalendarError
 from txcaldav.icalendarstore import NoSuchCalendarObjectError
@@ -34,8 +33,7 @@ from txcaldav.calendarstore.file import CalendarStore, CalendarHome
 from txcaldav.calendarstore.file import Calendar, CalendarObject
 
 from txcaldav.calendarstore.test.common import (
-    CommonTests, calendar1_objectNames, event4_text, event1modified_text,
-    home1_calendarNames)
+    CommonTests, event4_text, event1modified_text)
 
 storePath = FilePath(__file__).parent().child("calendar_store")
 
@@ -176,6 +174,29 @@ class CalendarTest(unittest.TestCase):
         )
 
 
+    def test_useIndexImmediately(self):
+        """
+        L{Calendar._index} is usable in the same transaction it is created, with
+        a temporary filename.
+        """
+        self.home1.createCalendarWithName("calendar2")
+        calendar = self.home1.calendarWithName("calendar2")
+        index = calendar._index
+        self.assertEquals(set(index.calendarObjects()),
+                          set(calendar.calendarObjects()))
+        self.txn.commit()
+        self.txn = self.calendarStore.newTransaction()
+        self.home1 = self.txn.calendarHomeWithUID("home1")
+        calendar = self.home1.calendarWithName("calendar2")
+        # FIXME: we should be curating our own index here, but in order to fix
+        # that the code in the old implicit scheduler needs to change.  This
+        # test would be more effective if there were actually some objects in
+        # this list.
+        index = calendar._index
+        self.assertEquals(set(index.calendarObjects()),
+                          set(calendar.calendarObjects()))
+
+
     def test_calendarObjectWithName_dot(self):
         """
         Filenames starting with "." are reserved by this
@@ -298,6 +319,7 @@ class CalendarTest(unittest.TestCase):
             raise RuntimeError("oops")
         self.txn.addOperation(fail)
         self.assertRaises(RuntimeError, self.txn.commit)
+        self.assertEquals(len(self.flushLoggedErrors(RuntimeError)), 1)
         self._refresh()
 
 
