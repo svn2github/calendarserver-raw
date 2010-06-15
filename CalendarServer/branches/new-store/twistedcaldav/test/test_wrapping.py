@@ -91,8 +91,17 @@ class WrappingTests(TestCase):
         segments = path.split("/")
         resource = self.site.resource
         while segments:
-            resource, segments = yield resource.locateChild(None, segments)
+            resource, segments = yield resource.locateChild(self, segments)
         returnValue(resource)
+
+
+    def commit(self):
+        """
+        Since C{getResource} treats this test case as a resource, it will have
+        an associated transaction.  Commit that transaction to bring the
+        filesystem into a consistent state.
+        """
+        self._newStoreTransaction.commit()
 
 
     def test_createStore(self):
@@ -113,6 +122,7 @@ class WrappingTests(TestCase):
         via C{newTransaction().calendarHomeWithUID}.
         """
         calDavFile = yield self.getResource("calendars/users/wsanchez/")
+        self.commit()
         self.assertEquals(calDavFile.fp, calDavFile._newStoreCalendarHome._path)
         self.assertIsInstance(calDavFile._newStoreCalendarHome, CalendarHome)
 
@@ -125,6 +135,7 @@ class WrappingTests(TestCase):
         create a corresponding L{Calendar} via C{CalendarHome.calendarWithName}.
         """
         calDavFile = yield self.getResource("calendars/users/wsanchez/calendar")
+        self.commit()
         self.assertEquals(calDavFile.fp, calDavFile._newStoreCalendar._path)
 
 
@@ -140,6 +151,7 @@ class WrappingTests(TestCase):
         calDavFile = yield self.getResource("calendars/users/wsanchez/frobozz")
         self.assertIsInstance(calDavFile, ProtoCalendarCollectionFile)
         calDavFile.createCalendarCollection()
+        self.commit()
         self.assertEquals(calDavFile.fp, calDavFile._newStoreCalendar._path)
 
 
@@ -171,6 +183,7 @@ class WrappingTests(TestCase):
         calDavFileCalendar = yield self.getResource(
             "calendars/users/wsanchez/calendar/1.ics"
         )
+        self.commit()
         self.assertEquals(calDavFileCalendar._newStoreObject._path, 
                           calDavFileCalendar.fp)
         self.assertEquals(calDavFileCalendar._principalCollections,
@@ -187,5 +200,6 @@ class WrappingTests(TestCase):
         calDavFileCalendar = yield self.getResource(
             "calendars/users/wsanchez/calendar/xyzzy.ics"
         )
+        self.commit()
         self.assertEquals(calDavFileCalendar._principalCollections,
                           frozenset([self.principalsResource]))
