@@ -177,7 +177,7 @@ class SharedCollectionMixin(object):
         
         # Get the home collection
         if self.isCalendarCollection():
-            home = principal.calendarHome()
+            home = principal.calendarHome(request)
         elif self.isAddressBookCollection():
             home = principal.addressBookHome()
         else:
@@ -221,7 +221,7 @@ class SharedCollectionMixin(object):
         
         # Remove from sharee's calendar/address book home
         if self.isCalendarCollection():
-            shareeHome = self._shareePrincipal.calendarHome()
+            shareeHome = self._shareePrincipal.calendarHome(request)
         elif self.isAddressBookCollection():
             shareeHome = self._shareePrincipal.addressBookHome()
         return shareeHome.removeShare(request, self._share)
@@ -469,7 +469,7 @@ class SharedCollectionMixin(object):
         sharee = self.principalForCalendarUserAddress(record.userid)
         if sharee:
             if self.isCalendarCollection():
-                shareeHome = sharee.calendarHome()
+                shareeHome = sharee.calendarHome(request)
             elif self.isAddressBookCollection():
                 shareeHome = sharee.addressBookHome()
             yield shareeHome.removeShareByUID(request, record.inviteuid)

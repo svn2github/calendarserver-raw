@@ -295,7 +295,8 @@ class HomeTestCase(TestCase):
         it a new transaction.
         """
         users = self.homeProvisioner.getChild("users")
-        user = users.getChild("wsanchez")
+        class norequest(object): pass
+        user, ignored = users.locateChild(norequest(), ["wsanchez"])
 
         # Force the request to succeed regardless of the implementation of
         # accessControlList.

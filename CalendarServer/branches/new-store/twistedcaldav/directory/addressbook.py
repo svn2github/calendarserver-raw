@@ -160,7 +160,7 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
             if record is None:
                 return None
 
-        return self._parent.homeForDirectoryRecord(record)
+        return self._parent.homeForDirectoryRecord(record, request)
 
     def listChildren(self):
         if config.EnablePrincipalListings:

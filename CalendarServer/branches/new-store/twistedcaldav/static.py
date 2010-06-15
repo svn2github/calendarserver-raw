@@ -898,8 +898,22 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
         else:
             self.homeResourceClass = homeResourceClass
 
-    def provisionChild(self, name):
+
+    def locateChild(self, request, segments):
+        name = segments[0]
         record = self.directory.recordWithUID(name)
+        return (self.homeResourceForRecord(record, request), segments[1:])
+
+
+    def homeResourceForRecord(self, record, request):
+        self.provision()
+        TRANSACTION_KEY = '_newStoreTransaction'
+        transaction = getattr(request, TRANSACTION_KEY, None)
+        if transaction is None:
+            transaction = self.parent._newStore.newTransaction()
+            setattr(request, TRANSACTION_KEY, transaction)
+
+        name = record.uid
 
         if record is None:
             log.msg("No directory record with GUID %r" % (name,))
@@ -913,7 +927,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
         
         if record.locallyHosted():
             childPath = self.fp.child(name[0:2]).child(name[2:4]).child(name)
-            child = self.homeResourceClass(childPath.path, self, record)
+            child = self.homeResourceClass(childPath.path, self, record, transaction)
     
             if not child.exists():
                 self.provision()
@@ -997,7 +1011,7 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
             (customxml.calendarserver_namespace, "xmpp-server"),
         )
 
-    def __init__(self, path, parent, record):
+    def __init__(self, path, parent, record, transaction):
         """
         @param path: the path to the file which will back the resource.
         """
@@ -1005,9 +1019,8 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         # TODO: when calendar home gets a resourceID( ) method, remove
         # the "id=record.uid" keyword from this call:
         self.clientNotifier = ClientNotifier(self, id=record.uid)
-        txn = parent.parent._newStore.newTransaction()
         self._newStoreCalendarHome = (
-            txn.calendarHomeWithUID(record.uid, create=True)
+            transaction.calendarHomeWithUID(record.uid, create=True)
         )
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
@@ -1017,7 +1030,7 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
             self._newStoreCalendarHome.properties()
         )
 
-        self.associateWithTransaction(txn)
+        self.associateWithTransaction(transaction)
 
 
     def exists(self):

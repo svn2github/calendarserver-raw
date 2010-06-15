@@ -117,12 +117,12 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
         # See DirectoryPrincipalProvisioningResource.__init__()
         return self.directory.principalCollection.principalForRecord(record)
 
-    def homeForDirectoryRecord(self, record):
+    def homeForDirectoryRecord(self, record, request):
         uidResource = self.getChild(uidsResourceName)
         if uidResource is None:
             return None
         else:
-            return uidResource.getChild(record.uid)
+            return uidResource.homeResourceForRecord(record, request)
 
     ##
     # DAV
@@ -154,17 +154,18 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
     def url(self):
         return joinURL(self._parent.url(), self.recordType)
 
-    def getChild(self, name, record=None):
+    def locateChild(self, request, segments):
         self.provision()
+        name = segments[0]
         if name == "":
             return self
 
+        record = self.directory.recordWithShortName(self.recordType, name)
         if record is None:
-            record = self.directory.recordWithShortName(self.recordType, name)
-            if record is None:
-                return None
+            return None, []
 
-        return self._parent.homeForDirectoryRecord(record)
+        return (self._parent.homeForDirectoryRecord(record, request),
+                segments[1:])
 
     def listChildren(self):
         if config.EnablePrincipalListings:
@@ -217,16 +218,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
         return joinURL(self.parent.url(), uidsResourceName)
 
     def getChild(self, name, record=None):
-        self.provision()
-        if name == "":
-            return self
-
-        if record is None:
-            record = self.directory.recordWithUID(name)
-            if record is None:
-                return None
-
-        return self.provisionChild(name)
+        raise NotImplementedError("DirectoryCalendarProvisioningResource.getChild no longer exists.")
 
     def listChildren(self):
         # Not a listable collection
