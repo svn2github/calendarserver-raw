@@ -1025,14 +1025,6 @@ class IndexSchedule (CalendarIndex):
     """
     Schedule collection index - does not require UID uniqueness.
     """
-    def __init__(self, resource):
-        """
-        @param resource: the L{twistedcaldav.static.CalDAVFile} resource to
-            index. C{resource} must be a calendar collection (i.e.
-            C{resource.isPseudoCalendarCollection()} returns C{True}.)
-        """
-        assert resource.isPseudoCalendarCollection() and not resource.isCalendarCollection(), "non-calendar collection resource %s has no index." % (resource,)
-        super(IndexSchedule, self).__init__(resource)
 
     def reserveUID(self, uid): #@UnusedVariable
         """
