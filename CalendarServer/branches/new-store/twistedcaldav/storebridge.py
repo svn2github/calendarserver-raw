@@ -350,6 +350,31 @@ class CalendarObjectFile(CalDAVFile):
         self._initializeWithObject(calendarObject)
 
 
+    def inNewTransaction(self, request):
+        """
+        Implicit auto-replies need to span multiple transactions.  Clean out the
+        given request's resource-lookup mapping, transaction, and re-look-up my
+        calendar object in a new transaction.
+
+        Return the new transaction so it can be committed.
+        """
+        # FIXME: private names from 'file' implementation; maybe there should be
+        # a public way to do this?  or maybe we should just have a real queue.
+        objectName = self._newStoreObject.name()
+        calendarName = self._newStoreObject._calendar.name()
+        homeUID = self._newStoreObject._calendar._calendarHome.uid()
+        store = self._newStoreObject._transaction._calendarStore
+        txn = store.newTransaction()
+        newObject = (txn.calendarHomeWithUID(homeUID)
+                        .calendarWithName(calendarName)
+                        .calendarObjectWithName(objectName))
+        request._newStoreTransaction = txn
+        request._resourcesByURL.clear()
+        request._urlsByResource.clear()
+        self._initializeWithObject(newObject)
+        return txn
+
+
     def exists(self):
         # FIXME: Tests
         return True
