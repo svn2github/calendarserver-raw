@@ -203,6 +203,10 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
         pass
 
 
+    def provision(self):
+        pass
+
+
 class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
     """
     Wrapper around a L{txcaldav.icalendar.ICalendar}.
