@@ -59,7 +59,7 @@ from txcaldav.icalendarstore import InternalDataStoreError
 from twistedcaldav.caldavxml import ScheduleCalendarTransp, Transparent
 from twistedcaldav.customxml import GETCTag
 
-from twistedcaldav.index import Index as OldIndex
+from twistedcaldav.index import Index as OldIndex, IndexSchedule as OldInboxIndex
 
 def _isValidName(name):
     """
@@ -792,7 +792,12 @@ class Index(object):
 
     def __init__(self, calendar):
         self.calendar = calendar
-        self._oldIndex = OldIndex(Index.StubResource(calendar))
+        stubResource = Index.StubResource(calendar)
+        if self.calendar.name() == 'inbox':
+            indexClass = OldInboxIndex
+        else:
+            indexClass = OldIndex
+        self._oldIndex = indexClass(stubResource)
 
 
     def calendarObjects(self):
