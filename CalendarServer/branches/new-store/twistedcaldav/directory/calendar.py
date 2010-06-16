@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.directory.test.test_calendar -*-
 ##
 # Copyright (c) 2006-2009 Apple Inc. All rights reserved.
 #
