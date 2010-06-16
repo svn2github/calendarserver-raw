@@ -187,6 +187,7 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
 
     def __init__(self, *a, **kw):
         super(StoreScheduleInboxFile, self).__init__(*a, **kw)
+        self.parent.propagateTransaction(self)
         home = self.parent._newStoreCalendarHome
         storage = home.calendarWithName("inbox")
         if storage is None:

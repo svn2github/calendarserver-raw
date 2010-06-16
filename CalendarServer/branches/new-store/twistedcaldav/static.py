@@ -1018,6 +1018,8 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         @param path: the path to the file which will back the resource.
         """
 
+        self.associateWithTransaction(transaction)
+
         # TODO: when calendar home gets a resourceID( ) method, remove
         # the "id=record.uid" keyword from this call:
         self.clientNotifier = ClientNotifier(self, id=record.uid)
@@ -1032,7 +1034,6 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
             self._newStoreCalendarHome.properties()
         )
 
-        self.associateWithTransaction(transaction)
 
 
     def exists(self):
