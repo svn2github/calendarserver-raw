@@ -689,7 +689,6 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
 
         @return: an L{Deferred} with a C{int} result containing the size of the resource.
         """
-        raise RuntimeError("quotaSize called on %r" % (self,))
         if self.isCollection():
             @inlineCallbacks
             def walktree(top):
