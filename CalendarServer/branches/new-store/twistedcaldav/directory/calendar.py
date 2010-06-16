@@ -158,7 +158,7 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
         self.provision()
         name = segments[0]
         if name == "":
-            return self
+            return (self, segments[1:])
 
         record = self.directory.recordWithShortName(self.recordType, name)
         if record is None:
