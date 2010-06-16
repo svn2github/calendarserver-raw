@@ -146,6 +146,24 @@ class CalendarStore(LoggingMixIn):
 
 
 
+class _CommitTracker(object):
+    """
+    Diagnostic tool to find transactions that were never committed.
+    """
+
+    def __init__(self):
+        self.done = False
+        self.info = []
+
+    def __del__(self):
+        if not self.done and self.info:
+            print '**** UNCOMMITTED TRANSACTION BEING GARBAGE COLLECTED ****'
+            for info in self.info:
+                print '   ', info
+            print '---- END OF OPERATIONS'
+
+
+
 class Transaction(LoggingMixIn):
     """
     In-memory implementation of
@@ -168,11 +186,13 @@ class Transaction(LoggingMixIn):
         self._calendarStore = calendarStore
         self._termination = None
         self._operations = []
+        self._tracker = _CommitTracker()
         self._calendarHomes = {}
 
 
-    def addOperation(self, operation):
+    def addOperation(self, operation, name):
         self._operations.append(operation)
+        self._tracker.info.append(name)
 
 
     def _terminate(self, mode):
@@ -190,6 +210,7 @@ class Transaction(LoggingMixIn):
         if self._termination is not None:
             raise RuntimeError("already %s" % (self._termination,))
         self._termination = mode
+        self._tracker.done = True
 
 
     def abort(self):
@@ -257,9 +278,9 @@ class Transaction(LoggingMixIn):
                         # do this _after_ all other file operations
                         calendarHome._path = childPath3
                         return lambda : None
-                    self.addOperation(lastly)
+                    self.addOperation(lastly, "create home finalize")
                     return lambda : None
-                self.addOperation(do)
+                self.addOperation(do, "create home UID %r" % (uid,))
 
         elif not childPath3.isdir():
             return None
@@ -358,7 +379,7 @@ class CalendarHome(LoggingMixIn):
             # Return undo
             return lambda: childPath.remove()
 
-        self._transaction.addOperation(do)
+        self._transaction.addOperation(do, "create calendar %r" % (name,))
         props = c.properties()
         PN = PropertyName.fromString
         CalendarType = ResourceType.calendar #@UndefinedVariable
@@ -405,7 +426,7 @@ class CalendarHome(LoggingMixIn):
                 except Exception, e:
                     self.log_error("Unable to delete trashed calendar at %s: %s" % (trash.fp, e))
 
-            transaction.addOperation(cleanup)
+            transaction.addOperation(cleanup, "remove calendar %r" % (name,))
 
             def undo():
                 trash.moveTo(childPath)
@@ -419,7 +440,7 @@ class CalendarHome(LoggingMixIn):
         # FIXME: needs to be cached
         # FIXME: transaction tests
         props = PropertyStore(self._path)
-        self._transaction.addOperation(props.flush)
+        self._transaction.addOperation(props.flush, "flush home properties")
         return props
 
 
@@ -490,7 +511,8 @@ class Calendar(LoggingMixIn, FancyEqMixin):
         def doIt():
             self._path.moveTo(self._path.sibling(name))
             return lambda : None # FIXME: revert
-        self._transaction.addOperation(doIt)
+        self._transaction.addOperation(doIt, "rename calendar %r -> %r" %
+                                       (oldName, name))
 
 
     def ownerCalendarHome(self):
@@ -566,7 +588,8 @@ class Calendar(LoggingMixIn, FancyEqMixin):
             def do():
                 calendarObjectPath.remove()
                 return lambda: None
-            self._transaction.addOperation(do)
+            self._transaction.addOperation(do, "remove calendar object %r" %
+                                           (name,))
         else:
             raise NoSuchCalendarObjectError(name)
 
@@ -612,7 +635,7 @@ class Calendar(LoggingMixIn, FancyEqMixin):
         # FIXME: needs direct tests - only covered by calendar store tests
         # FIXME: transactions
         props = PropertyStore(self._path)
-        self._transaction.addOperation(props.flush)
+        self._transaction.addOperation(props.flush, "flush calendar properties")
         return props
     
     
@@ -694,7 +717,7 @@ class CalendarObject(LoggingMixIn):
                 else:
                     self._path.remove()
             return undo
-        self._transaction.addOperation(do)
+        self._transaction.addOperation(do, "set calendar component %r" % (self.name(),))
         # Mark all properties as dirty, so they will be re-added to the
         # temporary file when the main file is deleted. NOTE: if there were a
         # temporary file and a rename() as there should be, this should really
@@ -705,7 +728,7 @@ class CalendarObject(LoggingMixIn):
         # happens _after_ the new file has been written.  we may end up doing
         # the work multiple times, and external callers to property-
         # manipulation methods won't work.
-        self._transaction.addOperation(self.properties().flush)
+        self._transaction.addOperation(self.properties().flush, "post-update property flush")
 
 
     def component(self):
@@ -766,7 +789,7 @@ class CalendarObject(LoggingMixIn):
     @_cached
     def properties(self):
         props = PropertyStore(self._path)
-        self._transaction.addOperation(props.flush)
+        self._transaction.addOperation(props.flush, "object properties flush")
         return props
 
 

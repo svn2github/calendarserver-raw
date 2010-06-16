@@ -317,7 +317,7 @@ class CalendarTest(unittest.TestCase):
         """
         def fail():
             raise RuntimeError("oops")
-        self.txn.addOperation(fail)
+        self.txn.addOperation(fail, "dummy failing operation")
         self.assertRaises(RuntimeError, self.txn.commit)
         self.assertEquals(len(self.flushLoggedErrors(RuntimeError)), 1)
         self._refresh()
