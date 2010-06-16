@@ -72,6 +72,10 @@ def _isValidName(name):
     return not name.startswith(".")
 
 
+def _hidden(path):
+    return path.sibling('.' + path.basename())
+
+
 _unset = object()
 
 class _cached(object):
@@ -359,7 +363,7 @@ class CalendarHome(LoggingMixIn):
         if name not in self._removedCalendars and childPath.isdir():
             raise CalendarAlreadyExistsError(name)
 
-        temporary = childPath.temporarySibling()
+        temporary = _hidden(childPath.temporarySibling())
         temporary.createDirectory()
         # In order for the index to work (which is doing real file ops on disk
         # via SQLite) we need to create a real directory _immediately_.
@@ -706,7 +710,7 @@ class CalendarObject(LoggingMixIn):
         def do():
             backup = None
             if self._path.exists():
-                backup = self._path.temporarySibling()
+                backup = _hidden(self._path.temporarySibling())
                 self._path.moveTo(backup)
             fh = self._path.open("w")
             try:

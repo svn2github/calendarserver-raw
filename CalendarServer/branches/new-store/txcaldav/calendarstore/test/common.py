@@ -618,6 +618,18 @@ class CommonTests(object):
         )
 
 
+    def test_calendarsAfterAddCalendar(self):
+        """
+        L{ICalendarHome.calendars} includes calendars recently added with
+        L{ICalendarHome.createCalendarWithName}.
+        """
+        home = self.homeUnderTest()
+        before = set(x.name() for x in home.calendars())
+        home.createCalendarWithName("new-name")
+        after = set(x.name() for x in home.calendars())
+        self.assertEquals(before | set(['new-name']), after)
+
+
     def test_createCalendarObjectWithName_absent(self):
         """
         L{ICalendar.createCalendarObjectWithName} creates a new
