@@ -185,6 +185,8 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
 
         @type otherResource: L{CalDAVResource} (or a subclass thereof)
         """
+        if not self._associatedTransaction:
+            raise RuntimeError("No associated transaction to propagate")
         otherResource.associateWithTransaction(self._associatedTransaction)
 
 
