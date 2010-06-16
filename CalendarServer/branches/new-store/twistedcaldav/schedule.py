@@ -1,5 +1,6 @@
+# -*- test-case-name: twistedcaldav.directory.test.test_calendar -*-
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +37,10 @@ from twext.web2.http import Response
 from twext.web2.http_headers import MimeType
 
 from twistedcaldav import caldavxml
-from twistedcaldav.caldavxml import caldav_namespace
+from twext.web2.dav.element.rfc2518 import HRef
+from txdav.propertystore.base import PropertyName
+from twistedcaldav.caldavxml import caldav_namespace, Opaque,\
+    CalendarFreeBusySet, ScheduleCalendarTransp
 from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.resource import CalDAVResource
@@ -122,7 +126,13 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
         if qname == (caldav_namespace, "calendar-free-busy-set"):
             # Always return at least an empty list
             if not self.hasDeadProperty(property):
-                returnValue(caldavxml.CalendarFreeBusySet())
+                top = self.parent.url()
+                values = []
+                for cal in self.parent._newStoreCalendarHome.calendars():
+                    prop = cal.properties().get(PropertyName.fromString(ScheduleCalendarTransp.sname())) 
+                    if prop is None or prop == ScheduleCalendarTransp(Opaque()):
+                        values.append(HRef(joinURL(top, cal.name())))
+                returnValue(CalendarFreeBusySet(*values))
         elif qname == (caldav_namespace, "schedule-default-calendar-URL"):
             # Must have a valid default
             try:

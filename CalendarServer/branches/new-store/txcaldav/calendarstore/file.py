@@ -43,6 +43,7 @@ from twext.web2.dav.element.rfc2518 import ResourceType
 
 from txdav.propertystore.xattr import PropertyStore
 from txdav.propertystore.base import PropertyName
+PN = PropertyName.fromString
 
 from txcaldav.icalendarstore import ICalendarStoreTransaction
 from txcaldav.icalendarstore import ICalendarStore, ICalendarHome
@@ -56,7 +57,7 @@ from txcaldav.icalendarstore import NoSuchCalendarObjectError
 from txcaldav.icalendarstore import InvalidCalendarComponentError
 from txcaldav.icalendarstore import InternalDataStoreError
 
-from twistedcaldav.caldavxml import ScheduleCalendarTransp, Transparent
+from twistedcaldav.caldavxml import ScheduleCalendarTransp, Transparent, Opaque
 from twistedcaldav.customxml import GETCTag
 
 from twistedcaldav.index import Index as OldIndex, IndexSchedule as OldInboxIndex
@@ -291,6 +292,10 @@ class Transaction(LoggingMixIn):
         self._calendarHomes[(uid, self)] = calendarHome
         if creating:
             calendarHome.createCalendarWithName("calendar")
+            defaultCal = calendarHome.calendarWithName("calendar")
+            props = defaultCal.properties()
+            props[PN(ScheduleCalendarTransp.sname())] = ScheduleCalendarTransp(
+                Opaque())
             calendarHome.createCalendarWithName("inbox")
         return calendarHome
 
@@ -381,7 +386,6 @@ class CalendarHome(LoggingMixIn):
 
         self._transaction.addOperation(do, "create calendar %r" % (name,))
         props = c.properties()
-        PN = PropertyName.fromString
         CalendarType = ResourceType.calendar #@UndefinedVariable
         props[PN(ResourceType.sname())] = CalendarType
 
