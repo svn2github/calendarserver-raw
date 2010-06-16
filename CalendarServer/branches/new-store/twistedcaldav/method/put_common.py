@@ -29,6 +29,7 @@ from twisted.internet.defer import Deferred, inlineCallbacks, succeed
 from twisted.internet.defer import returnValue
 from twisted.python.failure import Failure
 
+from twext.web2.dav.util import joinURL, parentForURL
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
 from twext.web2.dav.element.base import dav_namespace
@@ -46,7 +47,7 @@ from twext.python.log import Logger
 from twext.web2.dav.http import ErrorResponse
 
 from twistedcaldav.config import config
-from twistedcaldav.caldavxml import ScheduleTag
+from twistedcaldav.caldavxml import ScheduleTag, NoUIDConflict
 from twistedcaldav.caldavxml import NumberOfRecurrencesWithinLimits
 from twistedcaldav.caldavxml import caldav_namespace, MaxAttendeesPerInstance
 from twistedcaldav.customxml import calendarserver_namespace ,\
@@ -576,6 +577,50 @@ class StoreCalendarObjectResource(object):
         
         returnValue(new_has_private_comments)
 
+
+    def noUIDConflict(self, uid): 
+        """ 
+        Check that the UID of the new calendar object conforms to the requirements of 
+        CalDAV, i.e. it must be unique in the collection and we must not overwrite a 
+        different UID. 
+        @param uid: the UID for the resource being stored. 
+        @return: tuple: (True/False if the UID is valid, log message string, 
+            name of conflicted resource). 
+        """ 
+        
+        result = True 
+        message = "" 
+        rname = "" 
+        
+        # Adjust for a move into same calendar collection 
+        oldname = None 
+        if self.sourceparent and (self.sourceparent.fp.path == self.destinationparent.fp.path) and self.deletesource: 
+            oldname = self.source.fp.basename() 
+        
+        # UID must be unique 
+        index = self.destinationparent.index() 
+        if not index.isAllowedUID(uid, oldname, self.destination.fp.basename()): 
+            rname = index.resourceNameForUID(uid) 
+            # This can happen if two simultaneous PUTs occur with the same UID. 
+            # i.e. one PUT has reserved the UID but has not yet written the resource, 
+            # the other PUT tries to reserve and fails but no index entry exists yet. 
+            if rname is None: 
+                rname = "<<Unknown Resource>>" 
+            result = False 
+            message = "Calendar resource %s already exists with same UID %s" % (rname, uid) 
+        else: 
+            # Cannot overwrite a resource with different UID 
+            if self.destination.fp.exists(): 
+                olduid = index.resourceUIDForName(self.destination.fp.basename()) 
+                if olduid != uid: 
+                    rname = self.destination.fp.basename() 
+                    result = False 
+                    message = "Cannot overwrite calendar resource %s with different UID %s" % (rname, olduid) 
+         
+        return result, message, rname 
+
+
+
     @inlineCallbacks
     def doImplicitScheduling(self):
 
@@ -814,11 +859,24 @@ class StoreCalendarObjectResource(object):
             yield self.fullValidation()
 
             # Reservation and UID conflict checking is next.
-            if self.destinationcal:    
+            if self.destinationcal:
                 # Reserve UID
                 self.destination_index = self.destinationparent.index()
-                reservation = StoreCalendarObjectResource.UIDReservation(self.destination_index, self.uid, self.destination_uri, self.internal_request or self.isiTIP)
+                reservation = StoreCalendarObjectResource.UIDReservation(
+                    self.destination_index, self.uid, self.destination_uri,
+                    self.internal_request or self.isiTIP
+                )
                 yield reservation.reserve()
+                # UID conflict check - note we do this after reserving the UID to avoid a race condition where two requests 
+                # try to write the same calendar data to two different resource URIs. 
+                if not self.isiTIP: 
+                    result, message, rname = self.noUIDConflict(self.uid) 
+                    if not result: 
+                        log.err(message) 
+                        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, 
+                            NoUIDConflict(davxml.HRef.fromString(joinURL(parentForURL(self.destination_uri), rname.encode("utf-8")))) 
+                        ))
+
 
             # Get current quota state.
             yield self.checkQuota()
