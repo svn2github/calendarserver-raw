@@ -901,7 +901,11 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
 
 
     def locateChild(self, request, segments):
+
         name = segments[0]
+        if name == "":
+            return (self, ())
+
         record = self.directory.recordWithUID(name)
         return (self.homeResourceForRecord(record, request), segments[1:])
 
