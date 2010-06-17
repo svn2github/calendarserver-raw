@@ -907,8 +907,10 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
             return (self, ())
 
         record = self.directory.recordWithUID(name)
-        return (self.homeResourceForRecord(record, request), segments[1:])
-
+        if record:
+            return (self.homeResourceForRecord(record, request), segments[1:])
+        else:
+            return (None, ())
 
     def homeResourceForRecord(self, record, request):
         self.provision()
