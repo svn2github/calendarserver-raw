@@ -236,6 +236,7 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         Moving a calendar collection is allowed for the purposes of changing
         that calendar's name.
         """
+        defaultCalendar = (yield self.isDefaultCalendar(request))
         # FIXME: created to fix CDT test, no unit tests yet
         sourceURI = request.uri
         destinationURI = urlsplit(request.headers.getHeader("destination"))[2]
@@ -250,6 +251,8 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
                                          self._newStoreParentHome)
         del self._newStoreCalendar
         self.__class__ = ProtoCalendarCollectionFile
+        self.movedCalendar(request, defaultCalendar,
+                           destination, destinationURI)
         returnValue(NO_CONTENT)
 
 

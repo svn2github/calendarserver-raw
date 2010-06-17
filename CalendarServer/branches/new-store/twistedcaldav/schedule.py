@@ -130,7 +130,7 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
                 values = []
                 for cal in self.parent._newStoreCalendarHome.calendars():
                     prop = cal.properties().get(PropertyName.fromString(ScheduleCalendarTransp.sname())) 
-                    if prop is None or prop == ScheduleCalendarTransp(Opaque()):
+                    if prop == ScheduleCalendarTransp(Opaque()):
                         values.append(HRef(joinURL(top, cal.name())))
                 returnValue(CalendarFreeBusySet(*values))
         elif qname == (caldav_namespace, "schedule-default-calendar-URL"):
@@ -231,15 +231,31 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
         First see if "calendar" exists in the calendar home and pick that. Otherwise
         create "calendar" in the calendar home.
         """
-        
         calendarHomeURL = self.parent.url()
-        defaultCalendarURL = (yield joinURL(calendarHomeURL, "calendar"))
+        defaultCalendarURL = joinURL(calendarHomeURL, "calendar")
         defaultCalendar = (yield request.locateResource(defaultCalendarURL))
         if defaultCalendar is None or not defaultCalendar.exists():
-            self.parent.provisionDefaultCalendars()
-        else:
-            self.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(defaultCalendarURL)))
-        returnValue(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(defaultCalendarURL)))
+            getter = iter(self.parent._newStoreCalendarHome)
+            # FIXME: the back-end should re-provision a default calendar here.
+            # Really, the dead property shouldn't be necessary, and this should
+            # be entirely computed by a back-end method like 'defaultCalendar()'
+            try:
+                aCalendar = getter.next()
+            except StopIteration:
+                raise RuntimeError("No calendars at all.")
+
+            # That won't help...
+            # self.parent.provisionDefaultCalendars()
+            defaultCalendarURL = joinURL(calendarHomeURL, aCalendar.name())
+
+        self.writeDeadProperty(
+            caldavxml.ScheduleDefaultCalendarURL(
+                davxml.HRef(defaultCalendarURL)
+            )
+        )
+        returnValue(caldavxml.ScheduleDefaultCalendarURL(
+            davxml.HRef(defaultCalendarURL))
+        )
 
 class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
     """
