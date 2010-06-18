@@ -25,12 +25,22 @@ __all__ = [
 v1_schema = """
 
 -----------------
+-- Resource ID --
+-----------------
+
+create sequence RESOURCE_ID_SEQ;
+
+
+-----------------
 - Calendar Home -
 -----------------
 
 create table CALENDAR_HOME (
-  RESOURCE_ID varchar(255) not null, -- pkey
-  OWNER_UID   varchar(255) not null,
+  RESOURCE_ID varchar(255)
+    not null
+    primary key
+    default nextval(ÕRESOURCE_ID_SEQÕ),
+  OWNER_UID varchar(255) not null,
 );
 
 
@@ -48,13 +58,13 @@ create table CALENDAR_BIND (
   SEEN_BY_OWNER             bool         not null,
   SEEN_BY_SHAREE            bool         not null,
   STATUS                    integer      not null,
-  MESSAGE                   text,
+  MESSAGE                   text,                  -- FIXME: xml?
 );
 
 -- Enumeration of calendar bind modes
 
 create table CALENDAR_BIND_MODE (
-  ID          int         not null,
+  ID          int         not null primary key,
   DESCRIPTION varchar(16) not null,
 );
 
@@ -65,11 +75,11 @@ insert into CALENDAR_MODE values (2, "write");
 -- Enumeration of statuses
 
 create table CALENDAR_BIND_STATUS (
-  ID          int         not null,
+  ID          int         not null primary key,
   DESCRIPTION varchar(16) not null,
 );
 
-insert into CALENDAR_BIND_STATUS values (1, "invited" );
+insert into CALENDAR_BIND_STATUS values (0, "invited" );
 insert into CALENDAR_BIND_STATUS values (1, "accepted");
 insert into CALENDAR_BIND_STATUS values (2, "declined");
 
@@ -79,8 +89,11 @@ insert into CALENDAR_BIND_STATUS values (2, "declined");
 ------------
 
 create table CALENDAR (
-  RESOURCE_ID varchar(255) not null, -- pkey
-  SYNC_TOKEN  varchar(255),
+  RESOURCE_ID varchar(255)
+    not null
+    primary key
+    default nextval(ÕRESOURCE_ID_SEQÕ),
+  SYNC_TOKEN varchar(255),
 );
 
 
@@ -89,7 +102,10 @@ create table CALENDAR (
 -------------------
 
 create table CALENDAR_OBJECT (
-  RESOURCE_ID          varchar(255) not null, -- pkey
+  RESOURCE_ID          varchar(255)
+    not null
+    primary key
+    default nextval(ÕRESOURCE_ID_SEQÕ),
   CALENDAR_RESOURCE_ID varchar(255) not null, -- foreign key: CALENDAR.RESOURCE_ID
   RESOURCE_NAME        varchar(255) not null,
   ICALENDAR_TEXT       text         not null,
@@ -103,7 +119,7 @@ create table CALENDAR_OBJECT (
 -- Enumeration of attachment modes
 
 create table CALENDAR_OBJECT_ATTACHMENTS_MODE (
-  ID          int         not null,
+  ID          int         not null primary key,
   DESCRIPTION varchar(16) not null,
 );
 
@@ -143,7 +159,7 @@ create table ITIP_MESSAGE (
 create table RESOURCE_PROPERTY (
   RESOURCE_ID varchar(255) not null, -- foreign key: *.RESOURCE_ID
   NAME        varchar(255) not null,
-  VALUE       text         not null,
+  VALUE       text         not null, -- FIXME: xml?
   VIEWER_UID  varchar(255),
 );
 
