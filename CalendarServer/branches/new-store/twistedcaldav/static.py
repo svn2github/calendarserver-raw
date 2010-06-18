@@ -227,9 +227,10 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
             log.err("Attempt to create collection where file exists: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.NOT_ALLOWED, "File exists"))
 
-        if not self.fp.parent().isdir():
-            log.err("Attempt to create collection with no parent: %s" % (self.fp.path,))
-            raise HTTPError(StatusResponse(responsecode.CONFLICT, "No parent collection"))
+        # newStore guarantees that we always have a parent calendar home
+        #if not self.fp.parent().isdir():
+        #    log.err("Attempt to create collection with no parent: %s" % (self.fp.path,))
+        #    raise HTTPError(StatusResponse(responsecode.CONFLICT, "No parent collection"))
 
         #
         # Verify that no parent collection is a calendar also
