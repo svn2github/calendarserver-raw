@@ -104,9 +104,8 @@ def http_MKCALENDAR(self, request):
                     errors.add(responsecode.OK, property)
     
         if got_an_error:
-            # Clean up
-            if self.fp.exists(): self.fp.remove()
-
+            # Force a transaction error and proper clean-up
+            self.transactionError()
             errors.error()
             raise HTTPError(MultiStatusResponse([errors.response()]))
 

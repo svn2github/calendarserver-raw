@@ -158,6 +158,7 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
 
 
     _associatedTransaction = None
+    _transactionError = False
 
     def associateWithTransaction(self, transaction):
         """
@@ -189,6 +190,8 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
             raise RuntimeError("No associated transaction to propagate")
         otherResource.associateWithTransaction(self._associatedTransaction)
 
+    def transactionError(self):
+        self._transactionError = True
 
     def renderHTTP(self, request):
         """
@@ -201,7 +204,10 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
         d = maybeDeferred(super(CalDAVResource, self).renderHTTP, request)
         def succeeded(result):
             if self._associatedTransaction is not None:
-                self._associatedTransaction.commit()
+                if self._transactionError:
+                    self._associatedTransaction.abort()
+                else:
+                    self._associatedTransaction.commit()
             return result
         # FIXME: needs a failure handler (that rolls back the transaction)
         return d.addCallback(succeeded)
