@@ -440,15 +440,15 @@ class CalendarObjectFile(CalDAVFile):
 
     def _initializeWithObject(self, calendarObject):
         self._newStoreObject = calendarObject
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreObject.properties()
+        )
 
 
     @classmethod
     def transform(cls, self, calendarObject):
         self.__class__ = cls
         self._initializeWithObject(calendarObject)
-        self._dead_properties = _NewStorePropertiesWrapper(
-            self._newStoreObject.properties()
-        )
 
 
 
