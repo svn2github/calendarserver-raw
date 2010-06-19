@@ -57,7 +57,7 @@ create table CALENDAR_BIND (
   STATUS                    integer      not null,
   MESSAGE                   text,                  -- FIXME: xml?
 
-  unique(CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_ID),
+  primary key(CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_ID),
   unique(CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_NAME),
 );
 
@@ -159,7 +159,7 @@ create table RESOURCE_PROPERTY (
   VALUE       text         not null, -- FIXME: xml?
   VIEWER_UID  varchar(255),
 
-  unique(RESOURCE_ID, NAME, VIEWER_UID),
+  primary key(RESOURCE_ID, NAME, VIEWER_UID),
 );
 
 
