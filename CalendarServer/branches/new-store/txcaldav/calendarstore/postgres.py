@@ -36,11 +36,8 @@ create sequence RESOURCE_ID_SEQ;
 -----------------
 
 create table CALENDAR_HOME (
-  RESOURCE_ID varchar(255)
-    not null
-    primary key
-    default nextval(ÕRESOURCE_ID_SEQÕ),
-  OWNER_UID varchar(255) not null,
+  RESOURCE_ID varchar(255) primary key default nextval(ÕRESOURCE_ID_SEQÕ),
+  OWNER_UID   varchar(255) not null unique,
 );
 
 
@@ -53,19 +50,22 @@ create table CALENDAR_HOME (
 create table CALENDAR_BIND (
   CALENDAR_HOME_RESOURCE_ID varchar(255) not null, -- foreign key: CALENDAR_HOME.RESOURCE_ID
   CALENDAR_RESOURCE_ID      varchar(255) not null, -- foreign key: CALENDAR.RESOURCE_ID
-  CALENDAR_NAME             varchar(255) not null,
+  CALENDAR_RESOURCE_NAME    varchar(255) not null,
   CALENDAR_MODE             int          not null,
   SEEN_BY_OWNER             bool         not null,
   SEEN_BY_SHAREE            bool         not null,
   STATUS                    integer      not null,
   MESSAGE                   text,                  -- FIXME: xml?
+
+  unique(CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_ID),
+  unique(CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_NAME),
 );
 
 -- Enumeration of calendar bind modes
 
 create table CALENDAR_BIND_MODE (
-  ID          int         not null primary key,
-  DESCRIPTION varchar(16) not null,
+  ID          int         primary key,
+  DESCRIPTION varchar(16) not null unique,
 );
 
 insert into CALENDAR_MODE values (0, "own"  );
@@ -75,8 +75,8 @@ insert into CALENDAR_MODE values (2, "write");
 -- Enumeration of statuses
 
 create table CALENDAR_BIND_STATUS (
-  ID          int         not null primary key,
-  DESCRIPTION varchar(16) not null,
+  ID          int         primary key,
+  DESCRIPTION varchar(16) not null unique,
 );
 
 insert into CALENDAR_BIND_STATUS values (0, "invited" );
@@ -89,11 +89,8 @@ insert into CALENDAR_BIND_STATUS values (2, "declined");
 ------------
 
 create table CALENDAR (
-  RESOURCE_ID varchar(255)
-    not null
-    primary key
-    default nextval(ÕRESOURCE_ID_SEQÕ),
-  SYNC_TOKEN varchar(255),
+  RESOURCE_ID varchar(255) primary key default nextval(ÕRESOURCE_ID_SEQÕ),
+  SYNC_TOKEN  varchar(255),
 );
 
 
@@ -102,10 +99,7 @@ create table CALENDAR (
 -------------------
 
 create table CALENDAR_OBJECT (
-  RESOURCE_ID          varchar(255)
-    not null
-    primary key
-    default nextval(ÕRESOURCE_ID_SEQÕ),
+  RESOURCE_ID          varchar(255) primary key default nextval(ÕRESOURCE_ID_SEQÕ),
   CALENDAR_RESOURCE_ID varchar(255) not null, -- foreign key: CALENDAR.RESOURCE_ID
   RESOURCE_NAME        varchar(255) not null,
   ICALENDAR_TEXT       text         not null,
@@ -114,13 +108,16 @@ create table CALENDAR_OBJECT (
   ATTACHMENTS_MODE     int          not null,
   ORGANIZER            varchar(255),
   ORGANIZER_OBJECT     varchar(255), -- foreign key: CALENDAR_OBJECT.RESOURCE_ID
+
+  unique(CALENDAR_RESOURCE_ID, RESOURCE_NAME),
+  unique(CALENDAR_RESOURCE_ID, ICALENDAR_UID),
 );
 
 -- Enumeration of attachment modes
 
 create table CALENDAR_OBJECT_ATTACHMENTS_MODE (
-  ID          int         not null primary key,
-  DESCRIPTION varchar(16) not null,
+  ID          int         primary key,
+  DESCRIPTION varchar(16) not null unique,
 );
 
 insert into CALENDAR_MODE values (0, "read" );
@@ -136,7 +133,7 @@ create table ATTACHMENT (
   CONTENT_TYPE    varchar(255) not null,
   SIZE            int          not null,
   MD5             char(32)     not null,
-  PATH            varchar(255) not null,
+  PATH            varchar(255) not null unique,
 );
 
 ----------------
@@ -145,8 +142,8 @@ create table ATTACHMENT (
 
 create table ITIP_MESSAGE (
   CALENDAR_RESOURCE_ID varchar(255) not null, -- foreign key: CALENDAR.RESOURCE_ID
-  UID                  varchar(255) not null,
   ICALENDAR_TEXT       text         not null,
+  ICALENDAR_UID        varchar(255) not null,
   MD5                  char(32)     not null,
   CHANGES              text         not null,
 );
@@ -161,6 +158,8 @@ create table RESOURCE_PROPERTY (
   NAME        varchar(255) not null,
   VALUE       text         not null, -- FIXME: xml?
   VIEWER_UID  varchar(255),
+
+  unique(RESOURCE_ID, NAME, VIEWER_UID),
 );
 
 
