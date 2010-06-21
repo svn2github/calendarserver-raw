@@ -358,7 +358,7 @@ class ICalendarObject(Interface):
     """
     Calendar object
 
-    A calendar object decribes an event, to-do, or other iCalendar
+    A calendar object describes an event, to-do, or other iCalendar
     object.
     """
 

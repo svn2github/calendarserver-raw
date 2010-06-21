@@ -20,18 +20,14 @@ PUT/COPY/MOVE common behavior.
 
 __all__ = ["StoreAddressObjectResource"]
 
-import os
 import types
 
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred, inlineCallbacks, succeed
 from twisted.internet.defer import returnValue
-from twisted.python import failure
-from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
 from twext.web2.dav.element.base import dav_namespace
-from twext.web2.dav.fileop import delete
 from twext.web2.dav.http import ErrorResponse
 from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.stream import MD5StreamWrapper
@@ -42,9 +38,6 @@ from twext.web2.stream import MemoryStream
 
 from twistedcaldav.config import config
 from twistedcaldav.carddavxml import NoUIDConflict, carddav_namespace
-from twistedcaldav.fileops import copyToWithXAttrs
-from twistedcaldav.fileops import putWithXAttrs
-from twistedcaldav.fileops import copyWithXAttrs
 from twistedcaldav.vcard import Component
 from twistedcaldav.vcardindex import ReservationError
 from twext.python.log import Logger
@@ -53,83 +46,6 @@ log = Logger()
 
 class StoreAddressObjectResource(object):
     
-    class RollbackState(object):
-        """
-        This class encapsulates the state needed to rollback the entire PUT/COPY/MOVE
-        transaction, leaving the server state the same as it was before the request was
-        processed. The DoRollback method will actually execute the rollback operations.
-        """
-        
-        def __init__(self, storer):
-            self.storer = storer
-            self.active = True
-            self.source_copy = None
-            self.destination_copy = None
-            self.destination_created = False
-            self.source_deleted = False
-            self.source_index_deleted = False
-            self.destination_index_deleted = False
-        
-        def Rollback(self):
-            """
-            Rollback the server state. Do not allow this to raise another exception. If
-            rollback fails then we are going to be left in an awkward state that will need
-            to be cleaned up eventually.
-            """
-            if self.active:
-                self.active = False
-                log.debug("Rollback: rollback")
-                try:
-                    if self.source_copy and self.source_deleted:
-                        self.source_copy.moveTo(self.storer.source.fp)
-                        log.debug("Rollback: source restored %s to %s" % (self.source_copy.path, self.storer.source.fp.path))
-                        self.source_copy = None
-                        self.source_deleted = False
-                    if self.destination_copy:
-                        self.storer.destination.fp.remove()
-                        log.debug("Rollback: destination restored %s to %s" % (self.destination_copy.path, self.storer.destination.fp.path))
-                        self.destination_copy.moveTo(self.storer.destination.fp)
-                        self.destination_copy = None
-                    elif self.destination_created:
-                        if self.storer.destinationadbk and self.storer.indexdestination:
-                            self.storer.doRemoveDestinationIndex()
-                            log.debug("Rollback: destination index removed %s" % (self.storer.destination.fp.path,))
-                            self.destination_index_deleted = False
-                        self.storer.destination.fp.remove()
-                        log.debug("Rollback: destination removed %s" % (self.storer.destination.fp.path,))
-                        self.destination_created = False
-                    if self.destination_index_deleted:
-                        # Must read in vcard for destination being re-indexed
-                        self.storer.doDestinationIndex(self.storer.destination.vCard())
-                        self.destination_index_deleted = False
-                        log.debug("Rollback: destination re-indexed %s" % (self.storer.destination.fp.path,))
-                    if self.source_index_deleted:
-                        self.storer.doSourceIndexRecover()
-                        self.destination_index_deleted = False
-                        log.debug("Rollback: source re-indexed %s" % (self.storer.source.fp.path,))
-                except:
-                    log.err("Rollback: exception caught and not handled: %s" % failure.Failure())
-
-        def Commit(self):
-            """
-            Commit the resource changes by wiping the rollback state.
-            """
-            if self.active:
-                log.debug("Rollback: commit")
-                self.active = False
-                if self.source_copy:
-                    self.source_copy.remove()
-                    log.debug("Rollback: removed source backup %s" % (self.source_copy.path,))
-                    self.source_copy = None
-                if self.destination_copy:
-                    self.destination_copy.remove()
-                    log.debug("Rollback: removed destination backup %s" % (self.destination_copy.path,))
-                    self.destination_copy = None
-                self.destination_created = False
-                self.source_deleted = False
-                self.source_index_deleted = False
-                self.destination_index_deleted = False
-
     class UIDReservation(object):
         
         def __init__(self, index, uid, uri):
@@ -228,7 +144,6 @@ class StoreAddressObjectResource(object):
         self.deletesource = deletesource
         self.indexdestination = indexdestination
         
-        self.rollback = None
         self.access = None
         self.newrevision = None
 
@@ -425,48 +340,30 @@ class StoreAddressObjectResource(object):
 
         returnValue(None)
 
-    def setupRollback(self):
-        """
-        We may need to restore the original resource data if the PUT/COPY/MOVE fails,
-        so rename the original file in case we need to rollback.
-        """
-
-        def _createRollbackPath(path):
-            parent, child = os.path.split(path)
-            child = "." + child + ".rollback"
-            return os.path.join(parent, child)
-
-        self.rollback = StoreAddressObjectResource.RollbackState(self)
-        self.overwrite = self.destination.exists()
-        if self.overwrite:
-            self.rollback.destination_copy = FilePath(_createRollbackPath(self.destination.fp.path))
-            copyToWithXAttrs(self.destination.fp, self.rollback.destination_copy)
-            log.debug("Rollback: backing up destination %s to %s" % (self.destination.fp.path, self.rollback.destination_copy.path))
-        else:
-            self.rollback.destination_created = True
-            log.debug("Rollback: will create new destination %s" % (self.destination.fp.path,))
-
-        if self.deletesource:
-            self.rollback.source_copy = FilePath(_createRollbackPath(self.source.fp.path))
-            copyToWithXAttrs(self.source.fp, self.rollback.source_copy)
-            log.debug("Rollback: backing up source %s to %s" % (self.source.fp.path, self.rollback.source_copy.path))
-
     @inlineCallbacks
     def doStore(self):
         # Do put or copy based on whether source exists
         if self.source is not None:
-            response = (yield copyWithXAttrs(self.source.fp, self.destination.fp, self.destination_uri))
+            response = (yield self.destination.storeStream(MemoryStream(self.source.vCardText())))
+            self.source.copyDeadPropertiesTo(self.destination)
         else:
-            if self.vcarddata is None:
-                self.vcarddata = str(self.vcard)
-            md5 = MD5StreamWrapper(MemoryStream(self.vcarddata))
-            response = (yield putWithXAttrs(md5, self.destination.fp))
+            response = (yield self.doStorePut())
     
-            # Finish MD5 calculation and write dead property
-            md5.close()
-            md5 = md5.getMD5()
-            self.destination.writeDeadProperty(TwistedGETContentMD5.fromString(md5))
-    
+        returnValue(response)
+
+    @inlineCallbacks
+    def doStorePut(self):
+
+        if self.vcarddata is None:
+            self.vcarddata = str(self.vcard)
+        md5 = MD5StreamWrapper(MemoryStream(self.vcarddata))
+        response = (yield self.destination.storeStream(md5))
+
+        # Finish MD5 calculation and write dead property
+        md5.close()
+        md5 = md5.getMD5()
+        self.destination.writeDeadProperty(TwistedGETContentMD5.fromString(md5))
+
         returnValue(response)
 
     @inlineCallbacks
@@ -475,12 +372,10 @@ class StoreAddressObjectResource(object):
         if self.sourceadbk:
             self.newrevision = (yield self.sourceparent.bumpSyncToken())
             self.source_index.deleteResource(self.source.fp.basename(), self.newrevision)
-            self.rollback.source_index_deleted = True
             log.debug("Source index removed %s" % (self.source.fp.path,))
 
         # Delete the source resource
-        delete(self.source_uri, self.source.fp, "0")
-        self.rollback.source_deleted = True
+        self.source.storeRemove()
         log.debug("Source removed %s" % (self.source.fp.path,))
 
         returnValue(None)
@@ -526,10 +421,6 @@ class StoreAddressObjectResource(object):
         @return: None if successful, ErrorResponse on failure
         """
         
-        # Delete index for original item
-        if self.overwrite:
-            self.doRemoveDestinationIndex()
-        
         # Add or update the index for this resource.
         try:
             self.destination_index.addResource(self.destination.fp.basename(), vcardtoindex, self.newrevision)
@@ -550,7 +441,6 @@ class StoreAddressObjectResource(object):
         # Delete index for original item
         if self.destinationadbk:
             self.destination_index.deleteResource(self.destination.fp.basename(), None)
-            self.rollback.destination_index_deleted = True
             log.debug("Destination index removed %s" % (self.destination.fp.path,))
 
     @inlineCallbacks
@@ -587,9 +477,6 @@ class StoreAddressObjectResource(object):
             # Get current quota state.
             yield self.checkQuota()
 
-            # Initialize the rollback system
-            self.setupRollback()
-
             """
             Handle actual store operations here.
             
@@ -616,7 +503,8 @@ class StoreAddressObjectResource(object):
                 self.newrevision = (yield self.destinationparent.bumpSyncToken())
                 result = self.doDestinationIndex(self.vcard)
                 if result is not None:
-                    self.rollback.Rollback()
+                    # FIXME: transaction needs to be rolled back; should we have
+                    # ErrorResponse detection in renderHTTP?  Hmm. -glyph
                     returnValue(result)
     
             # Delete the original source if needed.
@@ -627,21 +515,16 @@ class StoreAddressObjectResource(object):
             if self.destquota is not None:
                 yield self.doDestinationQuotaCheck()
     
-            # Can now commit changes and forget the rollback details
-            self.rollback.Commit()
-    
             if reservation:
                 yield reservation.unreserve()
     
             returnValue(response)
     
         except Exception, err:
+
             if reservation:
                 yield reservation.unreserve()
     
-            # Roll back changes to original server state. Note this may do nothing
-            # if the rollback has already occurred or changes already committed.
-            if self.rollback:
-                self.rollback.Rollback()
+            # FIXME: transaction needs to be rolled back.
 
             raise err

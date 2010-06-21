@@ -74,6 +74,7 @@ from twistedcaldav.client.reverseproxy import ReverseProxyResource
 from twistedcaldav.config import config
 from twistedcaldav.customxml import TwistedCalendarAccessProperty, TwistedScheduleMatchETags
 from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
+from twistedcaldav.directory.util import NotFilePath
 from twistedcaldav.extensions import DAVFile, CachingPropertyStore
 from twistedcaldav.linkresource import LinkResource, LinkFollowerMixIn
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
@@ -110,6 +111,7 @@ from twistedcaldav.notifications import NotificationCollectionResource,\
     NotificationResource
 
 from txcaldav.calendarstore.file import CalendarStore
+from txcarddav.addressbookstore.file import AddressBookStore
 
 log = Logger()
 
@@ -266,13 +268,6 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
             actually been created.
         """
         return fail(NotImplementedError())
-
-
-    def isCollection(self):
-        if getattr(self, "_newStoreCalendar", None) is not None:
-            # FIXME: this should really be represented by a separate class
-            return True
-        return super(CalDAVFile, self).isCollection()
 
 
     def createSpecialCollection(self, resourceType=None):
@@ -435,6 +430,19 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         return calendar_data
 
     def createAddressBook(self, request):
+        """
+        External API for creating an addressbook.  Verify that the parent is a
+        collection, exists, is I{not} an addressbook collection; that this resource
+        does not yet exist, then create it.
+
+        @param request: the request used to look up parent resources to
+            validate.
+
+        @type request: L{twext.web2.iweb.IRequest}
+
+        @return: a deferred that fires when an addressbook collection has been
+            created in this resource.
+        """
         #
         # request object is required because we need to validate against parent
         # resources, and we need the request in order to locate the parents.
@@ -444,9 +452,10 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
             log.err("Attempt to create collection where file exists: %s" % (self.fp.path,))
             raise HTTPError(StatusResponse(responsecode.NOT_ALLOWED, "File exists"))
 
-        if not os.path.isdir(os.path.dirname(self.fp.path)):
-            log.err("Attempt to create collection with no parent: %s" % (self.fp.path,))
-            raise HTTPError(StatusResponse(responsecode.CONFLICT, "No parent collection"))
+        # newStore guarantees that we always have a parent calendar home
+        #if not os.path.isdir(os.path.dirname(self.fp.path)):
+        #    log.err("Attempt to create collection with no parent: %s" % (self.fp.path,))
+        #    raise HTTPError(StatusResponse(responsecode.CONFLICT, "No parent collection"))
 
         #
         # Verify that no parent collection is a calendar also
@@ -468,24 +477,19 @@ class CalDAVFile (LinkFollowerMixIn, CalDAVResource, DAVFile):
         return parent
 
     def createAddressBookCollection(self):
-        #
-        # Create the collection once we know it is safe to do so
-        #
-        def onAddressBookCollection(status):
-            if status != responsecode.CREATED:
-                raise HTTPError(status)
+        """
+        Internal API for creating an addressbook collection.
 
-            # Initialize CTag on the address book collection
-            d1 = self.bumpSyncToken()
+        This will immediately create the collection without performing any
+        verification.  For the normal API, see L{CalDAVFile.createAddressBook}.
 
-            # Create the index so its ready when the first PUTs come in
-            d1.addCallback(lambda _: self.index().create())
-            d1.addCallback(lambda _: status)
-            return d1
+        The default behavior is to return a failing Deferred; for a working
+        implementation, see L{twistedcaldav.legacy}.
 
-        d = self.createSpecialCollection(davxml.ResourceType.addressbook) #@UndefinedVariable
-        d.addCallback(onAddressBookCollection)
-        return d
+        @return: a L{Deferred} which fires when the underlying collection has
+            actually been created.
+        """
+        return fail(NotImplementedError())
 
     @inlineCallbacks
     def vCardRolledup(self, request):
@@ -1295,8 +1299,16 @@ class ScheduleOutboxFile (ScheduleOutboxResource, ScheduleFile):
     Calendar scheduling outbox collection resource.
     """
     def __init__(self, path, parent):
-        ScheduleFile.__init__(self, path, parent)
+        ScheduleFile.__init__(self, NotFilePath(isdir=True), parent)
         ScheduleOutboxResource.__init__(self, parent)
+
+    def deadProperties(self):
+        if not hasattr(self, "_dead_properties"):
+            self._dead_properties = NonePropertyStore(self)
+        return self._dead_properties
+
+    def etag(self):
+        return None
 
     def provision(self):
         """
@@ -1516,6 +1528,9 @@ class AddressBookHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryAddre
         """
         DAVFile.__init__(self, path)
         DirectoryAddressBookHomeProvisioningResource.__init__(self, directory, url)
+        storagePath = self.fp.child(uidsResourceName)
+        self._newStore = AddressBookStore(storagePath)
+
 
     def provisionChild(self, name):
         if name == uidsResourceNameAddressBook:
@@ -1548,8 +1563,27 @@ class AddressBookHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryAd
         else:
             self.homeResourceClass = homeResourceClass
 
-    def provisionChild(self, name):
+    def locateChild(self, request, segments):
+
+        name = segments[0]
+        if name == "":
+            return (self, ())
+
         record = self.directory.recordWithUID(name)
+        if record:
+            return (self.homeResourceForRecord(record, request), segments[1:])
+        else:
+            return (None, ())
+
+    def homeResourceForRecord(self, record, request):
+        self.provision()
+        TRANSACTION_KEY = '_newStoreTransaction'
+        transaction = getattr(request, TRANSACTION_KEY, None)
+        if transaction is None:
+            transaction = self.parent._newStore.newTransaction()
+            setattr(request, TRANSACTION_KEY, transaction)
+
+        name = record.uid
 
         if record is None:
             log.msg("No directory record with GUID %r" % (name,))
@@ -1562,7 +1596,7 @@ class AddressBookHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryAd
         assert len(name) > 4
         
         childPath = self.fp.child(name[0:2]).child(name[2:4]).child(name)
-        child = self.homeResourceClass(childPath.path, self, record)
+        child = self.homeResourceClass(childPath.path, self, record, transaction)
 
         if not child.exists():
             self.provision()
@@ -1629,19 +1663,40 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
             (customxml.calendarserver_namespace, "xmpp-server"),
         )
 
-    def __init__(self, path, parent, record):
+    def __init__(self, path, parent, record, transaction):
         """
         @param path: the path to the file which will back the resource.
         """
 
+        self.associateWithTransaction(transaction)
+
         # TODO: when addressbook home gets a resourceID( ) method, remove
         # the "id=record.uid" keyword from this call:
         self.clientNotifier = ClientNotifier(self, id=record.uid)
-
+        self._newStoreAddressBookHome = (
+            transaction.addressbookHomeWithUID(record.uid, create=True)
+        )
         CalDAVFile.__init__(self, path)
         DirectoryAddressBookHomeResource.__init__(self, parent, record)
 
+        from twistedcaldav.storebridge import _NewStorePropertiesWrapper
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreAddressBookHome.properties()
+        )
+
+
+    def exists(self):
+        # FIXME: tests
+        return True
+    
+    
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
     def provision(self):
+        return
         result = super(AddressBookHomeFile, self).provision()
         if config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled:
             self.provisionShares()
@@ -1680,7 +1735,26 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
         if self.comparePath(path):
             return self
         else:
-            similar = CalDAVFile(path, principalCollections=self.principalCollections())
+            if not isinstance(path, FilePath):
+                path = FilePath(path)
+            newAddressBook = self._newStoreAddressBookHome.addressbookWithName(
+                path.basename()
+            )
+            if newAddressBook is None:
+                # Local imports.due to circular dependency between modules.
+                from twistedcaldav.storebridge import (
+                     ProtoAddressBookCollectionFile)
+                similar = ProtoAddressBookCollectionFile(
+                    self._newStoreAddressBookHome,
+                    path, principalCollections=self.principalCollections()
+                )
+            else:
+                from twistedcaldav.storebridge import AddressBookCollectionFile
+                similar = AddressBookCollectionFile(
+                    newAddressBook, self._newStoreAddressBookHome,
+                    path, principalCollections=self.principalCollections()
+                )
+            self.propagateTransaction(similar)
             similar.clientNotifier = self.clientNotifier.clone(similar,
                 label="collection")
             return similar

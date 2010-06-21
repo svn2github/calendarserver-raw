@@ -16,8 +16,8 @@
 ##
 
 """
-Wrappers to translate between the APIs in L{txcaldav.icalendarstore} and those
-in L{twistedcaldav}.
+Wrappers to translate between the APIs in L{txcaldav.icalendarstore} and
+L{txcarddav.iaddressbookstore} and those in L{twistedcaldav}.
 """
 
 import hashlib
@@ -32,6 +32,7 @@ from twext.python import vcomponent
 from twext.web2.http_headers import ETag
 from twext.web2.responsecode import FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, \
     CONFLICT
+from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.util import parentForURL, allDataFromStream
 from twext.web2.http import HTTPError, StatusResponse
 
@@ -39,7 +40,8 @@ from twistedcaldav.static import CalDAVFile, ScheduleInboxFile
 
 from txdav.propertystore.base import PropertyName
 from txcaldav.icalendarstore import NoSuchCalendarObjectError
-
+from txcarddav.iaddressbookstore import NoSuchAddressBookObjectError
+from twistedcaldav.vcard import Component as VCard
 
 
 class _NewStorePropertiesWrapper(object):
@@ -200,6 +202,9 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
         )
 
 
+    def isCollection(self):
+        return True
+
     def provisionFile(self):
         pass
 
@@ -221,6 +226,9 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         super(CalendarCollectionFile, self).__init__(*args, **kw)
         self._initializeWithCalendar(calendar, home)
 
+
+    def isCollection(self):
+        return True
 
     def http_COPY(self, request):
         """
@@ -285,6 +293,9 @@ class ProtoCalendarCollectionFile(CalDAVFile):
         self._newStoreParentHome = home
         super(ProtoCalendarCollectionFile, self).__init__(*args, **kw)
 
+
+    def isCollection(self):
+        return True
 
     def createSimilarFile(self, path):
         # FIXME: this is necessary for 
@@ -354,6 +365,9 @@ class CalendarObjectFile(CalDAVFile):
         self._initializeWithObject(calendarObject)
 
 
+    def isCollection(self):
+        return False
+
     def inNewTransaction(self, request):
         """
         Implicit auto-replies need to span multiple transactions.  Clean out the
@@ -391,10 +405,13 @@ class CalendarObjectFile(CalDAVFile):
 
         # FIXME: direct tests
         try:
-            return ETag(
-                hashlib.new("sha1", self.iCalendarText()).hexdigest(),
-                weak=False
-            )
+            if self.hasDeadProperty(TwistedGETContentMD5):
+                return ETag(str(self.readDeadProperty(TwistedGETContentMD5)))
+            else:
+                return ETag(
+                    hashlib.new("md5", self.iCalendarText()).hexdigest(),
+                    weak=False
+                )
         except NoSuchCalendarObjectError:
             # FIXME: a workaround for the fact that DELETE still rudely vanishes
             # the calendar object out from underneath the store, and doesn't
@@ -471,6 +488,360 @@ class ProtoCalendarObjectFile(CalDAVFile):
         CalendarObjectFile.transform(self, self._newStoreParentCalendar.calendarObjectWithName(self.fp.basename()))
         returnValue(CREATED)
 
+
+    def isCollection(self):
+        return False
+
+    def exists(self):
+        # FIXME: tests
+        return False
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+class _AddressBookChildHelper(object):
+    """
+    Methods for things which are like addressbooks.
+    """
+
+    def _initializeWithAddressBook(self, addressbook, home):
+        """
+        Initialize with a addressbook.
+
+        @param addressbook: the wrapped addressbook.
+        @type addressbook: L{txcarddav.iaddressbookstore.IAddressBook}
+
+        @param home: the home through which the given addressbook was accessed.
+        @type home: L{txcarddav.iaddressbookstore.IAddressBookHome}
+        """
+        self._newStoreAddressBook = addressbook
+        self._newStoreParentHome = home
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreAddressBook.properties()
+        )
+
+
+    def index(self):
+        """
+        Retrieve the new-style index wrapper.
+        """
+        return self._newStoreAddressBook.retrieveOldIndex()
+
+
+    def exists(self):
+        # FIXME: tests
+        return True
+
+
+    @classmethod
+    def transform(cls, self, addressbook, home):
+        """
+        Transform C{self} into a L{AddressBookCollectionFile}.
+        """
+        self.__class__ = cls
+        self._initializeWithAddressBook(addressbook, home)
+
+
+    def createSimilarFile(self, path):
+        """
+        Create a L{AddressBookObjectFile} or L{ProtoAddressBookObjectFile} based on a
+        path object.
+        """
+        if not isinstance(path, FilePath):
+            path = FilePath(path)
+
+        newStoreObject = self._newStoreAddressBook.addressbookObjectWithName(
+            path.basename()
+        )
+
+        if newStoreObject is not None:
+            similar = AddressBookObjectFile(newStoreObject, path,
+                principalCollections=self._principalCollections)
+        else:
+            # FIXME: creation in http_PUT should talk to a specific resource
+            # type; this is the domain of StoreAddressBookObjectResource.
+            # similar = ProtoAddressBookObjectFile(self._newStoreAddressBook, path)
+            similar = ProtoAddressBookObjectFile(self._newStoreAddressBook, path,
+                principalCollections=self._principalCollections)
+
+        # FIXME: tests should be failing without this line.
+        # Specifically, http_PUT won't be committing its transaction properly.
+        self.propagateTransaction(similar)
+        return similar
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
+
+class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
+    """
+    Wrapper around a L{txcarddav.iaddressbook.IAddressBook}.
+    """
+
+    def __init__(self, addressbook, home, *args, **kw):
+        """
+        Create a AddressBookCollectionFile from a L{txcarddav.iaddressbook.IAddressBook}
+        and the arguments required for L{CalDAVFile}.
+        """
+        super(AddressBookCollectionFile, self).__init__(*args, **kw)
+        self._initializeWithAddressBook(addressbook, home)
+
+
+    def isCollection(self):
+        return True
+
+    def http_COPY(self, request):
+        """
+        Copying of addressbook collections isn't allowed.
+        """
+        # FIXME: no direct tests
+        return FORBIDDEN
+
+
+    @inlineCallbacks
+    def http_MOVE(self, request):
+        """
+        Moving a addressbook collection is allowed for the purposes of changing
+        that addressbook's name.
+        """
+        # FIXME: created to fix CDT test, no unit tests yet
+        sourceURI = request.uri
+        destinationURI = urlsplit(request.headers.getHeader("destination"))[2]
+        if parentForURL(sourceURI) != parentForURL(destinationURI):
+            returnValue(FORBIDDEN)
+        destination = yield request.locateResource(destinationURI)
+        # FIXME: should really use something other than 'fp' attribute.
+        basename = destination.fp.basename()
+        addressbook = self._newStoreAddressBook
+        addressbook.rename(basename)
+        AddressBookCollectionFile.transform(destination, addressbook,
+                                         self._newStoreParentHome)
+        del self._newStoreAddressBook
+        self.__class__ = ProtoAddressBookCollectionFile
+        returnValue(NO_CONTENT)
+
+
+class ProtoAddressBookCollectionFile(CalDAVFile):
+    """
+    A resource representing an addressbook collection which hasn't yet been created.
+    """
+
+    def __init__(self, home, *args, **kw):
+        """
+        A placeholder resource for an addressbook collection which does not yet
+        exist, but will become a L{AddressBookCollectionFile}.
+
+        @param home: The addressbook home which will be this resource's parent,
+            when it exists.
+
+        @type home: L{txcarddav.iaddressbookstore.IAddressBookHome}
+        """
+        self._newStoreParentHome = home
+        super(ProtoAddressBookCollectionFile, self).__init__(*args, **kw)
+
+
+    def isCollection(self):
+        return True
+
+    def createSimilarFile(self, path):
+        # FIXME: this is necessary for 
+        # twistedcaldav.test.test_mkcol.
+        #     MKCOL.test_make_addressbook_no_parent - there should be a more
+        # structured way to refuse creation with a non-existent parent.
+        return NoParent(path)
+
+
+    def provisionFile(self):
+        """
+        Create an addressbook collection.
+        """
+        # FIXME: this should be done in the backend; provisionDefaultAddressBooks
+        # should go away.
+        return self.createAddressBookCollection()
+
+
+    def createAddressBookCollection(self):
+        """
+        Override C{createAddressBookCollection} to actually do the work.
+        """
+        d = succeed(CREATED)
+
+        Name = self.fp.basename()
+        self._newStoreParentHome.createAddressBookWithName(Name)
+        newStoreAddressBook = self._newStoreParentHome.addressbookWithName(
+            Name
+        )
+        AddressBookCollectionFile.transform(
+            self, newStoreAddressBook, self._newStoreParentHome
+        )
+        return d
+
+
+    def exists(self):
+        # FIXME: tests
+        return False
+
+
+    def provision(self):
+        """
+        This resource should do nothing if it's provisioned.
+        """
+        # FIXME: should be deleted, or raise an exception
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
+
+class AddressBookObjectFile(CalDAVFile):
+    """
+    A resource wrapping a addressbook object.
+    """
+
+    def __init__(self, Object, *args, **kw):
+        """
+        Construct a L{AddressBookObjectFile} from an L{IAddressBookObject}.
+
+        @param Object: The storage for the addressbook object.
+        @type Object: L{txcarddav.iaddressbookstore.IAddressBookObject}
+        """
+        super(AddressBookObjectFile, self).__init__(*args, **kw)
+        self._initializeWithObject(Object)
+
+
+    def inNewTransaction(self, request):
+        """
+        Implicit auto-replies need to span multiple transactions.  Clean out the
+        given request's resource-lookup mapping, transaction, and re-look-up my
+        addressbook object in a new transaction.
+
+        Return the new transaction so it can be committed.
+        """
+        # FIXME: private names from 'file' implementation; maybe there should be
+        # a public way to do this?  or maybe we should just have a real queue.
+        objectName = self._newStoreObject.name()
+        Name = self._newStoreObject._addressbook.name()
+        homeUID = self._newStoreObject._addressbook._Home.uid()
+        store = self._newStoreObject._transaction._Store
+        txn = store.newTransaction()
+        newObject = (txn.HomeWithUID(homeUID)
+                        .addressbookWithName(Name)
+                        .addressbookObjectWithName(objectName))
+        request._newStoreTransaction = txn
+        request._resourcesByURL.clear()
+        request._urlsByResource.clear()
+        self._initializeWithObject(newObject)
+        return txn
+
+
+    def isCollection(self):
+        return False
+
+    def exists(self):
+        # FIXME: Tests
+        return True
+
+
+    def etag(self):
+        # FIXME: far too slow to be used for real, but I needed something to
+        # placate the etag computation in the case where the file doesn't exist
+        # yet (an uncommited transaction creating this addressbook file)
+
+        # FIXME: direct tests
+        try:
+            if self.hasDeadProperty(TwistedGETContentMD5):
+                return ETag(str(self.readDeadProperty(TwistedGETContentMD5)))
+            else:
+                return ETag(
+                    hashlib.new("md5", self.vCardText()).hexdigest(),
+                    weak=False
+                )
+        except NoSuchAddressBookObjectError:
+            # FIXME: a workaround for the fact that DELETE still rudely vanishes
+            # the addressbook object out from underneath the store, and doesn't
+            # call storeRemove.
+            return None
+
+
+    def newStoreProperties(self):
+        return self._newStoreObject.properties()
+
+
+    def quotaSize(self, request):
+        # FIXME: tests
+        return succeed(len(self._newStoreObject.vCardText()))
+
+
+    def vCardText(self, ignored=None):
+        assert ignored is None, "This is a addressbook object, not a addressbook"
+        return self._newStoreObject.vCardText()
+
+
+    @inlineCallbacks
+    def storeStream(self, stream):
+        # FIXME: direct tests
+        component = VCard.fromString(
+            (yield allDataFromStream(stream))
+        )
+        self._newStoreObject.setComponent(component)
+        returnValue(NO_CONTENT)
+
+
+    def storeRemove(self):
+        """
+        Remove this addressbook object.
+        """
+        # FIXME: public attribute please
+        self._newStoreObject._addressbook.removeAddressBookObjectWithName(self._newStoreObject.name())
+        # FIXME: clean this up with a 'transform' method
+        self._newStoreParentAddressBook = self._newStoreObject._addressbook
+        del self._newStoreObject
+        self.__class__ = ProtoAddressBookObjectFile
+
+
+    def _initializeWithObject(self, Object):
+        self._newStoreObject = Object
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreObject.properties()
+        )
+
+
+    @classmethod
+    def transform(cls, self, Object):
+        self.__class__ = cls
+        self._initializeWithObject(Object)
+
+
+
+class ProtoAddressBookObjectFile(CalDAVFile):
+
+    def __init__(self, parentAddressBook, *a, **kw):
+        super(ProtoAddressBookObjectFile, self).__init__(*a, **kw)
+        self._newStoreParentAddressBook = parentAddressBook
+
+
+    @inlineCallbacks
+    def storeStream(self, stream):
+        # FIXME: direct tests 
+        component = VCard.fromString(
+            (yield allDataFromStream(stream))
+        )
+        self._newStoreParentAddressBook.createAddressBookObjectWithName(
+            self.fp.basename(), component
+        )
+        AddressBookObjectFile.transform(self, self._newStoreParentAddressBook.addressbookObjectWithName(self.fp.basename()))
+        returnValue(CREATED)
+
+
+    def isCollection(self):
+        return False
 
     def exists(self):
         # FIXME: tests

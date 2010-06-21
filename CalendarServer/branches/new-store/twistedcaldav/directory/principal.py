@@ -913,11 +913,8 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             return None
 
     def addressBookHomeURLs(self):
-        home = self.addressBookHome()
-        if home is None:
-            return ()
-        else:
-            return (home.url(),)
+        homeURL = self._addressBookHomeChildURL(None)
+        return (homeURL,) if homeURL else ()
 
     def _homeChildURL(self, name):
         if not hasattr(self, "calendarHomeURL"):
@@ -943,12 +940,27 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         else:
             return None
 
-    def addressBookHome(self):
+    def _addressBookHomeChildURL(self, name):
+        if not hasattr(self, "addressBookHomeURL"):
+            if not hasattr(self.record.service, "addressBookHomesCollection"):
+                return None
+            self.addressBookHomeURL = joinURL(
+                self.record.service.addressBookHomesCollection.url(),
+                uidsResourceName,
+                self.record.uid
+            )
+        url = self.addressBookHomeURL
+        if url is None:
+            return None
+        else:
+            return joinURL(url, name) if name else url
+
+    def addressBookHome(self, request):
         # FIXME: self.record.service.addressBookHomesCollection smells like a hack
         # See AddressBookHomeProvisioningFile.__init__()
         service = self.record.service
         if hasattr(service, "addressBookHomesCollection"):
-            return service.addressBookHomesCollection.homeForDirectoryRecord(self.record)
+            return service.addressBookHomesCollection.homeForDirectoryRecord(self.record, request)
         else:
             return None
 

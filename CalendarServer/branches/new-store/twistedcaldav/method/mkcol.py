@@ -177,8 +177,7 @@ def http_MKCOL(self, request):
     
         if got_an_error:
             # Clean up
-            if self.fp.exists(): self.fp.remove()
-
+            self.transactionError()
             errors.error()
             raise HTTPError(MultiStatusResponse([errors.response()]))
 
