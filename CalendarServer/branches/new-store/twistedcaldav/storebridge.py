@@ -30,10 +30,13 @@ from twext.python.filepath import CachingFilePath as FilePath
 from twext.python import vcomponent
 
 from twext.web2.http_headers import ETag
-from twext.web2.responsecode import FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, \
-    CONFLICT
+from twext.web2.dav.http import ErrorResponse, ResponseQueue
+from twext.web2.responsecode import (
+    FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED,
+    BAD_REQUEST)
+from twext.python.log import Logger
 from twext.web2.dav.resource import TwistedGETContentMD5
-from twext.web2.dav.util import parentForURL, allDataFromStream
+from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
 from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.static import CalDAVFile, ScheduleInboxFile
@@ -42,6 +45,14 @@ from txdav.propertystore.base import PropertyName
 from txcaldav.icalendarstore import NoSuchCalendarObjectError
 from txcarddav.iaddressbookstore import NoSuchAddressBookObjectError
 from twistedcaldav.vcard import Component as VCard
+
+from twistedcaldav.caldavxml import ScheduleTag, caldav_namespace
+from twistedcaldav.scheduling.implicit import ImplicitScheduler
+from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+
+from twisted.python.log import err as logDefaultException
+
+log = Logger()
 
 
 class _NewStorePropertiesWrapper(object):
@@ -227,6 +238,123 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         self._initializeWithCalendar(calendar, home)
 
 
+    def isCalendarCollection(self):
+        """
+        Yes, it is a calendar collection.
+        """
+        return True
+
+
+    def http_DELETE(self, request):
+        """
+        Override http_DELETE to validate 'depth' header. 
+        """
+        depth = request.headers.getHeader("depth", "infinity")
+        if depth != "infinity":
+            msg = "illegal depth header for DELETE on collection: %s" % (
+                depth,
+            )
+            log.err(msg)
+            raise HTTPError(StatusResponse(BAD_REQUEST, msg))
+        return self.storeRemove(request, True, request.uri)
+
+
+    @inlineCallbacks
+    def storeRemove(self, request, implicitly, where):
+        """
+        Delete this calendar collection resource, first deleting each contained
+        calendar resource.
+
+        This has to emulate the behavior in fileop.delete in that any errors
+        need to be reported back in a multistatus response.
+
+        @param request: The request used to locate child resources.  Note that
+            this is the request which I{triggered} the C{DELETE}, but which may
+            not actually be a C{DELETE} request itself.
+
+        @type request: L{twext.web2.iweb.IRequest}
+
+        @param implicitly: Should implicit scheduling operations be triggered
+            as a resut of this C{DELETE}?
+
+        @type implicitly: C{bool}
+
+        @param where: the URI at which the resource is being deleted.
+        @type where: C{str}
+
+        @return: an HTTP response suitable for sending to a client (or
+            including in a multi-status).
+
+         @rtype: something adaptable to L{twext.web2.iweb.IResponse}
+        """
+
+        # Not allowed to delete the default calendar
+        default = (yield self.isDefaultCalendar(request))
+        if default:
+            log.err("Cannot DELETE default calendar: %s" % (self,))
+            raise HTTPError(ErrorResponse(FORBIDDEN,
+                            (caldav_namespace,
+                             "default-calendar-delete-allowed",)))
+
+        # Is this a sharee's view of a shared calendar?  If so, they can't do
+        # scheduling onto it, so just delete it and move on.
+        isVirtual = yield self.isVirtualShare(request)
+        if isVirtual:
+            log.debug("Removing shared calendar %s" % (self,))
+            yield self.removeVirtualShare(request)
+            returnValue(NO_CONTENT)
+
+        log.debug("Deleting calendar %s" % (self,))
+
+        # 'deluri' is this resource's URI; I should be able to synthesize it
+        # from 'self'.
+
+        errors = ResponseQueue(where, "DELETE", NO_CONTENT)
+
+        for childname in self.listChildren():
+
+            childurl = joinURL(where, childname)
+
+            # FIXME: use a more specific API; we should know what this child
+            # resource is, and not have to look it up.  (Sharing information
+            # needs to move into the back-end first, though.)
+            child = (yield request.locateChildResource(self, childname))
+
+            try:
+                yield child.storeRemove(request, implicitly, childurl)
+            except:
+                logDefaultException()
+                errors.add(childurl, BAD_REQUEST)
+
+        # Now do normal delete
+
+        # Handle sharing
+        wasShared = (yield self.isShared(request))
+        if wasShared:
+            yield self.downgradeFromShare(request)
+
+        # Actually delete it.
+        self._newStoreParentHome.removeCalendarWithName(
+            self._newStoreCalendar.name()
+        )
+        self.__class__ = ProtoCalendarCollectionFile
+        del self._newStoreCalendar
+
+        # FIXME: handle exceptions, possibly like this:
+
+        #        if isinstance(more_responses, MultiStatusResponse):
+        #            # Merge errors
+        #            errors.responses.update(more_responses.children)
+
+        response = errors.response()
+
+        if response == NO_CONTENT:
+            # Do some clean up
+            yield self.deletedCalendar(request)
+
+        returnValue(response)
+
+
     def isCollection(self):
         return True
 
@@ -368,16 +496,18 @@ class CalendarObjectFile(CalDAVFile):
     def isCollection(self):
         return False
 
+
     def inNewTransaction(self, request):
         """
-        Implicit auto-replies need to span multiple transactions.  Clean out the
-        given request's resource-lookup mapping, transaction, and re-look-up my
-        calendar object in a new transaction.
+        Implicit auto-replies need to span multiple transactions.  Clean out
+        the given request's resource-lookup mapping, transaction, and re-look-
+        up my calendar object in a new transaction.
 
         Return the new transaction so it can be committed.
         """
-        # FIXME: private names from 'file' implementation; maybe there should be
-        # a public way to do this?  or maybe we should just have a real queue.
+        # FIXME: private names from 'file' implementation; maybe there should
+        # be a public way to do this?  or maybe we should just have a real
+        # queue.
         objectName = self._newStoreObject.name()
         calendarName = self._newStoreObject._calendar.name()
         homeUID = self._newStoreObject._calendar._calendarHome.uid()
@@ -443,16 +573,122 @@ class CalendarObjectFile(CalDAVFile):
         returnValue(NO_CONTENT)
 
 
-    def storeRemove(self):
+    def validIfScheduleMatch(self, request):
         """
-        Remove this calendar object.
+        Check to see if the given request's C{If-Schedule-Tag-Match} header
+        matches this resource's schedule tag.
+
+        @raise HTTPError: if the tag does not match.
+
+        @return: None
         """
-        # FIXME: public attribute please
-        self._newStoreObject._calendar.removeCalendarObjectWithName(self._newStoreObject.name())
-        # FIXME: clean this up with a 'transform' method
-        self._newStoreParentCalendar = self._newStoreObject._calendar
-        del self._newStoreObject
-        self.__class__ = ProtoCalendarObjectFile
+        # Note, internal requests shouldn't issue this.
+        header = request.headers.getHeader("If-Schedule-Tag-Match")
+        if header:
+            # Do "precondition" test
+            matched = False
+            if self.hasDeadProperty(ScheduleTag):
+                scheduletag = self.readDeadProperty(ScheduleTag)
+                matched = (scheduletag == header)
+            if not matched:
+                log.debug(
+                    "If-Schedule-Tag-Match: header value '%s' does not match resource value '%s'" %
+                    (header, scheduletag,))
+                raise HTTPError(PRECONDITION_FAILED)
+
+
+    @inlineCallbacks
+    def storeRemove(self, request, implicitly, where):
+        """
+        Delete this calendar object and do implicit scheduling actions if
+        required.
+
+        @param request: Unused by this implementation; present for signature
+            compatibility with L{CalendarCollectionFile.storeRemove}.
+
+        @type request: L{twext.web2.iweb.IRequest}
+
+        @param implicitly: Should implicit scheduling operations be triggered
+            as a resut of this C{DELETE}?
+
+        @type implicitly: C{bool}
+
+        @param where: the URI at which the resource is being deleted.
+        @type where: C{str}
+
+        @return: an HTTP response suitable for sending to a client (or
+            including in a multi-status).
+
+         @rtype: something adaptable to L{twext.web2.iweb.IResponse}
+        """
+
+        # TODO: need to use transaction based delete on live scheduling object
+        # resources as the iTIP operation may fail and may need to prevent the
+        # delete from happening.
+
+        # Do If-Schedule-Tag-Match behavior first
+        self.validIfScheduleMatch(request)
+
+        # Do quota checks before we start deleting things
+        myquota = (yield self.quota(request))
+        if myquota is not None:
+            old_size = (yield self.quotaSize(request))
+        else:
+            old_size = 0
+
+        scheduler = None
+        lock = None
+        if implicitly:
+            # Get data we need for implicit scheduling
+            calendar = (yield self.iCalendarForUser(request))
+            scheduler = ImplicitScheduler()
+            do_implicit_action, _ignore = (
+                yield scheduler.testImplicitSchedulingDELETE(
+                    request, self, calendar
+                )
+            )
+            if do_implicit_action:
+                lock = MemcacheLock(
+                    "ImplicitUIDLock", calendar.resourceUID(), timeout=60.0
+                )
+
+        try:
+            if lock:
+                yield lock.acquire()
+
+            storeCalendar = self._newStoreObject._calendar
+            # Do delete
+
+            # FIXME: public attribute please.  Should ICalendar maybe just have
+            # a delete() method?
+            storeCalendar.removeCalendarObjectWithName(
+                self._newStoreObject.name()
+            )
+
+            # FIXME: clean this up with a 'transform' method
+            self._newStoreParentCalendar = storeCalendar
+            del self._newStoreObject
+            self.__class__ = ProtoCalendarObjectFile
+
+            # Adjust quota
+            if myquota is not None:
+                yield self.quotaSizeAdjust(request, -old_size)
+
+            # Do scheduling
+            if implicitly:
+                yield scheduler.doImplicitScheduling()
+
+        except MemcacheLockTimeoutError:
+            raise HTTPError(StatusResponse(
+                CONFLICT,
+                "Resource: %s currently in use on the server." % (where,))
+            )
+
+        finally:
+            if lock:
+                yield lock.clean()
+
+        returnValue(NO_CONTENT)
 
 
     def _initializeWithObject(self, calendarObject):

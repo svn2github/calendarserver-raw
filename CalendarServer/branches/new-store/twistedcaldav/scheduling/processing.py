@@ -659,14 +659,11 @@ class ImplicitProcessor(object):
         @param name: the resource name to write into, or {None} to write a new resource.
         @type name: C{str}
         """
-        
-        from twistedcaldav.method.delete_common import DeleteResource
         delchild = collection.getChild(name)
         childURL = joinURL(collURL, name)
         self.request._rememberResource(delchild, childURL)
+        yield delchild.storeRemove(self.request, False, childURL)
 
-        deleter = DeleteResource(self.request, delchild, childURL, collection, "0", internal_request=True)
-        yield deleter.run()
 
     def changeAttendeePartstat(self, attendees, partstat):
         """

@@ -209,8 +209,12 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
                 else:
                     self._associatedTransaction.commit()
             return result
+        def failed(failure):
+            print 'renderHTTP failed!  FIXME PLEASE: handle errors here!'
+            failure.printTraceback()
+            return failure
         # FIXME: needs a failure handler (that rolls back the transaction)
-        return d.addCallback(succeeded)
+        return d.addCallback(succeeded).addErrback(failed)
 
     # Begin transitional new-store resource interface:
 
@@ -234,7 +238,7 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
                                   (self,))
         
     
-    def storeRemove(self):
+    def storeRemove(self, *a, **kw):
         """
         Remove this resource from storage.
         """

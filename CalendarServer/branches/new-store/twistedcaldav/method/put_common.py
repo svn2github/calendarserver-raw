@@ -61,7 +61,6 @@ from twistedcaldav.index import ReservationError
 from twistedcaldav.instance import TooManyInstancesError,\
     InvalidOverriddenInstanceError
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
-from twistedcaldav.method.delete_common import DeleteResource
 from twistedcaldav.scheduling.implicit import ImplicitScheduler
 
 log = Logger()
@@ -193,7 +192,7 @@ class StoreCalendarObjectResource(object):
         self.processing_organizer = processing_organizer
 
         self.access = None
-        self.newrevision = None
+
 
     @inlineCallbacks
     def fullValidation(self):
@@ -328,34 +327,30 @@ class StoreCalendarObjectResource(object):
         """
         Check for If-ScheduleTag-Match header behavior.
         """
-        
         # Only when a direct request
         self.schedule_tag_match = False
         if not self.isiTIP and not self.internal_request:
             header = self.request.headers.getHeader("If-Schedule-Tag-Match")
             if header:
-                # Do "precondition" test
-                
-                # If COPY/MOVE get Schedule-Tag on source, else use destination
-                def _getScheduleTag(resource):
-                    return resource.readDeadProperty(ScheduleTag) if resource.exists() and resource.hasDeadProperty(ScheduleTag) else None
-
-                scheduletag = _getScheduleTag(self.source if self.source else self.destination)
-                if scheduletag != header:
-                    log.debug("If-Schedule-Tag-Match: header value '%s' does not match resource value '%s'" % (header, scheduletag,))
-                    raise HTTPError(responsecode.PRECONDITION_FAILED)
+                # If COPY/MOVE get Schedule-Tag on source, PUT use destination
+                if self.source:
+                    matcher = self.source
+                    self.source.validIfScheduleMatch(self.request)
+                else:
+                    matcher = self.destination
+                matcher.validIfScheduleMatch(self.request)
                 self.schedule_tag_match = True
-            
             elif config.Scheduling.CalDAV.ScheduleTagCompatibility:
                 # Compatibility with old clients. Policy:
                 #
                 # 1. If If-Match header is not present, never do smart merge.
-                # 2. If If-Match is present and the specified ETag is considered a "weak" match to the
-                #    current Schedule-Tag, then do smart merge, else reject with a 412.
+                # 2. If If-Match is present and the specified ETag is
+                #    considered a "weak" match to the current Schedule-Tag,
+                #    then do smart merge, else reject with a 412.
                 #
-                # Actually by the time we get here the pre-condition will already have been tested and found to be OK,
-                # so we can just always do smart merge now if If-Match is present.
-
+                # Actually by the time we get here the pre-condition will
+                # already have been tested and found to be OK, so we can just
+                # always do smart merge now if If-Match is present.
                 self.schedule_tag_match = self.request.headers.getHeader("If-Match") is not None
 
     def validResourceName(self):
@@ -713,13 +708,26 @@ class StoreCalendarObjectResource(object):
         yield self.mergePerUserData()
 
         # Do put or copy based on whether source exists
-        if self.source is not None:
+        source = self.source
+        if source is not None:
+            # Retrieve information from the source, in case we have to delete
+            # it.
+            sourceProperties = dict(source.newStoreProperties().iteritems())
+            if not implicit:
+                # Only needed in implicit case; see below.
+                sourceText = source.iCalendarText()
+
+            # Delete the original source if needed (for example, if this is a
+            # same-calendar MOVE of a calendar object, implemented as an
+            # effective DELETE-then-PUT).
+            if self.deletesource:
+                yield self.doSourceDelete()
+
             if implicit:
                 response = (yield self.doStorePut())
-                self.source.copyDeadPropertiesTo(self.destination)
             else:
-                response = (yield self.destination.storeStream(MemoryStream(self.source.iCalendarText())))
-                self.source.copyDeadPropertiesTo(self.destination)
+                response = (yield self.destination.storeStream(MemoryStream(sourceText)))
+            self.destination.newStoreProperties().update(sourceProperties)
         else:
             response = (yield self.doStorePut())
     
@@ -752,16 +760,9 @@ class StoreCalendarObjectResource(object):
 
     @inlineCallbacks
     def doSourceDelete(self):
-        # Delete index for original item
-        if self.sourcecal:
-            self.newrevision = (yield self.sourceparent.bumpSyncToken())
-            self.source_index.deleteResource(self.source.fp.basename(), self.newrevision)
-            log.debug("Source index removed %s" % (self.source.fp.path,))
-
         # Delete the source resource
-        self.source.storeRemove()
+        yield self.source.storeRemove(self.request, False, self.source_uri)
         log.debug("Source removed %s" % (self.source.fp.path,))
-  
         returnValue(None)
 
     @inlineCallbacks
@@ -787,62 +788,6 @@ class StoreCalendarObjectResource(object):
 
         returnValue(None)
 
-    def doSourceIndexRecover(self):
-        """
-        Do source resource indexing. This only gets called when restoring
-        the source after its index has been deleted.
-        
-        @return: None if successful, ErrorResponse on failure
-        """
-        
-        # Add or update the index for this resource.
-        try:
-            self.source_index.addResource(self.source.fp.basename(), self.calendar, self.newrevision)
-        except TooManyInstancesError, ex:
-            raise HTTPError(ErrorResponse(
-                responsecode.FORBIDDEN,
-                    NumberOfRecurrencesWithinLimits(PCDATAElement(str(ex.max_allowed)))
-                ))
-            return None
-
-    def doDestinationIndex(self):
-        """
-        Do destination resource indexing, replacing any index previous stored.
-        
-        @return: None if successful, ErrorResponse on failure
-        """
-        # Add or update the index for this resource.
-        caltoindex = self.calendar
-        try:
-            self.destination_index.addResource(self.destination.fp.basename(), caltoindex, self.newrevision)
-            log.debug("Destination indexed %s" % (self.destination.fp.path,))
-        except TooManyInstancesError, ex:
-            log.err("Cannot index calendar resource as there are too many recurrence instances %s" % self.destination)
-            raise HTTPError(ErrorResponse(
-                responsecode.FORBIDDEN,
-                NumberOfRecurrencesWithinLimits(PCDATAElement(str(ex.max_allowed)))
-            ))
-        except (ValueError, TypeError), ex:
-            msg = "Cannot index calendar resource: %s" % (ex,)
-            log.err(msg)
-            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data"), description=msg))
-
-        content_type = self.request.headers.getHeader("content-type")
-        if not self.internal_request and content_type is not None:
-            self.destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(content_type)))
-        else:
-            self.destination.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(MimeType("text", "calendar", params={"charset":"utf-8"}))))
-        return None
-
-    def doRemoveDestinationIndex(self):
-        """
-        Remove any existing destination index.
-        """
-        
-        # Delete index for original item
-        if self.destinationcal:
-            self.destination_index.deleteResource(self.destination.fp.basename(), None)
-            log.debug("Destination index removed %s" % (self.destination.fp.path,))
 
     @inlineCallbacks
     def run(self):
@@ -854,7 +799,7 @@ class StoreCalendarObjectResource(object):
 
         try:
             reservation = None
-            
+
             # Handle all validation operations here.
             yield self.fullValidation()
 
@@ -872,15 +817,16 @@ class StoreCalendarObjectResource(object):
                 if not self.isiTIP: 
                     result, message, rname = self.noUIDConflict(self.uid) 
                     if not result: 
-                        log.err(message) 
-                        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, 
-                            NoUIDConflict(davxml.HRef.fromString(joinURL(parentForURL(self.destination_uri), rname.encode("utf-8")))) 
-                        ))
+                        log.err(message)
+                        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN,
+                            NoUIDConflict(davxml.HRef.fromString(
+                                joinURL(parentForURL(self.destination_uri),
+                                        rname.encode("utf-8"))))))
 
 
             # Get current quota state.
             yield self.checkQuota()
-    
+
             # Handle RRULE truncation
             rruleChanged = self.truncateRecurrence()
 
@@ -902,8 +848,7 @@ class StoreCalendarObjectResource(object):
             
                     # Now forcibly delete the event
                     if self.destination.exists():
-                        deleter = DeleteResource(self.request, self.destination, self.destination_uri, self.destinationparent, "0", internal_request=True)
-                        yield deleter.run()
+                        yield self.destination.storeRemove(self.request, False, self.destination_uri)
                     else:
                         msg = "Attendee cannot create event for Organizer: %s" % (implicit_result,)
                         log.err(msg)
@@ -918,23 +863,9 @@ class StoreCalendarObjectResource(object):
             else:
                 is_scheduling_resource, data_changed, did_implicit_action = implicit_result
 
-            """
-            Handle actual store operations here.
-            
-            The order in which this is done is import:
-                
-                1. Do store operation for new data
-                2. Delete source and source index if needed
-                3. Do new indexing if needed
-                
-            Note that we need to remove the source index BEFORE doing the destination index to cover the
-            case of a resource being 'renamed', i.e. moved within the same collection. Since the index UID
-            column must be unique in SQL, we cannot add the new index before remove the old one.
-            """
-    
             # Do the actual put or copy
             response = (yield self.doStore(data_changed))
-            
+
             # Must not set ETag in response if data changed
             if did_implicit_action or rruleChanged:
                 def _removeEtag(request, response):
@@ -1001,19 +932,16 @@ class StoreCalendarObjectResource(object):
                 elif not self.destinationcal:
                     self.destination.removeDeadProperty(TwistedCalendarHasPrivateCommentsProperty)                
 
-            # Delete the original source if needed.
-            if self.deletesource:
-                yield self.doSourceDelete()
-    
-            # Index the new resource if storing to a calendar.
+            # Remember the resource's content-type.
             if self.destinationcal:
-                self.newrevision = (yield self.destinationparent.bumpSyncToken())
-                result = self.doDestinationIndex()
-                if result is not None:
-                    # FIXME: transaction needs to be rolled back; should we have
-                    # ErrorResponse detection in renderHTTP?  Hmm. -glyph
-                    returnValue(result)
-    
+                content_type = self.request.headers.getHeader("content-type")
+                if self.internal_request or content_type is None:
+                    content_type = MimeType("text", "calendar",
+                                            params={"charset":"utf-8"})
+                self.destination.writeDeadProperty(
+                    davxml.GETContentType.fromString(generateContentType(content_type))
+                )
+
             # Delete the original source if needed.
             if self.deletesource:
                 yield self.doSourceQuotaCheck()

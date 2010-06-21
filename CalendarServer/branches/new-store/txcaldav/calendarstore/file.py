@@ -314,6 +314,7 @@ class CalendarHome(LoggingMixIn):
         self._transaction = transaction
         self._newCalendars = {}
         self._removedCalendars = set()
+        self._cachedCalendars = {}
 
 
     def __repr__(self):
@@ -342,13 +343,17 @@ class CalendarHome(LoggingMixIn):
             return calendar
         if name in self._removedCalendars:
             return None
+        if name in self._cachedCalendars:
+            return self._cachedCalendars[name]
 
         if name.startswith("."):
             return None
 
         childPath = self._path.child(name)
         if childPath.isdir():
-            return Calendar(name, self)
+            existingCalendar = Calendar(name, self)
+            self._cachedCalendars[name] = existingCalendar
+            return existingCalendar
         else:
             return None
 
@@ -403,6 +408,7 @@ class CalendarHome(LoggingMixIn):
         # c.properties().participateInTxn(txn)
         # FIXME: return c # maybe ?
 
+
     @_writeOperation
     def removeCalendarWithName(self, name):
         if name.startswith(".") or name in self._removedCalendars:
@@ -434,12 +440,16 @@ class CalendarHome(LoggingMixIn):
                 except Exception, e:
                     self.log_error("Unable to delete trashed calendar at %s: %s" % (trash.fp, e))
 
-            transaction.addOperation(cleanup, "remove calendar %r" % (name,))
+            transaction.addOperation(cleanup, "remove calendar backup %r" % (name,))
 
             def undo():
                 trash.moveTo(childPath)
 
             return undo
+        # FIXME: direct tests
+        self._transaction.addOperation(
+            do, "prepare calendar remove %r" % (name,)
+        )
 
 
     # @_cached
@@ -512,6 +522,7 @@ class Calendar(LoggingMixIn, FancyEqMixin):
 
     @_writeOperation
     def rename(self, name):
+        self._updateSyncToken()
         oldName = self.name()
         self._renamedName = name
         self._calendarHome._newCalendars[name] = self
@@ -586,6 +597,8 @@ class Calendar(LoggingMixIn, FancyEqMixin):
 
     @_writeOperation
     def removeCalendarObjectWithName(self, name):
+        newRevision = self._updateSyncToken() # FIXME: Test
+        self.retrieveOldIndex().deleteResource(name, newRevision)
         if name.startswith("."):
             raise NoSuchCalendarObjectError(name)
 
@@ -608,10 +621,6 @@ class Calendar(LoggingMixIn, FancyEqMixin):
             self.calendarObjectWithUID(uid)._path.basename())
 
 
-    def syncToken(self):
-        raise NotImplementedError()
-
-
     def _updateSyncToken(self, reset=False):
         # FIXME: add locking a-la CalDAVFile.bumpSyncToken
         # FIXME: tests for desired concurrency properties
@@ -622,6 +631,8 @@ class Calendar(LoggingMixIn, FancyEqMixin):
             caluuid = uuid4()
             revision = 1
         else:
+            # FIXME: no direct tests for update
+            token = str(token)
             caluuid, revision = token.split("#", 1)
             revision = int(revision) + 1
         token = "%s#%d" % (caluuid, revision)
@@ -643,10 +654,11 @@ class Calendar(LoggingMixIn, FancyEqMixin):
         # FIXME: needs direct tests - only covered by calendar store tests
         # FIXME: transactions
         props = PropertyStore(self._path)
-        self._transaction.addOperation(props.flush, "flush calendar properties")
+        self._transaction.addOperation(props.flush,
+                                       "flush calendar properties")
         return props
-    
-    
+
+
     def _doValidate(self, component):
         # FIXME: should be separate class, not separate case!
         if self.name() == 'inbox':
@@ -686,6 +698,12 @@ class CalendarObject(LoggingMixIn):
 
     @_writeOperation
     def setComponent(self, component):
+
+        newRevision = self._calendar._updateSyncToken() # FIXME: test
+        self._calendar.retrieveOldIndex().addResource(
+            self.name(), component, newRevision
+        )
+
         if not isinstance(component, VComponent):
             raise TypeError(type(component))
 
@@ -726,11 +744,13 @@ class CalendarObject(LoggingMixIn):
                     self._path.remove()
             return undo
         self._transaction.addOperation(do, "set calendar component %r" % (self.name(),))
+
         # Mark all properties as dirty, so they will be re-added to the
         # temporary file when the main file is deleted. NOTE: if there were a
         # temporary file and a rename() as there should be, this should really
         # happen after the write but before the rename.
         self.properties().update(self.properties())
+
         # FIXME: the property store's flush() method may already have been
         # added to the transaction, but we need to add it again to make sure it
         # happens _after_ the new file has been written.  we may end up doing

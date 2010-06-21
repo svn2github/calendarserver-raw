@@ -1272,17 +1272,6 @@ class ScheduleInboxFile (ScheduleInboxResource, ScheduleFile):
         ScheduleFile.__init__(self, path, parent)
         ScheduleInboxResource.__init__(self, parent)
 
-    def provision(self):
-        if self.provisionFile():
-
-            # Initialize CTag on the calendar collection
-            self.bumpSyncToken()
-
-            # Initialize the index
-            self.index().create()
-
-        return super(ScheduleInboxFile, self).provision()
-
     def __repr__(self):
         return "<%s (calendar inbox collection): %s>" % (self.__class__.__name__, self.fp.path)
 
@@ -1491,8 +1480,6 @@ class NotificationCollectionFile(ReadOnlyResourceMixIn, AutoProvisioningFileMixI
         return succeed(True)
 
     def _deleteNotification(self, request, rname):
-        
-        # TODO: use the generic DeleteResource api so that quota, sync-token etc all get changed properly
         childfp = self.fp.child(rname)
         return delete("", childfp)
 
