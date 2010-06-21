@@ -82,7 +82,7 @@ class PropertyStoreTest(unittest.TestCase):
         def doDelete():
             del self.propertyStore[propertyName("xyzzy")]
 
-        self.assertRaises(KeyError, doDelete)
+        doDelete()
 
     def test_keyInPropertyName(self):
         store = self.propertyStore
