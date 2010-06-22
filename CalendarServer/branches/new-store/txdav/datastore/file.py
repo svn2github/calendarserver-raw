@@ -144,6 +144,9 @@ class DataStoreTransaction(LoggingMixIn):
         self._tracker = _CommitTracker()
 
 
+    def store(self):
+        return self._dataStore
+
     def addOperation(self, operation, name):
         self._operations.append(operation)
         self._tracker.info.append(name)

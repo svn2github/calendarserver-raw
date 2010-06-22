@@ -521,7 +521,7 @@ class CalendarObjectFile(CalDAVFile):
         objectName = self._newStoreObject.name()
         calendarName = self._newStoreObject._calendar.name()
         homeUID = self._newStoreObject._calendar._calendarHome.uid()
-        store = self._newStoreObject._transaction._dataStore
+        store = self._newStoreObject._transaction.store()
         txn = store.newTransaction()
         newObject = (txn.calendarHomeWithUID(homeUID)
                         .calendarWithName(calendarName)
@@ -1106,7 +1106,7 @@ class AddressBookObjectFile(CalDAVFile):
         objectName = self._newStoreObject.name()
         Name = self._newStoreObject._addressbook.name()
         homeUID = self._newStoreObject._addressbook._addressbookHome.uid()
-        store = self._newStoreObject._transaction._addressbookStore
+        store = self._newStoreObject._transaction.store()
         txn = store.newTransaction()
         newObject = (txn.HomeWithUID(homeUID)
                         .addressbookWithName(Name)
