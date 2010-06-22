@@ -107,13 +107,12 @@ class PropertyStore(AbstractPropertyStore):
     #
 
     def __delitem__(self, key):
-        """
-        We do not fail if the key does not current exist as per WebDAV PROPPATCH note above.
-        """
         validKey(key)
 
         if key in self.modified:
             del self.modified[key]
+        elif self._encodeKey(key) not in self.attrs:
+            raise KeyError(key)
 
         self.removed.add(key)
 

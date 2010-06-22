@@ -47,6 +47,8 @@ class PropertyStore(AbstractPropertyStore):
 
         if key in self.modified:
             del self.modified[key]
+        else:
+            raise KeyError(key)
 
     def __getitem__(self, key):
         validKey(key)
