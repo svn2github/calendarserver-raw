@@ -966,25 +966,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
                             ))
                         child.fp.changed()
                         break
-                else:
-                    #
-                    # NOTE: provisionDefaultCalendars() returns a deferred, which we are ignoring.
-                    # The result being that the default calendars will be present at some point
-                    # in the future, not necessarily right now, and we don't have a way to wait
-                    # on that to finish.
-                    #
-                    child.provisionDefaultCalendars()
-    
-                    #
-                    # Try to work around the above a little by telling the client that something
-                    # when wrong temporarily if the child isn't provisioned right away.
-                    #
-                    if not child.exists():
-                        raise HTTPError(StatusResponse(
-                            responsecode.SERVICE_UNAVAILABLE,
-                            "Provisioning calendar home."
-                        ))
-    
+
                 assert child.exists()
         
         else:

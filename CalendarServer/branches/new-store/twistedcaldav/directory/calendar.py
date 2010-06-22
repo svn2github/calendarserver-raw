@@ -281,54 +281,6 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
             assert isinstance(child, cls), "Child %r is not a %s: %r" % (name, cls.__name__, child)
             self.putChild(name, child)
 
-    def provisionDefaultCalendars(self):
-
-        # Disable notifications during provisioning
-        if hasattr(self, "clientNotifier"):
-            self.clientNotifier.disableNotify()
-
-        def setupFreeBusy(_):
-            # Default calendar is initially opaque to freebusy
-            child.writeDeadProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Opaque()))
-
-            # FIXME: Shouldn't have to call provision() on another resource
-            # We cheat here because while inbox will auto-provision itself when located,
-            # we need to write a dead property to it pre-emptively.
-            # This will go away once we remove the free-busy-set property on inbox.
-
-            # Set calendar-free-busy-set on inbox
-            inbox = self.getChild("inbox")
-            inbox.provision()
-            inbox.processFreeBusyCalendar(childURL, True)
-
-            # Default calendar is marked as the default for scheduling
-            inbox.writeDeadProperty(caldavxml.ScheduleDefaultCalendarURL(davxml.HRef(childURL)))
-
-            return self
-
-        try:
-            self.provision()
-
-            childName = "calendar"
-            childURL = joinURL(self.url(), childName)
-            child = self.provisionChild(childName)
-            assert isinstance(child, CalDAVResource), "Child %r is not a %s: %r" % (childName, CalDAVResource.__name__, child)
-
-            d = child.createCalendarCollection()
-            d.addCallback(setupFreeBusy)
-        except:
-            # We want to make sure to re-enable notifications, so do so
-            # if there is an immediate exception above, or via errback, below
-            if hasattr(self, "clientNotifier"):
-                self.clientNotifier.enableNotify(None)
-            raise
-
-        # Re-enable notifications
-        if hasattr(self, "clientNotifier"):
-            d.addCallback(self.clientNotifier.enableNotify)
-            d.addErrback(self.clientNotifier.enableNotify)
-
-        return d
 
     def provisionChild(self, name):
         raise NotImplementedError("Subclass must implement provisionChild()")

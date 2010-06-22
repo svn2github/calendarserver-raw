@@ -244,8 +244,6 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
             except StopIteration:
                 raise RuntimeError("No calendars at all.")
 
-            # That won't help...
-            # self.parent.provisionDefaultCalendars()
             defaultCalendarURL = joinURL(calendarHomeURL, aCalendar.name())
 
         self.writeDeadProperty(
