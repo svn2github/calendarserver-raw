@@ -672,6 +672,16 @@ class StoreCalendarObjectResource(object):
                 ))
             
             if do_implicit_action and self.allowImplicitSchedule:
+
+                # Cannot do implicit in sharee's shared calendar
+                isvirt = (yield self.destinationparent.isVirtualShare(self.request))
+                if isvirt:
+                    raise HTTPError(ErrorResponse(
+                        responsecode.FORBIDDEN,
+                        (calendarserver_namespace, "sharee-privilege-needed",),
+                        description="Sharee's cannot schedule"
+                    ))
+
                 new_calendar = (yield scheduler.doImplicitScheduling(self.schedule_tag_match))
                 if new_calendar:
                     if isinstance(new_calendar, int):
@@ -698,7 +708,12 @@ class StoreCalendarObjectResource(object):
             # and we should not change it. This is not ideal as we may duplicate it unnecessarily
             # but we currently have no api to let the caller tell us whether it cares about the
             # whether the calendar data is changed or not.
-            self.calendar = PerUserDataFilter(accessUID).merge(self.calendar.duplicate(), oldCal)
+            try:
+                self.calendar = PerUserDataFilter(accessUID).merge(self.calendar.duplicate(), oldCal)
+            except ValueError:
+                msg = "Invalid per-user data merge"
+                log.err(msg)
+                raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-data"), description=msg))
             self.calendardata = None
             
     @inlineCallbacks

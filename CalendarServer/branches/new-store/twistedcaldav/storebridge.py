@@ -204,8 +204,11 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
         home = self.parent._newStoreCalendarHome
         storage = home.calendarWithName("inbox")
         if storage is None:
-            # FIXME: spurious error, sanity check, should not be needed
-            raise RuntimeError("backend should be handling this for us")
+            # raise RuntimeError("backend should be handling this for us")
+            # FIXME: spurious error, sanity check, should not be needed;
+            # unfortunately, user09's calendar home does not have an inbox, so
+            # this is a temporary workaround.
+            home.createCalendarWithName("inbox")
             storage = home.calendarWithName("inbox")
         self._initializeWithCalendar(
             storage,
