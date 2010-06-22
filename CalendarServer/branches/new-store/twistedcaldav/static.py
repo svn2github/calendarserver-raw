@@ -1033,16 +1033,28 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         # TODO: when calendar home gets a resourceID( ) method, remove
         # the "id=record.uid" keyword from this call:
         self.clientNotifier = ClientNotifier(self, id=record.uid)
-        self._newStoreCalendarHome = (
-            transaction.calendarHomeWithUID(record.uid, create=True)
-        )
+        storeHome = transaction.calendarHomeWithUID(record.uid)
+        if storeHome is not None:
+            created = False
+        else:
+            storeHome = transaction.calendarHomeWithUID(
+                record.uid, create=True
+            )
+            created = True
+        self._newStoreCalendarHome = storeHome
         CalDAVFile.__init__(self, path)
         DirectoryCalendarHomeResource.__init__(self, parent, record)
-
         from twistedcaldav.storebridge import _NewStorePropertiesWrapper
         self._dead_properties = _NewStorePropertiesWrapper(
             self._newStoreCalendarHome.properties()
         )
+        if created:
+            # This is a bit of a hack.  Really we ought to be always generating
+            # this URL live from a back-end method that tells us what the
+            # default calendar is.
+            inbox = self.getChild("inbox")
+            childURL = joinURL(self.url(), "calendar")
+            inbox.processFreeBusyCalendar(childURL, True)
 
 
 
