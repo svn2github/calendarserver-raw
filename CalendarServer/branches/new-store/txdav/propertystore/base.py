@@ -103,7 +103,7 @@ class AbstractPropertyStore(LoggingMixIn):
     def __contains__(self, key):
         raise NotImplementedError()
 
-    def __setitem__(key, value):
+    def __setitem__(self, key, value):
         raise NotImplementedError()
 
     def __iter__(self):

@@ -25,11 +25,16 @@ from zope.interface.exceptions import (
 from txdav.idav import IPropertyStore
 from txdav.propertystore.base import PropertyName
 
+from txdav.common.icommondatastore import HomeChildNameAlreadyExistsError
+from txdav.common.icommondatastore import InvalidObjectResourceError
+from txdav.common.icommondatastore import NoSuchHomeChildError
+from txdav.common.icommondatastore import NoSuchObjectResourceError
+from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError
+
 from txcarddav.iaddressbookstore import (
     IAddressBookStore, IAddressBookStoreTransaction, IAddressBookObject, IAddressBookHome,
-    IAddressBook, InvalidAddressBookComponentError,
-    AddressBookObjectNameAlreadyExistsError, AddressBookAlreadyExistsError,
-    NoSuchAddressBookError, NoSuchAddressBookObjectError)
+    IAddressBook,
+)
 from twistedcaldav.vcard import Component as VComponent
 
 from twext.python.filepath import CachingFilePath as FilePath
@@ -346,7 +351,7 @@ class CommonTests(object):
         """
         for name in home1_addressbookNames:
             self.assertRaises(
-                AddressBookAlreadyExistsError,
+                HomeChildNameAlreadyExistsError,
                 self.homeUnderTest().createAddressBookWithName, name
             )
 
@@ -369,7 +374,7 @@ class CommonTests(object):
         Attempt to remove an non-existing addressbook should raise.
         """
         home = self.homeUnderTest()
-        self.assertRaises(NoSuchAddressBookError,
+        self.assertRaises(NoSuchHomeChildError,
                           home.removeAddressBookWithName, "xyzzy")
 
 
@@ -480,7 +485,7 @@ class CommonTests(object):
         """
         addressbook = self.addressbookUnderTest()
         self.assertRaises(
-            NoSuchAddressBookObjectError,
+            NoSuchObjectResourceError,
             addressbook.removeAddressBookObjectWithName, "xyzzy"
         )
 
@@ -600,7 +605,7 @@ class CommonTests(object):
         given name already exists in that addressbook.
         """
         self.assertRaises(
-            AddressBookObjectNameAlreadyExistsError,
+            ObjectResourceNameAlreadyExistsError,
             self.addressbookUnderTest().createAddressBookObjectWithName,
             "1.vcf", VComponent.fromString(vcard4_text)
         )
@@ -613,7 +618,7 @@ class CommonTests(object):
         text.
         """
         self.assertRaises(
-            InvalidAddressBookComponentError,
+            InvalidObjectResourceError,
             self.addressbookUnderTest().createAddressBookObjectWithName,
             "new", VComponent.fromString(vcard4notCardDAV_text)
         )
@@ -626,7 +631,7 @@ class CommonTests(object):
         """
         addressbookObject = self.addressbookObjectUnderTest()
         self.assertRaises(
-            InvalidAddressBookComponentError,
+            InvalidObjectResourceError,
             addressbookObject.setComponent,
             VComponent.fromString(vcard4notCardDAV_text)
         )
@@ -641,7 +646,7 @@ class CommonTests(object):
         component = VComponent.fromString(vcard4_text)
         addressbookObject = addressbook1.addressbookObjectWithName("1.vcf")
         self.assertRaises(
-            InvalidAddressBookComponentError,
+            InvalidObjectResourceError,
             addressbookObject.setComponent, component
         )
 

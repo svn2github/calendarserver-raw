@@ -34,6 +34,7 @@ from twext.web2.dav.stream import MD5StreamWrapper
 from twext.web2.dav.util import joinURL, parentForURL
 from twext.web2.http import HTTPError
 from twext.web2.http import StatusResponse
+from twext.web2.http_headers import MimeType, generateContentType
 from twext.web2.stream import MemoryStream
 
 from twistedcaldav.config import config
@@ -145,7 +146,6 @@ class StoreAddressObjectResource(object):
         self.indexdestination = indexdestination
         
         self.access = None
-        self.newrevision = None
 
     def fullValidation(self):
         """
@@ -343,9 +343,21 @@ class StoreAddressObjectResource(object):
     @inlineCallbacks
     def doStore(self):
         # Do put or copy based on whether source exists
-        if self.source is not None:
-            response = (yield self.destination.storeStream(MemoryStream(self.source.vCardText())))
-            self.source.copyDeadPropertiesTo(self.destination)
+        source = self.source
+        if source is not None:
+            # Retrieve information from the source, in case we have to delete
+            # it.
+            sourceProperties = dict(source.newStoreProperties().iteritems())
+            sourceText = source.vCardText()
+
+            # Delete the original source if needed (for example, if this is a
+            # same-calendar MOVE of a calendar object, implemented as an
+            # effective DELETE-then-PUT).
+            if self.deletesource:
+                yield self.doSourceDelete()
+
+            response = (yield self.destination.storeStream(MemoryStream(sourceText)))
+            self.destination.newStoreProperties().update(sourceProperties)
         else:
             response = (yield self.doStorePut())
     
@@ -368,16 +380,9 @@ class StoreAddressObjectResource(object):
 
     @inlineCallbacks
     def doSourceDelete(self):
-        # Delete index for original item
-        if self.sourceadbk:
-            self.newrevision = (yield self.sourceparent.bumpSyncToken())
-            self.source_index.deleteResource(self.source.fp.basename(), self.newrevision)
-            log.debug("Source index removed %s" % (self.source.fp.path,))
-
         # Delete the source resource
-        self.source.storeRemove()
+        yield self.source.storeRemove(self.request, self.source_uri)
         log.debug("Source removed %s" % (self.source.fp.path,))
-
         returnValue(None)
 
     @inlineCallbacks
@@ -403,46 +408,6 @@ class StoreAddressObjectResource(object):
 
         returnValue(None)
 
-    def doSourceIndexRecover(self):
-        """
-        Do source resource indexing. This only gets called when restoring
-        the source after its index has been deleted.
-        
-        @return: None if successful, ErrorResponse on failure
-        """
-        
-        # Add or update the index for this resource.
-        self.source_index.addResource(self.source.fp.basename(), self.vcard, self.newrevision)
-
-    def doDestinationIndex(self, vcardtoindex):
-        """
-        Do destination resource indexing, replacing any index previous stored.
-        
-        @return: None if successful, ErrorResponse on failure
-        """
-        
-        # Add or update the index for this resource.
-        try:
-            self.destination_index.addResource(self.destination.fp.basename(), vcardtoindex, self.newrevision)
-            log.debug("Destination indexed %s" % (self.destination.fp.path,))
-        except (ValueError, TypeError), ex:
-            msg = "Cannot index vcard resource: %s" % (ex,)
-            log.err(msg)
-            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "valid-address-data"), description=msg))
-
-        self.destination.writeDeadProperty(davxml.GETContentType.fromString("text/vcard"))
-        return None
-
-    def doRemoveDestinationIndex(self):
-        """
-        Remove any existing destination index.
-        """
-        
-        # Delete index for original item
-        if self.destinationadbk:
-            self.destination_index.deleteResource(self.destination.fp.basename(), None)
-            log.debug("Destination index removed %s" % (self.destination.fp.path,))
-
     @inlineCallbacks
     def run(self):
         """
@@ -461,7 +426,9 @@ class StoreAddressObjectResource(object):
             if self.destinationadbk:    
                 # Reserve UID
                 self.destination_index = self.destinationparent.index()
-                reservation = StoreAddressObjectResource.UIDReservation(self.destination_index, self.uid, self.destination_uri)
+                reservation = StoreAddressObjectResource.UIDReservation(
+                    self.destination_index, self.uid, self.destination_uri
+                )
                 if self.indexdestination:
                     yield reservation.reserve()
             
@@ -477,36 +444,19 @@ class StoreAddressObjectResource(object):
             # Get current quota state.
             yield self.checkQuota()
 
-            """
-            Handle actual store operations here.
-            
-            The order in which this is done is import:
-                
-                1. Do store operation for new data
-                2. Delete source and source index if needed
-                3. Do new indexing if needed
-                
-            Note that we need to remove the source index BEFORE doing the destination index to cover the
-            case of a resource being 'renamed', i.e. moved within the same collection. Since the index UID
-            column must be unique in SQL, we cannot add the new index before remove the old one.
-            """
-    
             # Do the actual put or copy
             response = (yield self.doStore())
             
-            # Delete the original source if needed.
-            if self.deletesource:
-                yield self.doSourceDelete()
-    
-            # Index the new resource if storing to a vcard.
+            # Remember the resource's content-type.
             if self.destinationadbk:
-                self.newrevision = (yield self.destinationparent.bumpSyncToken())
-                result = self.doDestinationIndex(self.vcard)
-                if result is not None:
-                    # FIXME: transaction needs to be rolled back; should we have
-                    # ErrorResponse detection in renderHTTP?  Hmm. -glyph
-                    returnValue(result)
-    
+                content_type = self.request.headers.getHeader("content-type")
+                if content_type is None:
+                    content_type = MimeType("text", "vcard",
+                                            params={"charset":"utf-8"})
+                self.destination.writeDeadProperty(
+                    davxml.GETContentType.fromString(generateContentType(content_type))
+                )
+
             # Delete the original source if needed.
             if self.deletesource:
                 yield self.doSourceQuotaCheck()

@@ -24,21 +24,6 @@ from txdav.idav import ITransaction
 
 
 __all__ = [
-    # Exceptions
-    "CalendarStoreError",
-    "NameNotAllowedError",
-    "CalendarNameNotAllowedError",
-    "CalendarObjectNameNotAllowedError",
-    "AlreadyExistsError",
-    "CalendarAlreadyExistsError",
-    "CalendarObjectNameAlreadyExistsError",
-    "CalendarObjectUIDAlreadyExistsError",
-    "NotFoundError",
-    "NoSuchCalendarError",
-    "NoSuchCalendarObjectError",
-    "InvalidCalendarComponentError",
-    "InternalDataStoreError",
-
     # Classes
     "ICalendarStore",
     "ICalendarHome",
@@ -56,76 +41,6 @@ __all__ = [
 
 # from txdav.idav import IPropertyStore
 # from txdav.idav import ITransaction
-
-#
-# Exceptions
-#
-
-class CalendarStoreError(RuntimeError):
-    """
-    Calendar store generic error.
-    """
-
-class NameNotAllowedError(CalendarStoreError):
-    """
-    Attempt to create an object with a name that is not allowed.
-    """
-
-class CalendarNameNotAllowedError(NameNotAllowedError):
-    """
-    Calendar name not allowed.
-    """
-
-class CalendarObjectNameNotAllowedError(NameNotAllowedError):
-    """
-    Calendar object name not allowed.
-    """
-
-class AlreadyExistsError(CalendarStoreError):
-    """
-    Attempt to create an object that already exists.
-    """
-
-class CalendarAlreadyExistsError(AlreadyExistsError):
-    """
-    Calendar already exists.
-    """
-
-class CalendarObjectNameAlreadyExistsError(AlreadyExistsError):
-    """
-    A calendar object with the requested name already exists.
-    """
-
-class CalendarObjectUIDAlreadyExistsError(AlreadyExistsError):
-    """
-    A calendar object with the requested UID already exists.
-    """
-
-class NotFoundError(CalendarStoreError):
-    """
-    Requested data not found.
-    """
-
-class NoSuchCalendarError(NotFoundError):
-    """
-    The requested calendar does not exist.
-    """
-
-class NoSuchCalendarObjectError(NotFoundError):
-    """
-    The requested calendar object does not exist.
-    """
-
-class InvalidCalendarComponentError(CalendarStoreError):
-    """
-    Invalid calendar component.
-    """
-
-class InternalDataStoreError(CalendarStoreError):
-    """
-    Uh, oh.
-    """
-
 
 #
 # Interfaces

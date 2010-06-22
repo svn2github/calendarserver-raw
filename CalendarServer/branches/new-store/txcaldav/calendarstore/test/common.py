@@ -25,11 +25,15 @@ from zope.interface.exceptions import (
 from txdav.idav import IPropertyStore
 from txdav.propertystore.base import PropertyName
 
+from txdav.common.icommondatastore import HomeChildNameAlreadyExistsError
+from txdav.common.icommondatastore import InvalidObjectResourceError
+from txdav.common.icommondatastore import NoSuchHomeChildError
+from txdav.common.icommondatastore import NoSuchObjectResourceError
+from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError
+
 from txcaldav.icalendarstore import (
     ICalendarStore, ICalendarStoreTransaction, ICalendarObject, ICalendarHome,
-    ICalendar, InvalidCalendarComponentError,
-    CalendarObjectNameAlreadyExistsError, CalendarAlreadyExistsError,
-    NoSuchCalendarError, NoSuchCalendarObjectError)
+    ICalendar)
 
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2.dav import davxml
@@ -385,7 +389,7 @@ class CommonTests(object):
         """
         for name in home1_calendarNames:
             self.assertRaises(
-                CalendarAlreadyExistsError,
+                HomeChildNameAlreadyExistsError,
                 self.homeUnderTest().createCalendarWithName, name
             )
 
@@ -408,7 +412,7 @@ class CommonTests(object):
         Attempt to remove an non-existing calendar should raise.
         """
         home = self.homeUnderTest()
-        self.assertRaises(NoSuchCalendarError,
+        self.assertRaises(NoSuchHomeChildError,
                           home.removeCalendarWithName, "xyzzy")
 
 
@@ -519,7 +523,7 @@ class CommonTests(object):
         """
         calendar = self.calendarUnderTest()
         self.assertRaises(
-            NoSuchCalendarObjectError,
+            NoSuchObjectResourceError,
             calendar.removeCalendarObjectWithName, "xyzzy"
         )
 
@@ -652,7 +656,7 @@ class CommonTests(object):
         given name already exists in that calendar.
         """
         self.assertRaises(
-            CalendarObjectNameAlreadyExistsError,
+            ObjectResourceNameAlreadyExistsError,
             self.calendarUnderTest().createCalendarObjectWithName,
             "1.ics", VComponent.fromString(event4_text)
         )
@@ -665,7 +669,7 @@ class CommonTests(object):
         text.
         """
         self.assertRaises(
-            InvalidCalendarComponentError,
+            InvalidObjectResourceError,
             self.calendarUnderTest().createCalendarObjectWithName,
             "new", VComponent.fromString(event4notCalDAV_text)
         )
@@ -678,7 +682,7 @@ class CommonTests(object):
         """
         calendarObject = self.calendarObjectUnderTest()
         self.assertRaises(
-            InvalidCalendarComponentError,
+            InvalidObjectResourceError,
             calendarObject.setComponent,
             VComponent.fromString(event4notCalDAV_text)
         )
@@ -693,7 +697,7 @@ class CommonTests(object):
         component = VComponent.fromString(event4_text)
         calendarObject = calendar1.calendarObjectWithName("1.ics")
         self.assertRaises(
-            InvalidCalendarComponentError,
+            InvalidObjectResourceError,
             calendarObject.setComponent, component
         )
 

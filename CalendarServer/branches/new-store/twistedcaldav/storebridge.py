@@ -26,25 +26,25 @@ from urlparse import urlsplit
 
 from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 
-from twext.python.filepath import CachingFilePath as FilePath
 from twext.python import vcomponent
+from twext.python.filepath import CachingFilePath as FilePath
+from twext.python.log import Logger
 
 from twext.web2.http_headers import ETag
 from twext.web2.dav.http import ErrorResponse, ResponseQueue
 from twext.web2.responsecode import (
     FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED,
     BAD_REQUEST)
-from twext.python.log import Logger
+from twext.web2.dav import davxml
 from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
 from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.static import CalDAVFile, ScheduleInboxFile
-
-from txdav.propertystore.base import PropertyName
-from txcaldav.icalendarstore import NoSuchCalendarObjectError
-from txcarddav.iaddressbookstore import NoSuchAddressBookObjectError
 from twistedcaldav.vcard import Component as VCard
+
+from txdav.common.icommondatastore import NoSuchObjectResourceError
+from txdav.propertystore.base import PropertyName
 
 from twistedcaldav.caldavxml import ScheduleTag, caldav_namespace
 from twistedcaldav.scheduling.implicit import ImplicitScheduler
@@ -238,6 +238,9 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         self._initializeWithCalendar(calendar, home)
 
 
+    def isCollection(self):
+        return True
+
     def isCalendarCollection(self):
         """
         Yes, it is a calendar collection.
@@ -245,10 +248,20 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         return True
 
 
+    @inlineCallbacks
     def http_DELETE(self, request):
         """
         Override http_DELETE to validate 'depth' header. 
         """
+
+        #
+        # Check authentication and access controls
+        #
+        parentURL = parentForURL(request.uri)
+        parent = (yield request.locateResource(parentURL))
+    
+        yield parent.authorize(request, (davxml.Unbind(),))
+
         depth = request.headers.getHeader("depth", "infinity")
         if depth != "infinity":
             msg = "illegal depth header for DELETE on collection: %s" % (
@@ -256,7 +269,8 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
             )
             log.err(msg)
             raise HTTPError(StatusResponse(BAD_REQUEST, msg))
-        return self.storeRemove(request, True, request.uri)
+        response = (yield self.storeRemove(request, True, request.uri))
+        returnValue(response)
 
 
     @inlineCallbacks
@@ -354,9 +368,6 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
 
         returnValue(response)
 
-
-    def isCollection(self):
-        return True
 
     def http_COPY(self, request):
         """
@@ -542,7 +553,7 @@ class CalendarObjectFile(CalDAVFile):
                     hashlib.new("md5", self.iCalendarText()).hexdigest(),
                     weak=False
                 )
-        except NoSuchCalendarObjectError:
+        except NoSuchObjectResourceError:
             # FIXME: a workaround for the fact that DELETE still rudely vanishes
             # the calendar object out from underneath the store, and doesn't
             # call storeRemove.
@@ -561,6 +572,24 @@ class CalendarObjectFile(CalDAVFile):
     def iCalendarText(self, ignored=None):
         assert ignored is None, "This is a calendar object, not a calendar"
         return self._newStoreObject.iCalendarText()
+
+
+    @inlineCallbacks
+    def http_DELETE(self, request):
+        """
+        Override http_DELETE to validate 'depth' header. 
+        """
+
+        #
+        # Check authentication and access controls
+        #
+        parentURL = parentForURL(request.uri)
+        parent = (yield request.locateResource(parentURL))
+    
+        yield parent.authorize(request, (davxml.Unbind(),))
+
+        response = (yield self.storeRemove(request, True, request.uri))
+        returnValue(response)
 
 
     @inlineCallbacks
@@ -626,8 +655,11 @@ class CalendarObjectFile(CalDAVFile):
         # resources as the iTIP operation may fail and may need to prevent the
         # delete from happening.
 
+        isinbox = self._newStoreObject._calendar.name() == "inbox"
+
         # Do If-Schedule-Tag-Match behavior first
-        self.validIfScheduleMatch(request)
+        if not isinbox:
+            self.validIfScheduleMatch(request)
 
         # Do quota checks before we start deleting things
         myquota = (yield self.quota(request))
@@ -638,7 +670,7 @@ class CalendarObjectFile(CalDAVFile):
 
         scheduler = None
         lock = None
-        if implicitly:
+        if not isinbox and implicitly:
             # Get data we need for implicit scheduling
             calendar = (yield self.iCalendarForUser(request))
             scheduler = ImplicitScheduler()
@@ -675,7 +707,7 @@ class CalendarObjectFile(CalDAVFile):
                 yield self.quotaSizeAdjust(request, -old_size)
 
             # Do scheduling
-            if implicitly:
+            if not isinbox and implicitly:
                 yield scheduler.doImplicitScheduling()
 
         except MemcacheLockTimeoutError:
@@ -831,6 +863,116 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
     def isCollection(self):
         return True
 
+    def isAddressBookCollection(self):
+        """
+        Yes, it is a calendar collection.
+        """
+        return True
+
+
+    @inlineCallbacks
+    def http_DELETE(self, request):
+        """
+        Override http_DELETE to validate 'depth' header. 
+        """
+
+        #
+        # Check authentication and access controls
+        #
+        parentURL = parentForURL(request.uri)
+        parent = (yield request.locateResource(parentURL))
+    
+        yield parent.authorize(request, (davxml.Unbind(),))
+
+        depth = request.headers.getHeader("depth", "infinity")
+        if depth != "infinity":
+            msg = "illegal depth header for DELETE on collection: %s" % (
+                depth,
+            )
+            log.err(msg)
+            raise HTTPError(StatusResponse(BAD_REQUEST, msg))
+        response = (yield self.storeRemove(request, request.uri))
+        returnValue(response)
+
+
+    @inlineCallbacks
+    def storeRemove(self, request, where):
+        """
+        Delete this addressbook collection resource, first deleting each contained
+        addressbook resource.
+
+        This has to emulate the behavior in fileop.delete in that any errors
+        need to be reported back in a multistatus response.
+
+        @param request: The request used to locate child resources.  Note that
+            this is the request which I{triggered} the C{DELETE}, but which may
+            not actually be a C{DELETE} request itself.
+
+        @type request: L{twext.web2.iweb.IRequest}
+
+        @param where: the URI at which the resource is being deleted.
+        @type where: C{str}
+
+        @return: an HTTP response suitable for sending to a client (or
+            including in a multi-status).
+
+         @rtype: something adaptable to L{twext.web2.iweb.IResponse}
+        """
+
+        # Check virtual share first
+        isVirtual = yield self.isVirtualShare(request)
+        if isVirtual:
+            log.debug("Removing shared calendar %s" % (self,))
+            yield self.removeVirtualShare(request)
+            returnValue(NO_CONTENT)
+
+        log.debug("Deleting addressbook %s" % (self,))
+
+        # 'deluri' is this resource's URI; I should be able to synthesize it
+        # from 'self'.
+
+        errors = ResponseQueue(where, "DELETE", NO_CONTENT)
+
+        for childname in self.listChildren():
+
+            childurl = joinURL(where, childname)
+
+            # FIXME: use a more specific API; we should know what this child
+            # resource is, and not have to look it up.  (Sharing information
+            # needs to move into the back-end first, though.)
+            child = (yield request.locateChildResource(self, childname))
+
+            try:
+                yield child.storeRemove(request, childurl)
+            except:
+                logDefaultException()
+                errors.add(childurl, BAD_REQUEST)
+
+        # Now do normal delete
+
+        # Handle sharing
+        wasShared = (yield self.isShared(request))
+        if wasShared:
+            yield self.downgradeFromShare(request)
+
+        # Actually delete it.
+        self._newStoreParentHome.removeAddressBookWithName(
+            self._newStoreAddressBook.name()
+        )
+        self.__class__ = ProtoAddressBookCollectionFile
+        del self._newStoreAddressBook
+
+        # FIXME: handle exceptions, possibly like this:
+
+        #        if isinstance(more_responses, MultiStatusResponse):
+        #            # Merge errors
+        #            errors.responses.update(more_responses.children)
+
+        response = errors.response()
+
+        returnValue(response)
+
+
     def http_COPY(self, request):
         """
         Copying of addressbook collections isn't allowed.
@@ -964,8 +1106,8 @@ class AddressBookObjectFile(CalDAVFile):
         # a public way to do this?  or maybe we should just have a real queue.
         objectName = self._newStoreObject.name()
         Name = self._newStoreObject._addressbook.name()
-        homeUID = self._newStoreObject._addressbook._Home.uid()
-        store = self._newStoreObject._transaction._Store
+        homeUID = self._newStoreObject._addressbook._addressbookHome.uid()
+        store = self._newStoreObject._transaction._addressbookStore
         txn = store.newTransaction()
         newObject = (txn.HomeWithUID(homeUID)
                         .addressbookWithName(Name)
@@ -999,7 +1141,7 @@ class AddressBookObjectFile(CalDAVFile):
                     hashlib.new("md5", self.vCardText()).hexdigest(),
                     weak=False
                 )
-        except NoSuchAddressBookObjectError:
+        except NoSuchObjectResourceError:
             # FIXME: a workaround for the fact that DELETE still rudely vanishes
             # the addressbook object out from underneath the store, and doesn't
             # call storeRemove.
@@ -1021,6 +1163,24 @@ class AddressBookObjectFile(CalDAVFile):
 
 
     @inlineCallbacks
+    def http_DELETE(self, request):
+        """
+        Override http_DELETE to validate 'depth' header. 
+        """
+
+        #
+        # Check authentication and access controls
+        #
+        parentURL = parentForURL(request.uri)
+        parent = (yield request.locateResource(parentURL))
+    
+        yield parent.authorize(request, (davxml.Unbind(),))
+
+        response = (yield self.storeRemove(request, request.uri))
+        returnValue(response)
+
+
+    @inlineCallbacks
     def storeStream(self, stream):
         # FIXME: direct tests
         component = VCard.fromString(
@@ -1030,16 +1190,40 @@ class AddressBookObjectFile(CalDAVFile):
         returnValue(NO_CONTENT)
 
 
-    def storeRemove(self):
+    @inlineCallbacks
+    def storeRemove(self, request, where):
         """
         Remove this addressbook object.
         """
-        # FIXME: public attribute please
-        self._newStoreObject._addressbook.removeAddressBookObjectWithName(self._newStoreObject.name())
-        # FIXME: clean this up with a 'transform' method
-        self._newStoreParentAddressBook = self._newStoreObject._addressbook
-        del self._newStoreObject
-        self.__class__ = ProtoAddressBookObjectFile
+        # Do quota checks before we start deleting things
+        myquota = (yield self.quota(request))
+        if myquota is not None:
+            old_size = (yield self.quotaSize(request))
+        else:
+            old_size = 0
+
+        try:
+
+            storeAddressBook = self._newStoreObject._addressbook
+
+            # Do delete
+
+            # FIXME: public attribute please
+            storeAddressBook.removeAddressBookObjectWithName(self._newStoreObject.name())
+
+            # FIXME: clean this up with a 'transform' method
+            self._newStoreParentAddressBook = storeAddressBook
+            del self._newStoreObject
+            self.__class__ = ProtoAddressBookObjectFile
+
+            # Adjust quota
+            if myquota is not None:
+                yield self.quotaSizeAdjust(request, -old_size)
+
+        except MemcacheLockTimeoutError:
+            raise HTTPError(StatusResponse(CONFLICT, "Resource: %s currently in use on the server." % (where,)))
+
+        returnValue(NO_CONTENT)
 
 
     def _initializeWithObject(self, Object):

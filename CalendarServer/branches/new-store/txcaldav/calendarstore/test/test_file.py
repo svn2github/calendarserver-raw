@@ -23,11 +23,11 @@ from twisted.trial import unittest
 
 from twext.python.vcomponent import VComponent
 
-from txcaldav.icalendarstore import CalendarNameNotAllowedError
-from txcaldav.icalendarstore import CalendarObjectNameNotAllowedError
-from txcaldav.icalendarstore import CalendarObjectUIDAlreadyExistsError
-from txcaldav.icalendarstore import NoSuchCalendarError
-from txcaldav.icalendarstore import NoSuchCalendarObjectError
+from txdav.common.icommondatastore import HomeChildNameNotAllowedError
+from txdav.common.icommondatastore import ObjectResourceNameNotAllowedError
+from txdav.common.icommondatastore import ObjectResourceUIDAlreadyExistsError
+from txdav.common.icommondatastore import NoSuchHomeChildError
+from txdav.common.icommondatastore import NoSuchObjectResourceError
 
 from txcaldav.calendarstore.file import CalendarStore, CalendarHome
 from txcaldav.calendarstore.file import Calendar, CalendarObject
@@ -134,7 +134,7 @@ class CalendarHomeTest(unittest.TestCase):
         implementation, so no calendar names may start with ".".
         """
         self.assertRaises(
-            CalendarNameNotAllowedError,
+            HomeChildNameNotAllowedError,
             self.home1.createCalendarWithName, ".foo"
         )
 
@@ -147,7 +147,7 @@ class CalendarHomeTest(unittest.TestCase):
         name = ".foo"
         self.home1._path.child(name).createDirectory()
         self.assertRaises(
-            NoSuchCalendarError,
+            NoSuchHomeChildError,
             self.home1.removeCalendarWithName, name
         )
 
@@ -231,7 +231,7 @@ class CalendarTest(unittest.TestCase):
         ".".
         """
         self.assertRaises(
-            CalendarObjectNameNotAllowedError,
+            ObjectResourceNameNotAllowedError,
             self.calendar1.createCalendarObjectWithName,
             ".foo", VComponent.fromString(event4_text)
         )
@@ -247,7 +247,7 @@ class CalendarTest(unittest.TestCase):
         assert self.calendar1.calendarObjectWithName(name) is None
         component = VComponent.fromString(event1modified_text)
         self.assertRaises(
-            CalendarObjectUIDAlreadyExistsError,
+            ObjectResourceUIDAlreadyExistsError,
             self.calendar1.createCalendarObjectWithName,
             name, component
         )
@@ -273,7 +273,7 @@ class CalendarTest(unittest.TestCase):
         name = ".foo"
         self.calendar1._path.child(name).touch()
         self.assertRaises(
-            NoSuchCalendarObjectError,
+            NoSuchObjectResourceError,
             self.calendar1.removeCalendarObjectWithName, name
         )
 
@@ -312,14 +312,13 @@ class CalendarTest(unittest.TestCase):
         """
         Commit the current transaction, but add an operation that will cause it
         to fail at the end.  Finally, refresh all attributes with a new
-        transaction so that further oparations can be performed in a valid
+        transaction so that further operations can be performed in a valid
         context.
         """
         def fail():
             raise RuntimeError("oops")
         self.txn.addOperation(fail, "dummy failing operation")
         self.assertRaises(RuntimeError, self.txn.commit)
-        self.assertEquals(len(self.flushLoggedErrors(RuntimeError)), 1)
         self._refresh()
 
 
@@ -366,7 +365,7 @@ class CalendarTest(unittest.TestCase):
         Attempt to remove an non-existing calendar object should raise.
         """
         self.assertRaises(
-            NoSuchCalendarObjectError,
+            NoSuchObjectResourceError,
             self.calendar1.removeCalendarObjectWithUID, "xyzzy"
         )
 

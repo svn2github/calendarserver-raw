@@ -23,11 +23,11 @@ from twisted.trial import unittest
 
 from twistedcaldav.vcard import Component as VComponent
 
-from txcarddav.iaddressbookstore import AddressBookNameNotAllowedError
-from txcarddav.iaddressbookstore import AddressBookObjectNameNotAllowedError
-from txcarddav.iaddressbookstore import AddressBookObjectUIDAlreadyExistsError
-from txcarddav.iaddressbookstore import NoSuchAddressBookError
-from txcarddav.iaddressbookstore import NoSuchAddressBookObjectError
+from txdav.common.icommondatastore import HomeChildNameNotAllowedError
+from txdav.common.icommondatastore import ObjectResourceNameNotAllowedError
+from txdav.common.icommondatastore import ObjectResourceUIDAlreadyExistsError
+from txdav.common.icommondatastore import NoSuchHomeChildError
+from txdav.common.icommondatastore import NoSuchObjectResourceError
 
 from txcarddav.addressbookstore.file import AddressBookStore, AddressBookHome
 from txcarddav.addressbookstore.file import AddressBook, AddressBookObject
@@ -134,7 +134,7 @@ class AddressBookHomeTest(unittest.TestCase):
         implementation, so no addressbook names may start with ".".
         """
         self.assertRaises(
-            AddressBookNameNotAllowedError,
+            HomeChildNameNotAllowedError,
             self.home1.createAddressBookWithName, ".foo"
         )
 
@@ -147,7 +147,7 @@ class AddressBookHomeTest(unittest.TestCase):
         name = ".foo"
         self.home1._path.child(name).createDirectory()
         self.assertRaises(
-            NoSuchAddressBookError,
+            NoSuchHomeChildError,
             self.home1.removeAddressBookWithName, name
         )
 
@@ -231,7 +231,7 @@ class AddressBookTest(unittest.TestCase):
         ".".
         """
         self.assertRaises(
-            AddressBookObjectNameNotAllowedError,
+            ObjectResourceNameNotAllowedError,
             self.addressbook1.createAddressBookObjectWithName,
             ".foo", VComponent.fromString(vcard4_text)
         )
@@ -247,7 +247,7 @@ class AddressBookTest(unittest.TestCase):
         assert self.addressbook1.addressbookObjectWithName(name) is None
         component = VComponent.fromString(vcard1modified_text)
         self.assertRaises(
-            AddressBookObjectUIDAlreadyExistsError,
+            ObjectResourceUIDAlreadyExistsError,
             self.addressbook1.createAddressBookObjectWithName,
             name, component
         )
@@ -273,7 +273,7 @@ class AddressBookTest(unittest.TestCase):
         name = ".foo"
         self.addressbook1._path.child(name).touch()
         self.assertRaises(
-            NoSuchAddressBookObjectError,
+            NoSuchObjectResourceError,
             self.addressbook1.removeAddressBookObjectWithName, name
         )
 
@@ -319,7 +319,6 @@ class AddressBookTest(unittest.TestCase):
             raise RuntimeError("oops")
         self.txn.addOperation(fail, "dummy failing operation")
         self.assertRaises(RuntimeError, self.txn.commit)
-        self.assertEquals(len(self.flushLoggedErrors(RuntimeError)), 1)
         self._refresh()
 
 
@@ -366,7 +365,7 @@ class AddressBookTest(unittest.TestCase):
         Attempt to remove an non-existing addressbook object should raise.
         """
         self.assertRaises(
-            NoSuchAddressBookObjectError,
+            NoSuchObjectResourceError,
             self.addressbook1.removeAddressBookObjectWithUID, "xyzzy"
         )
 

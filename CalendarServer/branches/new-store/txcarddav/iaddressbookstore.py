@@ -25,97 +25,12 @@ from zope.interface import Interface
 from txdav.idav import ITransaction
 
 __all__ = [
-    # Exceptions
-    "AddressBookStoreError",
-    "NameNotAllowedError",
-    "AddressBookNameNotAllowedError",
-    "AddressBookObjectNameNotAllowedError",
-    "AlreadyExistsError",
-    "AddressBookAlreadyExistsError",
-    "AddressBookObjectNameAlreadyExistsError",
-    "AddressBookObjectUIDAlreadyExistsError",
-    "NotFoundError",
-    "NoSuchAddressBookError",
-    "NoSuchAddressBookObjectError",
-    "InvalidAddressBookComponentError",
-    "InternalDataStoreError",
-
     # Classes
     "IAddressBookStore",
     "IAddressBookHome",
     "IAddressBook",
     "IAddressBookObject",
 ]
-
-#
-# Exceptions
-#
-
-class AddressBookStoreError(RuntimeError):
-    """
-    AddressBook store generic error.
-    """
-
-class NameNotAllowedError(AddressBookStoreError):
-    """
-    Attempt to create an object with a name that is not allowed.
-    """
-
-class AddressBookNameNotAllowedError(NameNotAllowedError):
-    """
-    AddressBook name not allowed.
-    """
-
-class AddressBookObjectNameNotAllowedError(NameNotAllowedError):
-    """
-    AddressBook object name not allowed.
-    """
-
-class AlreadyExistsError(AddressBookStoreError):
-    """
-    Attempt to create an object that already exists.
-    """
-
-class AddressBookAlreadyExistsError(AlreadyExistsError):
-    """
-    AddressBook already exists.
-    """
-
-class AddressBookObjectNameAlreadyExistsError(AlreadyExistsError):
-    """
-    A addressbook object with the requested name already exists.
-    """
-
-class AddressBookObjectUIDAlreadyExistsError(AlreadyExistsError):
-    """
-    A addressbook object with the requested UID already exists.
-    """
-
-class NotFoundError(AddressBookStoreError):
-    """
-    Requested data not found.
-    """
-
-class NoSuchAddressBookError(NotFoundError):
-    """
-    The requested addressbook does not exist.
-    """
-
-class NoSuchAddressBookObjectError(NotFoundError):
-    """
-    The requested addressbook object does not exist.
-    """
-
-class InvalidAddressBookComponentError(AddressBookStoreError):
-    """
-    Invalid addressbook component.
-    """
-
-class InternalDataStoreError(AddressBookStoreError):
-    """
-    Uh, oh.
-    """
-
 
 #
 # Interfaces
