@@ -448,8 +448,7 @@ class ProtoCalendarCollectionFile(CalDAVFile):
         """
         Create a calendar collection.
         """
-        # FIXME: this should be done in the backend; provisionDefaultCalendars
-        # should go away.
+        # FIXME: there should be no need for this.
         return self.createCalendarCollection()
 
 
@@ -522,7 +521,7 @@ class CalendarObjectFile(CalDAVFile):
         objectName = self._newStoreObject.name()
         calendarName = self._newStoreObject._calendar.name()
         homeUID = self._newStoreObject._calendar._calendarHome.uid()
-        store = self._newStoreObject._transaction._calendarStore
+        store = self._newStoreObject._transaction._dataStore
         txn = store.newTransaction()
         newObject = (txn.calendarHomeWithUID(homeUID)
                         .calendarWithName(calendarName)
