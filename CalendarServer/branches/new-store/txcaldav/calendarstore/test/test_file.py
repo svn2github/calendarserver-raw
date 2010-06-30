@@ -52,11 +52,12 @@ def setUpCalendarStore(test):
     test.root = FilePath(test.mktemp())
     test.root.createDirectory()
 
-    calendarPath = test.calendarPath = test.root.child("store")
+    storeRootPath = test.storeRootPath = test.root.child("store")
+    calendarPath = storeRootPath.child("calendars").child("__uids__")
+    calendarPath.parent().makedirs()
     storePath.copyTo(calendarPath)
 
-
-    test.calendarStore = CalendarStore(calendarPath)
+    test.calendarStore = CalendarStore(storeRootPath)
     test.txn = test.calendarStore.newTransaction()
     assert test.calendarStore is not None, "No calendar store?"
 
@@ -426,7 +427,7 @@ class CalendarObjectTest(unittest.TestCase):
 
 
 
-class FileStorageTests(unittest.TestCase, CommonTests):
+class FileStorageTests(CommonTests, unittest.TestCase):
     """
     File storage tests.
     """
@@ -445,7 +446,7 @@ class FileStorageTests(unittest.TestCase, CommonTests):
         constructor argument.
         """
         self.assertEquals(self.storeUnderTest()._path,
-                          self.calendarPath)
+                          self.storeRootPath)
 
 
     def test_calendarObjectsWithDotFile(self):
