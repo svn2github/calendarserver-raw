@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twisted.internet.defer import Deferred, inlineCallbacks
+from twisted.internet.protocol import Protocol
 """
 Tests for common calendar store API functions.
 """
@@ -34,7 +36,7 @@ from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError
 
 from txcaldav.icalendarstore import (
     ICalendarObject, ICalendarHome,
-    ICalendar)
+    ICalendar, IAttachment)
 
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2.dav import davxml
@@ -202,6 +204,11 @@ class CommonTests(object):
         """
         self.lastTransaction.abort()
         self.lastTransaction = None
+
+
+    def tearDown(self):
+        if self.lastTransaction is not None:
+            self.commit()
 
 
     def homeUnderTest(self):
@@ -720,7 +727,7 @@ class CommonTests(object):
         self.assertProvides(ICalendarHome, calendarHome)
         # A concurrent transaction shouldn't be able to read it yet:
         self.assertIdentical(readOtherTxn(), None)
-        txn.commit()
+        self.commit()
         # But once it's committed, other transactions should see it.
         self.assertProvides(ICalendarHome, readOtherTxn())
 
@@ -799,7 +806,7 @@ class CommonTests(object):
         propertyContent = WebDAVUnknownElement("sample content")
         propertyContent.name = propertyName.name
         propertyContent.namespace = propertyName.namespace
-        
+
         self.calendarObjectUnderTest().properties()[
             propertyName] = propertyContent
         self.commit()
@@ -826,5 +833,146 @@ class CommonTests(object):
             self.calendarObjectUnderTest().properties()[propertyName],
             propertyContent
         )
+
+
+    eventWithDropbox = "\r\n".join("""
+BEGIN:VCALENDAR
+CALSCALE:GREGORIAN
+PRODID:-//Example Inc.//Example Calendar//EN
+VERSION:2.0
+BEGIN:VTIMEZONE
+LAST-MODIFIED:20040110T032845Z
+TZID:US/Eastern
+BEGIN:DAYLIGHT
+DTSTART:20000404T020000
+RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=4
+TZNAME:EDT
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+END:DAYLIGHT
+BEGIN:STANDARD
+DTSTART:20001026T020000
+RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10
+TZNAME:EST
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+DTSTAMP:20051222T205953Z
+CREATED:20060101T150000Z
+DTSTART;TZID=US/Eastern:20060101T100000
+DURATION:PT1H
+SUMMARY:event 1
+UID:event1@ninevah.local
+ORGANIZER:user01
+ATTENDEE;PARTSTAT=ACCEPTED:user01
+ATTACH;VALUE=URI:/calendars/users/home1/some-dropbox-id/some-dropbox-id/caldavd.plist
+X-APPLE-DROPBOX:/calendars/users/home1/dropbox/some-dropbox-id
+END:VEVENT
+END:VCALENDAR
+    """.strip().split("\n"))
+
+    def test_dropboxID(self):
+        """
+        L{ICalendarObject.dropboxID} should synthesize its dropbox from the X
+        -APPLE-DROPBOX property.
+        """
+        cal = self.calendarUnderTest()
+        cal.createCalendarObjectWithName("drop.ics", VComponent.fromString(
+                self.eventWithDropbox
+            )
+        )
+        obj = cal.calendarObjectWithName("drop.ics")
+        self.assertEquals(obj.dropboxID(), "some-dropbox-id")
+
+
+    def test_indexByDropboxProperty(self):
+        """
+        L{ICalendarHome.calendarObjectWithDropboxID} will return a calendar
+        object in the calendar home with the given final segment in its C{X
+        -APPLE-DROPBOX} property URI.
+        """
+        objName = "with-dropbox.ics"
+        cal = self.calendarUnderTest()
+        cal.createCalendarObjectWithName(
+            objName, VComponent.fromString(
+                self.eventWithDropbox
+            )
+        )
+        self.commit()
+        home = self.homeUnderTest()
+        cal = self.calendarUnderTest()
+        fromName = cal.calendarObjectWithName(objName)
+        fromDropbox = home.calendarObjectWithDropboxID("some-dropbox-id")
+        self.assertEquals(fromName, fromDropbox)
+
+
+    @inlineCallbacks
+    def createAttachmentTest(self, refresh):
+        """
+        Common logic for attachment-creation tests.
+        """
+        obj = self.calendarObjectUnderTest()
+        t = obj.createAttachmentWithName("new.attachment", "text/x-fixture")
+        t.write("new attachment")
+        t.write(" text")
+        t.loseConnection()
+        obj = refresh(obj)
+        class CaptureProtocol(Protocol):
+            buf = ''
+            def dataReceived(self, data):
+                self.buf += data
+            def connectionLost(self, reason):
+                self.deferred.callback(self.buf)
+        capture = CaptureProtocol()
+        capture.deferred = Deferred()
+        attachment = obj.attachmentWithName("new.attachment")
+        self.assertProvides(IAttachment, attachment)
+        attachment.retrieve(capture)
+        data = yield capture.deferred
+        self.assertEquals(data, "new attachment text")
+        self.assertEquals(attachment.contentType(), "text/x-fixture")
+        self.assertEquals(attachment.md5(), '50a9f27aeed9247a0833f30a631f1858')
+        self.assertEquals(
+            [attachment.name() for attachment in obj.attachments()],
+            ['new.attachment']
+        )
+
+
+    def test_createAttachment(self):
+        """
+        L{ICalendarObject.createAttachmentWithName} will store an
+        L{IAttachment} object that can be retrieved by
+        L{ICalendarObject.attachmentWithName}.
+        """
+        return self.createAttachmentTest(lambda x: x)
+
+
+    def test_createAttachmentCommit(self):
+        """
+        L{ICalendarObject.createAttachmentWithName} will store an
+        L{IAttachment} object that can be retrieved by
+        L{ICalendarObject.attachmentWithName} in subsequent transactions.
+        """
+        def refresh(obj):
+            self.commit()
+            return self.calendarObjectUnderTest()
+        return self.createAttachmentTest(refresh)
+
+
+    def test_noDropboxCalendar(self):
+        """
+        L{ICalendarObject.createAttachmentWithName} may create a directory
+        named 'dropbox', but this should not be seen as a calendar by
+        L{ICalendarHome.calendarWithName}.
+        """
+        obj = self.calendarObjectUnderTest()
+        t = obj.createAttachmentWithName("new.attachment", "text/plain")
+        t.write("new attachment text")
+        t.loseConnection()
+        self.commit()
+        self.assertEquals(self.homeUnderTest().calendarWithName("dropbox"),
+                          None)
 
 

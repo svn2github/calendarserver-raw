@@ -27,22 +27,32 @@ __all__ = [
     "CalendarObject",
 ]
 
+import hashlib
+
 from errno import ENOENT
+
+from twisted.internet.interfaces import ITransport
+from twisted.python.failure import Failure
+from txdav.propertystore.xattr import PropertyStore
 
 from twext.python.vcomponent import InvalidICalendarDataError
 from twext.python.vcomponent import VComponent
-from twext.web2.dav.element.rfc2518 import ResourceType
+# from twext.web2.dav.resource import TwistedGETContentMD5
+from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
+
 
 from twistedcaldav.caldavxml import ScheduleCalendarTransp, Opaque
 from twistedcaldav.index import Index as OldIndex, IndexSchedule as OldInboxIndex
 from twistedcaldav.sharing import InvitesDatabase
 
+from txcaldav.icalendarstore import IAttachment
 from txcaldav.icalendarstore import ICalendar, ICalendarObject
 from txcaldav.icalendarstore import ICalendarHome
 
-from txdav.common.datastore.file import CommonDataStore, CommonStoreTransaction,\
+
+from txdav.common.datastore.file import CommonDataStore, CommonStoreTransaction, \
     CommonHome, CommonHomeChild, CommonObjectResource
-from txdav.common.icommondatastore import InvalidObjectResourceError,\
+from txdav.common.icommondatastore import InvalidObjectResourceError, \
     NoSuchObjectResourceError, InternalDataStoreError
 from txdav.datastore.file import writeOperation, hidden
 from txdav.propertystore.base import PropertyName
@@ -61,10 +71,29 @@ class CalendarHome(CommonHome):
 
         self._childClass = Calendar
 
-    calendars = CommonHome.children
-    calendarWithName = CommonHome.childWithName
+
+    def calendarWithName(self, name):
+        if name == 'dropbox':
+            # "dropbox" is a file storage area, not a calendar.
+            return None
+        else:
+            return self.childWithName(name)
+
+
     createCalendarWithName = CommonHome.createChildWithName
     removeCalendarWithName = CommonHome.removeChildWithName
+    calendars = CommonHome.children
+
+
+    def calendarObjectWithDropboxID(self, dropboxID):
+        """
+        Implement lookup with brute-force scanning.
+        """
+        for calendar in self.calendars():
+            for calendarObject in calendar.calendarObjects():
+                if dropboxID == calendarObject.dropboxID():
+                    return calendarObject
+
 
     @property
     def _calendarStore(self):
@@ -145,6 +174,7 @@ class CalendarObject(CommonObjectResource):
 
     def __init__(self, name, calendar):
         super(CalendarObject, self).__init__(name, calendar)
+        self._attachments = {}
 
     @property
     def _calendar(self):
@@ -266,6 +296,140 @@ class CalendarObject(CommonObjectResource):
 
     def organizer(self):
         return self.component().getOrganizer()
+
+
+    def createAttachmentWithName(self, name, contentType):
+        """
+        
+        """
+        # Make a (temp, remember rollbacks) file in dropbox-land
+        attachment = Attachment(self, name)
+        self._attachments[name] = attachment
+        return attachment.store(contentType)
+
+
+    def attachmentWithName(self, name):
+        """
+        
+        """
+        # Attachments can be local or remote, but right now we only care about
+        # local.  So we're going to base this on the listing of files in the
+        # dropbox and not on the calendar data.  However, we COULD examine the
+        # 'attach' properties.
+
+        if name in self._attachments:
+            return self._attachments[name]
+        return Attachment(self, name)
+        # But, ahem.
+
+
+    def dropboxID(self):
+        """
+        
+        """
+        component = self.component()
+        for subcomp in component.subcomponents():
+            dropboxProperty = subcomp.getProperty("X-APPLE-DROPBOX")
+            if dropboxProperty is not None:
+                componentDropboxID = dropboxProperty.value().split("/")[-1]
+                return componentDropboxID
+        # FIXME: direct tests
+        return self.uid() + ".dropbox"
+
+
+    def _dropboxPath(self):
+        dropboxPath = self._parentCollection._home._path.child(
+            "dropbox"
+        ).child(self.dropboxID())
+        if not dropboxPath.isdir():
+            dropboxPath.makedirs()
+        return dropboxPath
+
+
+    def attachments(self):
+        # See comment on attachmentWithName.
+        return [Attachment(self, name)
+                for name in self._dropboxPath().listdir()]
+
+
+
+class AttachmentStorageTransport(object):
+
+    implements(ITransport)
+
+    def __init__(self, attachment):
+        """
+        
+        @param attachment:
+        @type attachment:
+        """
+        self._attachment = attachment
+        self._file = self._attachment._computePath().open("w")
+
+
+    def write(self, data):
+        # FIXME: multiple chunks
+        self._file.write(data)
+
+
+    def loseConnection(self):
+        # FIXME: do anything
+        self._file.close()
+        # TwistedGETContentMD5.fromString(md5)
+
+
+contentTypeKey = PropertyName.fromString(GETContentType.sname())
+# md5key = PropertyName.fromString(TwistedGETContentMD5.sname())
+
+class Attachment(object):
+    """
+    
+    """
+
+    implements(IAttachment)
+
+    def __init__(self, calendarObject, name):
+        self._calendarObject = calendarObject
+        self._name = name
+
+
+    def name(self):
+        return self._name
+
+
+    def _properties(self):
+        # Not exposed 
+        return PropertyStore(self._computePath())
+
+
+    def contentType(self):
+        return self._properties()[contentTypeKey].children[0]
+
+
+    def store(self, contentType):
+        ast = AttachmentStorageTransport(self)
+        props = self._properties()
+        props[contentTypeKey] = GETContentType(contentType)
+        props.flush()
+        return ast
+
+
+    def retrieve(self, protocol):
+        # FIXME: makeConnection
+        # FIXME: actually stream
+        protocol.dataReceived(self._computePath().getContent())
+        # FIXME: ConnectionDone
+        protocol.connectionLost(Failure(NotImplementedError()))
+
+
+    def md5(self):
+        return hashlib.md5(self._computePath().getContent()).hexdigest()
+
+
+    def _computePath(self):
+        dropboxPath = self._calendarObject._dropboxPath()
+        return dropboxPath.child(self.name())
+
 
 
 class CalendarStubResource(object):
