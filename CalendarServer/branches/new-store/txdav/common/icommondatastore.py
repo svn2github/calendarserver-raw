@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-from zope.interface.interface import Interface
 
 """
 Common store interfaces
 """
+
+from zope.interface.interface import Interface
 
 __all__ = [
     # Exceptions
@@ -113,10 +114,14 @@ class ICommonDataStore(Interface):
     """
     Data store
     """
+
     def newTransaction():
         """
         Create a new transaction.
+        
+        @rtype: L{ICommonStoreTransaction}
         """
+
 
 class ICommonStoreTransaction(Interface):
     """
@@ -125,33 +130,45 @@ class ICommonStoreTransaction(Interface):
 
     def calendarHomeWithUID(uid, create=False):
         """
-        Retrieve the addressbook home for the principal with the given C{uid}.
+        Retrieve the calendar home for the principal with the given C{uid}.
 
-        If C{create} is C{True}, create the addressbook home if it doesn't already
-        exist.
+        If C{create} is C{True}, create the calendar home if it doesn't
+        already exist.
 
-        @return: an L{IAddressBookHome} or C{None} if no such addressbook
+        @return: an L{ICalendarHome} or C{None} if no such calendar
             home exists.
         """
+
 
     def addressbookHomeWithUID(uid, create=False):
         """
         Retrieve the addressbook home for the principal with the given C{uid}.
 
-        If C{create} is C{True}, create the addressbook home if it doesn't already
-        exist.
+        If C{create} is C{True}, create the addressbook home if it doesn't
+        already exist.
 
         @return: an L{IAddressBookHome} or C{None} if no such addressbook
             home exists.
         """
 
+
     def notificationsWithUID(uid):
         """
-        Retrieve the notification collection for the principal with the given C{uid}.
+        Retrieve the notification collection for the principal with the given
+        C{uid}.
 
-        @return: an L{INotificationCollection} or C{None} if no such notification
-            collection exists.
+        @return: an L{INotificationCollection} or C{None} if no such
+            notification collection exists.
         """
 
 
+    def commit():
+        """
+        Persist all of the effects which have occurred in this transaction.
+        """
 
+
+    def abort():
+        """
+        Reverse all of the effects which have occurred in this transaction.
+        """
