@@ -61,7 +61,7 @@ class CommonDataStore(DataStore):
     """
     implements(ICommonDataStore)
 
-    def __init__(self, path, enableCalendars, enableAddressBooks):
+    def __init__(self, path, enableCalendars=True, enableAddressBooks=True):
         """
         Create a store.
 
