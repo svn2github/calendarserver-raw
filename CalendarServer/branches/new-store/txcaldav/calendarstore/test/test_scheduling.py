@@ -37,7 +37,7 @@ END:VEVENT
 END:VCALENDAR
 """
 
-class ImplicitStoreTests(TestCase, CommonTests):
+class ImplicitStoreTests(CommonTests, TestCase):
     """
     Tests for L{ImplicitSchedulingStore}.
     """
