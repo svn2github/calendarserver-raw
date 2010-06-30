@@ -46,13 +46,12 @@ __all__ = [
 
 class ICalendarHome(Interface):
     """
-    Calendar home
-
-    A calendar home belongs to a specific principal and contains the
-    calendars which that principal has direct access to.  This
-    includes both calendars owned by the principal as well as
-    calendars that have been shared with and accepts by the principal.
+    An L{ICalendarHome} is a collection of calendars which belongs to a
+    specific principal and contains the calendars which that principal has
+    direct access to.  This includes both calendars owned by the principal as
+    well as calendars that have been shared with and accepts by the principal.
     """
+
     def uid():
         """
         Retrieve the unique identifier for this calendar home.
@@ -60,11 +59,11 @@ class ICalendarHome(Interface):
         @return: a string.
         """
 
-    def created(self):
+    def created():
         """
         Calendar home was created. Do initialization
         """
-        
+
     def calendars():
         """
         Retrieve calendars contained in this calendar home.
@@ -81,6 +80,23 @@ class ICalendarHome(Interface):
         @return: an L{ICalendar} or C{None} if no such calendar
             exists.
         """
+
+
+    def calendarObjectWithDropboxID(dropboxID):
+        """
+        Retrieve an L{ICalendarObject} by looking up its attachment collection
+        ID.
+
+        @param dropboxID: The name of the collection in a dropbox corresponding
+            to a collection in the user's dropbox.
+
+        @type dropboxID: C{str}
+
+        @return: the calendar object identified by the given dropbox.
+
+        @rtype: L{ICalendarObject}
+        """
+
 
     def createCalendarWithName(name):
         """
@@ -310,3 +326,108 @@ class ICalendarObject(Interface):
 
         @return: an L{IPropertyStore}.
         """
+
+
+    def dropboxID():
+        """
+        An identifier, unique to the calendar home, that specifies a location
+        where attachments are to be stored for this object.
+
+        @return: the value of the last segment of the C{X-APPLE-DROPBOX}
+            property.
+
+        @rtype: C{string}
+        """
+
+
+    def createAttachmentWithName(name, contentType):
+        """
+        Add an attachment to this calendar object.
+
+        @param name: An identifier, unique to this L{ICalendarObject}, which
+            names the attachment for future retrieval.
+
+        @type name: C{str}
+
+        @param contentType: a slash-separated content type.
+
+        @type contentType: C{str}
+
+        @return: the same type as L{IAttachment.store} returns.
+        """
+
+
+    def attachmentWithName(name):
+        """
+        Retrieve an attachment from this calendar object.
+
+        @param name: An identifier, unique to this L{ICalendarObject}, which
+            names the attachment for future retrieval.
+
+        @type name: C{str}
+        """
+        # FIXME: MIME-type?
+
+
+    def attachments():
+        """
+        List all attachments on this calendar object.
+
+        @return: an iterable of L{IAttachment}s
+        """
+
+
+
+class IAttachment(Interface):
+    """
+    Information associated with an attachment to a calendar object.
+    """
+
+    def name():
+        """
+        A short name, unique to this attachment's L{ICalendarObject}.
+        """
+
+
+    def contentType():
+        """
+        A slash-separated content type of the body of this attachment.
+        """
+
+
+    def md5():
+        """
+        The MD5 hash of this attachment's contents.
+        """
+        # Needed to compute the etag, and possibly the 'getcontentmd5'
+        # property.  Possibly need this on other stuff too; it shouldn't really
+        # be exposed in the interface as a dead property.
+
+
+    def store(contentType):
+        """
+        @param contentType: The content type of the data which will be stored.
+
+        @return: An L{ITransport}/L{IConsumer} provider that will store the
+            bytes passed to its 'write' method.
+
+            The caller of C{store} must call C{loseConnection} on its result to
+            indicate that the attachment upload was successfully completed.  If
+            the transaction associated with this upload is committed or aborted
+            before C{loseConnection} is called, the upload will be presumed to
+            have failed, and no attachment data will be stored.
+        """
+        # If you do a big write()/loseConnection(), how do you tell when the
+        # data has actually been written?  you don't: commit() ought to return
+        # a deferred anyway, and any un-flushed attachment data needs to be
+        # dealt with by that too.
+
+
+    def retrieve(protocol):
+        """
+        @param protocol: A protocol which will receive the contents of the
+            attachment to its C{dataReceived} method, and then a notification
+            that the stream is complete to its C{connectionLost} method.
+        """
+
+
