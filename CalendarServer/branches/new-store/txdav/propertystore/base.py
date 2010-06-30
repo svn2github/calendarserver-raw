@@ -90,6 +90,16 @@ class AbstractPropertyStore(LoggingMixIn):
     """
     implements(IPropertyStore)
 
+    def __init__(self, peruser):
+        """
+        Instantiate the property store for a user.
+
+        @param peruser: the user uid
+        @type peruser: C{str}
+        """
+        
+        self._peruser = peruser
+
     #
     # Subclasses must override these
     #

@@ -111,9 +111,6 @@ from twistedcaldav.notify import ClientNotifier, getNodeCacher
 from twistedcaldav.notifications import NotificationCollectionResource,\
     NotificationResource
 
-from txcaldav.calendarstore.file import CalendarStore
-from txcarddav.addressbookstore.file import AddressBookStore
-
 log = Logger()
 
 class ReadOnlyResourceMixIn(object):
@@ -849,7 +846,7 @@ class CalendarHomeProvisioningFile(AutoProvisioningFileMixIn,
     Resource which provisions calendar home collections as needed.
     """
 
-    def __init__(self, path, directory, url):
+    def __init__(self, path, directory, url, store):
         """
         Initialize this L{CalendarHomeProvisioningFile}.
 
@@ -865,8 +862,7 @@ class CalendarHomeProvisioningFile(AutoProvisioningFileMixIn,
         """
         DAVFile.__init__(self, path)
         DirectoryCalendarHomeProvisioningResource.__init__(self, directory, url)
-        storagePath = self.fp.child(uidsResourceName)
-        self._newStore = CalendarStore(storagePath)
+        self._newStore = store
 
 
     def provisionChild(self, name):
@@ -1040,6 +1036,14 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
             inbox.processFreeBusyCalendar(childURL, True)
 
 
+    def sharesDB(self):
+        """
+        Retrieve the new-style shares DB wrapper.
+        """
+        if not hasattr(self, "_sharesDB"):
+            self._sharesDB = self._newStoreCalendarHome.retrieveOldShares()
+        return self._sharesDB
+
 
     def exists(self):
         # FIXME: tests
@@ -1052,11 +1056,9 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
 
 
     def provision(self):
-        return
-        result = super(CalendarHomeFile, self).provision()
-        if config.Sharing.Enabled and config.Sharing.Calendars.Enabled:
+        if config.Sharing.Enabled and config.Sharing.Calendars.Enabled and self.fp.exists():
             self.provisionShares()
-        return result
+        return
 
     def provisionChild(self, name):
         if config.EnableDropBox:
@@ -1074,6 +1076,10 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         else:
             NotificationCollectionFileClass = None
 
+        # For storebridge stuff we special case this
+        if name == "notification":
+            return self.createNotificationsFile(self.fp.child(name).path)
+
         from twistedcaldav.storebridge import StoreScheduleInboxFile
         cls = {
             "inbox"        : StoreScheduleInboxFile,
@@ -1089,6 +1095,21 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
                 label="collection")
             return child
         return self.createSimilarFile(self.fp.child(name).path)
+
+    def createNotificationsFile(self, path):
+        
+        txn = self._newStoreCalendarHome._transaction
+        notifications = txn.notificationsWithUID(self._newStoreCalendarHome.uid())
+
+        from twistedcaldav.storebridge import StoreNotificationCollectionFile
+        similar = StoreNotificationCollectionFile(
+            notifications, self._newStoreCalendarHome,
+            path, self,
+        )
+        self.propagateTransaction(similar)
+        similar.clientNotifier = self.clientNotifier.clone(similar,
+            label="collection")
+        return similar
 
     def createSimilarFile(self, path):
 
@@ -1446,7 +1467,7 @@ class TimezoneServiceFile (ReadOnlyResourceMixIn, TimezoneServiceResource, CalDA
     def checkPrivileges(self, request, privileges, recurse=False, principal=None, inherited_aces=None):
         return succeed(None)
 
-class NotificationCollectionFile(ReadOnlyResourceMixIn, AutoProvisioningFileMixIn, NotificationCollectionResource, CalDAVFile):
+class NotificationCollectionFile(ReadOnlyResourceMixIn, NotificationCollectionResource, CalDAVFile):
     """
     Notification collection resource.
     """
@@ -1512,7 +1533,7 @@ class AddressBookHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryAddre
     """
     Resource which provisions address book home collections as needed.
     """
-    def __init__(self, path, directory, url):
+    def __init__(self, path, directory, url, store):
         """
         @param path: the path to the file which will back the resource.
         @param directory: an L{IDirectoryService} to provision address books from.
@@ -1520,8 +1541,7 @@ class AddressBookHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryAddre
         """
         DAVFile.__init__(self, path)
         DirectoryAddressBookHomeProvisioningResource.__init__(self, directory, url)
-        storagePath = self.fp.child(uidsResourceName)
-        self._newStore = AddressBookStore(storagePath)
+        self._newStore = store
 
 
     def provisionChild(self, name):
@@ -1677,6 +1697,15 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
         )
 
 
+    def sharesDB(self):
+        """
+        Retrieve the new-style shares DB wrapper.
+        """
+        if not hasattr(self, "_sharesDB"):
+            self._sharesDB = self._newStoreAddressBookHome.retrieveOldShares()
+        return self._sharesDB
+
+
     def exists(self):
         # FIXME: tests
         return True
@@ -1688,12 +1717,9 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
 
 
     def provision(self):
-        return
-        result = super(AddressBookHomeFile, self).provision()
         if config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled:
             self.provisionShares()
         self.provisionLinks()
-        return result
 
     def provisionLinks(self):
         

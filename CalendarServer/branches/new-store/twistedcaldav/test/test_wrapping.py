@@ -20,16 +20,19 @@ Tests for the interaction between model-level and protocol-level logic.
 
 from twisted.internet.defer import inlineCallbacks, returnValue
 
-from twistedcaldav.directory.calendar import uidsResourceName
 from twistedcaldav.ical import Component as VComponent
+from twistedcaldav.vcard import Component as VCComponent
 
-from twistedcaldav.storebridge import ProtoCalendarCollectionFile
+from twistedcaldav.storebridge import ProtoCalendarCollectionFile,\
+    ProtoAddressBookCollectionFile
 
 from twistedcaldav.test.util import TestCase
 
 from txcaldav.calendarstore.file import CalendarStore, CalendarHome
 from txcaldav.calendarstore.test.test_file import event4_text
 
+from txcarddav.addressbookstore.file import AddressBookStore, AddressBookHome
+from txcarddav.addressbookstore.test.test_file import vcard4_text
 
 
 class WrappingTests(TestCase):
@@ -78,6 +81,33 @@ class WrappingTests(TestCase):
         txn.commit()
 
 
+    def populateOneAddressBookObject(self, objectName, objectText):
+        """
+        Populate one addressbook object in the test user's addressbook.
+
+        @param objectName: The name of a addressbook object.
+        @type objectName: str
+        @param objectText: Some iVcard text to populate it with.
+        @type objectText: str 
+        """
+        record = self.directoryService.recordWithShortName("users", "wsanchez")
+        uid = record.uid
+        # XXX there should be a more test-friendly way to ensure the directory
+        # actually exists
+        try:
+            self.addressbookCollection._newStore._path.createDirectory()
+        except:
+            pass
+        txn = self.addressbookCollection._newStore.newTransaction()
+        home = txn.addressbookHomeWithUID(uid, True)
+        adbk = home.addressbookWithName("addressbook")
+        if adbk is None:
+            home.createAddressBookWithName("addressbook")
+            adbk = home.addressbookWithName("addressbook")
+        adbk.createAddressBookObjectWithName(objectName, VCComponent.fromString(objectText))
+        txn.commit()
+
+
     @inlineCallbacks
     def getResource(self, path):
         """
@@ -111,7 +141,7 @@ class WrappingTests(TestCase):
         """
         self.assertIsInstance(self.calendarCollection._newStore, CalendarStore)
         self.assertEquals(self.calendarCollection._newStore._path,
-                          self.calendarCollection.fp.child(uidsResourceName))
+                          self.site.resource.fp)
 
 
     @inlineCallbacks
@@ -202,4 +232,87 @@ class WrappingTests(TestCase):
         )
         self.commit()
         self.assertEquals(calDavFileCalendar._principalCollections,
+                          frozenset([self.principalsResource]))
+
+    def test_createAddressBookStore(self):
+        """
+        Creating a AddressBookHomeProvisioningFile will create a paired
+        AddressBookStore.
+        """
+        self.assertIsInstance(self.addressbookCollection._newStore, AddressBookStore)
+        self.assertEquals(self.addressbookCollection._newStore._path,
+                          self.site.resource.fp)
+
+
+    @inlineCallbacks
+    def test_lookupAddressBookHome(self):
+        """
+        When a L{CalDAVFile} representing an existing addressbook home is looked up
+        in a AddressBookHomeFile, it will create a corresponding L{AddressBookHome}
+        via C{newTransaction().addressbookHomeWithUID}.
+        """
+        calDavFile = yield self.getResource("addressbooks/users/wsanchez/")
+        self.commit()
+        self.assertEquals(calDavFile.fp, calDavFile._newStoreAddressBookHome._path)
+        self.assertIsInstance(calDavFile._newStoreAddressBookHome, AddressBookHome)
+
+
+    @inlineCallbacks
+    def test_lookupExistingAddressBook(self):
+        """
+        When a L{CalDAVFile} representing an existing addressbook collection is
+        looked up in a L{AddressBookHomeFile} representing a addressbook home, it will
+        create a corresponding L{AddressBook} via C{AddressBookHome.addressbookWithName}.
+        """
+        calDavFile = yield self.getResource("addressbooks/users/wsanchez/addressbook")
+        self.commit()
+        self.assertEquals(calDavFile.fp, calDavFile._newStoreAddressBook._path)
+
+
+    @inlineCallbacks
+    def test_lookupNewAddressBook(self):
+        """
+        When a L{CalDAVFile} which represents a not-yet-created addressbook
+        collection is looked up in a L{AddressBookHomeFile} representing a addressbook
+        home, it will initially have a new storage backend set to C{None}, but
+        when the addressbook is created via a protocol action, the backend will be
+        initialized to match.
+        """
+        calDavFile = yield self.getResource("addressbooks/users/wsanchez/frobozz")
+        self.assertIsInstance(calDavFile, ProtoAddressBookCollectionFile)
+        calDavFile.createAddressBookCollection()
+        self.commit()
+        self.assertEquals(calDavFile.fp, calDavFile._newStoreAddressBook._path)
+
+
+    @inlineCallbacks
+    def test_lookupAddressBookObject(self):
+        """
+        When a L{CalDAVFile} representing an existing addressbook object is looked
+        up on a L{CalDAVFile} representing a addressbook collection, a parallel
+        L{AddressBookObject} will be created (with a matching FilePath).
+        """
+        self.populateOneAddressBookObject("1.vcf", vcard4_text)
+        calDavFileAddressBook = yield self.getResource(
+            "addressbooks/users/wsanchez/addressbook/1.vcf"
+        )
+        self.commit()
+        self.assertEquals(calDavFileAddressBook._newStoreObject._path, 
+                          calDavFileAddressBook.fp)
+        self.assertEquals(calDavFileAddressBook._principalCollections,
+                          frozenset([self.principalsResource]))
+
+
+    @inlineCallbacks
+    def test_lookupNewAddressBookObject(self):
+        """
+        When a L{CalDAVFile} representing a new addressbook object on a
+        L{CalDAVFile} representing an existing addressbook collection, the list of
+        principal collections will be propagated down to it.
+        """
+        calDavFileAddressBook = yield self.getResource(
+            "addressbooks/users/wsanchez/addressbook/xyzzy.ics"
+        )
+        self.commit()
+        self.assertEquals(calDavFileAddressBook._principalCollections,
                           frozenset([self.principalsResource]))

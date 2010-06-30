@@ -73,6 +73,7 @@ from twistedcaldav.notify import getNodeCacher, NodeCreationException
 from twistedcaldav.sharing import SharedCollectionMixin
 from twistedcaldav.vcard import Component as vComponent
 
+from txdav.common.icommondatastore import InternalDataStoreError
 
 ##
 # Sharing Conts
@@ -995,7 +996,11 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
         an infinite loop.  A subclass must override one of both of these
         methods.
         """
-        calendar_data = self.iCalendarText(name)
+        
+        try:
+            calendar_data = self.iCalendarText(name)
+        except InternalDataStoreError:
+            return None
 
         if calendar_data is None: return None
 
@@ -1087,7 +1092,10 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
         an infinite loop.  A subclass must override one of both of these
         methods.
         """
-        vcard_data = self.vCardText(name)
+        try:
+            vcard_data = self.vCardText(name)
+        except InternalDataStoreError:
+            return None
 
         if vcard_data is None: return None
 

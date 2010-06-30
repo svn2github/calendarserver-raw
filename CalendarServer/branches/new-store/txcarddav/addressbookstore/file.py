@@ -21,6 +21,7 @@ File addressbook store.
 
 __all__ = [
     "AddressBookStore",
+    "AddressBookStoreTransaction",
     "AddressBookHome",
     "AddressBook",
     "AddressBookObject",
@@ -30,74 +31,32 @@ from errno import ENOENT
 
 from twext.web2.dav.element.rfc2518 import ResourceType
 
+from twistedcaldav.sharing import InvitesDatabase
 from twistedcaldav.vcard import Component as VComponent, InvalidVCardDataError
 from twistedcaldav.vcardindex import AddressBookIndex as OldIndex
 
 from txcarddav.iaddressbookstore import IAddressBook, IAddressBookObject
-from txcarddav.iaddressbookstore import IAddressBookStore, IAddressBookHome
-from txcarddav.iaddressbookstore import IAddressBookStoreTransaction
+from txcarddav.iaddressbookstore import IAddressBookHome
 
 from txdav.common.datastore.file import CommonDataStore, CommonHome,\
-    CommonStoreTransaction, CommonHomeChild, CommonObjectResource
+    CommonStoreTransaction, CommonHomeChild, CommonObjectResource,\
+    CommonStubResource
 from txdav.common.icommondatastore import InvalidObjectResourceError,\
     NoSuchObjectResourceError, InternalDataStoreError
 from txdav.datastore.file import hidden, writeOperation
 
 from zope.interface import implements
 
-class AddressBookStore(CommonDataStore):
-    """
-    An implementation of L{IAddressBookObject} backed by a
-    L{twext.python.filepath.CachingFilePath}.
+AddressBookStore = CommonDataStore
 
-    @ivar _path: A L{CachingFilePath} referencing a directory on disk that
-        stores all addressbook data for a group of uids.
-    """
-    implements(IAddressBookStore)
-
-    def __init__(self, path):
-        """
-        Create an addressbook store.
-
-        @param path: a L{FilePath} pointing at a directory on disk.
-        """
-        super(AddressBookStore, self).__init__(path)
-        self._transactionClass = AddressBookStoreTransaction
-
-
-class AddressBookStoreTransaction(CommonStoreTransaction):
-    """
-    In-memory implementation of
-
-    Note that this provides basic 'undo' support, but not truly transactional
-    operations.
-    """
-
-    implements(IAddressBookStoreTransaction)
-
-    def __init__(self, addressbookStore):
-        """
-        Initialize a transaction; do not call this directly, instead call
-        L{AddressBookStore.newTransaction}.
-
-        @param addressbookStore: The store that created this transaction.
-
-        @type addressbookStore: L{AddressBookStore}
-        """
-        super(AddressBookStoreTransaction, self).__init__(addressbookStore)
-        self._homeClass = AddressBookHome
-
-
-    addressbookHomeWithUID = CommonStoreTransaction.homeWithUID
-
-    def creatingHome(self, home):
-        home.createAddressBookWithName("addressbook")
+AddressBookStoreTransaction = CommonStoreTransaction
 
 class AddressBookHome(CommonHome):
+
     implements(IAddressBookHome)
 
-    def __init__(self, path, addressbookStore, transaction):
-        super(AddressBookHome, self).__init__(path, addressbookStore, transaction)
+    def __init__(self, uid, path, addressbookStore, transaction):
+        super(AddressBookHome, self).__init__(uid, path, addressbookStore, transaction)
 
         self._childClass = AddressBook
 
@@ -110,7 +69,8 @@ class AddressBookHome(CommonHome):
     def _addressbookStore(self):
         return self._dataStore
 
-
+    def created(self):
+        self.createAddressBookWithName("addressbook")
 
 class AddressBook(CommonHomeChild):
     """
@@ -137,6 +97,7 @@ class AddressBook(CommonHomeChild):
         super(AddressBook, self).__init__(name, addressbookHome, realName)
 
         self._index = Index(self)
+        self._invites = Invites(self)
         self._objectResourceClass = AddressBookObject
 
     @property
@@ -146,7 +107,6 @@ class AddressBook(CommonHomeChild):
     def resourceType(self):
         return ResourceType.addressbook
 
-    addressbooks = CommonHome.children
     ownerAddressBookHome = CommonHomeChild.ownerHome
     addressbookObjects = CommonHomeChild.objectResources
     addressbookObjectWithName = CommonHomeChild.objectResourceWithName
@@ -285,49 +245,37 @@ class AddressBookObject(CommonObjectResource):
         return self._uid
 
 
+class AddressBookStubResource(CommonStubResource):
+    """
+    Just enough resource to keep the addressbook's sql DB classes going.
+    """
+
+    def isAddressBookCollection(self):
+        return True
+
+    def getChild(self, name):
+        addressbookObject = self.resource.addressbookObjectWithName(name)
+        if addressbookObject:
+            class ChildResource(object):
+                def __init__(self, addressbookObject):
+                    self.addressbookObject = addressbookObject
+
+                def iAddressBook(self):
+                    return self.addressbookObject.component()
+
+            return ChildResource(addressbookObject)
+        else:
+            return None
+
+
 class Index(object):
     #
     # OK, here's where we get ugly.
     # The index code needs to be rewritten also, but in the meantime...
     #
-    class StubResource(object):
-        """
-        Just enough resource to keep the Index class going.
-        """
-        def __init__(self, addressbook):
-            self.addressbook = addressbook
-            self.fp = self.addressbook._path
-
-        def isAddressBookCollection(self):
-            return True
-
-        def getChild(self, name):
-            addressbookObject = self.addressbook.addressbookObjectWithName(name)
-            if addressbookObject:
-                class ChildResource(object):
-                    def __init__(self, addressbookObject):
-                        self.addressbookObject = addressbookObject
-
-                    def iAddressBook(self):
-                        return self.addressbookObject.component()
-
-                return ChildResource(addressbookObject)
-            else:
-                return None
-
-        def bumpSyncToken(self, reset=False):
-            # FIXME: needs direct tests
-            return self.addressbook._updateSyncToken(reset)
-
-
-        def initSyncToken(self):
-            # FIXME: needs direct tests
-            self.bumpSyncToken(True)
-
-
     def __init__(self, addressbook):
         self.addressbook = addressbook
-        stubResource = Index.StubResource(addressbook)
+        stubResource = AddressBookStubResource(addressbook)
         self._oldIndex = OldIndex(stubResource)
 
 
@@ -341,3 +289,14 @@ class Index(object):
             addressbookObject._componentType = componentType
 
             yield addressbookObject
+
+
+class Invites(object):
+    #
+    # OK, here's where we get ugly.
+    # The index code needs to be rewritten also, but in the meantime...
+    #
+    def __init__(self, addressbook):
+        self.addressbook = addressbook
+        stubResource = AddressBookStubResource(addressbook)
+        self._oldInvites = InvitesDatabase(stubResource)

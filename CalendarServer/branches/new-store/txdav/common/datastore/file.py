@@ -18,7 +18,7 @@
 from errno import EEXIST, ENOENT
 
 from twext.python.log import LoggingMixIn
-from twext.web2.dav.element.rfc2518 import ResourceType
+from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
 
 from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation,\
     hidden, isValidName, cached
@@ -27,20 +27,60 @@ from txdav.propertystore.xattr import PropertyStore
 from txdav.common.icommondatastore import HomeChildNameNotAllowedError,\
     HomeChildNameAlreadyExistsError, NoSuchHomeChildError,\
     InternalDataStoreError, ObjectResourceNameNotAllowedError,\
-    ObjectResourceNameAlreadyExistsError, NoSuchObjectResourceError
+    ObjectResourceNameAlreadyExistsError, NoSuchObjectResourceError,\
+    ICommonDataStore, ICommonStoreTransaction
 from twisted.python.util import FancyEqMixin
-from twistedcaldav.customxml import GETCTag
+from twistedcaldav.customxml import GETCTag, NotificationType
 from uuid import uuid4
+from zope.interface.declarations import implements
+from txdav.common.inotifications import INotificationCollection,\
+    INotificationObject
+from twistedcaldav.notifications import NotificationRecord
+from twistedcaldav.notifications import NotificationsDatabase as OldNotificationIndex
+from twext.web2.http_headers import generateContentType, MimeType
+from twistedcaldav.sharing import SharedCollectionsDatabase
 
 """
 Common utility functions for a file based datastore.
 """
 
+ECALENDARTYPE     = 0
+EADDRESSBOOKTYPE  = 1
+TOPPATHS = (
+    "calendars",
+    "addressbooks"
+)
+UIDPATH = "__uids__"
+
 class CommonDataStore(DataStore):
     """
-    Generic data store.
+    An implementation of data store.
+
+    @ivar _path: A L{CachingFilePath} referencing a directory on disk that
+        stores all addressbook data for a group of uids.
     """
-    pass
+    implements(ICommonDataStore)
+
+    def __init__(self, path, enableCalendars, enableAddressBooks):
+        """
+        Create a store.
+
+        @param path: a L{FilePath} pointing at a directory on disk.
+        """
+        assert enableCalendars or enableAddressBooks
+
+        super(CommonDataStore, self).__init__(path)
+        self.enableCalendars = enableCalendars
+        self.enableAddressBooks = enableAddressBooks
+        self._transactionClass = CommonStoreTransaction
+
+    def newTransaction(self):
+        """
+        Create a new transaction.
+
+        @see Transaction
+        """
+        return self._transactionClass(self, self.enableCalendars, self.enableAddressBooks)
 
 class CommonStoreTransaction(DataStoreTransaction):
     """
@@ -50,9 +90,11 @@ class CommonStoreTransaction(DataStoreTransaction):
     operations.
     """
 
-    _homeClass = None
+    implements(ICommonStoreTransaction)
 
-    def __init__(self, dataStore):
+    _homeClass = {}
+
+    def __init__(self, dataStore, enableCalendars, enableAddressBooks):
         """
         Initialize a transaction; do not call this directly, instead call
         L{DataStore.newTransaction}.
@@ -61,22 +103,47 @@ class CommonStoreTransaction(DataStoreTransaction):
 
         @type dataStore: L{DataStore}
         """
+        
+        assert enableCalendars or enableAddressBooks
+
         super(CommonStoreTransaction, self).__init__(dataStore)
         self._homes = {}
+        self._homes[ECALENDARTYPE] = {}
+        self._homes[EADDRESSBOOKTYPE] = {}
+        self._notifications = {}
+        
+        if enableCalendars:
+            self._notificationHomeType = ECALENDARTYPE
+        else:
+            self._notificationHomeType = EADDRESSBOOKTYPE
 
+        from txcaldav.calendarstore.file import CalendarHome
+        from txcarddav.addressbookstore.file import AddressBookHome
+        CommonStoreTransaction._homeClass[ECALENDARTYPE] = CalendarHome
+        CommonStoreTransaction._homeClass[EADDRESSBOOKTYPE] = AddressBookHome
 
-    def homeWithUID(self, uid, create=False):
-        if (uid, self) in self._homes:
-            return self._homes[(uid, self)]
+    def calendarHomeWithUID(self, uid, create=False):
+        return self.homeWithUID(ECALENDARTYPE, uid, create)
+
+    def addressbookHomeWithUID(self, uid, create=False):
+        return self.homeWithUID(EADDRESSBOOKTYPE, uid, create)
+
+    def homeWithUID(self, storeType, uid, create=False):
+        if (uid, self) in self._homes[storeType]:
+            return self._homes[storeType][(uid, self)]
 
         if uid.startswith("."):
             return None
 
         assert len(uid) >= 4
 
-        childPath1 = self._dataStore._path.child(uid[0:2])
-        childPath2 = childPath1.child(uid[2:4])
-        childPath3 = childPath2.child(uid)
+        childPathSegments = []
+        childPathSegments.append(self._dataStore._path.child(TOPPATHS[storeType]))
+        childPathSegments.append(childPathSegments[-1].child(UIDPATH))
+        childPathSegments.append(childPathSegments[-1].child(uid[0:2]))
+        childPathSegments.append(childPathSegments[-1].child(uid[2:4]))
+        childPath = childPathSegments[-1].child(uid)
+
         def createDirectory(path):
             try:
                 path.createDirectory()
@@ -88,49 +155,110 @@ class CommonStoreTransaction(DataStoreTransaction):
 
         creating = False
         if create:
-            if not childPath2.isdir():
-                if not childPath1.isdir():
-                    createDirectory(childPath1)
-                createDirectory(childPath2)
-            if childPath3.isdir():
-                homePath = childPath3
+            # Create intermediate directories
+            for child in childPathSegments:
+                if not child.isdir():
+                    createDirectory(child)
+                
+            if childPath.isdir():
+                homePath = childPath
             else:
                 creating = True
-                homePath = childPath3.temporarySibling()
+                homePath = childPath.temporarySibling()
                 createDirectory(homePath)
                 def do():
                     def lastly():
-                        homePath.moveTo(childPath3)
+                        homePath.moveTo(childPath)
                         # home._path = homePath
                         # do this _after_ all other file operations
-                        home._path = childPath3
+                        home._path = childPath
                         return lambda : None
                     self.addOperation(lastly, "create home finalize")
                     return lambda : None
                 self.addOperation(do, "create home UID %r" % (uid,))
 
-        elif not childPath3.isdir():
+        elif not childPath.isdir():
             return None
         else:
-            homePath = childPath3
+            homePath = childPath
 
-        home = self._homeClass(homePath, self._dataStore, self)
-        self._homes[(uid, self)] = home
+        home = self._homeClass[storeType](uid, homePath, self._dataStore, self)
+        self._homes[storeType][(uid, self)] = home
         if creating:
-            self.creatingHome(home)
+            home.created()
+            
+            # Create notification collection
+            if storeType == ECALENDARTYPE:
+                self.notificationsWithUID(uid)
         return home
 
-    def creatingHome(self, home):
-        raise NotImplementedError
+    def notificationsWithUID(self, uid):
+
+        if (uid, self) in self._notifications:
+            return self._notifications[(uid, self)]
+        
+        home = self.homeWithUID(self._notificationHomeType, uid, create=True)
+        notificationPath = home._path.child("notification")
+        if not notificationPath.isdir():
+            notificationPath = self.createNotifcationCollection(home, notificationPath)
+        
+        notifications = NotificationCollection(notificationPath.basename(), home)
+        self._notifications[(uid, self)] = notifications
+        return notifications
+
+    def createNotifcationCollection(self, home, notificationPath):
+
+        if notificationPath.isdir():
+            return notificationPath
+
+        name = notificationPath.basename()
+
+        temporary = hidden(notificationPath.temporarySibling())
+        temporary.createDirectory()
+        # In order for the index to work (which is doing real file ops on disk
+        # via SQLite) we need to create a real directory _immediately_.
+
+        # FIXME: some way to roll this back.
+
+        c = NotificationCollection(temporary.basename(), home)
+        def do():
+            try:
+                props = c.properties()
+                temporary.moveTo(notificationPath)
+                c._name = name
+                # FIXME: _lots_ of duplication of work here.
+                props.path = notificationPath
+                props.flush()
+            except (IOError, OSError), e:
+                if e.errno == EEXIST and notificationPath.isdir():
+                    raise HomeChildNameAlreadyExistsError(name)
+                raise
+            # FIXME: direct tests, undo for index creation
+            # Return undo
+            return lambda: notificationPath.remove()
+
+        self.addOperation(do, "create child %r" % (name,))
+        props = c.properties()
+        props[PropertyName(*ResourceType.qname())] = c.resourceType()
+        return temporary
+
+class StubResource(object):
+    """
+    Just enough resource to keep the shared sql DB classes going.
+    """
+    def __init__(self, stubit):
+        self.fp = stubit._path
 
 class CommonHome(LoggingMixIn):
 
     _childClass = None
 
-    def __init__(self, path, dataStore, transaction):
+    def __init__(self, uid, path, dataStore, transaction):
         self._dataStore = dataStore
+        self._uid = uid
         self._path = path
         self._transaction = transaction
+        self._shares = SharedCollectionsDatabase(StubResource(self))
         self._newChildren = {}
         self._removedChildren = set()
         self._cachedChildren = {}
@@ -141,13 +269,19 @@ class CommonHome(LoggingMixIn):
 
 
     def uid(self):
-        return self._path.basename()
+        return self._uid
 
 
     def _updateSyncToken(self, reset=False):
         "Stub for updating sync token."
         # FIXME: actually update something
 
+
+    def retrieveOldShares(self):
+        """
+        Retrieve the old Index object.
+        """
+        return self._shares
 
     def children(self):
         return set(self._newChildren.itervalues()) | set(
@@ -303,6 +437,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         self._cachedObjectResources = {}
         self._removedObjectResources = set()
         self._index = None  # Derived classes need to set this
+        self._invites = None # Derived classes need to set this
         self._renamedName = realName
 
 
@@ -319,6 +454,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         Retrieve the old Index object.
         """
         return self._index._oldIndex
+
+    def retrieveOldInvites(self):
+        """
+        Retrieve the old Invites DB object.
+        """
+        return self._invites._oldInvites
 
 
     def __repr__(self):
@@ -513,7 +654,7 @@ class CommonObjectResource(LoggingMixIn):
         raise NotImplementedError
 
 
-    def vCardText(self):
+    def text(self):
         raise NotImplementedError
 
 
@@ -525,4 +666,187 @@ class CommonObjectResource(LoggingMixIn):
         props = PropertyStore(self._path)
         self._transaction.addOperation(props.flush, "object properties flush")
         return props
+
+class CommonStubResource(object):
+    """
+    Just enough resource to keep the collection sql DB classes going.
+    """
+    def __init__(self, resource):
+        self.resource = resource
+        self.fp = self.resource._path
+
+    def bumpSyncToken(self, reset=False):
+        # FIXME: needs direct tests
+        return self.resource._updateSyncToken(reset)
+
+
+    def initSyncToken(self):
+        # FIXME: needs direct tests
+        self.bumpSyncToken(True)
+
+
+class NotificationCollection(CommonHomeChild):
+    """
+    File-based implementation of L{INotificationCollection}.
+    """
+    implements(INotificationCollection)
+
+    def __init__(self, name, parent, realName=None):
+        """
+        Initialize an notification collection pointing at a path on disk.
+
+        @param name: the subdirectory of parent where this notification collection
+            resides.
+        @type name: C{str}
+
+        @param parent: the home containing this notification collection.
+        @type parent: L{CommonHome}
+        """
+        
+        super(NotificationCollection, self).__init__(name, parent, realName)
+
+        self._index = NotificationIndex(self)
+        self._invites = None
+        self._objectResourceClass = NotificationObject
+
+    def resourceType(self):
+        return ResourceType.notification
+
+    notificationObjects = CommonHomeChild.objectResources
+    notificationObjectWithName = CommonHomeChild.objectResourceWithName
+    removeNotificationObjectWithUID = CommonHomeChild.removeObjectResourceWithUID
+    notificationObjectsSinceToken = CommonHomeChild.objectResourcesSinceToken
+
+    def notificationObjectWithUID(self, uid):
+        
+        record = self.retrieveOldIndex().recordForUID(uid)
+        return self.notificationObjectWithName(record.name) if record else None
+
+    def writeNotificationObject(self, uid, xmltype, xmldata):
+        name = uid + ".xml"
+        if name.startswith("."):
+            raise ObjectResourceNameNotAllowedError(name)
+
+        objectResource = NotificationObject(name, self)
+        objectResource.setData(uid, xmltype, xmldata)
+        self._cachedObjectResources[name] = objectResource
+
+        # Update database
+        self.retrieveOldIndex().addOrUpdateRecord(NotificationRecord(uid, name, xmltype.name))
+
+    @writeOperation
+    def removeNotificationObjectWithName(self, name):
+        if name.startswith("."):
+            raise NoSuchObjectResourceError(name)
+
+        self.retrieveOldIndex().removeRecordForName(name)
+
+        objectResourcePath = self._path.child(name)
+        if objectResourcePath.isfile():
+            self._removedObjectResources.add(name)
+            # FIXME: test for undo
+            def do():
+                objectResourcePath.remove()
+                return lambda: None
+            self._transaction.addOperation(do, "remove object resource object %r" %
+                                           (name,))
+        else:
+            raise NoSuchObjectResourceError(name)
+
+    def _doValidate(self, component):
+        # Nothing to do - notifications are always generated internally by the server
+        # so they better be valid all the time!
+        pass
+
+
+class NotificationObject(CommonObjectResource):
+    """
+    """
+    implements(INotificationObject)
+
+    def __init__(self, name, notifications):
+
+        super(NotificationObject, self).__init__(name, notifications)
+
+
+    @property
+    def _notificationCollection(self):
+        return self._parentCollection
+
+    @writeOperation
+    def setData(self, uid, xmltype, xmldata):
+
+        rname = uid + ".xml"
+        self._notificationCollection.retrieveOldIndex().addOrUpdateRecord(
+            NotificationRecord(uid, rname, xmltype.name)
+        )
+
+        def do():
+            backup = None
+            if self._path.exists():
+                backup = hidden(self._path.temporarySibling())
+                self._path.moveTo(backup)
+            fh = self._path.open("w")
+            try:
+                # FIXME: concurrency problem; if this write is interrupted
+                # halfway through, the underlying file will be corrupt.
+                fh.write(xmldata)
+            finally:
+                fh.close()
+            def undo():
+                if backup:
+                    backup.moveTo(self._path)
+                else:
+                    self._path.remove()
+            return undo
+        self._transaction.addOperation(do, "set notification data %r" % (self.name(),))
+
+        # Mark all properties as dirty, so they will be re-added to the
+        # temporary file when the main file is deleted. NOTE: if there were a
+        # temporary file and a rename() as there should be, this should really
+        # happen after the write but before the rename.
+        self.properties().update(self.properties())
+
+        props = self.properties()
+        props[PropertyName(*GETContentType.qname())] = GETContentType.fromString(generateContentType(MimeType("text", "xml", params={"charset":"utf-8"})))
+        props[PropertyName(*NotificationType.qname())] = NotificationType(xmltype)
+
+        # FIXME: the property store's flush() method may already have been
+        # added to the transaction, but we need to add it again to make sure it
+        # happens _after_ the new file has been written.  we may end up doing
+        # the work multiple times, and external callers to property-
+        # manipulation methods won't work.
+        self._transaction.addOperation(self.properties().flush, "post-update property flush")
+
+    def xmldata(self):
+        try:
+            fh = self._path.open()
+        except IOError, e:
+            if e[0] == ENOENT:
+                raise NoSuchObjectResourceError(self)
+            else:
+                raise
+
+        try:
+            text = fh.read()
+        finally:
+            fh.close()
+
+        return text
+
+
+    def uid(self):
+        if not hasattr(self, "_uid"):
+            self._uid = self.xmldata
+        return self._uid
+
+class NotificationIndex(object):
+    #
+    # OK, here's where we get ugly.
+    # The index code needs to be rewritten also, but in the meantime...
+    #
+    def __init__(self, notificationCollection):
+        self.notificationCollection = notificationCollection
+        stubResource = CommonStubResource(notificationCollection)
+        self._oldIndex = OldNotificationIndex(stubResource)
 

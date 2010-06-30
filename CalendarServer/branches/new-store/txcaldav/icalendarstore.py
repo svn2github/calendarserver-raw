@@ -20,12 +20,10 @@ Calendar store interfaces
 """
 
 from zope.interface import Interface
-from txdav.idav import ITransaction
 
 
 __all__ = [
     # Classes
-    "ICalendarStore",
     "ICalendarHome",
     "ICalendar",
     "ICalendarObject",
@@ -46,33 +44,6 @@ __all__ = [
 # Interfaces
 #
 
-class ICalendarStore(Interface):
-    """
-    Calendar store
-    """
-    def newTransaction():
-        """
-        Create a new transaction.
-        """
-
-class ICalendarStoreTransaction(ITransaction):
-    """
-    Calendar store transaction
-    """
-
-    def calendarHomeWithUID(uid, create=False):
-        """
-        Retrieve the calendar home for the principal with the given C{uid}.
-
-        If C{create} is C{True}, create the calendar home if it doesn't already
-        exist.
-
-        @return: an L{ICalendarHome} or C{None} if no such calendar
-            home exists.
-        """
-
-
-
 class ICalendarHome(Interface):
     """
     Calendar home
@@ -89,6 +60,11 @@ class ICalendarHome(Interface):
         @return: a string.
         """
 
+    def created(self):
+        """
+        Calendar home was created. Do initialization
+        """
+        
     def calendars():
         """
         Retrieve calendars contained in this calendar home.

@@ -15,7 +15,6 @@
 ##
 
 from __future__ import with_statement
-from twext.web2.dav import davxml
 
 __all__ = [
     "featureUnimplemented",
@@ -29,22 +28,26 @@ import xattr
 
 from twisted.python.failure import Failure
 from twisted.internet.base import DelayedCall
-from twisted.internet.defer import succeed, fail
+from twisted.internet.defer import succeed, fail, inlineCallbacks, returnValue
 from twisted.internet.error import ProcessDone
 from twisted.internet.protocol import ProcessProtocol
 
 from twext.python.memcacheclient import ClientFactory
 from twext.python.filepath import CachingFilePath as FilePath
 import twext.web2.dav.test.util
+from twext.web2.dav import davxml
 from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav import memcacher
 from twistedcaldav.config import config
-from twistedcaldav.static import CalDAVFile, CalendarHomeProvisioningFile
+from twistedcaldav.static import CalDAVFile, CalendarHomeProvisioningFile,\
+    AddressBookHomeProvisioningFile
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.directory import augment
 from twistedcaldav.directory.principal import (
     DirectoryPrincipalProvisioningResource)
+
+from txdav.common.datastore.file import CommonDataStore
 
 DelayedCall.debug = True
 
@@ -98,12 +101,28 @@ class TestCase(twext.web2.dav.test.util.TestCase):
         """
         path = self.site.resource.fp.child("calendars")
         path.createDirectory()
+
+        # Need a data store
+        _newStore = CommonDataStore(self.site.resource.fp, True, False)
+
         self.calendarCollection = CalendarHomeProvisioningFile(
             path,
             self.directoryService,
-            "/calendars/"
+            "/calendars/",
+            _newStore
         )
         self.site.resource.putChild("calendars", self.calendarCollection)
+
+        path = self.site.resource.fp.child("addressbooks")
+        path.createDirectory()
+
+        self.addressbookCollection = AddressBookHomeProvisioningFile(
+            path,
+            self.directoryService,
+            "/addressbooks/",
+            _newStore
+        )
+        self.site.resource.putChild("addressbooks", self.addressbookCollection)
 
 
     def setUp(self):
@@ -283,12 +302,22 @@ class HomeTestCase(TestCase):
 
         self.createStockDirectoryService()
 
+        # Need a data store
+        _newStore = CommonDataStore(fp, True, False)
+
         self.homeProvisioner = CalendarHomeProvisioningFile(
-            fp, self.directoryService, "/"
+            os.path.join(fp.path, "calendars"),
+            self.directoryService, "/calendars/",
+            _newStore
         )
-        self._refreshRoot()
+        
+        def _defer(_):
+            # Commit the transaction
+            self.site.resource._associatedTransaction.commit()
+            
+        return self._refreshRoot().addCallback(_defer)
 
-
+    @inlineCallbacks
     def _refreshRoot(self):
         """
         Refresh the user resource positioned at the root of this site, to give
@@ -296,7 +325,7 @@ class HomeTestCase(TestCase):
         """
         users = self.homeProvisioner.getChild("users")
         class norequest(object): pass
-        user, ignored = users.locateChild(norequest(), ["wsanchez"])
+        user, ignored = (yield users.locateChild(norequest(), ["wsanchez"]))
 
         # Force the request to succeed regardless of the implementation of
         # accessControlList.
@@ -312,14 +341,82 @@ class HomeTestCase(TestCase):
         # place (beneath the calendar).
         self.docroot = user.fp.path
 
-
+    @inlineCallbacks
     def send(self, request, callback):
         """
         Override C{send} in order to refresh the 'user' resource each time, to
         get a new transaction to associate with the calendar home.
         """
-        self._refreshRoot()
-        return super(HomeTestCase, self).send(request, callback)
+        yield self._refreshRoot()
+        result = (yield super(HomeTestCase, self).send(request, callback))
+        returnValue(result)
+
+class AddressBookHomeTestCase(TestCase):
+    """
+    Utility class for tests which wish to interact with a addressbook home rather
+    than a top-level resource hierarchy.
+    """
+
+    def setUp(self):
+        """
+        Replace self.site.resource with an appropriately provisioned
+        AddressBookHomeFile, and replace self.docroot with a path pointing at that
+        file.
+        """
+        super(AddressBookHomeTestCase, self).setUp()
+
+        fp = FilePath(self.mktemp())
+
+        self.createStockDirectoryService()
+
+        # Need a data store
+        _newStore = CommonDataStore(fp, True, False)
+
+        self.homeProvisioner = AddressBookHomeProvisioningFile(
+            os.path.join(fp.path, "addressbooks"),
+            self.directoryService, "/addressbooks/",
+            _newStore
+        )
+        
+        def _defer(_):
+            # Commit the transaction
+            self.site.resource._associatedTransaction.commit()
+            
+        return self._refreshRoot().addCallback(_defer)
+
+    @inlineCallbacks
+    def _refreshRoot(self):
+        """
+        Refresh the user resource positioned at the root of this site, to give
+        it a new transaction.
+        """
+        users = self.homeProvisioner.getChild("users")
+        class norequest(object): pass
+        user, ignored = (yield users.locateChild(norequest(), ["wsanchez"]))
+
+        # Force the request to succeed regardless of the implementation of
+        # accessControlList.
+        user.accessControlList = lambda request, *a, **k: succeed(
+            self.grantInherit(davxml.All())
+        )
+
+        # Fix the site to point directly at the user's calendar home so that we
+        # can focus on testing just that rather than hierarchy traversal..
+        self.site.resource = user
+
+        # Fix the docroot so that 'mkdtemp' will create directories in the right
+        # place (beneath the calendar).
+        self.docroot = user.fp.path
+
+    @inlineCallbacks
+    def send(self, request, callback):
+        """
+        Override C{send} in order to refresh the 'user' resource each time, to
+        get a new transaction to associate with the calendar home.
+        """
+        yield self._refreshRoot()
+        result = (yield super(AddressBookHomeTestCase, self).send(request, callback))
+        returnValue(result)
 
 
 

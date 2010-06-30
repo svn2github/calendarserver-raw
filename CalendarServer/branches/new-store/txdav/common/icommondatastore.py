@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from zope.interface.interface import Interface
 
 """
 Common store interfaces
@@ -103,3 +104,54 @@ class InternalDataStoreError(CommonStoreError):
     """
     Uh, oh.
     """
+
+#
+# Interfaces
+#
+
+class ICommonDataStore(Interface):
+    """
+    Data store
+    """
+    def newTransaction():
+        """
+        Create a new transaction.
+        """
+
+class ICommonStoreTransaction(Interface):
+    """
+    AddressBook store transaction
+    """
+
+    def calendarHomeWithUID(uid, create=False):
+        """
+        Retrieve the addressbook home for the principal with the given C{uid}.
+
+        If C{create} is C{True}, create the addressbook home if it doesn't already
+        exist.
+
+        @return: an L{IAddressBookHome} or C{None} if no such addressbook
+            home exists.
+        """
+
+    def addressbookHomeWithUID(uid, create=False):
+        """
+        Retrieve the addressbook home for the principal with the given C{uid}.
+
+        If C{create} is C{True}, create the addressbook home if it doesn't already
+        exist.
+
+        @return: an L{IAddressBookHome} or C{None} if no such addressbook
+            home exists.
+        """
+
+    def notificationsWithUID(uid):
+        """
+        Retrieve the notification collection for the principal with the given C{uid}.
+
+        @return: an L{INotificationCollection} or C{None} if no such notification
+            collection exists.
+        """
+
+
+

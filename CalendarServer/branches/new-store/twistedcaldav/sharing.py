@@ -174,7 +174,7 @@ class SharedCollectionMixin(object):
         if self.isCalendarCollection():
             home = principal.calendarHome(request)
         elif self.isAddressBookCollection():
-            home = principal.addressBookHome()
+            home = principal.addressBookHome(request)
         else:
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
@@ -218,7 +218,7 @@ class SharedCollectionMixin(object):
         if self.isCalendarCollection():
             shareeHome = self._shareePrincipal.calendarHome(request)
         elif self.isAddressBookCollection():
-            shareeHome = self._shareePrincipal.addressBookHome()
+            shareeHome = self._shareePrincipal.addressBookHome(request)
         return shareeHome.removeShare(request, self._share)
 
     @inlineCallbacks
@@ -481,7 +481,7 @@ class SharedCollectionMixin(object):
             if self.isCalendarCollection():
                 shareeHome = sharee.calendarHome(request)
             elif self.isAddressBookCollection():
-                shareeHome = sharee.addressBookHome()
+                shareeHome = sharee.addressBookHome(request)
             yield shareeHome.removeShareByUID(request, record.inviteuid)
     
             # If current user state is accepted then we send an invite with the new state, otherwise
@@ -513,11 +513,11 @@ class SharedCollectionMixin(object):
         # Locate notifications collection for user
         sharee = self.principalForCalendarUserAddress(record.userid)
         if sharee is None:
-            raise ValueError("sharee is None but userid was valid before")
-        notifications = (yield request.locateResource(sharee.notificationURL()))
+            raise ValueError("sharee is None but userid was valid before")        
+        notifications = self._newStoreParentHome._transaction.notificationsWithUID(sharee.principalUID())
         
         # Look for existing notification
-        oldnotification = (yield notifications.getNotifictionMessageByUID(request, record.inviteuid))
+        oldnotification = notifications.notificationObjectWithUID(record.inviteuid)
         if oldnotification:
             # TODO: rollup changes?
             pass
@@ -545,7 +545,7 @@ class SharedCollectionMixin(object):
         ).toxml()
         
         # Add to collections
-        yield notifications.addNotification(request, record.inviteuid, xmltype, xmldata)
+        notifications.writeNotificationObject(record.inviteuid, xmltype, xmldata)
 
     @inlineCallbacks
     def removeInvite(self, record, request):

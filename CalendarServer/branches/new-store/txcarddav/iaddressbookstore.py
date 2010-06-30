@@ -22,11 +22,9 @@ __all__ = [
 ]
 
 from zope.interface import Interface
-from txdav.idav import ITransaction
 
 __all__ = [
     # Classes
-    "IAddressBookStore",
     "IAddressBookHome",
     "IAddressBook",
     "IAddressBookObject",
@@ -35,33 +33,6 @@ __all__ = [
 #
 # Interfaces
 #
-
-class IAddressBookStore(Interface):
-    """
-    AddressBook store
-    """
-    def newTransaction():
-        """
-        Create a new transaction.
-        """
-
-class IAddressBookStoreTransaction(ITransaction):
-    """
-    AddressBook store transaction
-    """
-
-    def addressbookHomeWithUID(uid, create=False):
-        """
-        Retrieve the addressbook home for the principal with the given C{uid}.
-
-        If C{create} is C{True}, create the addressbook home if it doesn't already
-        exist.
-
-        @return: an L{IAddressBookHome} or C{None} if no such addressbook
-            home exists.
-        """
-
-
 
 class IAddressBookHome(Interface):
     """
@@ -79,6 +50,11 @@ class IAddressBookHome(Interface):
         @return: a string.
         """
 
+    def created(self):
+        """
+        Addressbook home was created. Do initialization
+        """
+        
     def addressbooks():
         """
         Retrieve addressbooks contained in this addressbook home.

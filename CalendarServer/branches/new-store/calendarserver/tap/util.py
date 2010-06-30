@@ -67,6 +67,8 @@ from calendarserver.provision.root import RootResource
 from calendarserver.webadmin.resource import WebAdminResource
 from calendarserver.webcal.resource import WebCalendarResource
 
+from txdav.common.datastore.file import CommonDataStore
+
 log = Logger()
 
 
@@ -272,18 +274,23 @@ def getRootResource(config, resources=None):
 
     principalCollection = principalResourceClass("/principals/", directory)
 
+    # Need a data store
+    _newStore = CommonDataStore(FilePath(config.DocumentRoot), config.EnableCalDAV, config.EnableCardDAV)
+
     if config.EnableCalDAV:
         log.info("Setting up calendar collection: %r" % (calendarResourceClass,))
         calendarCollection = calendarResourceClass(
             os.path.join(config.DocumentRoot, "calendars"),
             directory, "/calendars/",
+            _newStore,
         )
 
     if config.EnableCardDAV:
         log.info("Setting up address book collection: %r" % (addressBookResourceClass,))
         addressBookCollection = addressBookResourceClass(
             os.path.join(config.DocumentRoot, "addressbooks"),
-            directory, "/addressbooks/"
+            directory, "/addressbooks/",
+            _newStore,
         )
 
         directoryPath = os.path.join(config.DocumentRoot, config.DirectoryAddressBook.name)

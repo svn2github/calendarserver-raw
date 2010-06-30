@@ -41,7 +41,7 @@ class MKCALENDAR (HomeTestCase):
         """
         Make calendar
         """
-        uri  = "/calendar_make"
+        uri  = "/calendar_make/"
         path = os.path.join(self.docroot, uri[1:])
 
         if os.path.exists(path):
@@ -71,7 +71,7 @@ class MKCALENDAR (HomeTestCase):
         """
         Make calendar with properties (CalDAV-access-09, section 5.3.1.2)
         """
-        uri  = "/calendar_prop"
+        uri  = "/calendar_prop/"
         path = os.path.join(self.docroot, uri[1:])
 
         if os.path.exists(path):
@@ -156,7 +156,7 @@ END:VCALENDAR
         """
         Make calendar with no parent
         """
-        uri  = "/no/parent/for/calendar"
+        uri  = "/no/parent/for/calendar/"
 
         def do_test(response):
             response = IResponse(response)
@@ -173,12 +173,33 @@ END:VCALENDAR
         """
         Make calendar on existing resource
         """
-        uri  = "/calendar_on_resource"
+        uri  = "/calendar_on_resource/"
         path = os.path.join(self.docroot, uri[1:])
 
         if not os.path.exists(path):
-            f = open(path, "w")
+            f = open(path[:-1], 'w')
             f.close()
+
+        def do_test(response):
+            response = IResponse(response)
+
+            if response.code != responsecode.NOT_ALLOWED:
+                self.fail("Incorrect response to MKCALENDAR on existing resource: %s" % (response.code,))
+
+            # FIXME: Check for DAV:resource-must-be-null element
+
+        request = SimpleRequest(self.site, "MKCALENDAR", uri)
+        return self.send(request, do_test)
+
+    def test_make_calendar_on_collection(self):
+        """
+        Make calendar on existing collection
+        """
+        uri  = "/calendar_on_resource/"
+        path = os.path.join(self.docroot, uri[1:])
+
+        if not os.path.exists(path):
+            os.mkdir(path)
 
         def do_test(response):
             response = IResponse(response)
@@ -195,7 +216,7 @@ END:VCALENDAR
         """
         Make calendar in calendar
         """
-        first_uri  = "/calendar_in_calendar"
+        first_uri  = "/calendar_in_calendar/"
         first_path = os.path.join(self.docroot, first_uri[1:])
 
         if os.path.exists(first_path): rmdir(first_path)

@@ -21,6 +21,7 @@ File calendar store.
 
 __all__ = [
     "CalendarStore",
+    "CalendarStoreTransaction",
     "CalendarHome",
     "Calendar",
     "CalendarObject",
@@ -34,10 +35,10 @@ from twext.web2.dav.element.rfc2518 import ResourceType
 
 from twistedcaldav.caldavxml import ScheduleCalendarTransp, Opaque
 from twistedcaldav.index import Index as OldIndex, IndexSchedule as OldInboxIndex
+from twistedcaldav.sharing import InvitesDatabase
 
 from txcaldav.icalendarstore import ICalendar, ICalendarObject
-from txcaldav.icalendarstore import ICalendarStore, ICalendarHome
-from txcaldav.icalendarstore import ICalendarStoreTransaction
+from txcaldav.icalendarstore import ICalendarHome
 
 from txdav.common.datastore.file import CommonDataStore, CommonStoreTransaction,\
     CommonHome, CommonHomeChild, CommonObjectResource
@@ -48,64 +49,15 @@ from txdav.propertystore.base import PropertyName
 
 from zope.interface import implements
 
-class CalendarStore(CommonDataStore):
-    """
-    An implementation of L{ICalendarObject} backed by a
-    L{twext.python.filepath.CachingFilePath}.
+CalendarStore = CommonDataStore
 
-    @ivar _path: A L{CachingFilePath} referencing a directory on disk that
-        stores all calendar data for a group of uids.
-    """
-    implements(ICalendarStore)
-
-    def __init__(self, path):
-        """
-        Create a calendar store.
-
-        @param path: a L{FilePath} pointing at a directory on disk.
-        """
-        super(CalendarStore, self).__init__(path)
-        self._transactionClass = CalendarStoreTransaction
-
-
-class CalendarStoreTransaction(CommonStoreTransaction):
-    """
-    In-memory implementation of
-
-    Note that this provides basic 'undo' support, but not truly transactional
-    operations.
-    """
-
-    implements(ICalendarStoreTransaction)
-
-    def __init__(self, calendarStore):
-        """
-        Initialize a transaction; do not call this directly, instead call
-        L{CalendarStore.newTransaction}.
-
-        @param calendarStore: The store that created this transaction.
-
-        @type calendarStore: L{CalendarStore}
-        """
-        super(CalendarStoreTransaction, self).__init__(calendarStore)
-        self._homeClass = CalendarHome
-
-    calendarHomeWithUID = CommonStoreTransaction.homeWithUID
-
-    def creatingHome(self, home):
-        home.createCalendarWithName("calendar")
-        defaultCal = home.calendarWithName("calendar")
-        props = defaultCal.properties()
-        props[PropertyName(*ScheduleCalendarTransp.qname())] = ScheduleCalendarTransp(
-            Opaque())
-        home.createCalendarWithName("inbox")
-
+CalendarStoreTransaction = CommonStoreTransaction
 
 class CalendarHome(CommonHome):
     implements(ICalendarHome)
 
-    def __init__(self, path, calendarStore, transaction):
-        super(CalendarHome, self).__init__(path, calendarStore, transaction)
+    def __init__(self, uid, path, calendarStore, transaction):
+        super(CalendarHome, self).__init__(uid, path, calendarStore, transaction)
 
         self._childClass = Calendar
 
@@ -118,6 +70,13 @@ class CalendarHome(CommonHome):
     def _calendarStore(self):
         return self._dataStore
 
+    def created(self):
+        self.createCalendarWithName("calendar")
+        defaultCal = self.calendarWithName("calendar")
+        props = defaultCal.properties()
+        props[PropertyName(*ScheduleCalendarTransp.qname())] = ScheduleCalendarTransp(
+            Opaque())
+        self.createCalendarWithName("inbox")
 
 class Calendar(CommonHomeChild):
     """
@@ -144,6 +103,7 @@ class Calendar(CommonHomeChild):
         super(Calendar, self).__init__(name, calendarHome, realName)
 
         self._index = Index(self)
+        self._invites = Invites(self)
         self._objectResourceClass = CalendarObject
 
     @property
@@ -308,49 +268,48 @@ class CalendarObject(CommonObjectResource):
         return self.component().getOrganizer()
 
 
+class CalendarStubResource(object):
+    """
+    Just enough resource to keep the calendar's sql DB classes going.
+    """
+    def __init__(self, calendar):
+        self.calendar = calendar
+        self.fp = self.calendar._path
+
+    def isCalendarCollection(self):
+        return True
+
+    def getChild(self, name):
+        calendarObject = self.calendar.calendarObjectWithName(name)
+        if calendarObject:
+            class ChildResource(object):
+                def __init__(self, calendarObject):
+                    self.calendarObject = calendarObject
+
+                def iCalendar(self):
+                    return self.calendarObject.component()
+
+            return ChildResource(calendarObject)
+        else:
+            return None
+
+    def bumpSyncToken(self, reset=False):
+        # FIXME: needs direct tests
+        return self.calendar._updateSyncToken(reset)
+
+
+    def initSyncToken(self):
+        # FIXME: needs direct tests
+        self.bumpSyncToken(True)
+
 class Index(object):
     #
     # OK, here's where we get ugly.
     # The index code needs to be rewritten also, but in the meantime...
     #
-    class StubResource(object):
-        """
-        Just enough resource to keep the Index class going.
-        """
-        def __init__(self, calendar):
-            self.calendar = calendar
-            self.fp = self.calendar._path
-
-        def isCalendarCollection(self):
-            return True
-
-        def getChild(self, name):
-            calendarObject = self.calendar.calendarObjectWithName(name)
-            if calendarObject:
-                class ChildResource(object):
-                    def __init__(self, calendarObject):
-                        self.calendarObject = calendarObject
-
-                    def iCalendar(self):
-                        return self.calendarObject.component()
-
-                return ChildResource(calendarObject)
-            else:
-                return None
-
-        def bumpSyncToken(self, reset=False):
-            # FIXME: needs direct tests
-            return self.calendar._updateSyncToken(reset)
-
-
-        def initSyncToken(self):
-            # FIXME: needs direct tests
-            self.bumpSyncToken(True)
-
-
     def __init__(self, calendar):
         self.calendar = calendar
-        stubResource = Index.StubResource(calendar)
+        stubResource = CalendarStubResource(calendar)
         if self.calendar.name() == 'inbox':
             indexClass = OldInboxIndex
         else:
@@ -368,3 +327,14 @@ class Index(object):
             calendarObject._componentType = componentType
 
             yield calendarObject
+
+
+class Invites(object):
+    #
+    # OK, here's where we get ugly.
+    # The index code needs to be rewritten also, but in the meantime...
+    #
+    def __init__(self, calendar):
+        self.calendar = calendar
+        stubResource = CalendarStubResource(calendar)
+        self._oldInvites = InvitesDatabase(stubResource)

@@ -32,7 +32,7 @@ from txdav.common.icommondatastore import NoSuchObjectResourceError
 from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError
 
 from txcarddav.iaddressbookstore import (
-    IAddressBookStore, IAddressBookStoreTransaction, IAddressBookObject, IAddressBookHome,
+    IAddressBookObject, IAddressBookHome,
     IAddressBook,
 )
 from twistedcaldav.vcard import Component as VComponent

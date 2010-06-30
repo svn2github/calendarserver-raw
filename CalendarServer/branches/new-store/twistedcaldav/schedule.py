@@ -235,7 +235,7 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
         defaultCalendarURL = joinURL(calendarHomeURL, "calendar")
         defaultCalendar = (yield request.locateResource(defaultCalendarURL))
         if defaultCalendar is None or not defaultCalendar.exists():
-            getter = iter(self.parent._newStoreCalendarHome)
+            getter = iter(self.parent._newStoreCalendarHome.calendars())
             # FIXME: the back-end should re-provision a default calendar here.
             # Really, the dead property shouldn't be necessary, and this should
             # be entirely computed by a back-end method like 'defaultCalendar()'

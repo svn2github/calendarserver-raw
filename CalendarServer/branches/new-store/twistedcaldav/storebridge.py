@@ -40,10 +40,12 @@ from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
 from twext.web2.http import HTTPError, StatusResponse
 
-from twistedcaldav.static import CalDAVFile, ScheduleInboxFile
+from twistedcaldav.static import CalDAVFile, ScheduleInboxFile,\
+    NotificationCollectionFile, NotificationFile
 from twistedcaldav.vcard import Component as VCard
 
-from txdav.common.icommondatastore import NoSuchObjectResourceError
+from txdav.common.icommondatastore import NoSuchObjectResourceError,\
+    InternalDataStoreError
 from txdav.propertystore.base import PropertyName
 
 from twistedcaldav.caldavxml import ScheduleTag, caldav_namespace
@@ -147,6 +149,14 @@ class _CalendarChildHelper(object):
         """
         return self._newStoreCalendar.retrieveOldIndex()
 
+
+    def invitesDB(self):
+        """
+        Retrieve the new-style invites DB wrapper.
+        """
+        if not hasattr(self, "_invitesDB"):
+            self._invitesDB = self._newStoreCalendar.retrieveOldInvites()
+        return self._invitesDB
 
     def exists(self):
         # FIXME: tests
@@ -555,7 +565,7 @@ class CalendarObjectFile(CalDAVFile):
                     hashlib.new("md5", self.iCalendarText()).hexdigest(),
                     weak=False
                 )
-        except NoSuchObjectResourceError:
+        except (NoSuchObjectResourceError, InternalDataStoreError):
             # FIXME: a workaround for the fact that DELETE still rudely vanishes
             # the calendar object out from underneath the store, and doesn't
             # call storeRemove.
@@ -799,6 +809,14 @@ class _AddressBookChildHelper(object):
         """
         return self._newStoreAddressBook.retrieveOldIndex()
 
+
+    def invitesDB(self):
+        """
+        Retrieve the new-style invites DB wrapper.
+        """
+        if not hasattr(self, "_invitesDB"):
+            self._invitesDB = self._newStoreAddressBook.retrieveOldInvites()
+        return self._invitesDB
 
     def exists(self):
         # FIXME: tests
@@ -1143,7 +1161,7 @@ class AddressBookObjectFile(CalDAVFile):
                     hashlib.new("md5", self.vCardText()).hexdigest(),
                     weak=False
                 )
-        except NoSuchObjectResourceError:
+        except (NoSuchObjectResourceError, InternalDataStoreError):
             # FIXME: a workaround for the fact that DELETE still rudely vanishes
             # the addressbook object out from underneath the store, and doesn't
             # call storeRemove.
@@ -1273,3 +1291,265 @@ class ProtoAddressBookObjectFile(CalDAVFile):
     def quotaSize(self, request):
         # FIXME: tests, workingness
         return succeed(0)
+
+
+class _NotificationChildHelper(object):
+    """
+    Methods for things which are like notification objects.
+    """
+
+    def _initializeWithNotifications(self, notifications, home):
+        """
+        Initialize with a notification collection.
+
+        @param notifications: the wrapped http://daboo.name/groups/daboofamily/wiki/c4c42/6585_Sale.html.
+        @type notifications: L{txdav.common.inotification.INotificationCollection}
+
+        @param home: the home through which the given notification collection was accessed.
+        @type home: L{txdav.icommonstore.ICommonHome}
+        """
+        self._newStoreNotifications = notifications
+        self._newStoreParentHome = home
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreNotifications.properties()
+        )
+
+
+    def notificationsDB(self):
+        """
+        Retrieve the new-style index wrapper.
+        """
+        return self._newStoreNotifications.retrieveOldIndex()
+
+
+    def exists(self):
+        # FIXME: tests
+        return True
+
+
+    @classmethod
+    def transform(cls, self, notifications, home):
+        """
+        Transform C{self} into a L{NotificationCollectionFile}.
+        """
+        self.__class__ = cls
+        self._initializeWithNotifications(notifications, home)
+
+
+    def createSimilarFile(self, path):
+        """
+        Create a L{NotificationObjectFile} or L{ProtoNotificationObjectFile} based on a
+        path object.
+        """
+        if not isinstance(path, FilePath):
+            path = FilePath(path)
+
+        newStoreObject = self._newStoreNotifications.notificationObjectWithName(
+            path.basename()
+        )
+
+        if newStoreObject is not None:
+            similar = StoreNotificationObjectFile(newStoreObject, path, self)
+        else:
+            # FIXME: creation in http_PUT should talk to a specific resource
+            # type; this is the domain of StoreCalendarObjectResource.
+            # similar = ProtoCalendarObjectFile(self._newStoreCalendar, path)
+            similar = ProtoStoreNotificationObjectFile(self._newStoreNotifications, path, self)
+
+        # FIXME: tests should be failing without this line.
+        # Specifically, http_PUT won't be committing its transaction properly.
+        self.propagateTransaction(similar)
+        return similar
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
+
+class StoreNotificationCollectionFile(_NotificationChildHelper, NotificationCollectionFile):
+    """
+    Wrapper around a L{txcaldav.icalendar.ICalendar}.
+    """
+
+    def __init__(self, notifications, home, *args, **kw):
+        """
+        Create a CalendarCollectionFile from a L{txcaldav.icalendar.ICalendar}
+        and the arguments required for L{CalDAVFile}.
+        """
+        super(StoreNotificationCollectionFile, self).__init__(*args, **kw)
+        self._initializeWithNotifications(notifications, home)
+
+
+    def isCollection(self):
+        return True
+
+    @inlineCallbacks
+    def http_DELETE(self, request):
+        """
+        Override http_DELETE to reject. 
+        """
+        
+        raise HTTPError(StatusResponse(FORBIDDEN, "Cannot delete notification collections"))
+
+
+    def http_COPY(self, request):
+        """
+        Copying of calendar collections isn't allowed.
+        """
+        raise HTTPError(StatusResponse(FORBIDDEN, "Cannot copy notification collections"))
+
+
+    @inlineCallbacks
+    def http_MOVE(self, request):
+        """
+        Moving a calendar collection is allowed for the purposes of changing
+        that calendar's name.
+        """
+        raise HTTPError(StatusResponse(FORBIDDEN, "Cannot move notification collections"))
+
+class StoreNotificationObjectFile(NotificationFile):
+    """
+    A resource wrapping a calendar object.
+    """
+
+    def __init__(self, notificationObject, *args, **kw):
+        """
+        Construct a L{CalendarObjectFile} from an L{ICalendarObject}.
+
+        @param calendarObject: The storage for the calendar object.
+        @type calendarObject: L{txcaldav.icalendarstore.ICalendarObject}
+        """
+        super(StoreNotificationObjectFile, self).__init__(*args, **kw)
+        self._initializeWithObject(notificationObject)
+
+
+    def isCollection(self):
+        return False
+
+
+    def exists(self):
+        # FIXME: Tests
+        return True
+
+
+    def etag(self):
+        # FIXME: far too slow to be used for real, but I needed something to
+        # placate the etag computation in the case where the file doesn't exist
+        # yet (an uncommited transaction creating this calendar file)
+
+        # FIXME: direct tests
+        try:
+            if self.hasDeadProperty(TwistedGETContentMD5):
+                return ETag(str(self.readDeadProperty(TwistedGETContentMD5)))
+            else:
+                return ETag(
+                    hashlib.new("md5", self.text()).hexdigest(),
+                    weak=False
+                )
+        except NoSuchObjectResourceError:
+            # FIXME: a workaround for the fact that DELETE still rudely vanishes
+            # the calendar object out from underneath the store, and doesn't
+            # call storeRemove.
+            return None
+
+
+    def newStoreProperties(self):
+        return self._newStoreObject.properties()
+
+
+    def quotaSize(self, request):
+        # FIXME: tests
+        return succeed(len(self._newStoreObject.xmldata()))
+
+
+    def text(self, ignored=None):
+        assert ignored is None, "This is a notification object, not a notification"
+        return self._newStoreObject.xmldata()
+
+
+    @inlineCallbacks
+    def http_DELETE(self, request):
+        """
+        Override http_DELETE to validate 'depth' header. 
+        """
+
+        #
+        # Check authentication and access controls
+        #
+        parentURL = parentForURL(request.uri)
+        parent = (yield request.locateResource(parentURL))
+    
+        yield parent.authorize(request, (davxml.Unbind(),))
+
+        response = (yield self.storeRemove(request, request.uri))
+        returnValue(response)
+
+    @inlineCallbacks
+    def storeRemove(self, request, where):
+        """
+        Remove this notification object.
+        """
+        # Do quota checks before we start deleting things
+        myquota = (yield self.quota(request))
+        if myquota is not None:
+            old_size = (yield self.quotaSize(request))
+        else:
+            old_size = 0
+
+        try:
+
+            storeNotifications = self._newStoreObject._notificationCollection
+
+            # Do delete
+
+            # FIXME: public attribute please
+            storeNotifications.removeNotificationObjectWithName(self._newStoreObject.name())
+
+            # FIXME: clean this up with a 'transform' method
+            self._newStoreParentNotifications = storeNotifications
+            del self._newStoreObject
+            self.__class__ = ProtoStoreNotificationObjectFile
+
+            # Adjust quota
+            if myquota is not None:
+                yield self.quotaSizeAdjust(request, -old_size)
+
+        except MemcacheLockTimeoutError:
+            raise HTTPError(StatusResponse(CONFLICT, "Resource: %s currently in use on the server." % (where,)))
+
+        returnValue(NO_CONTENT)
+
+    def _initializeWithObject(self, notificationObject):
+        self._newStoreObject = notificationObject
+        self._dead_properties = _NewStorePropertiesWrapper(
+            self._newStoreObject.properties()
+        )
+
+
+    @classmethod
+    def transform(cls, self, notificationObject):
+        self.__class__ = cls
+        self._initializeWithObject(notificationObject)
+
+
+
+class ProtoStoreNotificationObjectFile(NotificationFile):
+
+    def __init__(self, parentNotifications, *a, **kw):
+        super(ProtoStoreNotificationObjectFile, self).__init__(*a, **kw)
+        self._newStoreParentNotifications = parentNotifications
+
+    def isCollection(self):
+        return False
+
+    def exists(self):
+        # FIXME: tests
+        return False
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
