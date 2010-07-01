@@ -64,6 +64,8 @@ from twistedcaldav import pdmonster
 from twistedcaldav import memcachepool
 from twistedcaldav.notify import installNotificationClient
 
+from twistedcaldav.metafd import ReportingHTTPService
+
 log = Logger()
 
 try:
@@ -509,6 +511,20 @@ class CalDAVServiceMaker(object):
     iScheduleResourceClass       = IScheduleInboxFile
     timezoneServiceResourceClass = TimezoneServiceFile
 
+
+    def createContextFactory(self):
+        """
+        Create an SSL context factory for use with any SSL socket talking to
+        this server.
+        """
+        return ChainingOpenSSLContextFactory(
+            config.SSLPrivateKey,
+            config.SSLCertificate,
+            certificateChainFile=config.SSLAuthorityChain,
+            passwdCallback=_getSSLPassphrase
+        )
+
+
     def makeService_Slave(self, options):
         #
         # Change default log level to "info" as its useful to have
@@ -791,12 +807,7 @@ class CalDAVServiceMaker(object):
                 fd = int(fd)
 
                 try:
-                    contextFactory = ChainingOpenSSLContextFactory(
-                        config.SSLPrivateKey,
-                        config.SSLCertificate,
-                        certificateChainFile=config.SSLAuthorityChain,
-                        passwdCallback=_getSSLPassphrase
-                    )
+                    contextFactory = self.createContextFactory()
                 except SSL.Error, e:
                     log.error("Unable to set up SSL context factory: %s" % (e,))
                 else:
@@ -807,6 +818,15 @@ class CalDAVServiceMaker(object):
                     )
                     inheritedService.setServiceParent(service)
 
+        elif config.MetaFD:
+            # Inherit a single socket to receive accept()ed connections via
+            # recvmsg() and SCM_RIGHTS.
+ 
+            fd = int(config.MetaFD)
+
+            ReportingHTTPService(
+                site, fd, self.createContextFactory()
+            ).setServiceParent(service)
 
         else: # Not inheriting, therefore open our own:
 
@@ -849,12 +869,7 @@ class CalDAVServiceMaker(object):
                     log.info("Adding SSL server at %s:%s" % (bindAddress, port))
 
                     try:
-                        contextFactory = ChainingOpenSSLContextFactory(
-                            config.SSLPrivateKey,
-                            config.SSLCertificate,
-                            certificateChainFile=config.SSLAuthorityChain,
-                            passwdCallback=_getSSLPassphrase
-                        )
+                        contextFactory = self.createContextFactory()
                     except SSL.Error, e:
                         log.error("Unable to set up SSL context factory: %s" % (e,))
                         log.error("Disabling SSL port: %s" % (port,))

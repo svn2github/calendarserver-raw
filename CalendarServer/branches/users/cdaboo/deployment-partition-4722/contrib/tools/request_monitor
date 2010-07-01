@@ -36,16 +36,13 @@ def listenq():
         stdout=PIPE, stderr=STDOUT,
     )
     output, error = child.communicate()
+    ssl = nonssl = 0   
     for line in output.split("\n"):
-        try:
-            line.index(".8443")
-            q = line.split("/")[0]
-            return q
-            break
-        except ValueError:
-            pass
-    else: # Nobody is listening on 8443
-        return "0"
+        if line.find("8443") != -1:
+           ssl = int(line.split("/")[0])
+        elif line.find("8008") != -1:
+           nonssl = int(line.split("/")[0])
+    return "%s+%s" % (ssl, nonssl)
 
 _listenQueueHistory = []
 
@@ -145,7 +142,7 @@ def parseLine(line):
         extended["or"] = int(line[startPos:endPos])
     else:
         items = line[startPos:].split()
-        extended = dict([item.split('=') for item in items])
+        extended = dict([item.split('=') for item in items if '=' in item])
 
     return userId, logTime, method, uri, status, bytes, referer, client, extended
 
@@ -196,7 +193,11 @@ while True:
 
             numRequests += 1
 
-            userId, logTime, method, uri, status, bytes, _ignore_referer, client, extended = parseLine(line)
+            try:
+                userId, logTime, method, uri, status, bytes, _ignore_referer, client, extended = parseLine(line)
+            except Exception, e:
+                print "Could not parse: ", line, e
+                continue
 
             logTime = dateparse(logTime, fuzzy=True)
             times.append(logTime)
@@ -240,7 +241,7 @@ while True:
                 if key not in ('i', 't'):
                     if key == "cl":
                         value = float(value)/1024
-                        value = "%.1fkb" % (value,)
+                        value = "%.1fKB" % (value,)
                         key = "req"
                     ext.append("%s:%s" % (key, value))
             ext = ", ".join(ext)
@@ -291,7 +292,7 @@ while True:
         print "- " * 40
         q = listenQueueHistory()
         print datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"), 
-        print "Listen queue:", q[0], " (Recent", ", ".join(q[1:]), "Oldest)"
+        print "Listenq (ssl+non):", q[0], " (Recent", ", ".join(q[1:]), "Oldest)"
         q = idleHistory()
         print "CPU idle %:", q[0], " (Recent", ", ".join(q[1:]), "Oldest)"
 
@@ -346,9 +347,9 @@ while True:
                     if _logId == logId and _logTime > reqStartTime and _reqStartTime < logTime:
                         overlapCount += 1
 
-                print "%7.1fms  %-12s %s res:%.1fkb, %s [%s] #%d +%d %s->%s" % (respTime, userId, method, kb, ext, client, logId, overlapCount, reqStartTime.strftime("%H:%M:%S"), logTime.strftime("%H:%M:%S"),)
+                print "%7.1fms  %-12s %s res:%.1fKB, %s [%s] #%d +%d %s->%s" % (respTime, userId, method, kb, ext, client, logId, overlapCount, reqStartTime.strftime("%H:%M:%S"), logTime.strftime("%H:%M:%S"),)
                 """
-                print "%7.1fms  %-12s %s res:%.1fkb, %s [%s] #%d %s->%s" % (respTime, userId, method, kb, ext, client, logId, reqStartTime.strftime("%H:%M:%S"), logTime.strftime("%H:%M:%S"),)
+                print "%7.1fms  %-12s %s res:%.1fKB, %s [%s] #%d %s->%s" % (respTime, userId, method, kb, ext, client, logId, reqStartTime.strftime("%H:%M:%S"), logTime.strftime("%H:%M:%S"),)
             except:
                 pass
 
@@ -382,4 +383,4 @@ while True:
 
     except Exception, e:
         print "Script failure", e
-
+        raise
