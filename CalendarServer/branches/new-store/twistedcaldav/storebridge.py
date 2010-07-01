@@ -41,7 +41,7 @@ from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
 from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav.static import CalDAVFile, ScheduleInboxFile,\
-    NotificationCollectionFile, NotificationFile
+    NotificationCollectionFile, NotificationFile, GlobalAddressBookFile
 from twistedcaldav.vcard import Component as VCard
 
 from txdav.common.icommondatastore import NoSuchObjectResourceError,\
@@ -1075,6 +1075,102 @@ class ProtoAddressBookCollectionFile(CalDAVFile):
             Name
         )
         AddressBookCollectionFile.transform(
+            self, newStoreAddressBook, self._newStoreParentHome
+        )
+        return d
+
+
+    def exists(self):
+        # FIXME: tests
+        return False
+
+
+    def provision(self):
+        """
+        This resource should do nothing if it's provisioned.
+        """
+        # FIXME: should be deleted, or raise an exception
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
+
+
+class GlobalAddressBookCollectionFile(_AddressBookChildHelper, GlobalAddressBookFile):
+    """
+    Wrapper around a L{txcarddav.iaddressbook.IAddressBook}.
+    """
+
+    def __init__(self, addressbook, home, *args, **kw):
+        """
+        Create a GlobalAddressBookCollectionFile from a L{txcarddav.iaddressbook.IAddressBook}
+        and the arguments required for L{CalDAVFile}.
+        """
+        super(GlobalAddressBookCollectionFile, self).__init__(*args, **kw)
+        self._initializeWithAddressBook(addressbook, home)
+
+
+    def isCollection(self):
+        return True
+
+    def isAddressBookCollection(self):
+        """
+        Yes, it is a calendar collection.
+        """
+        return True
+
+class ProtoGlobalAddressBookCollectionFile(GlobalAddressBookFile):
+    """
+    A resource representing an addressbook collection which hasn't yet been created.
+    """
+
+    def __init__(self, home, *args, **kw):
+        """
+        A placeholder resource for an addressbook collection which does not yet
+        exist, but will become a L{GlobalAddressBookCollectionFile}.
+
+        @param home: The addressbook home which will be this resource's parent,
+            when it exists.
+
+        @type home: L{txcarddav.iaddressbookstore.IAddressBookHome}
+        """
+        self._newStoreParentHome = home
+        super(ProtoGlobalAddressBookCollectionFile, self).__init__(*args, **kw)
+
+
+    def isCollection(self):
+        return True
+
+    def createSimilarFile(self, path):
+        # FIXME: this is necessary for 
+        # twistedcaldav.test.test_mkcol.
+        #     MKCOL.test_make_addressbook_no_parent - there should be a more
+        # structured way to refuse creation with a non-existent parent.
+        return NoParent(path)
+
+
+    def provisionFile(self):
+        """
+        Create an addressbook collection.
+        """
+        # FIXME: this should be done in the backend; provisionDefaultAddressBooks
+        # should go away.
+        return self.createAddressBookCollection()
+
+
+    def createAddressBookCollection(self):
+        """
+        Override C{createAddressBookCollection} to actually do the work.
+        """
+        d = succeed(CREATED)
+
+        Name = self.fp.basename()
+        self._newStoreParentHome.createAddressBookWithName(Name)
+        newStoreAddressBook = self._newStoreParentHome.addressbookWithName(
+            Name
+        )
+        GlobalAddressBookCollectionFile.transform(
             self, newStoreAddressBook, self._newStoreParentHome
         )
         return d

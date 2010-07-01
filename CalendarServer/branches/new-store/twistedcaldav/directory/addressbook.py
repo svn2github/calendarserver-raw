@@ -379,12 +379,6 @@ class GlobalAddressBookResource (CalDAVResource):
     def resourceType(self, request):
         return succeed(davxml.ResourceType.sharedaddressbook)
 
-    def url(self):
-        return joinURL("/", config.GlobalAddressBook.Name, "/")
-
-    def canonicalURL(self, request):
-        return succeed(self.url())
-
     def defaultAccessControlList(self):
 
         aces = (

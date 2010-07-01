@@ -75,6 +75,7 @@ from twistedcaldav.client.reverseproxy import ReverseProxyResource
 from twistedcaldav.config import config
 from twistedcaldav.customxml import TwistedCalendarAccessProperty, TwistedScheduleMatchETags
 from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
+from twistedcaldav.directory.internal import InternalDirectoryRecord
 from twistedcaldav.directory.util import NotFilePath
 from twistedcaldav.extensions import DAVFile, CachingPropertyStore
 from twistedcaldav.linkresource import LinkResource, LinkFollowerMixIn
@@ -1727,7 +1728,7 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
             if config.GlobalAddressBook.Enabled:
                 self.putChild(
                     config.GlobalAddressBook.Name,
-                    LinkResource(self, joinURL("/", config.GlobalAddressBook.Name, "/")),
+                    LinkResource(self, "/addressbooks/public/global/addressbook/"),
                 )
             self._provisionedLinks = True
 
@@ -1755,20 +1756,32 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
         else:
             if not isinstance(path, FilePath):
                 path = FilePath(path)
+
+            # Check for public/global path
+            from twistedcaldav.storebridge import (
+                AddressBookCollectionFile,
+                ProtoAddressBookCollectionFile,
+                GlobalAddressBookCollectionFile,
+                ProtoGlobalAddressBookCollectionFile,
+            )
+            mainCls = AddressBookCollectionFile
+            protoCls = ProtoAddressBookCollectionFile
+            if isinstance(self.record, InternalDirectoryRecord):
+                if "global" in self.record.shortNames:
+                    mainCls = GlobalAddressBookCollectionFile
+                    protoCls = ProtoGlobalAddressBookCollectionFile
+
             newAddressBook = self._newStoreAddressBookHome.addressbookWithName(
                 path.basename()
             )
             if newAddressBook is None:
                 # Local imports.due to circular dependency between modules.
-                from twistedcaldav.storebridge import (
-                     ProtoAddressBookCollectionFile)
-                similar = ProtoAddressBookCollectionFile(
+                similar = protoCls(
                     self._newStoreAddressBookHome,
                     path, principalCollections=self.principalCollections()
                 )
             else:
-                from twistedcaldav.storebridge import AddressBookCollectionFile
-                similar = AddressBookCollectionFile(
+                similar = mainCls(
                     newAddressBook, self._newStoreAddressBookHome,
                     path, principalCollections=self.principalCollections()
                 )
