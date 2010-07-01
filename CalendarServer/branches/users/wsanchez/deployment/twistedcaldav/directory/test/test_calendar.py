@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,9 @@ import os
 from twisted.web2.dav import davxml
 from twisted.web2.test.test_server import SimpleRequest
 
+from twistedcaldav.directory import augment
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
-from twistedcaldav.directory.test.test_xmlfile import xmlFile
+from twistedcaldav.directory.test.test_xmlfile import xmlFile, augmentsFile
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.static import CalendarHomeProvisioningFile
 
@@ -34,11 +35,12 @@ class ProvisionedCalendars (twistedcaldav.test.util.TestCase):
         super(ProvisionedCalendars, self).setUp()
         
         # Setup the initial directory
-        self.xmlfile = self.mktemp()
-        fd = open(self.xmlfile, "w")
+        self.xmlFile = self.mktemp()
+        fd = open(self.xmlFile, "w")
         fd.write(open(xmlFile.path, "r").read())
         fd.close()
-        self.directoryService = XMLDirectoryService(self.xmlfile)
+        self.directoryService = XMLDirectoryService(xmlFile=self.xmlFile)
+        augment.AugmentService = augment.AugmentXMLDB(xmlFiles=(augmentsFile.path,))
         
         # Set up a principals hierarchy for each service we're testing with
         name = "principals"
@@ -67,5 +69,35 @@ class ProvisionedCalendars (twistedcaldav.test.util.TestCase):
                 self.fail("Incorrect response to GET on non-existent calendar home.")
 
         request = SimpleRequest(self.site, "GET", "/calendars/users/12345/")
+        d = request.locateResource(request.uri)
+        d.addCallback(_response)
+
+    def test_ExistentCalendarHome(self):
+
+        def _response(resource):
+            if resource is None:
+                self.fail("Incorrect response to GET on existent calendar home.")
+
+        request = SimpleRequest(self.site, "GET", "/calendars/users/wsanchez/")
+        d = request.locateResource(request.uri)
+        d.addCallback(_response)
+
+    def test_ExistentCalendar(self):
+
+        def _response(resource):
+            if resource is None:
+                self.fail("Incorrect response to GET on existent calendar.")
+
+        request = SimpleRequest(self.site, "GET", "/calendars/users/wsanchez/calendar/")
+        d = request.locateResource(request.uri)
+        d.addCallback(_response)
+
+    def test_ExistentInbox(self):
+
+        def _response(resource):
+            if resource is None:
+                self.fail("Incorrect response to GET on existent inbox.")
+
+        request = SimpleRequest(self.site, "GET", "/calendars/users/wsanchez/inbox/")
         d = request.locateResource(request.uri)
         d.addCallback(_response)

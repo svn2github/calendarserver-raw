@@ -15,12 +15,11 @@
 ##
 
 from twistedcaldav.directory.util import uuidFromName
-
-import twisted.trial.unittest
+from twistedcaldav.test.util import TestCase
 
 uuid_namespace_dns = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 
-class UUID (twisted.trial.unittest.TestCase):
+class UUID (TestCase):
     def test_uuidFromName(self):
         self.assertEquals(
             uuidFromName(uuid_namespace_dns, "python.org"),

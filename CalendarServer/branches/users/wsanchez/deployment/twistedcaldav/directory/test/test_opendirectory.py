@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,8 +21,10 @@ except ImportError:
 else:
     import twisted.web2.auth.digest
     import twistedcaldav.directory.test.util
+    from twistedcaldav.directory import augment
     from twistedcaldav.directory.directory import DirectoryService
     from twistedcaldav.directory.appleopendirectory import OpenDirectoryRecord
+    import dsattributes
 
     # Wonky hack to prevent unclean reactor shutdowns
     class DummyReactor(object):
@@ -51,6 +53,7 @@ else:
         def setUp(self):
             super(OpenDirectory, self).setUp()
             self._service = OpenDirectoryService(node="/Search", dosetup=False)
+            augment.AugmentService = augment.AugmentXMLDB(xmlFiles=())
 
         def tearDown(self):
             for call in self._service._delayedCalls:
@@ -67,12 +70,8 @@ else:
                 nodeName              = "/LDAPv2/127.0.0.1",
                 shortName             = "user",
                 fullName              = "Some user",
-                calendarUserAddresses = set(("mailtoguid@example.com",)),
-                autoSchedule          = False,
-                enabledForCalendaring = True,
+                emailAddresses        = set(("someuser@example.com",)),
                 memberGUIDs           = [],
-                proxyGUIDs            = (),
-                readOnlyProxyGUIDs    = (),
             )
 
             digestFields = {}

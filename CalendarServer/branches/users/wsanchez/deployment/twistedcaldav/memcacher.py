@@ -82,6 +82,7 @@ class Memcacher(LoggingMixIn, CachePoolUserMixIn):
         @type no_invalidation: C{bool}
         """
         self._memcacheProtocol = None
+        self._cachePoolHandle = namespace
         self._namespace = namespace
         self._pickle = pickle
         self._noInvalidation = no_invalidation
@@ -91,7 +92,7 @@ class Memcacher(LoggingMixIn, CachePoolUserMixIn):
         if self._memcacheProtocol is not None:
             return self._memcacheProtocol
 
-        if config.Memcached['ClientEnabled']:
+        if config.Memcached['Pools']['Default']['ClientEnabled']:
             return self.getCachePool()
 
         elif config.ProcessType == "Single" or self._noInvalidation:

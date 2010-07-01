@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,39 +14,54 @@
 # limitations under the License.
 ##
 
-from twisted.internet.defer import DeferredList, inlineCallbacks, succeed
+from twisted.internet.defer import DeferredList, inlineCallbacks, returnValue,\
+    succeed
 from twisted.web2.dav import davxml
 
 from twistedcaldav.directory.directory import DirectoryService
-from twistedcaldav.directory.xmlfile import XMLDirectoryService
-from twistedcaldav.directory.test.test_xmlfile import xmlFile
+from twistedcaldav.directory.test.test_xmlfile import xmlFile, augmentsFile,\
+    proxiesFile
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.principal import DirectoryPrincipalResource
+from twistedcaldav.directory.xmlaccountsparser import XMLAccountsParser
+from twistedcaldav.directory.xmlfile import XMLDirectoryService
 
 import twistedcaldav.test.util
-
-directoryService = XMLDirectoryService(xmlFile)
+from twistedcaldav.config import config
+from twistedcaldav.directory import augment, calendaruserproxy
+from twistedcaldav.directory.calendaruserproxyloader import XMLCalendarUserProxyLoader
+import os
 
 class ProxyPrincipals (twistedcaldav.test.util.TestCase):
     """
     Directory service provisioned principals.
     """
+    
+    @inlineCallbacks
     def setUp(self):
         super(ProxyPrincipals, self).setUp()
 
+        self.directoryService = XMLDirectoryService(xmlFile=xmlFile)
+        augment.AugmentService = augment.AugmentXMLDB(xmlFiles=(augmentsFile.path,))
+        calendaruserproxy.ProxyDBService = calendaruserproxy.ProxySqliteDB(self.mktemp())
+
         # Set up a principals hierarchy for each service we're testing with
         self.principalRootResources = {}
-        name = directoryService.__class__.__name__
+        name = self.directoryService.__class__.__name__
         url = "/" + name + "/"
 
-        provisioningResource = DirectoryPrincipalProvisioningResource(url, directoryService)
+        provisioningResource = DirectoryPrincipalProvisioningResource(url, self.directoryService)
 
         self.site.resource.putChild(name, provisioningResource)
 
-        self.principalRootResources[directoryService.__class__.__name__] = provisioningResource
+        self.principalRootResources[self.directoryService.__class__.__name__] = provisioningResource
+
+        config.DataRoot = self.mktemp()
+        os.mkdir(config.DataRoot)
+        yield XMLCalendarUserProxyLoader(proxiesFile.path).updateProxyDB()
 
     def _getPrincipalByShortName(self, type, name):
-        provisioningResource = self.principalRootResources[directoryService.__class__.__name__]
+        provisioningResource = self.principalRootResources[self.directoryService.__class__.__name__]
         return provisioningResource.principalForShortName(type, name)
 
     def _groupMembersTest(self, recordType, recordName, subPrincipalName, expectedMembers):
@@ -75,6 +90,43 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
         d.addCallback(gotMemberships)
         return d
     
+    @inlineCallbacks
+    def _addProxy(self, principal, subPrincipalName, proxyPrincipal):
+
+        if isinstance(principal, tuple):
+            principal = self._getPrincipalByShortName(principal[0], principal[1])
+        principal = principal.getChild(subPrincipalName)
+        members = (yield principal.groupMembers())
+
+        if isinstance(proxyPrincipal, tuple):
+            proxyPrincipal = self._getPrincipalByShortName(proxyPrincipal[0], proxyPrincipal[1])
+        members.add(proxyPrincipal)
+        
+        yield principal.setGroupMemberSetPrincipals(members)
+
+    @inlineCallbacks
+    def _removeProxy(self, recordType, recordName, subPrincipalName, proxyRecordType, proxyRecordName):
+
+        principal = self._getPrincipalByShortName(recordType, recordName)
+        principal = principal.getChild(subPrincipalName)
+        members = (yield principal.groupMembers())
+
+        proxyPrincipal = self._getPrincipalByShortName(proxyRecordType, proxyRecordName)
+        for p in members:
+            if p.principalUID() == proxyPrincipal.principalUID():
+                members.remove(p)
+                break
+        
+        yield principal.setGroupMemberSetPrincipals(members)
+
+    @inlineCallbacks
+    def _clearProxy(self, principal, subPrincipalName):
+
+        if isinstance(principal, tuple):
+            principal = self._getPrincipalByShortName(principal[0], principal[1])
+        principal = principal.getChild(subPrincipalName)
+        yield principal.setGroupMemberSetPrincipals(set())
+
     @inlineCallbacks
     def _proxyForTest(self, recordType, recordName, expectedProxies, read_write):
         principal = self._getPrincipalByShortName(recordType, recordName)
@@ -215,7 +267,7 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
                 return succeed(self.members)
 
 
-        user = self._getPrincipalByShortName(directoryService.recordType_users,
+        user = self._getPrincipalByShortName(self.directoryService.recordType_users,
                                            "cdaboo")
 
         proxyGroup = user.getChild("calendar-proxy-write")
@@ -243,8 +295,9 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
             changedCount = 0
             def changed(self):
                 self.changedCount += 1
+                return succeed(True)
 
-        user = self._getPrincipalByShortName(directoryService.recordType_users, "cdaboo")
+        user = self._getPrincipalByShortName(self.directoryService.recordType_users, "cdaboo")
 
         proxyGroup = user.getChild("calendar-proxy-write")
 
@@ -253,7 +306,7 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
         oldCacheNotifier = DirectoryPrincipalResource.cacheNotifierFactory
 
         try:
-            DirectoryPrincipalResource.cacheNotifierFactory = (lambda _1, _2: notifier)
+            DirectoryPrincipalResource.cacheNotifierFactory = (lambda _1, _2, **kwargs: notifier)
 
             self.assertEquals(notifier.changedCount, 0)
 
@@ -283,3 +336,187 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
             False
         )
 
+    @inlineCallbacks
+    def test_UserProxy(self):
+        
+        for proxyType in ("calendar-proxy-read", "calendar-proxy-write"):
+
+            yield self._addProxy(
+                (DirectoryService.recordType_users, "wsanchez",),
+                proxyType,
+                (DirectoryService.recordType_users, "cdaboo",),
+            )
+    
+            yield self._groupMembersTest(
+                DirectoryService.recordType_users, "wsanchez",
+                proxyType,
+                ("Cyrus Daboo",),
+            )
+            
+            yield self._addProxy(
+                (DirectoryService.recordType_users, "wsanchez",),
+                proxyType,
+                (DirectoryService.recordType_users, "lecroy",),
+            )
+    
+            yield self._groupMembersTest(
+                DirectoryService.recordType_users, "wsanchez",
+                proxyType,
+                ("Cyrus Daboo", "Chris Lecroy",),
+            )
+    
+            yield self._removeProxy(
+                DirectoryService.recordType_users, "wsanchez",
+                proxyType,
+                DirectoryService.recordType_users, "cdaboo",
+            )
+    
+            yield self._groupMembersTest(
+                DirectoryService.recordType_users, "wsanchez",
+                proxyType,
+                ("Chris Lecroy",),
+            )
+
+    @inlineCallbacks
+    def test_InvalidUserProxy(self):
+
+
+        # Set up the in-memory (non-null) memcacher:
+        config.ProcessType = "Single"
+        calendaruserproxy.ProxyDBService._memcacher._memcacheProtocol = None
+        principal = self._getPrincipalByShortName(
+            DirectoryService.recordType_users, "wsanchez")
+        db = principal._calendar_user_proxy_index()
+
+        # Set the clock to the epoch:
+        theTime = 0
+        db._memcacher.theTime = theTime
+
+
+        for doMembershipFirst in (True, False):
+            for proxyType in ("calendar-proxy-read", "calendar-proxy-write"):
+
+                principal = self._getPrincipalByShortName(DirectoryService.recordType_users, "wsanchez")
+                proxyGroup = principal.getChild(proxyType)
+
+                testPrincipal = self._getPrincipalByShortName(DirectoryService.recordType_users, "cdaboo")
+
+                fakePrincipal = self._getPrincipalByShortName(DirectoryService.recordType_users, "dreid")
+                fakeProxyGroup = fakePrincipal.getChild(proxyType)
+
+                yield self._addProxy(
+                    principal,
+                    proxyType,
+                    testPrincipal,
+                )
+
+                members = yield proxyGroup._index().getMembers(proxyGroup.uid)
+                self.assertEquals(len(members), 1)
+
+                yield self._addProxy(
+                    fakePrincipal,
+                    proxyType,
+                    testPrincipal,
+                )
+                members = yield fakeProxyGroup._index().getMembers(fakeProxyGroup.uid)
+                self.assertEquals(len(members), 1)
+
+                uids = [p.principalUID() for p in (yield testPrincipal.groupMemberships())]
+                self.assertTrue("5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1#%s" % (proxyType,) in uids)
+
+                memberships = yield testPrincipal._calendar_user_proxy_index().getMemberships(testPrincipal.principalUID())
+                self.assertEquals(len(memberships), 2)
+
+                yield self._addProxy(
+                    principal,
+                    proxyType,
+                    fakePrincipal,
+                )
+                members = yield proxyGroup._index().getMembers(proxyGroup.uid)
+                self.assertEquals(len(members), 2)
+
+                # Remove the dreid user from the directory service
+                del self.directoryService._accounts()[DirectoryService.recordType_users]["dreid"]
+
+
+                cacheTimeout = config.DirectoryService.params.get("cacheTimeout", 30) * 60 * 2
+
+                @inlineCallbacks
+                def _membershipTest():
+
+                    uids = [p.principalUID() for p in (yield testPrincipal.groupMemberships())]
+                    self.assertTrue("5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1#%s" % (proxyType,) not in uids)
+
+                    memberships = yield testPrincipal._calendar_user_proxy_index().getMemberships(testPrincipal.principalUID())
+                    self.assertEquals(len(memberships), 1)
+
+                @inlineCallbacks
+                def _membersTest(theTime):
+                    yield self._groupMembersTest(
+                        DirectoryService.recordType_users, "wsanchez",
+                        proxyType,
+                        ("Cyrus Daboo",),
+                    )
+
+                    # Trigger the proxy DB clean up, which won't actually
+                    # remove anything because we haven't exceeded the timeout
+                    yield proxyGroup.groupMembers()
+
+                    # Advance 10 seconds
+                    theTime += 10
+                    db._memcacher.theTime = theTime
+
+                    # When we first examine the members, we have not exceeded
+                    # the clean-up timeout, so we'll still have 2:
+                    members = yield proxyGroup._index().getMembers(proxyGroup.uid)
+                    self.assertEquals(len(members), 2)
+
+                    # Restore removed user
+                    parser = XMLAccountsParser(self.directoryService.xmlFile)
+                    self.directoryService._parsedAccounts = parser.items
+                    self.directoryService.recordWithShortName(
+                        DirectoryService.recordType_users, "dreid")
+
+                    # Trigger the proxy DB clean up, which will actually
+                    # remove the deletion timer because the principal has been
+                    # restored
+                    yield proxyGroup.groupMembers()
+
+                    # Verify the deletion timer has been removed
+                    result = yield db._memcacher.checkDeletionTimer("5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1")
+                    self.assertEquals(result, None)
+
+                    # Remove the dreid user from the directory service
+                    del self.directoryService._accounts()[DirectoryService.recordType_users]["dreid"]
+
+                    # Trigger the proxy DB clean up, which won't actually
+                    # remove anything because we haven't exceeded the timeout
+                    yield proxyGroup.groupMembers()
+
+                    # Advance beyond the timeout
+                    theTime += cacheTimeout
+                    db._memcacher.theTime = theTime
+
+                    # Trigger the proxy DB clean up
+                    yield proxyGroup.groupMembers()
+
+                    # The missing principal has now been cleaned out of the
+                    # proxy DB
+                    members = yield proxyGroup._index().getMembers(proxyGroup.uid)
+                    self.assertEquals(len(members), 1)
+                    returnValue(theTime)
+
+
+                if doMembershipFirst:
+                    yield _membershipTest()
+                    theTime = yield _membersTest(theTime)
+                else:
+                    theTime = yield _membersTest(theTime)
+                    yield _membershipTest()
+
+                # Restore removed user
+                parser = XMLAccountsParser(self.directoryService.xmlFile)
+                self.directoryService._parsedAccounts = parser.items
+
+                yield self._clearProxy(principal, proxyType)
+                yield self._clearProxy(fakePrincipal, proxyType)

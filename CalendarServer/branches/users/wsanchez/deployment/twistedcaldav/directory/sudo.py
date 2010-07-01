@@ -132,11 +132,12 @@ class SudoDirectoryRecord(DirectoryRecord):
             guid=None,
             shortName=shortName,
             fullName=shortName,
-            calendarUserAddresses=set(),
-            autoSchedule=False,
-            enabledForCalendaring=False)
+            emailAddresses=set(),
+        )
 
         self.password = entry['password']
+
+        self.enabled = True     # Explicitly enabled
 
     def verifyCredentials(self, credentials):
         if IUsernamePassword.providedBy(credentials):

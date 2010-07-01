@@ -14,11 +14,10 @@
 # limitations under the License.
 ##
 
-from twistedcaldav.test.util import TestCase
-
 from twistedcaldav.static import CalendarHomeFile, CalDAVFile
 from twistedcaldav.cache import DisabledCacheNotifier
 from twistedcaldav.test.util import StubCacheChangeNotifier
+from twistedcaldav.test.util import TestCase
 
 class StubParentResource(object):
     def principalCollections(self):

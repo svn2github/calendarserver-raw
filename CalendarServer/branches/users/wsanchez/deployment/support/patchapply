@@ -26,24 +26,37 @@ import sys
 #
 
 #projects = ("Twisted", "vobject", "dateutil", "xattr")
-projects = ("Twisted", "vobject",)
+#projects = (("Twisted-4", "Twisted"), ("vobject-2","vobject",),)
+projects = (("Twisted-4", "Twisted"),)
+
 cwd = os.getcwd()
 libpatches = os.path.join(cwd, "lib-patches")
 
 cmd = "/usr/bin/patch"
 
 def applypatch(project, patch):
-    stat = os.system("%s -s -d ../%s/ -p0 --forward --dry-run -i %s > /dev/null" % (cmd, project, patch, ))
-    if stat == 0:
-        print "+++ Patching %s with %s" % (project, patch[len(cwd) + 1:],)
-        os.system("%s -s -d ../%s/ -p0 --forward -i %s" % (cmd, project, patch, ))
+
+    if isinstance(project, tuple):
+        project_path, project_name = project
     else:
-        print "*** Failed to patch %s with %s" % (project, patch[len(cwd) + 1:],)
+        project_path = project_name = project
+
+    stat = os.system("%s -s -d ../%s/ -p0 --forward --dry-run -i %s > /dev/null" % (cmd, project_path, patch, ))
+    if stat == 0:
+        print "+++ Patching %s with %s" % (project_path, patch[len(cwd) + 1:],)
+        os.system("%s -s -d ../%s/ -p0 --forward -i %s" % (cmd, project_path, patch, ))
+    else:
+        print "*** Failed to patch %s with %s" % (project_path, patch[len(cwd) + 1:],)
 
 def applypatches(project):
     
+    if isinstance(project, tuple):
+        project_path, project_name = project
+    else:
+        project_path = project_name = project
+
     # Iterate over each patch file in the patches directory
-    path = os.path.join(libpatches, project)
+    path = os.path.join(libpatches, project_name)
     for file in os.listdir(path):
         fpath = os.path.join(path, file)
         if os.path.isfile(fpath) and fpath.endswith(".patch"):

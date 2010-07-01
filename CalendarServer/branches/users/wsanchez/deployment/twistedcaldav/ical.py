@@ -49,6 +49,7 @@ from twisted.web2.dav.util import allDataFromStream
 from twistedcaldav.dateops import compareDateTime, normalizeToUTC, timeRangesOverlap
 from twistedcaldav.instance import InstanceList
 from twistedcaldav.log import Logger
+from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 
 log = Logger()
 
@@ -1110,6 +1111,43 @@ class Component (object):
 
         return None
 
+    def getAttendeesByInstance(self, makeUnique=False, onlyScheduleAgentServer=False):
+        """
+        Get the attendee values for each instance. Optionally remove duplicates.
+        
+        @param makeUnique: if C{True} remove duplicate ATTENDEEs in each component
+        @type makeUnique: C{bool}
+        @param onlyScheduleAgentServer: if C{True} only return ATETNDEEs with SCHEDULE-AGENT=SERVER set
+        @type onlyScheduleAgentServer: C{bool}
+        @return: a list of tuples of (organizer value, recurrence-id)
+        """
+        
+        # Extract appropriate sub-component if this is a VCALENDAR
+        if self.name() == "VCALENDAR":
+            result = ()
+            for component in self.subcomponents():
+                if component.name() != "VTIMEZONE":
+                    result += component.getAttendeesByInstance(makeUnique, onlyScheduleAgentServer)
+            return result
+        else:
+            result = ()
+            attendees = set()
+            rid = self.getRecurrenceIDUTC()
+            for attendee in tuple(self.properties("ATTENDEE")):
+                
+                if onlyScheduleAgentServer:
+                    if "SCHEDULE-AGENT" in attendee.params():
+                        if attendee.paramValue("SCHEDULE-AGENT") != "SERVER":
+                            continue
+
+                cuaddr = attendee.value()
+                if makeUnique and cuaddr in attendees:
+                    self.removeProperty(attendee)
+                else:
+                    result += ((cuaddr, rid),)
+                    attendees.add(cuaddr)
+            return result
+
     def getAttendeeProperty(self, match):
         """
         Get the attendees matching a value. Works on either a VCALENDAR or on a component.
@@ -1118,18 +1156,10 @@ class Component (object):
         @return: the string value of the Organizer property, or None
         """
         
-        # FIXME: we should really have a URL class and have it manage comparisons
-        # in a sensible fashion.
-        def _normalizeCUAddress(addr):
-            if addr.startswith("/") or addr.startswith("http:") or addr.startswith("https:"):
-                return addr.rstrip("/")
-            else:
-                return addr
-
         # Need to normalize http/https cu addresses
         test = set()
         for item in match:
-            test.add(_normalizeCUAddress(item))
+            test.add(normalizeCUAddr(item))
         
         # Extract appropriate sub-component if this is a VCALENDAR
         if self.name() == "VCALENDAR":
@@ -1139,7 +1169,7 @@ class Component (object):
         else:
             # Find the primary subcomponent
             for p in self.properties("ATTENDEE"):
-                if _normalizeCUAddress(p.value()) in test:
+                if normalizeCUAddr(p.value()) in test:
                     return p
 
         return None
