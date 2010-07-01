@@ -50,7 +50,7 @@ class IAddressBookHome(Interface):
         @return: a string.
         """
 
-    def created(self):
+    def created():
         """
         Addressbook home was created. Do initialization
         """

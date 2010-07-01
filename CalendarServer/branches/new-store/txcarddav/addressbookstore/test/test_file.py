@@ -52,11 +52,12 @@ def setUpAddressBookStore(test):
     test.root = FilePath(test.mktemp())
     test.root.createDirectory()
 
-    addressbookPath = test.addressbookPath = test.root.child("store")
+    storeRootPath = test.storeRootPath = test.root.child("store")
+    addressbookPath = storeRootPath.child("addressbooks").child("__uids__")
+    addressbookPath.parent().makedirs()
     storePath.copyTo(addressbookPath)
 
-
-    test.addressbookStore = AddressBookStore(addressbookPath)
+    test.addressbookStore = AddressBookStore(storeRootPath)
     test.txn = test.addressbookStore.newTransaction()
     assert test.addressbookStore is not None, "No addressbook store?"
 
@@ -437,7 +438,7 @@ class FileStorageTests(unittest.TestCase, CommonTests):
         constructor argument.
         """
         self.assertEquals(self.storeUnderTest()._path,
-                          self.addressbookPath)
+                          self.storeRootPath)
 
 
     def test_addressbookObjectsWithDotFile(self):
