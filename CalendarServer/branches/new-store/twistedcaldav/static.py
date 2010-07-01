@@ -58,7 +58,7 @@ from twext.web2.http import HTTPError, StatusResponse
 from twext.web2.dav import davxml
 from twext.web2.dav.element.base import dav_namespace
 from twext.web2.dav.fileop import mkcollection, rmdir
-from twext.web2.dav.http import ErrorResponse
+from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 from twext.web2.dav.idav import IDAVResource
 from twext.web2.dav.method import put_common, delete_common
 from twext.web2.dav.noneprops import NonePropertyStore
@@ -1332,6 +1332,13 @@ class ScheduleOutboxFile (ScheduleOutboxResource, ScheduleFile):
 
     def supportedPrivileges(self, request):
         return succeed(sendSchedulePrivilegeSet)
+
+    def report_urn_ietf_params_xml_ns_caldav_calendar_query(self, request, calendar_query):
+        return succeed(MultiStatusResponse(()))
+        
+    def report_urn_ietf_params_xml_ns_caldav_calendar_multiget(self, request, multiget):
+        responses = [davxml.StatusResponse(href, davxml.Status.fromResponseCode(responsecode.NOT_FOUND)) for href in multiget.resources]
+        return succeed(MultiStatusResponse((responses)))
 
 class IScheduleInboxFile (ReadOnlyResourceMixIn, IScheduleInboxResource, CalDAVFile):
     """
