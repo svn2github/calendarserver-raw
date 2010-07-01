@@ -82,7 +82,12 @@ class CalendarHome(CommonHome):
 
     createCalendarWithName = CommonHome.createChildWithName
     removeCalendarWithName = CommonHome.removeChildWithName
-    calendars = CommonHome.children
+
+    def calendars(self):
+        for child in self.children():
+            if child.name() == 'dropbox':
+                continue
+            yield child
 
 
     def calendarObjectWithDropboxID(self, dropboxID):
@@ -99,6 +104,7 @@ class CalendarHome(CommonHome):
     def _calendarStore(self):
         return self._dataStore
 
+
     def created(self):
         self.createCalendarWithName("calendar")
         defaultCal = self.calendarWithName("calendar")
@@ -106,6 +112,8 @@ class CalendarHome(CommonHome):
         props[PropertyName(*ScheduleCalendarTransp.qname())] = ScheduleCalendarTransp(
             Opaque())
         self.createCalendarWithName("inbox")
+
+
 
 class Calendar(CommonHomeChild):
     """
@@ -135,12 +143,15 @@ class Calendar(CommonHomeChild):
         self._invites = Invites(self)
         self._objectResourceClass = CalendarObject
 
+
     @property
     def _calendarHome(self):
         return self._home
 
+
     def resourceType(self):
         return ResourceType.calendar
+
 
     ownerCalendarHome = CommonHomeChild.ownerHome
     calendarObjects = CommonHomeChild.objectResources
@@ -164,6 +175,7 @@ class Calendar(CommonHomeChild):
             component.validateForCalDAV()
 
 
+
 class CalendarObject(CommonObjectResource):
     """
     @ivar _path: The path of the .ics file on disk
@@ -176,9 +188,11 @@ class CalendarObject(CommonObjectResource):
         super(CalendarObject, self).__init__(name, calendar)
         self._attachments = {}
 
+
     @property
     def _calendar(self):
         return self._parentCollection
+
 
     @writeOperation
     def setComponent(self, component):
@@ -323,12 +337,19 @@ class CalendarObject(CommonObjectResource):
         # But, ahem.
 
 
+    def _allSubcomponents(self, component):
+        for subcomponent in component.subcomponents():
+            yield subcomponent
+            for deeper in self._allSubcomponents(subcomponent):
+                yield deeper
+
+
     def dropboxID(self):
         """
         
         """
         component = self.component()
-        for subcomp in component.subcomponents():
+        for subcomp in self._allSubcomponents(component):
             dropboxProperty = subcomp.getProperty("X-APPLE-DROPBOX")
             if dropboxProperty is not None:
                 componentDropboxID = dropboxProperty.value().split("/")[-1]

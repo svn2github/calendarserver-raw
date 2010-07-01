@@ -966,7 +966,7 @@ END:VCALENDAR
         """
         L{ICalendarObject.createAttachmentWithName} may create a directory
         named 'dropbox', but this should not be seen as a calendar by
-        L{ICalendarHome.calendarWithName}.
+        L{ICalendarHome.calendarWithName} or L{ICalendarHome.calendars}.
         """
         obj = self.calendarObjectUnderTest()
         t = obj.createAttachmentWithName("new.attachment", "text/plain")
@@ -975,5 +975,8 @@ END:VCALENDAR
         self.commit()
         self.assertEquals(self.homeUnderTest().calendarWithName("dropbox"),
                           None)
+        self.assertEquals(
+            set([n.name() for n in self.homeUnderTest().calendars()]),
+            set(home1_calendarNames))
 
 
