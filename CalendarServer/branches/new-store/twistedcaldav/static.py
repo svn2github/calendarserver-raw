@@ -1062,8 +1062,10 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         return
 
     def provisionChild(self, name):
+        from twistedcaldav.storebridge import StoreScheduleInboxFile
+        from twistedcaldav.storebridge import DropboxCollection
         if config.EnableDropBox:
-            DropBoxHomeFileClass = DropBoxHomeFile
+            DropBoxHomeFileClass = DropboxCollection
         else:
             DropBoxHomeFileClass = None
 
@@ -1077,11 +1079,11 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         else:
             NotificationCollectionFileClass = None
 
+
         # For storebridge stuff we special case this
         if name == "notification":
             return self.createNotificationsFile(self.fp.child(name).path)
 
-        from twistedcaldav.storebridge import StoreScheduleInboxFile
         cls = {
             "inbox"        : StoreScheduleInboxFile,
             "outbox"       : ScheduleOutboxFile,

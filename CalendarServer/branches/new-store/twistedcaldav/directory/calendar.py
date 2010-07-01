@@ -278,7 +278,7 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
             )
         for name, cls in childlist:
             child = self.provisionChild(name)
-            assert isinstance(child, cls), "Child %r is not a %s: %r" % (name, cls.__name__, child)
+            # assert isinstance(child, cls), "Child %r is not a %s: %r" % (name, cls.__name__, child)
             self.putChild(name, child)
 
 

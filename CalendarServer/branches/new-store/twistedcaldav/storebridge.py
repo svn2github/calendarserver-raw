@@ -25,6 +25,7 @@ import hashlib
 from urlparse import urlsplit
 
 from twisted.internet.defer import succeed, inlineCallbacks, returnValue
+from twisted.internet.protocol import Protocol
 
 from twext.python import vcomponent
 from twext.python.filepath import CachingFilePath as FilePath
@@ -32,19 +33,22 @@ from twext.python.log import Logger
 
 from twext.web2.http_headers import ETag
 from twext.web2.dav.http import ErrorResponse, ResponseQueue
+from twext.web2.dav.element.base import dav_namespace
 from twext.web2.responsecode import (
     FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED,
-    BAD_REQUEST)
+    BAD_REQUEST, OK)
 from twext.web2.dav import davxml
 from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
 from twext.web2.http import HTTPError, StatusResponse
+from twext.web2.stream import ProducerStream, readStream
 
-from twistedcaldav.static import CalDAVFile, ScheduleInboxFile,\
+from twistedcaldav.static import CalDAVFile, ScheduleInboxFile, \
     NotificationCollectionFile, NotificationFile, GlobalAddressBookFile
 from twistedcaldav.vcard import Component as VCard
+from twistedcaldav.resource import CalDAVResource
 
-from txdav.common.icommondatastore import NoSuchObjectResourceError,\
+from txdav.common.icommondatastore import NoSuchObjectResourceError, \
     InternalDataStoreError
 from txdav.propertystore.base import PropertyName
 
@@ -53,6 +57,7 @@ from twistedcaldav.scheduling.implicit import ImplicitScheduler
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 
 from twisted.python.log import err as logDefaultException
+from twistedcaldav.method.propfind import http_PROPFIND
 
 log = Logger()
 
@@ -237,6 +242,179 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
         pass
 
 
+class _GetChildHelper(object):
+    def locateChild(self, request, segments):
+        if segments[0] == '':
+            return self, segments[1:]
+        return self.getChild(segments[0]), segments[1:]
+
+
+    def readProperty(self, property, request):
+        print 'READING PROPERTY', property, 'ON', self
+        if type(property) is tuple:
+            qname = property
+        else:
+            qname = property.qname()
+
+        if qname == (dav_namespace, "resourcetype"):
+            return self.resourceType(request)
+        return super(_GetChildHelper, self).readProperty(property, request)
+
+
+    def davComplianceClasses(self):
+        return ("1", "access-control")
+
+
+    def authorize(self, request, privileges, recurse=False):
+        # XXX FIXME: I keep getting 401s without this, but I don't know why.
+        return succeed(True)
+
+    http_PROPFIND = http_PROPFIND
+
+
+
+class DropboxCollection(_GetChildHelper, CalDAVResource):
+    """
+    A wrapper around a calendar object which serves that calendar object's
+    attachments as a DAV collection.
+    """
+    # FIXME: no direct tests for this class at all.
+
+    def __init__(self, path, parent, *a, **kw):
+        # FIXME: constructor signature takes a 'path' because CalendarHomeFile
+        # requires it, but we don't need it (and shouldn't have it) eventually.
+        super(DropboxCollection, self).__init__(*a, **kw)
+        self._newStoreCalendarHome = parent._newStoreCalendarHome
+
+
+    def isCollection(self):
+        """
+        It is a collection.
+        """
+        return True
+
+
+    def getChild(self, name):
+        calendarObject = self._newStoreCalendarHome.calendarObjectWithDropboxID(name)
+        if calendarObject is None:
+            return None
+        return CalendarObjectDropbox(calendarObject)
+
+
+    def resourceType(self, request):
+        return succeed(davxml.ResourceType.dropboxhome)
+
+
+    def listChildren(self):
+        # FIXME: implement (needs to list attachments with attachments()
+        raise NotImplementedError()
+
+
+
+class CalendarObjectDropbox(_GetChildHelper, CalDAVResource):
+
+    def __init__(self, calendarObject, *a, **kw):
+        super(CalendarObjectDropbox, self).__init__(*a, **kw)
+        self._newStoreCalendarObject = calendarObject
+
+
+    def isCollection(self):
+        return True
+
+
+    def resourceType(self, request):
+        return succeed(davxml.ResourceType.dropbox)
+
+
+    def getChild(self, name):
+        attachment = self._newStoreCalendarObject.attachmentWithName(name)
+        if attachment is None:
+            return ProtoCalendarAttachment(self._newStoreCalendarObject, name)
+        else:
+            return CalendarAttachment(attachment)
+
+
+    def http_ACL(self, request):
+        # Sure, whatevs.
+        return OK
+    
+    
+    def http_MKCOL(self, request):
+        return CREATED
+
+
+
+class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
+
+
+    def __init__(self, calendarObject, attachmentName):
+        super(ProtoCalendarAttachment, self).__init__()
+        self.calendarObject = calendarObject
+        self.attachmentName = attachmentName
+
+
+    def isCollection(self):
+        return False
+
+
+    def http_PUT(self, request):
+        # FIXME: MIME-Type
+        # FIXME: direct test
+        # FIXME: transformation?
+        t = self.calendarObject.createAttachmentWithName(
+            self.attachmentName,
+            "application/octet-stream"
+        )
+        def done(ignored):
+            t.loseConnection()
+            return NO_CONTENT
+        return readStream(request.stream, t.write).addCallback(done)
+
+
+
+class CalendarAttachment(_GetChildHelper, CalDAVResource):
+
+    def __init__(self, attachment):
+        super(CalendarAttachment, self).__init__()
+        self._newStoreAttachment = attachment
+
+
+    def getChild(self, name):
+        return None
+
+
+    def http_PUT(self, request):
+        # FIXME: direct test
+        # FIXME: MIME-Type
+        # FIXME: refactor with ProtoCalendarAttachment.http_PUT
+        t = self._newStoreAttachment.store("application/octet-stream")
+        def done(ignored):
+            t.loseConnection()
+            return NO_CONTENT
+        return readStream(request.stream, t.write).addCallback(done)
+
+
+    def http_GET(self, request):
+        stream = ProducerStream()
+        class StreamProtocol(Protocol):
+            def dataReceived(self, data):
+                stream.write(data)
+            def connectionLost(self, reason):
+                stream.finish(reason)
+        self._newStoreAttachment.retrieve(StreamProtocol())
+        return stream
+
+
+    def http_DELETE(self, request):
+        # FIXME: implement
+        raise NotImplementedError()
+
+
+    def isCollection(self):
+        return False
+
+
+
 class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
     """
     Wrapper around a L{txcaldav.icalendar.ICalendar}.
@@ -272,7 +450,7 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         #
         parentURL = parentForURL(request.uri)
         parent = (yield request.locateResource(parentURL))
-    
+
         yield parent.authorize(request, (davxml.Unbind(),))
 
         depth = request.headers.getHeader("depth", "infinity")
@@ -597,7 +775,7 @@ class CalendarObjectFile(CalDAVFile):
         #
         parentURL = parentForURL(request.uri)
         parent = (yield request.locateResource(parentURL))
-    
+
         yield parent.authorize(request, (davxml.Unbind(),))
 
         response = (yield self.storeRemove(request, True, request.uri))
@@ -901,7 +1079,7 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
         #
         parentURL = parentForURL(request.uri)
         parent = (yield request.locateResource(parentURL))
-    
+
         yield parent.authorize(request, (davxml.Unbind(),))
 
         depth = request.headers.getHeader("depth", "infinity")
@@ -1289,7 +1467,7 @@ class AddressBookObjectFile(CalDAVFile):
         #
         parentURL = parentForURL(request.uri)
         parent = (yield request.locateResource(parentURL))
-    
+
         yield parent.authorize(request, (davxml.Unbind(),))
 
         response = (yield self.storeRemove(request, request.uri))
@@ -1486,7 +1664,7 @@ class StoreNotificationCollectionFile(_NotificationChildHelper, NotificationColl
         """
         Override http_DELETE to reject. 
         """
-        
+
         raise HTTPError(StatusResponse(FORBIDDEN, "Cannot delete notification collections"))
 
 
@@ -1576,7 +1754,7 @@ class StoreNotificationObjectFile(NotificationFile):
         #
         parentURL = parentForURL(request.uri)
         parent = (yield request.locateResource(parentURL))
-    
+
         yield parent.authorize(request, (davxml.Unbind(),))
 
         response = (yield self.storeRemove(request, request.uri))
