@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from txdav.common.icommondatastore import ICommonTransaction
 
 """
 Calendar store interfaces
@@ -24,6 +25,7 @@ from zope.interface import Interface
 
 __all__ = [
     # Classes
+    "ICalendarTransaction",
     "ICalendarHome",
     "ICalendar",
     "ICalendarObject",
@@ -39,6 +41,23 @@ __all__ = [
 
 # from txdav.idav import IPropertyStore
 # from txdav.idav import ITransaction
+
+class ICalendarTransaction(ICommonTransaction):
+    """
+    Transaction functionality required to be implemented by calendar stores.
+    """
+
+    def calendarHomeWithUID(uid, create=False):
+        """
+        Retrieve the calendar home for the principal with the given C{uid}.
+
+        If C{create} is C{True}, create the calendar home if it doesn't
+        already exist.
+
+        @return: an L{ICalendarHome} or C{None} if no such calendar
+            home exists.
+        """
+
 
 #
 # Interfaces
@@ -57,11 +76,6 @@ class ICalendarHome(Interface):
         Retrieve the unique identifier for this calendar home.
 
         @return: a string.
-        """
-
-    def created():
-        """
-        Calendar home was created. Do initialization
         """
 
     def calendars():

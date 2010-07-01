@@ -1,4 +1,4 @@
-# -*- test-case-name: txdav.datastore.test.test_file -*-
+# -*- test-case-name: txcaldav.calendarstore.test.test_file -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -15,37 +15,39 @@
 # limitations under the License.
 ##
 
+"""
+Common utility functions for a file based datastore.
+"""
+
 from errno import EEXIST, ENOENT
 
 from twext.python.log import LoggingMixIn
 from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
 
-from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation,\
+from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
     hidden, isValidName, cached
 from txdav.propertystore.base import PropertyName
 from txdav.propertystore.xattr import PropertyStore
-from txdav.common.icommondatastore import HomeChildNameNotAllowedError,\
-    HomeChildNameAlreadyExistsError, NoSuchHomeChildError,\
-    InternalDataStoreError, ObjectResourceNameNotAllowedError,\
-    ObjectResourceNameAlreadyExistsError, NoSuchObjectResourceError,\
-    ICommonDataStore, ICommonStoreTransaction
+from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
+    HomeChildNameAlreadyExistsError, NoSuchHomeChildError, \
+    InternalDataStoreError, ObjectResourceNameNotAllowedError, \
+    ObjectResourceNameAlreadyExistsError, NoSuchObjectResourceError
+
 from twisted.python.util import FancyEqMixin
 from twistedcaldav.customxml import GETCTag, NotificationType
 from uuid import uuid4
-from zope.interface.declarations import implements
-from txdav.common.inotifications import INotificationCollection,\
+from zope.interface import implements, directlyProvides
+from txdav.common.inotifications import INotificationCollection, \
     INotificationObject
 from twistedcaldav.notifications import NotificationRecord
 from twistedcaldav.notifications import NotificationsDatabase as OldNotificationIndex
 from twext.web2.http_headers import generateContentType, MimeType
 from twistedcaldav.sharing import SharedCollectionsDatabase
+from txdav.idav import IDataStore
 
-"""
-Common utility functions for a file based datastore.
-"""
 
-ECALENDARTYPE     = 0
-EADDRESSBOOKTYPE  = 1
+ECALENDARTYPE = 0
+EADDRESSBOOKTYPE = 1
 TOPPATHS = (
     "calendars",
     "addressbooks"
@@ -57,9 +59,9 @@ class CommonDataStore(DataStore):
     An implementation of data store.
 
     @ivar _path: A L{CachingFilePath} referencing a directory on disk that
-        stores all addressbook data for a group of uids.
+        stores all calendar and addressbook data for a group of UIDs.
     """
-    implements(ICommonDataStore)
+    implements(IDataStore)
 
     def __init__(self, path, enableCalendars=True, enableAddressBooks=True):
         """
@@ -90,8 +92,6 @@ class CommonStoreTransaction(DataStoreTransaction):
     operations.
     """
 
-    implements(ICommonStoreTransaction)
-
     _homeClass = {}
 
     def __init__(self, dataStore, enableCalendars, enableAddressBooks):
@@ -101,26 +101,32 @@ class CommonStoreTransaction(DataStoreTransaction):
 
         @param dataStore: The store that created this transaction.
 
-        @type dataStore: L{DataStore}
+        @type dataStore: L{CommonDataStore}
         """
-        
-        assert enableCalendars or enableAddressBooks
+        from txcaldav.icalendarstore import ICalendarTransaction
+        from txcarddav.iaddressbookstore import IAddressBookTransaction
+        from txcaldav.calendarstore.file import CalendarHome
+        from txcarddav.addressbookstore.file import AddressBookHome
 
         super(CommonStoreTransaction, self).__init__(dataStore)
         self._homes = {}
         self._homes[ECALENDARTYPE] = {}
         self._homes[EADDRESSBOOKTYPE] = {}
         self._notifications = {}
-        
+
+        extraInterfaces = []
         if enableCalendars:
+            extraInterfaces.append(ICalendarTransaction)
             self._notificationHomeType = ECALENDARTYPE
         else:
             self._notificationHomeType = EADDRESSBOOKTYPE
+        if enableAddressBooks:
+            extraInterfaces.append(IAddressBookTransaction)
+        directlyProvides(self, *extraInterfaces)
 
-        from txcaldav.calendarstore.file import CalendarHome
-        from txcarddav.addressbookstore.file import AddressBookHome
         CommonStoreTransaction._homeClass[ECALENDARTYPE] = CalendarHome
         CommonStoreTransaction._homeClass[EADDRESSBOOKTYPE] = AddressBookHome
+
 
     def calendarHomeWithUID(self, uid, create=False):
         return self.homeWithUID(ECALENDARTYPE, uid, create)
@@ -159,7 +165,7 @@ class CommonStoreTransaction(DataStoreTransaction):
             for child in childPathSegments:
                 if not child.isdir():
                     createDirectory(child)
-                
+
             if childPath.isdir():
                 homePath = childPath
             else:
@@ -186,7 +192,7 @@ class CommonStoreTransaction(DataStoreTransaction):
         self._homes[storeType][(uid, self)] = home
         if creating:
             home.created()
-            
+
             # Create notification collection
             if storeType == ECALENDARTYPE:
                 self.notificationsWithUID(uid)
@@ -196,12 +202,12 @@ class CommonStoreTransaction(DataStoreTransaction):
 
         if (uid, self) in self._notifications:
             return self._notifications[(uid, self)]
-        
+
         home = self.homeWithUID(self._notificationHomeType, uid, create=True)
         notificationPath = home._path.child("notification")
         if not notificationPath.isdir():
             notificationPath = self.createNotifcationCollection(home, notificationPath)
-        
+
         notifications = NotificationCollection(notificationPath.basename(), home)
         self._notifications[(uid, self)] = notifications
         return notifications
@@ -612,8 +618,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         props = PropertyStore(self._path)
         self._transaction.addOperation(props.flush, "flush object resource properties")
         return props
-    
-    
+
+
     def _doValidate(self, component):
         raise NotImplementedError
 
@@ -702,7 +708,7 @@ class NotificationCollection(CommonHomeChild):
         @param parent: the home containing this notification collection.
         @type parent: L{CommonHome}
         """
-        
+
         super(NotificationCollection, self).__init__(name, parent, realName)
 
         self._index = NotificationIndex(self)
@@ -718,7 +724,7 @@ class NotificationCollection(CommonHomeChild):
     notificationObjectsSinceToken = CommonHomeChild.objectResourcesSinceToken
 
     def notificationObjectWithUID(self, uid):
-        
+
         record = self.retrieveOldIndex().recordForUID(uid)
         return self.notificationObjectWithName(record.name) if record else None
 

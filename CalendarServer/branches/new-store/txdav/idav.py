@@ -21,14 +21,15 @@ WebDAV interfaces
 __all__ = [
     "PropertyStoreError",
     "PropertyChangeNotAllowedError",
+    "AbortedTransactionError",
     "IPropertyName",
     "IPropertyStore",
+    "IDataStore",
 ]
 
 from zope.interface import Attribute, Interface
 
 from zope.interface.common.mapping import IMapping
-
 
 #
 # Exceptions
@@ -39,6 +40,7 @@ class PropertyStoreError(RuntimeError):
     Property store error.
     """
 
+
 class PropertyChangeNotAllowedError(PropertyStoreError):
     """
     Property cannot be edited.
@@ -46,6 +48,12 @@ class PropertyChangeNotAllowedError(PropertyStoreError):
     def __init__(self, message, keys):
         PropertyStoreError.__init__(self, message)
         self.keys = keys
+
+
+class AbortedTransactionError(RuntimeError):
+    """
+    This transaction has aborted.
+    """
 
 
 #
@@ -92,23 +100,37 @@ class IPropertyStore(IMapping):
         """
 
 
+
+class IDataStore(Interface):
+    """
+    An L{IDataStore} is a storage of some objects.
+    """
+
+    def newTransaction():
+        """
+        Create a new transaction.
+
+        @return: a new transaction which provides L{ITransaction}, as well as
+            sub-interfaces to request appropriate data objects.
+
+        @rtype: L{ITransaction}
+        """
+
+
+
 class ITransaction(Interface):
     """
     Transaction that can be aborted and either succeeds or fails in
     its entirety.
     """
+
     def abort():
         """
         Abort this transaction.
         """
 
+
     def commit():
         """
         Perform this transaction.
         """
-
-
-class AbortedTransactionError(RuntimeError):
-    """
-    This transaction has aborted.  Go away.
-    """

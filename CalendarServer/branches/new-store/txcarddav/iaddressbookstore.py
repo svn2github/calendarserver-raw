@@ -18,17 +18,34 @@
 Address book store interfaces
 """
 
-__all__ = [
-]
-
 from zope.interface import Interface
+from txdav.common.icommondatastore import ICommonTransaction
 
 __all__ = [
     # Classes
+    "IAddressBookTransaction",
     "IAddressBookHome",
     "IAddressBook",
     "IAddressBookObject",
 ]
+
+class IAddressBookTransaction(ICommonTransaction):
+    """
+    Transaction interface that addressbook stores must provide.
+    """
+
+    def addressbookHomeWithUID(uid, create=False):
+        """
+        Retrieve the addressbook home for the principal with the given C{uid}.
+
+        If C{create} is C{True}, create the addressbook home if it doesn't
+        already exist.
+
+        @return: an L{IAddressBookHome} or C{None} if no such addressbook
+            home exists.
+        """
+
+
 
 #
 # Interfaces
@@ -43,6 +60,7 @@ class IAddressBookHome(Interface):
     includes both addressbooks owned by the principal as well as
     addressbooks that have been shared with and accepts by the principal.
     """
+
     def uid():
         """
         Retrieve the unique identifier for this addressbook home.
@@ -50,11 +68,7 @@ class IAddressBookHome(Interface):
         @return: a string.
         """
 
-    def created():
-        """
-        Addressbook home was created. Do initialization
-        """
-        
+
     def addressbooks():
         """
         Retrieve addressbooks contained in this addressbook home.

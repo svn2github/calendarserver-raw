@@ -15,10 +15,11 @@
 ##
 
 """
-Common store interfaces
+Storage interfaces that are not implied by DAV, but are shared between the
+requirements for both CalDAV and CardDAV extensions.
 """
 
-from zope.interface.interface import Interface
+from txdav.idav import ITransaction
 
 __all__ = [
     # Exceptions
@@ -110,47 +111,11 @@ class InternalDataStoreError(CommonStoreError):
 # Interfaces
 #
 
-class ICommonDataStore(Interface):
+class ICommonTransaction(ITransaction):
     """
-    Data store
+    Transaction functionality shared in common by calendar and addressbook
+    stores.
     """
-
-    def newTransaction():
-        """
-        Create a new transaction.
-        
-        @rtype: L{ICommonStoreTransaction}
-        """
-
-
-class ICommonStoreTransaction(Interface):
-    """
-    AddressBook store transaction
-    """
-
-    def calendarHomeWithUID(uid, create=False):
-        """
-        Retrieve the calendar home for the principal with the given C{uid}.
-
-        If C{create} is C{True}, create the calendar home if it doesn't
-        already exist.
-
-        @return: an L{ICalendarHome} or C{None} if no such calendar
-            home exists.
-        """
-
-
-    def addressbookHomeWithUID(uid, create=False):
-        """
-        Retrieve the addressbook home for the principal with the given C{uid}.
-
-        If C{create} is C{True}, create the addressbook home if it doesn't
-        already exist.
-
-        @return: an L{IAddressBookHome} or C{None} if no such addressbook
-            home exists.
-        """
-
 
     def notificationsWithUID(uid):
         """
@@ -162,13 +127,4 @@ class ICommonStoreTransaction(Interface):
         """
 
 
-    def commit():
-        """
-        Persist all of the effects which have occurred in this transaction.
-        """
 
-
-    def abort():
-        """
-        Reverse all of the effects which have occurred in this transaction.
-        """

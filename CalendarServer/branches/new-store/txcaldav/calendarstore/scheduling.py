@@ -15,16 +15,16 @@
 # limitations under the License.
 ##
 from zope.interface.declarations import implements
-from txcaldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObject
-from txdav.common.icommondatastore import ICommonStoreTransaction,\
-    ICommonDataStore
+from txcaldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObject,\
+    ICalendarTransaction
+from txdav.idav import IDataStore
 from twisted.python.util import FancyEqMixin
 from twisted.python.components import proxyForInterface
 
 
 
 class ImplicitTransaction(
-        proxyForInterface(ICommonStoreTransaction,
+        proxyForInterface(ICalendarTransaction,
                           originalAttribute="_transaction")):
     """
     Wrapper around an L{ICalendarStoreTransaction}.
@@ -143,7 +143,7 @@ class ImplicitStore(object):
     scheduling.
     """
 
-    implements(ICommonDataStore)
+    implements(IDataStore)
 
     def __init__(self, calendarStore):
         """
