@@ -40,7 +40,7 @@ from twext.web2.responsecode import (
 from twext.web2.dav import davxml
 from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
-from twext.web2.http import HTTPError, StatusResponse
+from twext.web2.http import HTTPError, StatusResponse, Response
 from twext.web2.stream import ProducerStream, readStream
 
 from twistedcaldav.static import CalDAVFile, ScheduleInboxFile, \
@@ -250,7 +250,6 @@ class _GetChildHelper(object):
 
 
     def readProperty(self, property, request):
-        print 'READING PROPERTY', property, 'ON', self
         if type(property) is tuple:
             qname = property
         else:
@@ -400,9 +399,9 @@ class CalendarAttachment(_GetChildHelper, CalDAVResource):
             def dataReceived(self, data):
                 stream.write(data)
             def connectionLost(self, reason):
-                stream.finish(reason)
+                stream.finish()
         self._newStoreAttachment.retrieve(StreamProtocol())
-        return stream
+        return Response(OK, None, stream)
 
 
     def http_DELETE(self, request):
