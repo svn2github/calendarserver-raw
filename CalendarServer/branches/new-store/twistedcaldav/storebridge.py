@@ -368,6 +368,13 @@ class CalendarObjectDropbox(_GetChildHelper, CalDAVResource):
         return CREATED
 
 
+    def listChildren(self):
+        l = []
+        for attachment in self._newStoreCalendarObject.attachments():
+            l.append(attachment.name())
+        return l
+
+
 
 class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
 
