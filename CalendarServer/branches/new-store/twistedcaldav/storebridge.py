@@ -249,6 +249,10 @@ class _GetChildHelper(object):
         return self.getChild(segments[0]), segments[1:]
 
 
+    def getChild(self, name):
+        return None
+
+
     def readProperty(self, property, request):
         if type(property) is tuple:
             qname = property
@@ -305,13 +309,16 @@ class DropboxCollection(_GetChildHelper, CalDAVResource):
 
 
     def listChildren(self):
-        # FIXME: implement (needs to list attachments with attachments()
-        raise NotImplementedError()
-    
-    
+        l = []
+        for everyCalendar in self._newStoreCalendarHome.calendars():
+            for everyObject in everyCalendar.calendarObjects():
+                l.append(everyObject.dropboxID())
+        return l
+
+
 
 class NoDropboxHere(_GetChildHelper, CalDAVResource):
-    
+
     def isCollection(self):
         return False
 
@@ -355,8 +362,8 @@ class CalendarObjectDropbox(_GetChildHelper, CalDAVResource):
     def http_ACL(self, request):
         # Sure, whatevs.
         return OK
-    
-    
+
+
     def http_MKCOL(self, request):
         return CREATED
 
