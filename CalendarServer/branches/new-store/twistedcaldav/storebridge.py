@@ -36,7 +36,7 @@ from twext.web2.dav.http import ErrorResponse, ResponseQueue
 from twext.web2.dav.element.base import dav_namespace
 from twext.web2.responsecode import (
     FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED,
-    BAD_REQUEST, OK)
+    BAD_REQUEST, OK, NOT_IMPLEMENTED, NOT_ALLOWED)
 from twext.web2.dav import davxml
 from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
@@ -296,7 +296,7 @@ class DropboxCollection(_GetChildHelper, CalDAVResource):
     def getChild(self, name):
         calendarObject = self._newStoreCalendarHome.calendarObjectWithDropboxID(name)
         if calendarObject is None:
-            return None
+            return NoDropboxHere()
         return CalendarObjectDropbox(calendarObject)
 
 
@@ -307,6 +307,25 @@ class DropboxCollection(_GetChildHelper, CalDAVResource):
     def listChildren(self):
         # FIXME: implement (needs to list attachments with attachments()
         raise NotImplementedError()
+    
+    
+
+class NoDropboxHere(_GetChildHelper, CalDAVResource):
+    
+    def isCollection(self):
+        return False
+
+
+    def http_GET(self, request):
+        return NOT_FOUND
+
+
+    def http_MKCALENDAR(self, request):
+        return NOT_ALLOWED
+
+
+    def http_MKCOL(self, request):
+        return NOT_IMPLEMENTED
 
 
 
