@@ -268,10 +268,6 @@ class _GetChildHelper(object):
         return ("1", "access-control")
 
 
-    def authorize(self, request, privileges, recurse=False):
-        # XXX FIXME: I keep getting 401s without this, but I don't know why.
-        return succeed(True)
-
     http_PROPFIND = http_PROPFIND
 
 
@@ -286,8 +282,10 @@ class DropboxCollection(_GetChildHelper, CalDAVResource):
     def __init__(self, path, parent, *a, **kw):
         # FIXME: constructor signature takes a 'path' because CalendarHomeFile
         # requires it, but we don't need it (and shouldn't have it) eventually.
-        super(DropboxCollection, self).__init__(*a, **kw)
+        super(DropboxCollection, self).__init__(
+            *a, principalCollections=parent.principalCollections(), **kw)
         self._newStoreCalendarHome = parent._newStoreCalendarHome
+        parent.propagateTransaction(self)
 
 
     def isCollection(self):
@@ -301,7 +299,11 @@ class DropboxCollection(_GetChildHelper, CalDAVResource):
         calendarObject = self._newStoreCalendarHome.calendarObjectWithDropboxID(name)
         if calendarObject is None:
             return NoDropboxHere()
-        return CalendarObjectDropbox(calendarObject)
+        objectDropbox = CalendarObjectDropbox(
+            calendarObject, principalCollections=self.principalCollections()
+        )
+        self.propagateTransaction(objectDropbox)
+        return objectDropbox
 
 
     def resourceType(self, request):
@@ -354,9 +356,14 @@ class CalendarObjectDropbox(_GetChildHelper, CalDAVResource):
     def getChild(self, name):
         attachment = self._newStoreCalendarObject.attachmentWithName(name)
         if attachment is None:
-            return ProtoCalendarAttachment(self._newStoreCalendarObject, name)
+            result = ProtoCalendarAttachment(
+                self._newStoreCalendarObject,
+                name,
+                principalCollections=self.principalCollections())
         else:
-            return CalendarAttachment(attachment)
+            result = CalendarAttachment(attachment)
+        self.propagateTransaction(result)
+        return result
 
 
     def http_ACL(self, request):
@@ -745,7 +752,7 @@ class CalendarObjectFile(CalDAVFile):
         calendarName = self._newStoreObject._calendar.name()
         homeUID = self._newStoreObject._calendar._calendarHome.uid()
         store = self._newStoreObject._transaction.store()
-        txn = store.newTransaction()
+        txn = store.newTransaction("new transaction for "+self._newStoreObject.name())
         newObject = (txn.calendarHomeWithUID(homeUID)
                         .calendarWithName(calendarName)
                         .calendarObjectWithName(objectName))
@@ -1434,7 +1441,7 @@ class AddressBookObjectFile(CalDAVFile):
         Name = self._newStoreObject._addressbook.name()
         homeUID = self._newStoreObject._addressbook._addressbookHome.uid()
         store = self._newStoreObject._transaction.store()
-        txn = store.newTransaction()
+        txn = store.newTransaction("new AB transaction for "+self._newStoreObject.name())
         newObject = (txn.HomeWithUID(homeUID)
                         .addressbookWithName(Name)
                         .addressbookObjectWithName(objectName))
