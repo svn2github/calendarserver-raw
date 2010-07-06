@@ -920,7 +920,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
         TRANSACTION_KEY = '_newStoreTransaction'
         transaction = getattr(request, TRANSACTION_KEY, None)
         if transaction is None:
-            transaction = self.parent._newStore.newTransaction()
+            transaction = self.parent._newStore.newTransaction(repr(request))
             setattr(request, TRANSACTION_KEY, transaction)
 
         name = record.uid
@@ -1602,7 +1602,7 @@ class AddressBookHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryAd
         TRANSACTION_KEY = '_newStoreTransaction'
         transaction = getattr(request, TRANSACTION_KEY, None)
         if transaction is None:
-            transaction = self.parent._newStore.newTransaction()
+            transaction = self.parent._newStore.newTransaction(repr(request))
             setattr(request, TRANSACTION_KEY, transaction)
 
         name = record.uid
