@@ -76,13 +76,13 @@ class CommonDataStore(DataStore):
         self.enableAddressBooks = enableAddressBooks
         self._transactionClass = CommonStoreTransaction
 
-    def newTransaction(self):
+    def newTransaction(self, name='no name'):
         """
         Create a new transaction.
 
         @see Transaction
         """
-        return self._transactionClass(self, self.enableCalendars, self.enableAddressBooks)
+        return self._transactionClass(self, name, self.enableCalendars, self.enableAddressBooks)
 
 class CommonStoreTransaction(DataStoreTransaction):
     """
@@ -94,7 +94,7 @@ class CommonStoreTransaction(DataStoreTransaction):
 
     _homeClass = {}
 
-    def __init__(self, dataStore, enableCalendars, enableAddressBooks):
+    def __init__(self, dataStore, name, enableCalendars, enableAddressBooks):
         """
         Initialize a transaction; do not call this directly, instead call
         L{DataStore.newTransaction}.
@@ -108,7 +108,7 @@ class CommonStoreTransaction(DataStoreTransaction):
         from txcaldav.calendarstore.file import CalendarHome
         from txcarddav.addressbookstore.file import AddressBookHome
 
-        super(CommonStoreTransaction, self).__init__(dataStore)
+        super(CommonStoreTransaction, self).__init__(dataStore, name)
         self._homes = {}
         self._homes[ECALENDARTYPE] = {}
         self._homes[EADDRESSBOOKTYPE] = {}

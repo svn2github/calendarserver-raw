@@ -96,7 +96,7 @@ class DataStore(LoggingMixIn):
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self._path.path)
 
-    def newTransaction(self):
+    def newTransaction(self, name='no name'):
         """
         Create a new transaction.
 
@@ -111,13 +111,16 @@ class _CommitTracker(object):
     Diagnostic tool to find transactions that were never committed.
     """
 
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
         self.done = False
         self.info = []
 
     def __del__(self):
         if not self.done and self.info:
-            print '**** UNCOMMITTED TRANSACTION BEING GARBAGE COLLECTED ****'
+            print '**** UNCOMMITTED TRANSACTION (%s) BEING GARBAGE COLLECTED ****' % (
+                self.name,
+            )
             for info in self.info:
                 print '   ', info
             print '---- END OF OPERATIONS'
@@ -129,7 +132,7 @@ class DataStoreTransaction(LoggingMixIn):
     In-memory implementation of a data store transaction.
     """
 
-    def __init__(self, dataStore):
+    def __init__(self, dataStore, name):
         """
         Initialize a transaction; do not call this directly, instead call
         L{CalendarStore.newTransaction}.
@@ -141,7 +144,7 @@ class DataStoreTransaction(LoggingMixIn):
         self._dataStore = dataStore
         self._termination = None
         self._operations = []
-        self._tracker = _CommitTracker()
+        self._tracker = _CommitTracker(name)
 
 
     def store(self):
