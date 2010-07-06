@@ -463,9 +463,12 @@ def storeCalendarObjectResource(
             # a race condition where two simultaneous PUTs with If-Match can conflict (i.e. second PUT does
             # not fail even though underlying resource was changed by first PUT). We also need to reload the
             # property cache before we do this as the etag property may have changed.
-            if destination.exists():
-                destination.deadProperties().reloadCache()
-            destination.checkPreconditions(request)
+            #
+            # Currently only care about this on a PUT
+            if source is None:
+                if destination.exists():
+                    destination.deadProperties().reloadCache()
+                destination.checkPreconditions(request)
 
             # uid conflict check - note we do this after reserving the UID to avoid a race condition where two requests
             # try to write the same calendar data to two different resource URIs.
