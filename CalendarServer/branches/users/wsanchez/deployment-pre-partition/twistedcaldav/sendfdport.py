@@ -292,7 +292,10 @@ class InheritedPort(FileDescriptor, object):
                 # should this be on the transportFactory's side of things?
 
                 close(fd)       # fromfd() calls dup()
-                peeraddr = skt.getpeername()
+                try:
+                    peeraddr = skt.getpeername()
+                except:
+                    peeraddr = ('0.0.0.0', 0)
                 protocol = self.protocolFactory.buildProtocol(peeraddr)
                 transport = self.transportFactory(skt, description, protocol)
                 protocol.makeConnection(transport)
