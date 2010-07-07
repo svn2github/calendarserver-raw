@@ -106,8 +106,7 @@ if sys.platform == "darwin":
     extensions.append(
         Extension(
             "twistedcaldav._sacl",
-            extra_compile_args = ["-arch", "ppc", "-arch", "i386"],
-            extra_link_args = ["-framework", "Security", "-arch", "ppc", "-arch", "i386"],
+            extra_link_args = ["-framework", "Security"],
             sources = ["twistedcaldav/_sacl.c"]
         )
     )
@@ -143,7 +142,11 @@ dist = setup(
                                      "plugins/kqueuereactor.py"],
                          "twistedcaldav": ["zoneinfo/*.ics", "zoneinfo/*/*.ics", "zoneinfo/*/*/*.ics"],
                        },
-    scripts          = [ "bin/caldavd", "bin/caladmin" ],
+    scripts          = [
+                            "bin/caldavd",
+                            "bin/caldav_load_augmentdb",
+                            "bin/caldav_manage_augments",
+                       ],
     data_files       = [ ("caldavd", ["conf/caldavd.plist"]) ],
     ext_modules      = extensions,
     py_modules       = ["kqreactor", "memcacheclient"],

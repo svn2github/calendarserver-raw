@@ -35,6 +35,7 @@ src="$(cd "${wd}/.." && pwd)";
 ##
 
 build=false;
+package=false;
 
 submission_enabled=false;
 
@@ -45,25 +46,29 @@ usage ()
   if [ "${1-}" != "-" ]; then echo "$@"; echo; fi;
 
   echo "Usage: ${program} release";
-  echo "       ${program} -b";
+  echo "       ${program} -b[p]";
   echo "";
   echo "Options:";
   echo "	-b Run buildit";
+  echo "	-p Create a package with the resulting build";
 
   if [ "${1-}" == "-" ]; then return 0; fi;
   exit 64;
 }
 
-while getopts 'hb' option; do
+while getopts 'hbp' option; do
   case "$option" in
     '?') usage; ;;
     'h') usage -; exit 0; ;;
     'b') build=true; ;;
+    'p') package=true; ;;
   esac;
 done;
 shift $((${OPTIND} - 1));
 
 if ! "${build}"; then
+    if "${package}"; then usage "-p flag requires -b"; fi;
+
     if [ $# == 0 ]; then usage "No release specified"; fi;
     release="$1"; shift;
 
@@ -153,7 +158,22 @@ make -C "${wc}" prep;
 if "${build}"; then
     echo "";
     echo "Building ${project_version}...";
-    sudo buildit "${wc}" -noverifydstroot -arch i386 -arch x86_64; # -arch ppc -arch ppc64
+
+    if "${package}"; then
+        package_tmp="${tmp}/pkg";
+        install -d "${package_tmp}";
+        merge_flags="-merge ${package_tmp}";
+    else
+        merge_flags="";
+    fi;
+
+    sudo buildit "${wc}" -noverify -arch x86_64 ${merge_flags}; # -arch ppc -arch ppc64
+
+    if "${package}"; then
+        package_file="${project_version}.tgz";
+        echo "Creating package: ${package_file}...";
+        sudo tar -C "${package_tmp}" -cvzf "${package_file}" .;
+    fi;
 else
     echo "";
     echo "Submitting sources for ${project_version}...";

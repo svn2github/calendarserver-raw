@@ -661,13 +661,13 @@ if ! type memcached >& /dev/null; then
   export PATH="${PATH}:${top}/memcached-1.2.6/_root/bin";
 fi;
 
-if ! type psql >& /dev/null; then
+if ! type pgsql >& /dev/null; then
   #
   # postgresql
   #
-  postgresql="${top}/postgresql-8.4.1"
+  postgresql="${top}/postgresql-8.4.4"
 
-  www_get "postgresql" "${postgresql}" http://wwwmaster.postgresql.org/redir/198/h/source/v8.4.1/postgresql-8.4.1.tar.bz2;
+  www_get "postgresql" "${postgresql}" http://ftp9.us.postgresql.org/pub/mirrors/postgresql/source/v8.4.4/postgresql-8.4.4.tar.gz;
 
   if "${do_setup}" && (
     "${force_setup}" || [ ! -d "${postgresql}/_root" ]
@@ -690,7 +690,7 @@ fi;
 if ! py_have_module pgdb; then
   PyGreSQL="${top}/PyGreSQL-4.0";
 
-  www_get "PyGreSQL" "${PyGreSQL}" ftp://ftp.pygresql.org/pub/distrib/PyGreSQL.tgz;
+  www_get "PyGreSQL" "${PyGreSQL}" http://pypi.python.org/packages/source/P/PyGreSQL/PyGreSQL-4.0.tar.gz;
   py_build "PyGreSQL" "${PyGreSQL}" false;
   py_install "PyGreSQL" "${PyGreSQL}";
 
@@ -774,19 +774,6 @@ if ! py_have_module sqlite3 && ! py_have_module pysqlite2; then
   py_install "PySQLite" "${pysqlite}";
 
   export PYTHONPATH="${PYTHONPATH}:${pysqlite}/build/${py_platform_libdir}";
-fi;
-
-#
-# PyDirector
-#
-
-if ! py_have_module pydirector; then
-  pydirector="${top}/pydirector-1.0.0";
-  www_get "PyDirector" "${pydirector}" http://internap.dl.sourceforge.net/sourceforge/pythondirector/pydirector-1.0.0.tar.gz;
-  py_build "PyDirector" "${pydirector}" false;
-  py_install "PyDirector" "${pydirector}";
-
-  export PYTHONPATH="${PYTHONPATH}:${pydirector}/build/${py_platform_libdir}";
 fi;
 
 #
