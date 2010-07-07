@@ -20,6 +20,9 @@ import tempfile
 import socket
 import time
 import signal
+import ctypes
+
+nice = ctypes.CDLL('libc.dylib').nice
 
 from twisted.runner import procmon
 from twisted.application import internet, service
@@ -365,6 +368,7 @@ class DelayedStartupProcessMonitor(procmon.ProcessMonitor):
 
 def makeService_Combined(self, options):
 
+    nice(-1)
 
     # Refresh directory information on behalf of the child processes
     directoryClass = namedClass(config.DirectoryService["type"])

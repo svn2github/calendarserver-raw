@@ -18,6 +18,9 @@ import os
 import stat
 import socket
 import signal
+import ctypes
+
+nice = ctypes.CDLL('libc.dylib').nice
 
 from zope.interface import implements
 
@@ -526,6 +529,7 @@ class CalDAVServiceMaker(object):
 
 
     def makeService_Slave(self, options):
+        nice(1)
         #
         # Change default log level to "info" as its useful to have
         # that during startup
