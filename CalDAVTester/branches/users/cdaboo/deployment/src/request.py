@@ -163,6 +163,8 @@ class request( object ):
         
     def getHeaders( self, si ):
         hdrs = self.headers
+        for key, value in hdrs.items():
+            hdrs[key] = si.extrasubs(value)
         
         # Content type
         if self.data != None:

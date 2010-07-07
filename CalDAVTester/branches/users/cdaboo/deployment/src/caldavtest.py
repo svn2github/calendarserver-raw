@@ -38,6 +38,7 @@ import socket
 import src.xmlDefs
 import time
 import xattr
+from xml.dom.expatbuilder import TEXT_NODE
 import xml.dom.minidom
 
 STATUSTXT_WIDTH    = 60
@@ -561,7 +562,7 @@ class caldavtest(object):
                             # Copy sub-element data as text into one long string and strip leading/trailing space
                             value = ""
                             for p in child._get_childNodes():
-                                temp = p.toprettyxml("", "")
+                                temp = p.data if p.nodeType == TEXT_NODE else p.toprettyxml("", "") 
                                 temp = temp.strip()
                                 value += temp
                         else:
