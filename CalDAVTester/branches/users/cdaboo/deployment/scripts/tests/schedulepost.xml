@@ -793,6 +793,43 @@
 				</verify>
 			</request>
 		</test>
+		<test name='4'>
+			<description>POST free busy - check ATTENDEE limit</description>
+			<request print-response='no'>
+				<method>POST</method>
+				<header>
+					<name>Originator</name>
+					<value>$cuaddr1:</value>
+				</header>
+				<header>
+					<name>Recipient</name>
+					<value>mailto:user01@example.com,mailto:user02@example.com,mailto:user03@example.com,mailto:user04@example.com,mailto:user05@example.com,mailto:user06@example.com,mailto:user07@example.com,mailto:user08@example.com,mailto:user09@example.com,mailto:user10@example.com,mailto:user11@example.com,mailto:user12@example.com,mailto:user13@example.com,mailto:user14@example.com,mailto:user15@example.com,mailto:user16@example.com,mailto:user17@example.com,mailto:user18@example.com,mailto:user19@example.com,mailto:user20@example.com,mailto:user21@example.com,mailto:user22@example.com,mailto:user23@example.com,mailto:user24@example.com,mailto:user25@example.com,mailto:user26@example.com,mailto:user27@example.com,mailto:user28@example.com,mailto:user29@example.com,mailto:user30@example.com,mailto:user31@example.com,mailto:user32@example.com,mailto:user33@example.com,mailto:user34@example.com,mailto:user35@example.com,mailto:user36@example.com,mailto:user37@example.com,mailto:user38@example.com,mailto:user39@example.com,mailto:user40@example.com</value>
+				</header>
+				<ruri>$pathprefix:/$outbox:/</ruri>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/schedule/22.ics</filepath>
+				</data>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+				<verify>
+					<callback>dataString</callback>
+					<arg>
+						<name>contains</name>
+						<value>ATTENDEE:mailto:user30@example.com</value>
+					</arg>
+					<arg>
+						<name>notcontains</name>
+						<value>ATTENDEE:mailto:user31@example.com</value>
+					</arg>
+					<arg>
+						<name>unwrap</name>
+						<value/>
+					</arg>
+				</verify>
+			</request>
+		</test>
 	</test-suite>
 	
 	<end/>
