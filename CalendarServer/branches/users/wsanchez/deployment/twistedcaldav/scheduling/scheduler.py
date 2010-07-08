@@ -28,6 +28,7 @@ from twisted.web2.http_headers import MimeType
 from twistedcaldav import caldavxml
 from twistedcaldav.accounting import accountingEnabled, emitAccounting
 from twistedcaldav.caldavxml import caldav_namespace, TimeRange
+from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.extensions import ErrorResponse
 from twistedcaldav.ical import Component
@@ -378,8 +379,14 @@ class Scheduler(object):
         # Loop over each recipient and aggregate into lists by service types.
         caldav_recipients = []
         remote_recipients = []
-        for recipient in self.recipients:
+        for ctr, recipient in enumerate(self.recipients):
     
+            # Check for freebusy limit
+            if freebusy and ctr >= config.LimitFreeBusyAttendees:
+                err = HTTPError(ErrorResponse(responsecode.NOT_FOUND, (caldav_namespace, "recipient-limit")))
+                responses.add(recipient.cuaddr, Failure(exc_value=err), reqstatus=iTIPRequestStatus.NO_USER_SUPPORT)
+                continue
+                
             if self.fakeTheResult:
                 responses.add(recipient.cuaddr, responsecode.OK, reqstatus=iTIPRequestStatus.SUCCESS if freebusy else iTIPRequestStatus.MESSAGE_DELIVERED)
                 
