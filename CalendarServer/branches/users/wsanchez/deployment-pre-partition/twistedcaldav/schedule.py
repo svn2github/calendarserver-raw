@@ -442,7 +442,7 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
     
         # Loop over each recipient and do appropriate action.
         autoresponses = []
-        for recipient in recipients:
+        for ctr, recipient in enumerate(recipients):
 
             # Yield to the reactor once through each loop if more than one attendee
             if len(recipients) > 1:
@@ -490,6 +490,14 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
     
                 # Different behaviour for free-busy vs regular invite
                 if freebusy:
+
+                    # Check for freebusy limit
+                    if ctr >= config.LimitFreeBusyAttendees:
+                        err = HTTPError(ErrorResponse(responsecode.NOT_FOUND, (caldav_namespace, "recipient-limit")))
+                        responses.add(recipient, Failure(exc_value=err), reqstatus="5.3;No scheduling support for user")
+                        recipientsState["BAD"] += 1
+                        continue
+
                     # Extract the ATTENDEE property matching current recipient from the calendar data
                     cuas = principal.calendarUserAddresses()
                     attendeeProp = calendar.getAttendeeProperty(cuas)
