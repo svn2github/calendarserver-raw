@@ -63,11 +63,11 @@ def changeSubElementText(parent, tag, text):
     child = parent.find(tag)
     child.text = text
 
-def doAdd(xmlfile, guid, host, enable_calendar, auto_schedule):
+def doAdd(xmlfile, uid, host, enable_calendar, auto_schedule):
 
     augments_node = readXML(xmlfile)
 
-    # Make sure GUID is not already present
+    # Make sure UID is not already present
     for child in augments_node.getchildren():
         
         if child.tag != xmlaugmentsparser.ELEMENT_RECORD:
@@ -75,14 +75,14 @@ def doAdd(xmlfile, guid, host, enable_calendar, auto_schedule):
 
         for node in child.getchildren():
             
-            if node.tag == xmlaugmentsparser.ELEMENT_GUID and node.text == guid:
-                error("Cannot add guid '%s' because it already exists in augment file: '%s'" % (guid, xmlfile,))
+            if node.tag == xmlaugmentsparser.ELEMENT_UID and node.text == uid:
+                error("Cannot add uid '%s' because it already exists in augment file: '%s'" % (uid, xmlfile,))
     
     # Create new record
     if len(augments_node.getchildren()):
         augments_node.getchildren()[-1].tail = "\n  "
     record = addSubElement(augments_node, xmlaugmentsparser.ELEMENT_RECORD, "\n    ")
-    addSubElement(record, xmlaugmentsparser.ELEMENT_GUID, guid, 4)
+    addSubElement(record, xmlaugmentsparser.ELEMENT_UID, uid, 4)
     addSubElement(record, xmlaugmentsparser.ELEMENT_ENABLE, "true", 4)
     addSubElement(record, xmlaugmentsparser.ELEMENT_HOSTEDAT, host, 4)
     addSubElement(record, xmlaugmentsparser.ELEMENT_ENABLECALENDAR, "true" if enable_calendar else "false", 4)
@@ -90,13 +90,13 @@ def doAdd(xmlfile, guid, host, enable_calendar, auto_schedule):
     
     # Modify xmlfile
     writeXML(xmlfile, augments_node)
-    print "Added guid '%s' in augment file: '%s'" % (guid, xmlfile,)
+    print "Added uid '%s' in augment file: '%s'" % (uid, xmlfile,)
     
-def doModify(xmlfile, guid, host, enable_calendar, auto_schedule):
+def doModify(xmlfile, uid, host, enable_calendar, auto_schedule):
 
     augments_node = readXML(xmlfile)
 
-    # Make sure GUID is present
+    # Make sure UID is present
     for child in augments_node.getchildren():
         
         if child.tag != xmlaugmentsparser.ELEMENT_RECORD:
@@ -104,13 +104,13 @@ def doModify(xmlfile, guid, host, enable_calendar, auto_schedule):
 
         for node in child.getchildren():
             
-            if node.tag == xmlaugmentsparser.ELEMENT_GUID and node.text == guid:
+            if node.tag == xmlaugmentsparser.ELEMENT_UID and node.text == uid:
                 break
         else:
             continue
         break
     else:
-        error("Cannot modify guid '%s' because it does not exist in augment file: '%s'" % (guid, xmlfile,))
+        error("Cannot modify uid '%s' because it does not exist in augment file: '%s'" % (uid, xmlfile,))
     
     # Modify record
     if host is not None:
@@ -120,13 +120,13 @@ def doModify(xmlfile, guid, host, enable_calendar, auto_schedule):
     
     # Modify xmlfile
     writeXML(xmlfile, augments_node)
-    print "Modified guid '%s' in augment file: '%s'" % (guid, xmlfile,)
+    print "Modified uid '%s' in augment file: '%s'" % (uid, xmlfile,)
 
-def doRemove(xmlfile, guid):
+def doRemove(xmlfile, uid):
 
     augments_node = readXML(xmlfile)
 
-    # Make sure GUID is present
+    # Make sure UID is present
     for child in augments_node.getchildren():
         
         if child.tag != xmlaugmentsparser.ELEMENT_RECORD:
@@ -134,18 +134,18 @@ def doRemove(xmlfile, guid):
 
         for node in child.getchildren():
             
-            if node.tag == xmlaugmentsparser.ELEMENT_GUID and node.text == guid:
+            if node.tag == xmlaugmentsparser.ELEMENT_UID and node.text == uid:
                 break
         else:
             continue
         augments_node.remove(child)
         break
     else:
-        error("Cannot remove guid '%s' because it does not exist in augment file: '%s'" % (guid, xmlfile,))
+        error("Cannot remove uid '%s' because it does not exist in augment file: '%s'" % (uid, xmlfile,))
     
     # Modify xmlfile
     writeXML(xmlfile, augments_node)
-    print "Removed guid '%s' from augment file: '%s'" % (guid, xmlfile,)
+    print "Removed uid '%s' from augment file: '%s'" % (uid, xmlfile,)
     
 def doPrint(xmlfile):
 
@@ -173,43 +173,43 @@ ACTION is one of add|modify|remove|print
 
     parser.add_option("-f", "--file", dest="xmlfilename",
                       help="XML augment file to manipulate", metavar="FILE")
-    parser.add_option("-g", "--guid", dest="guid",
-                      help="OD GUID to manipulate", metavar="GUID")
-    parser.add_option("-i", "--guidfile", dest="guidfile",
-                      help="File containing a list of GUIDs to manipulate", metavar="GUIDFILE")
+    parser.add_option("-g", "--uid", dest="uid",
+                      help="UID to manipulate", metavar="UID")
+    parser.add_option("-i", "--uidfile", dest="uidfile",
+                      help="File containing a list of UIDs to manipulate", metavar="UIDFILE")
     parser.add_option("-n", "--node", dest="node",
-                      help="Partition node to assign to GUID", metavar="NODE")
+                      help="Partition node to assign to UID", metavar="NODE")
     parser.add_option("-c", "--enable-calendar", action="store_true", dest="enable_calendar",
-                      default=True, help="Enable calendaring for this GUID: %default")
+                      default=True, help="Enable calendaring for this UID: %default")
     parser.add_option("-a", "--auto-schedule", action="store_true", dest="auto_schedule",
-                      default=False, help="Enable auto-schedule for this GUID: %default")
+                      default=False, help="Enable auto-schedule for this UID: %default")
 
     (options, args) = parser.parse_args()
 
     if len(args) != 1:
         parser.error("incorrect number of arguments")
 
-    guids = []
-    if options.guid:
-        guids.append(options.guid)
-    elif options.guidfile:
-        if not os.path.exists(options.guidfile):
-            parser.error("File containing list of GUIDs does not exist")
-        with open(options.guidfile) as f:
+    uids = []
+    if options.uid:
+        uids.append(options.uid)
+    elif options.uidfile:
+        if not os.path.exists(options.uidfile):
+            parser.error("File containing list of UIDs does not exist")
+        with open(options.uidfile) as f:
             for line in f:
-                guids.append(line[:-1])
+                uids.append(line[:-1])
         
     if args[0] == "add":
         if not options.node:
             parser.error("Partition node must be specified when adding")
-        for guid in guids:
-            doAdd(options.xmlfilename, guid, options.node, options.enable_calendar, options.auto_schedule)
+        for uid in uids:
+            doAdd(options.xmlfilename, uid, options.node, options.enable_calendar, options.auto_schedule)
     elif args[0] == "modify":
-        for guid in guids:
-            doModify(options.xmlfilename, guid, options.node, options.enable_calendar, options.auto_schedule)
+        for uid in uids:
+            doModify(options.xmlfilename, uid, options.node, options.enable_calendar, options.auto_schedule)
     elif args[0] == "remove":
-        for guid in guids:
-            doRemove(options.xmlfilename, guid)
+        for uid in uids:
+            doRemove(options.xmlfilename, uid)
     elif args[0] == "print":
         doPrint(options.xmlfilename)
 

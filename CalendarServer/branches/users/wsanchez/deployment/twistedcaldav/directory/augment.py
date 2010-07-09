@@ -33,13 +33,13 @@ class AugmentRecord(object):
 
     def __init__(
         self,
-        guid,
+        uid,
         enabled=False,
         hostedAt="",
         enabledForCalendaring=False,
         autoSchedule=False,
     ):
-        self.guid = guid
+        self.uid = uid
         self.enabled = enabled
         self.hostedAt = hostedAt
         self.enabledForCalendaring = enabledForCalendaring
@@ -51,55 +51,78 @@ class AugmentDB(object):
     """
     
     def __init__(self):
-        pass
+        
+        self.cachedRecords = {}
     
     @inlineCallbacks
-    def getAugmentRecord(self, guid):
+    def getAugmentRecord(self, uid):
         """
-        Get an AugmentRecord for the specified GUID or the default.
+        Get an AugmentRecord for the specified UID or the default.
 
-        @param guid: directory GUID to lookup
-        @type guid: C{str}
+        @param uid: directory uid to lookup
+        @type uid: C{str}
         
         @return: L{Deferred}
         """
         
-        result = (yield self._lookupAugmentRecord(guid))
-        if result is None:
-            if not hasattr(self, "_defaultRecord"):
-                self._defaultRecord = (yield self._lookupAugmentRecord("Default"))
-            if self._defaultRecord is not None:
-                result = copy.deepcopy(self._defaultRecord)
-                result.guid = guid
-        returnValue(result)
+        result = (yield self._lookupAugmentRecord(uid))
+        if result is not None:
+            returnValue(result)
+        
+        # Try wildcard/default matches next
+        for lookup in ("%s*" % (uid[0:2],), "%s*" % (uid[0],), "Default"):
+            result = (yield self._cachedAugmentRecord(lookup))
+            if result is not None:
+                result = copy.deepcopy(result)
+                result.uid = uid
+                returnValue(result)
+
+        returnValue(None)
 
     @inlineCallbacks
-    def getAllGUIDs(self):
+    def getAllUIDs(self):
         """
-        Get all AugmentRecord GUIDs.
+        Get all AugmentRecord UIDs.
 
         @return: L{Deferred}
         """
         
         raise NotImplementedError("Child class must define this.")
 
-    def _lookupAugmentRecord(self, guid):
+    def _lookupAugmentRecord(self, uid):
         """
-        Get an AugmentRecord for the specified GUID.
+        Get an AugmentRecord for the specified uid.
 
-        @param guid: directory GUID to lookup
-        @type guid: C{str}
+        @param uid: directory uid to lookup
+        @type uid: C{str}
         
         @return: L{Deferred}
         """
         
         raise NotImplementedError("Child class must define this.")
+
+    @inlineCallbacks
+    def _cachedAugmentRecord(self, uid):
+        """
+        Get an AugmentRecord for the specified uid from the cache.
+
+        @param uid: directory uid to lookup
+        @type uid: C{str}
+        
+        @return: L{Deferred}
+        """
+        
+        if not uid in self.cachedRecords:
+            result = (yield self._lookupAugmentRecord(uid))
+            self.cachedRecords[uid] = result
+        returnValue(self.cachedRecords[uid])
 
     def refresh(self):
         """
         Refresh any cached data.
         """
-        pass
+        
+        self.cachedRecords.clear()
         
 AugmentService = AugmentDB()   # Global augment service
 
@@ -111,6 +134,7 @@ class AugmentXMLDB(AugmentDB):
     
     def __init__(self, xmlFiles, cacheTimeout=30):
         
+        super(AugmentXMLDB, self).__init__()
         self.xmlFiles = xmlFiles
         self.cacheTimeout = cacheTimeout * 60 # Value is mins we want secs
         self.lastCached = 0
@@ -125,21 +149,21 @@ class AugmentXMLDB(AugmentDB):
         self.lastCached = time.time()
 
     @inlineCallbacks
-    def getAllGUIDs(self):
+    def getAllUIDs(self):
         """
-        Get all AugmentRecord GUIDs.
+        Get all AugmentRecord UIDs.
 
         @return: L{Deferred}
         """
         
         return succeed(self.db.keys())
 
-    def _lookupAugmentRecord(self, guid):
+    def _lookupAugmentRecord(self, uid):
         """
-        Get an AugmentRecord for the specified GUID.
+        Get an AugmentRecord for the specified uid.
 
-        @param guid: directory GUID to lookup
-        @type guid: C{str}
+        @param uid: directory uid to lookup
+        @type uid: C{str}
         
         @return: L{Deferred}
         """
@@ -148,12 +172,13 @@ class AugmentXMLDB(AugmentDB):
         if self.lastCached + self.cacheTimeout <= time.time():
             self.refresh()
             
-        return succeed(self.db.get(guid))
+        return succeed(self.db.get(uid))
 
     def refresh(self):
         """
         Refresh any cached data.
         """
+        super(AugmentXMLDB, self).refresh()
         try:
             self.db = self._parseXML()
         except RuntimeError:
@@ -181,43 +206,44 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
     
     def __init__(self, dbID, dbapiName, dbapiArgs, **kwargs):
         
+        AugmentDB.__init__(self)
         self.cachedPartitions = {}
         self.cachedHostedAt = {}
         
         AbstractADBAPIDatabase.__init__(self, dbID, dbapiName, dbapiArgs, True, **kwargs)
         
     @inlineCallbacks
-    def getAllGUIDs(self):
+    def getAllUIDs(self):
         """
-        Get all AugmentRecord GUIDs.
+        Get all AugmentRecord UIDs.
 
         @return: L{Deferred}
         """
         
         # Query for the record information
-        results = (yield self.queryList("select GUID from AUGMENTS", ()))
+        results = (yield self.queryList("select UID from AUGMENTS", ()))
         returnValue(results)
 
     @inlineCallbacks
-    def _lookupAugmentRecord(self, guid):
+    def _lookupAugmentRecord(self, uid):
         """
-        Get an AugmentRecord for the specified GUID.
+        Get an AugmentRecord for the specified UID.
 
-        @param guid: directory GUID to lookup
-        @type guid: C{str}
+        @param uid: directory UID to lookup
+        @type uid: C{str}
 
         @return: L{Deferred}
         """
         
         # Query for the record information
-        results = (yield self.query("select GUID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE from AUGMENTS where GUID = :1", (guid,)))
+        results = (yield self.query("select UID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE from AUGMENTS where UID = :1", (uid,)))
         if not results:
             returnValue(None)
         else:
-            guid, enabled, partitionid, enabdledForCalendaring, autoSchedule = results[0]
+            uid, enabled, partitionid, enabdledForCalendaring, autoSchedule = results[0]
             
             record = AugmentRecord(
-                guid = guid,
+                uid = uid,
                 enabled = enabled == "T",
                 hostedAt = (yield self._getPartition(partitionid)),
                 enabledForCalendaring = enabdledForCalendaring == "T",
@@ -234,24 +260,24 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
         if update:
             yield self.execute(
                 """update AUGMENTS set
-                   (GUID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE) =
-                   (:1, :2, :3, :4, :5) where GUID = :6""",
+                   (UID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE) =
+                   (:1, :2, :3, :4, :5) where UID = :6""",
                 (
-                    record.guid,
+                    record.uid,
                     "T" if record.enabled else "F",
                     partitionid,
                     "T" if record.enabledForCalendaring else "F",
                     "T" if record.autoSchedule else "F",
-                    record.guid,
+                    record.uid,
                 )
             )
         else:
             yield self.execute(
                 """insert into AUGMENTS
-                   (GUID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE)
+                   (UID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE)
                    values (:1, :2, :3, :4, :5)""",
                 (
-                    record.guid,
+                    record.uid,
                     "T" if record.enabled else "F",
                     partitionid,
                     "T" if record.enabledForCalendaring else "F",
@@ -259,9 +285,9 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
                 )
             )
 
-    def removeAugmentRecord(self, guid):
+    def removeAugmentRecord(self, uid):
 
-        return self.query("delete from AUGMENTS where GUID = :1", (guid,))
+        return self.query("delete from AUGMENTS where UID = :1", (uid,))
 
     @inlineCallbacks
     def _getPartitionID(self, hostedat, createIfMissing=True):
@@ -314,7 +340,7 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
         # TESTTYPE table
         #
         yield self._create_table("AUGMENTS", (
-            ("GUID",         "text unique"),
+            ("UID",          "text unique"),
             ("ENABLED",      "text(1)"),
             ("PARTITIONID",  "text"),
             ("CALENDARING",  "text(1)"),

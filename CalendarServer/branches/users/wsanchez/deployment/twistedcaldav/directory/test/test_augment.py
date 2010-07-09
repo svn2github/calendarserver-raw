@@ -26,35 +26,83 @@ xmlFile = os.path.join(os.path.dirname(__file__), "augments-test.xml")
 xmlFileDefault = os.path.join(os.path.dirname(__file__), "augments-test-default.xml")
 
 testRecords = (
-    {"guid":"D11F03A0-97EA-48AF-9A6C-FAC7F3975766", "enabled":True,  "hostedAt":"", "enabledForCalendaring":False, "autoSchedule":False},
-    {"guid":"6423F94A-6B76-4A3A-815B-D52CFD77935D", "enabled":True,  "hostedAt":"", "enabledForCalendaring":True, "autoSchedule":False},
-    {"guid":"5A985493-EE2C-4665-94CF-4DFEA3A89500", "enabled":False, "hostedAt":"", "enabledForCalendaring":False, "autoSchedule":False},
-    {"guid":"8B4288F6-CC82-491D-8EF9-642EF4F3E7D0", "enabled":True,  "hostedAt":"", "enabledForCalendaring":False, "autoSchedule":False},
-    {"guid":"5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1", "enabled":True,  "hostedAt":"00001", "enabledForCalendaring":False, "autoSchedule":False},
-    {"guid":"543D28BA-F74F-4D5F-9243-B3E3A61171E5", "enabled":True,  "hostedAt":"00002", "enabledForCalendaring":False, "autoSchedule":False},
-    {"guid":"6A73326A-F781-47E7-A9F8-AF47364D4152", "enabled":True,  "hostedAt":"00002", "enabledForCalendaring":True, "autoSchedule":True},
+    {"uid":"D11F03A0-97EA-48AF-9A6C-FAC7F3975766", "enabled":True,  "hostedAt":"",      "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"6423F94A-6B76-4A3A-815B-D52CFD77935D", "enabled":True,  "hostedAt":"",      "enabledForCalendaring":True,  "autoSchedule":False},
+    {"uid":"5A985493-EE2C-4665-94CF-4DFEA3A89500", "enabled":False, "hostedAt":"",      "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"8B4288F6-CC82-491D-8EF9-642EF4F3E7D0", "enabled":True,  "hostedAt":"",      "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1", "enabled":True,  "hostedAt":"00001", "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"543D28BA-F74F-4D5F-9243-B3E3A61171E5", "enabled":True,  "hostedAt":"00002", "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"6A73326A-F781-47E7-A9F8-AF47364D4152", "enabled":True,  "hostedAt":"00002", "enabledForCalendaring":True,  "autoSchedule":True },
 )
 
-testRecordDefault = {"guid":"A4318887-F2C7-4A70-9056-B88CC8DB26F1", "enabled":True,  "hostedAt":"00001", "enabledForCalendaring":True, "autoSchedule":False}
+testRecordWildcardDefault = (
+    {"uid":"A4318887-F2C7-4A70-9056-B88CC8DB26F1", "enabled":True,  "hostedAt":"00001", "enabledForCalendaring":True,  "autoSchedule":False},
+    {"uid":"AA5F935F-3358-4510-A649-B391D63279F2", "enabled":True,  "hostedAt":"00001", "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"ABF1A83B-1A29-4E04-BDC3-A6A66ECF27CA", "enabled":False, "hostedAt":"",      "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"BC22A734-5E41-4FB7-B5C1-51DC0656DC2F", "enabled":True,  "hostedAt":"00002", "enabledForCalendaring":True,  "autoSchedule":False},
+    {"uid":"C6DEEBB1-E14A-47F2-98BA-7E3BB4353E3A", "enabled":True,  "hostedAt":"00003", "enabledForCalendaring":True,  "autoSchedule":True },
+    {"uid":"AA859321-2C72-4974-ADCF-0CBA0C76F95D", "enabled":True,  "hostedAt":"00001", "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"AB7C488B-9ED2-4265-881C-7E2E38A63584", "enabled":False, "hostedAt":"",      "enabledForCalendaring":False, "autoSchedule":False},
+    {"uid":"BB0C0DA1-0545-45F6-8D08-917C554D93A4", "enabled":True,  "hostedAt":"00002", "enabledForCalendaring":True,  "autoSchedule":False},
+    {"uid":"CCD30AD3-582F-4682-8B65-2EDE92C5656E", "enabled":True,  "hostedAt":"00003", "enabledForCalendaring":True,  "autoSchedule":True },
+)
 
 class AugmentTests(TestCase):
 
     @inlineCallbacks
     def _checkRecord(self, db, items):
         
-        record = (yield db.getAugmentRecord(items["guid"]))
+        record = (yield db.getAugmentRecord(items["uid"]))
         self.assertTrue(record is not None)
         
         for k,v in items.iteritems():
             self.assertEqual(getattr(record, k), v)
 
     @inlineCallbacks
-    def _checkNoRecord(self, db, guid):
+    def _checkNoRecord(self, db, uid):
         
-        record = (yield db.getAugmentRecord(guid))
+        record = (yield db.getAugmentRecord(uid))
         self.assertTrue(record is None)
 
-class AugmentXMLTests(AugmentTests):
+class AugmentTestsMixin(object):
+
+    def _db(self):
+        raise NotImplementedError
+
+    @inlineCallbacks
+    def test_read(self):
+        
+        db = self._db()
+
+        dbxml = AugmentXMLDB((xmlFile,))
+        for record in dbxml.db.values():
+            yield db.addAugmentRecord(record)
+
+        for item in testRecords:
+            yield self._checkRecord(db, item)
+
+        yield self._checkNoRecord(db, "D11F03A0-97EA-48AF-9A6C-FAC7F3975767")
+
+    @inlineCallbacks
+    def test_read_default(self):
+        
+        db = self._db()
+
+        dbxml = AugmentXMLDB((xmlFileDefault,))
+        for record in dbxml.db.values():
+            yield db.addAugmentRecord(record)
+
+        for item in testRecords:
+            yield self._checkRecord(db, item)
+
+        for item in testRecordWildcardDefault:
+            yield self._checkRecord(db, item)
+
+        # Do a second time to test caching
+        for item in testRecordWildcardDefault:
+            yield self._checkRecord(db, item)
+
+class AugmentXMLTests(AugmentTests, AugmentTestsMixin):
 
     @inlineCallbacks
     def test_read(self):
@@ -74,7 +122,8 @@ class AugmentXMLTests(AugmentTests):
         for item in testRecords:
             yield self._checkRecord(db, item)
 
-        yield self._checkRecord(db, testRecordDefault)
+        for item in testRecordWildcardDefault:
+            yield self._checkRecord(db, item)
 
     def test_parseErrors(self):
         
@@ -99,73 +148,21 @@ class AugmentXMLTests(AugmentTests):
 """), db)
         self.assertRaises(RuntimeError, XMLAugmentsParser, cStringIO.StringIO("""<?xml version="1.0" encoding="utf-8"?>
   <record>
-    <guid>admin</guid>
+    <uid>admin</uid>
     <enable>true</enable>
     <foo/>
   </record>
 """), db)
 
-class AugmentSqliteTests(AugmentTests):
+class AugmentSqliteTests(AugmentTests, AugmentTestsMixin):
 
-    @inlineCallbacks
-    def test_read(self):
-        
-        db = AugmentSqliteDB(self.mktemp())
+    def _db(self):
+        return AugmentSqliteDB(self.mktemp())
 
-        dbxml = AugmentXMLDB((xmlFile,))
-        for record in dbxml.db.values():
-            yield db.addAugmentRecord(record)
+class AugmentPostgreSQLTests(AugmentTests, AugmentTestsMixin):
 
-        for item in testRecords:
-            yield self._checkRecord(db, item)
-
-        yield self._checkNoRecord(db, "D11F03A0-97EA-48AF-9A6C-FAC7F3975767")
-
-    @inlineCallbacks
-    def test_read_default(self):
-        
-        db = AugmentSqliteDB(self.mktemp())
-
-        dbxml = AugmentXMLDB((xmlFileDefault,))
-        for record in dbxml.db.values():
-            yield db.addAugmentRecord(record)
-
-        for item in testRecords:
-            yield self._checkRecord(db, item)
-
-        yield self._checkRecord(db, testRecordDefault)
-
-class AugmentPostgreSQLTests(AugmentTests):
-
-    @inlineCallbacks
-    def test_read(self):
-        
-        db = AugmentPostgreSQLDB("localhost", "augments")
-        yield db.clean()
-
-        dbxml = AugmentXMLDB((xmlFile,))
-        for record in dbxml.db.values():
-            yield db.addAugmentRecord(record)
-
-        for item in testRecords:
-            yield self._checkRecord(db, item)
-
-        yield self._checkNoRecord(db, "D11F03A0-97EA-48AF-9A6C-FAC7F3975767")
-
-    @inlineCallbacks
-    def test_read_default(self):
-        
-        db = AugmentPostgreSQLDB("localhost", "augments")
-        yield db.clean()
-
-        dbxml = AugmentXMLDB((xmlFileDefault,))
-        for record in dbxml.db.values():
-            yield db.addAugmentRecord(record)
-
-        for item in testRecords:
-            yield self._checkRecord(db, item)
-
-        yield self._checkRecord(db, testRecordDefault)
+    def _db(self):
+        return AugmentPostgreSQLDB("localhost", "augments")
 
 try:
     import pgdb
