@@ -228,8 +228,14 @@ class SharedCollectionMixin(object):
 
     @inlineCallbacks
     def resourceType(self, request):
-        
-        rtype = (yield super(SharedCollectionMixin, self).resourceType(request))
+        superObject = super(SharedCollectionMixin, self)
+        try:
+            superMethod = superObject.resourceType
+        except AttributeError:
+            rtype = davxml.ResourceType()
+        else:
+            rtype = (yield superMethod(request))
+
         isVirt = (yield self.isVirtualShare(request))
         if isVirt:
             rtype = davxml.ResourceType(
