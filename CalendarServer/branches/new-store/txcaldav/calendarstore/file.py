@@ -41,6 +41,7 @@ from twext.python.vcomponent import VComponent
 from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
 
 
+from twistedcaldav import caldavxml, customxml
 from twistedcaldav.caldavxml import ScheduleCalendarTransp, Opaque
 from twistedcaldav.index import Index as OldIndex, IndexSchedule as OldInboxIndex
 from twistedcaldav.sharing import InvitesDatabase
@@ -85,7 +86,7 @@ class CalendarHome(CommonHome):
 
     def calendars(self):
         for child in self.children():
-            if child.name() == 'dropbox':
+            if child.name() in ('dropbox', 'notification'):
                 continue
             yield child
 
@@ -167,13 +168,26 @@ class Calendar(CommonHomeChild):
         raise NotImplementedError()
 
 
+    def initPropertyStore(self, props):
+        # Setup peruser special properties
+        props.setSpecialProperties(
+            (
+                PropertyName.fromElement(caldavxml.CalendarDescription),
+                PropertyName.fromElement(caldavxml.CalendarTimeZone),
+            ),
+            (
+                PropertyName.fromElement(customxml.GETCTag),
+                PropertyName.fromElement(caldavxml.SupportedCalendarComponentSet),
+                PropertyName.fromElement(caldavxml.ScheduleCalendarTransp),
+            ),
+        )
+
     def _doValidate(self, component):
         # FIXME: should be separate class, not separate case!
         if self.name() == 'inbox':
             component.validateComponentsForCalDAV(True)
         else:
             component.validateForCalDAV()
-
 
 
 class CalendarObject(CommonObjectResource):
@@ -223,6 +237,10 @@ class CalendarObject(CommonObjectResource):
         # FIXME: needs to clear text cache
 
         def do():
+            # Mark all properties as dirty, so they can be added back
+            # to the newly updated file.
+            self.properties().update(self.properties())
+
             backup = None
             if self._path.exists():
                 backup = hidden(self._path.temporarySibling())
@@ -234,6 +252,10 @@ class CalendarObject(CommonObjectResource):
                 fh.write(str(component))
             finally:
                 fh.close()
+                
+            # Now re-write the original properties on the updated file
+            self.properties().flush()
+
             def undo():
                 if backup:
                     backup.moveTo(self._path)
@@ -241,20 +263,6 @@ class CalendarObject(CommonObjectResource):
                     self._path.remove()
             return undo
         self._transaction.addOperation(do, "set calendar component %r" % (self.name(),))
-
-        # Mark all properties as dirty, so they will be re-added to the
-        # temporary file when the main file is deleted. NOTE: if there were a
-        # temporary file and a rename() as there should be, this should really
-        # happen after the write but before the rename.
-        self.properties().update(self.properties())
-
-        # FIXME: the property store's flush() method may already have been
-        # added to the transaction, but we need to add it again to make sure it
-        # happens _after_ the new file has been written.  we may end up doing
-        # the work multiple times, and external callers to property-
-        # manipulation methods won't work.
-        self._transaction.addOperation(self.properties().flush, "post-update property flush")
-
 
     def component(self):
         if self._component is not None:
@@ -372,6 +380,23 @@ class CalendarObject(CommonObjectResource):
         return [Attachment(self, name)
                 for name in self._dropboxPath().listdir()]
 
+    def initPropertyStore(self, props):
+        # Setup peruser special properties
+        props.setSpecialProperties(
+            (
+            ),
+            (
+                PropertyName.fromElement(customxml.TwistedCalendarAccessProperty),
+                PropertyName.fromElement(customxml.TwistedSchedulingObjectResource),
+                PropertyName.fromElement(caldavxml.ScheduleTag),
+                PropertyName.fromElement(customxml.TwistedScheduleMatchETags),
+                PropertyName.fromElement(customxml.TwistedCalendarHasPrivateCommentsProperty),
+                PropertyName.fromElement(caldavxml.Originator),
+                PropertyName.fromElement(caldavxml.Recipient),
+                PropertyName.fromElement(customxml.ScheduleChanges),
+            ),
+        )
+
 
 
 class AttachmentStorageTransport(object):
@@ -420,7 +445,11 @@ class Attachment(object):
 
     def _properties(self):
         # Not exposed 
-        return PropertyStore(self._computePath())
+        return PropertyStore(
+            self._calendarObject._parentCollection._home.peruser_uid(),
+            self._calendarObject._parentCollection._home.uid(),
+            self._computePath()
+        )
 
 
     def contentType(self):

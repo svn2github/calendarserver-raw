@@ -293,6 +293,8 @@ class CalendarQuery (HomeTestCase):
 
         if os.path.exists(calendar_path): rmdir(calendar_path)
 
+        mkrequest = SimpleRequest(self.site, "MKCALENDAR", calendar_uri)
+
         def do_report(response):
             response = IResponse(response)
 
@@ -323,6 +325,4 @@ class CalendarQuery (HomeTestCase):
 
             return self.send(request, do_test)
 
-        request = SimpleRequest(self.site, "MKCALENDAR", calendar_uri)
-
-        return self.send(request, do_report)
+        return self.send(mkrequest, do_report)

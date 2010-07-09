@@ -206,6 +206,11 @@ class SharedCollectionMixin(object):
         self._isVirtualShare = True
         self._shareePrincipal = shareePrincipal
         self._share = share
+        
+        if hasattr(self, "_newStoreCalendar"):
+            self._newStoreCalendar.setSharingUID(self._shareePrincipal.principalUID())
+        elif hasattr(self, "_newStoreAddressBook"):
+            self._newStoreAddressBook.setSharingUID(self._shareePrincipal.principalUID())
 
     def isVirtualShare(self, request):
         """ Return True if this is a shared calendar collection """

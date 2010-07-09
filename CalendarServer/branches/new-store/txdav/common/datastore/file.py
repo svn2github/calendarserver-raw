@@ -19,32 +19,33 @@
 Common utility functions for a file based datastore.
 """
 
-from errno import EEXIST, ENOENT
-
 from twext.python.log import LoggingMixIn
 from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
+from twext.web2.http_headers import generateContentType, MimeType
 
-from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
-    hidden, isValidName, cached
-from txdav.propertystore.base import PropertyName
-from txdav.propertystore.xattr import PropertyStore
+from twisted.python.util import FancyEqMixin
+
+from twistedcaldav import customxml
+from twistedcaldav.customxml import GETCTag, NotificationType
+from twistedcaldav.notifications import NotificationRecord
+from twistedcaldav.notifications import NotificationsDatabase as OldNotificationIndex
+from twistedcaldav.sharing import SharedCollectionsDatabase
+
 from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
     HomeChildNameAlreadyExistsError, NoSuchHomeChildError, \
     InternalDataStoreError, ObjectResourceNameNotAllowedError, \
     ObjectResourceNameAlreadyExistsError, NoSuchObjectResourceError
-
-from twisted.python.util import FancyEqMixin
-from twistedcaldav.customxml import GETCTag, NotificationType
-from uuid import uuid4
-from zope.interface import implements, directlyProvides
 from txdav.common.inotifications import INotificationCollection, \
     INotificationObject
-from twistedcaldav.notifications import NotificationRecord
-from twistedcaldav.notifications import NotificationsDatabase as OldNotificationIndex
-from twext.web2.http_headers import generateContentType, MimeType
-from twistedcaldav.sharing import SharedCollectionsDatabase
+from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
+    hidden, isValidName, cached
 from txdav.idav import IDataStore
+from txdav.propertystore.base import PropertyName
+from txdav.propertystore.xattr import PropertyStore
 
+from errno import EEXIST, ENOENT
+from uuid import uuid4
+from zope.interface import implements, directlyProvides
 
 ECALENDARTYPE = 0
 EADDRESSBOOKTYPE = 1
@@ -261,7 +262,7 @@ class CommonHome(LoggingMixIn):
 
     def __init__(self, uid, path, dataStore, transaction):
         self._dataStore = dataStore
-        self._uid = uid
+        self._uid = self._peruser_uid = uid
         self._path = path
         self._transaction = transaction
         self._shares = SharedCollectionsDatabase(StubResource(self))
@@ -277,6 +278,8 @@ class CommonHome(LoggingMixIn):
     def uid(self):
         return self._uid
 
+    def peruser_uid(self):
+        return self._peruser_uid
 
     def _updateSyncToken(self, reset=False):
         "Stub for updating sync token."
@@ -408,7 +411,7 @@ class CommonHome(LoggingMixIn):
         # FIXME: needs tests for actual functionality
         # FIXME: needs to be cached
         # FIXME: transaction tests
-        props = PropertyStore(self._path)
+        props = PropertyStore(self.peruser_uid(), self.uid(), self._path)
         self._transaction.addOperation(props.flush, "flush home properties")
         return props
 
@@ -438,6 +441,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         """
         self._name = name
         self._home = home
+        self._peruser_uid = home._peruser_uid
         self._transaction = home._transaction
         self._newObjectResources = {}
         self._cachedObjectResources = {}
@@ -497,6 +501,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
     def ownerHome(self):
         return self._home
 
+    def setSharingUID(self, uid):
+        self._peruser_uid = uid
+        self.properties().setPerUserUID(uid)
 
     def objectResources(self):
         return sorted((
@@ -615,10 +622,19 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
     def properties(self):
         # FIXME: needs direct tests - only covered by store tests
         # FIXME: transactions
-        props = PropertyStore(self._path)
+        props = PropertyStore(
+            self._peruser_uid,
+            self._home.uid(),
+            self._path
+        )
+        self.initPropertyStore(props)
+
         self._transaction.addOperation(props.flush, "flush object resource properties")
         return props
 
+
+    def initPropertyStore(self, props):
+        pass
 
     def _doValidate(self, component):
         raise NotImplementedError
@@ -669,7 +685,11 @@ class CommonObjectResource(LoggingMixIn):
 
     @cached
     def properties(self):
-        props = PropertyStore(self._path)
+        props = PropertyStore(
+            self._parentCollection._home.peruser_uid(),
+            self._parentCollection._home.uid(),
+            self._path
+        )
         self._transaction.addOperation(props.flush, "object properties flush")
         return props
 
@@ -845,6 +865,17 @@ class NotificationObject(CommonObjectResource):
         if not hasattr(self, "_uid"):
             self._uid = self.xmldata
         return self._uid
+
+    def initPropertyStore(self, props):
+        # Setup peruser special properties
+        props.setSpecialProperties(
+            (
+            ),
+            (
+                PropertyName.fromElement(customxml.NotificationType),
+            ),
+        )
+
 
 class NotificationIndex(object):
     #

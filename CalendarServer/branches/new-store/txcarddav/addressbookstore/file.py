@@ -44,6 +44,9 @@ from txdav.common.datastore.file import CommonDataStore, CommonHome,\
 from txdav.common.icommondatastore import InvalidObjectResourceError,\
     NoSuchObjectResourceError, InternalDataStoreError
 from txdav.datastore.file import hidden, writeOperation
+from txdav.propertystore.base import PropertyName
+
+from twistedcaldav import customxml, carddavxml
 
 from zope.interface import implements
 
@@ -117,6 +120,17 @@ class AddressBook(CommonHomeChild):
     addressbookObjectsSinceToken = CommonHomeChild.objectResourcesSinceToken
 
 
+    def initPropertyStore(self, props):
+        # Setup peruser special properties
+        props.setSpecialProperties(
+            (
+                PropertyName.fromElement(carddavxml.AddressBookDescription),
+            ),
+            (
+                PropertyName.fromElement(customxml.GETCTag),
+            ),
+        )
+
     def _doValidate(self, component):
         component.validForCardDAV()
 
@@ -164,6 +178,10 @@ class AddressBookObject(CommonObjectResource):
         # FIXME: needs to clear text cache
 
         def do():
+            # Mark all properties as dirty, so they can be added back
+            # to the newly updated file.
+            self.properties().update(self.properties())
+
             backup = None
             if self._path.exists():
                 backup = hidden(self._path.temporarySibling())
@@ -175,6 +193,10 @@ class AddressBookObject(CommonObjectResource):
                 fh.write(str(component))
             finally:
                 fh.close()
+
+            # Now re-write the original properties on the updated file
+            self.properties().flush()
+
             def undo():
                 if backup:
                     backup.moveTo(self._path)
@@ -182,19 +204,6 @@ class AddressBookObject(CommonObjectResource):
                     self._path.remove()
             return undo
         self._transaction.addOperation(do, "set addressbook component %r" % (self.name(),))
-
-        # Mark all properties as dirty, so they will be re-added to the
-        # temporary file when the main file is deleted. NOTE: if there were a
-        # temporary file and a rename() as there should be, this should really
-        # happen after the write but before the rename.
-
-        self.properties().update(self.properties())
-        # FIXME: the property store's flush() method may already have been
-        # added to the transaction, but we need to add it again to make sure it
-        # happens _after_ the new file has been written.  we may end up doing
-        # the work multiple times, and external callers to property-
-        # manipulation methods won't work.
-        self._transaction.addOperation(self.properties().flush, "post-update property flush")
 
 
     def component(self):

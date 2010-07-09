@@ -23,12 +23,16 @@ __all__ = [
     "PropertyName",
 ]
 
-from zope.interface import implements
-
 from twext.python.log import LoggingMixIn
+from twext.web2.dav import davxml
+from twext.web2.dav.resource import TwistedGETContentMD5,\
+    TwistedQuotaRootProperty
 
 from txdav.idav import IPropertyStore, IPropertyName
 
+from UserDict import DictMixin
+
+from zope.interface import implements
 
 class PropertyName(LoggingMixIn):
     """
@@ -44,6 +48,10 @@ class PropertyName(LoggingMixIn):
             raise TypeError("Invalid sname: %r" % (sname,))
 
         return PropertyName(sname[1:index], sname[index+1:])
+
+    @staticmethod
+    def fromElement(element):
+        return PropertyName(element.namespace, element.name)
 
     def __init__(self, namespace, name):
         self.namespace = namespace
@@ -84,115 +92,102 @@ class PropertyName(LoggingMixIn):
         return "{%s}%s" % (self.namespace, self.name)
 
 
-class AbstractPropertyStore(LoggingMixIn):
+class AbstractPropertyStore(LoggingMixIn, DictMixin):
     """
     Base property store.
     """
     implements(IPropertyStore)
 
-    def __init__(self, peruser):
+    _defaultShadowableKeys = set()
+    _defaultGlobalKeys = set((
+        PropertyName.fromElement(davxml.ACL),
+        PropertyName.fromElement(davxml.ResourceID),
+        PropertyName.fromElement(davxml.ResourceType),
+        PropertyName.fromElement(davxml.GETContentType),
+        PropertyName.fromElement(TwistedGETContentMD5),
+        PropertyName.fromElement(TwistedQuotaRootProperty),
+    ))
+
+    def __init__(self, peruser, defaultuser):
         """
-        Instantiate the property store for a user.
+        Instantiate the property store for a user. The default is the default user
+        (owner) property to read in the case of global or shadowable properties.
 
         @param peruser: the user uid
         @type peruser: C{str}
+
+        @param defaultuser: the default user uid
+        @type defaultuser: C{str}
         """
         
         self._peruser = peruser
+        self._defaultuser = defaultuser
+        self._shadowableKeys = set(AbstractPropertyStore._defaultShadowableKeys)
+        self._globalKeys = set(AbstractPropertyStore._defaultGlobalKeys)
+
+    def setPerUserUID(self, uid):
+        self._peruser = uid
+
+    def setSpecialProperties(self, shadowableKeys, globalKeys):
+        self._shadowableKeys.update(shadowableKeys)
+        self._globalKeys.update(globalKeys)
 
     #
     # Subclasses must override these
     #
 
-    def __delitem__(self, key):
+    def _getitem_uid(self, key, uid):
         raise NotImplementedError()
+
+    def _setitem_uid(self, key, value, uid):
+        raise NotImplementedError()
+
+    def _delitem_uid(self, key, uid):
+        raise NotImplementedError()
+
+    def _keys_uid(self, uid):
+        raise NotImplementedError()
+        
+    #
+    # Required UserDict implementations
+    #
 
     def __getitem__(self, key):
-        raise NotImplementedError()
-
-    def __contains__(self, key):
-        raise NotImplementedError()
+        # Handle per-user behavior 
+        if self.isShadowableProperty(key):
+            try:
+                result = self._getitem_uid(key, self._peruser)
+            except KeyError:
+                result = self._getitem_uid(key, self._defaultuser)
+            return result
+        elif self.isGlobalProperty(key):
+            return self._getitem_uid(key, self._defaultuser)
+        else:
+            return self._getitem_uid(key, self._peruser)
 
     def __setitem__(self, key, value):
-        raise NotImplementedError()
-
-    def __iter__(self):
-        raise NotImplementedError()
-
-    def __len__(self):
-        raise NotImplementedError()
-
-    def flush(self):
-        raise NotImplementedError()
-
-    def abort(self):
-        raise NotImplementedError()
-
-    #
-    # Subclasses may override these
-    #
-
-    def len(self, key):
-        return self.__len__(key)
-
-    def clear(self):
-        for key in self.__iter__():
-            self.__delitem__(key)
-
-    def get(self, key, default=None):
-        if self.__contains__(key):
-            return self.__getitem__(key)
+        # Handle per-user behavior 
+        if self.isGlobalProperty(key):
+            return self._setitem_uid(key, value, self._defaultuser)
         else:
-            return default
+            return self._setitem_uid(key, value, self._peruser)
 
-    def iteritems(self):
-        return (
-            (key, self.get(key))
-            for key in self.__iter__()
-        )
-
-    def items(self):
-        return list(self.iteritems())
-
-    iterkeys = iter
-    __iterkeys__ = iter
+    def __delitem__(self, key):
+        # Handle per-user behavior 
+        if self.isGlobalProperty(key):
+            self._delitem_uid(key, self._defaultuser)
+        else:
+            self._delitem_uid(key, self._peruser)
 
     def keys(self):
-        return tuple(self.__iter__())
-
-    def itervalues(self):
-        return (
-            self.get(key)
-            for key in self.__iter__()
-        )
-
-    def values(self):
-        return list(self.itervalues())
-
-    def pop(self, key, default=None):
-        try:
-            value = self.__getitem__(key)
-        except KeyError:
-            if default is None:
-                raise
-            return default
-
-        self.__delitem__(key)
-
-        return value
-
-    def popitem(self):
-        for key in self.__iter__():
-            self.__delitem__(key)
-            break
-
-    def setdefault(self, key, default=None):
-        if self.__contains__(key):
-            return key
-
-        self.__setitem__(key, default)
-
-        return default
+        
+        userkeys = self._keys_uid(self._peruser)
+        if self._defaultuser != self._peruser:
+            defaultkeys = self._keys_uid(self._defaultuser)
+            for key in defaultkeys:
+                if self.isShadowableProperty(key) and key not in userkeys:
+                    userkeys.append(key)
+        return tuple(userkeys)
 
     def update(self, other):
         # FIXME: direct tests.
@@ -201,6 +196,13 @@ class AbstractPropertyStore(LoggingMixIn):
         for key in other:
             self[key] = other[key]
 
+
+    # Per-user property handling
+    def isShadowableProperty(self, key):
+        return key in self._shadowableKeys
+    
+    def isGlobalProperty(self, key):
+        return key in self._globalKeys
 
 # FIXME: Actually, we should replace this with calls to IPropertyName()
 def validKey(key):
