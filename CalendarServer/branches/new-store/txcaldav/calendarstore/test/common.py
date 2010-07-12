@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-from twisted.internet.defer import Deferred, inlineCallbacks
-from twisted.internet.protocol import Protocol
+
 """
 Tests for common calendar store API functions.
 """
@@ -24,10 +23,13 @@ from zope.interface.verify import verifyObject
 from zope.interface.exceptions import (
     BrokenMethodImplementation, DoesNotImplement)
 
+from twisted.internet.defer import Deferred, inlineCallbacks
+from twisted.internet.protocol import Protocol
+
 from txdav.idav import IPropertyStore, IDataStore
 from txdav.propertystore.base import PropertyName
 
-from txdav.common.icommondatastore import HomeChildNameAlreadyExistsError,\
+from txdav.common.icommondatastore import HomeChildNameAlreadyExistsError, \
     ICommonTransaction
 from txdav.common.icommondatastore import InvalidObjectResourceError
 from txdav.common.icommondatastore import NoSuchHomeChildError
