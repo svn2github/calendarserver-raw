@@ -331,9 +331,6 @@ class CalendarObject(CommonObjectResource):
 
 
     def attachmentWithName(self, name):
-        """
-        
-        """
         # Attachments can be local or remote, but right now we only care about
         # local.  So we're going to base this on the listing of files in the
         # dropbox and not on the calendar data.  However, we COULD examine the
@@ -341,7 +338,12 @@ class CalendarObject(CommonObjectResource):
 
         if name in self._attachments:
             return self._attachments[name]
-        return Attachment(self, name)
+        # FIXME: cache consistently (put it in self._attachments)
+        if self._dropboxPath().child(name).exists():
+            return Attachment(self, name)
+        else:
+            # FIXME: test for non-existent attachment.
+            return None
         # But, ahem.
 
 
@@ -353,9 +355,6 @@ class CalendarObject(CommonObjectResource):
 
 
     def dropboxID(self):
-        """
-        
-        """
         component = self.component()
         for subcomp in self._allSubcomponents(component):
             dropboxProperty = subcomp.getProperty("X-APPLE-DROPBOX")
@@ -363,6 +362,9 @@ class CalendarObject(CommonObjectResource):
                 componentDropboxID = dropboxProperty.value().split("/")[-1]
                 return componentDropboxID
         # FIXME: direct tests
+
+        # FIXME: read ATTACH properties as well as X-APPLE-DROPBOX properties,
+        # since X-APPLE-DROPBOX only appears when others can write attachments.
         return self.uid() + ".dropbox"
 
 
@@ -444,7 +446,13 @@ class Attachment(object):
 
 
     def _properties(self):
-        # Not exposed 
+        """
+        Create and return a private xattr L{PropertyStore} for storing some of
+        the data about this L{Attachment}.  This is private because attachments
+        do not (currently) require arbitrary dead property storage, but older
+        servers did store useful information about attachments in xattr
+        properties in the filesystem.
+        """
         return PropertyStore(
             self._calendarObject._parentCollection._home.peruser_uid(),
             self._calendarObject._parentCollection._home.uid(),
@@ -453,7 +461,8 @@ class Attachment(object):
 
 
     def contentType(self):
-        return self._properties()[contentTypeKey].children[0]
+        # FIXME: tests    
+        return self._properties()[contentTypeKey].children[0].data
 
 
     def store(self, contentType):

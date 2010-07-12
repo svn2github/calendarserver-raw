@@ -31,7 +31,7 @@ from twext.python import vcomponent
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.python.log import Logger
 
-from twext.web2.http_headers import ETag
+from twext.web2.http_headers import ETag, MimeType
 from twext.web2.dav.http import ErrorResponse, ResponseQueue
 from twext.web2.dav.element.base import dav_namespace
 from twext.web2.responsecode import (
@@ -443,8 +443,8 @@ class CalendarObjectDropbox(_GetChildHelper):
 class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
 
 
-    def __init__(self, calendarObject, attachmentName):
-        super(ProtoCalendarAttachment, self).__init__()
+    def __init__(self, calendarObject, attachmentName, **kw):
+        super(ProtoCalendarAttachment, self).__init__(**kw)
         self.calendarObject = calendarObject
         self.attachmentName = attachmentName
 
@@ -454,7 +454,7 @@ class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
 
 
     def http_PUT(self, request):
-        # FIXME: MIME-Type
+        # FIXME: MIME-Type from header
         # FIXME: direct test
         # FIXME: transformation?
         t = self.calendarObject.createAttachmentWithName(
@@ -475,6 +475,18 @@ class CalendarAttachment(_GetChildHelper):
         self._newStoreAttachment = attachment
 
 
+    def etag(self):
+        # FIXME: test
+        md5 = self._newStoreAttachment.md5()
+        return ETag(md5)
+
+
+    def contentType(self):
+        # FIXME: test
+        return MimeType.fromString(
+            self._newStoreAttachment.contentType())
+
+
     def getChild(self, name):
         return None
 
@@ -482,7 +494,7 @@ class CalendarAttachment(_GetChildHelper):
     # FIXME: @requiresPermissions(davxml.Write())
     def http_PUT(self, request):
         # FIXME: direct test
-        # FIXME: MIME-Type
+        # FIXME: MIME-Type from header
         # FIXME: refactor with ProtoCalendarAttachment.http_PUT
         # FIXME: CDT test to make sure that permissions are enforced.
         t = self._newStoreAttachment.store("application/octet-stream")
