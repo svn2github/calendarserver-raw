@@ -18,13 +18,17 @@
 Tests for the interaction between model-level and protocol-level logic.
 """
 
+from twext.web2.dav import davxml
+from twext.web2.dav.element.base import dav_namespace
+from twistedcaldav.config import config
+
 from twisted.internet.defer import inlineCallbacks, returnValue
 
 from twistedcaldav.ical import Component as VComponent
 from twistedcaldav.vcard import Component as VCComponent
 
-from twistedcaldav.storebridge import ProtoCalendarCollectionFile,\
-    ProtoAddressBookCollectionFile
+from twistedcaldav.storebridge import ProtoCalendarCollectionFile, \
+    ProtoAddressBookCollectionFile, DropboxCollection
 
 from twistedcaldav.test.util import TestCase
 
@@ -74,9 +78,6 @@ class WrappingTests(TestCase):
         txn = self.calendarCollection._newStore.newTransaction()
         home = txn.calendarHomeWithUID(uid, True)
         cal = home.calendarWithName("calendar")
-        if cal is None:
-            home.createCalendarWithName("calendar")
-            cal = home.calendarWithName("calendar")
         cal.createCalendarObjectWithName(objectName, VComponent.fromString(objectText))
         txn.commit()
 
@@ -147,9 +148,9 @@ class WrappingTests(TestCase):
     @inlineCallbacks
     def test_lookupCalendarHome(self):
         """
-        When a L{CalDAVFile} representing an existing calendar home is looked up
-        in a CalendarHomeFile, it will create a corresponding L{CalendarHome}
-        via C{newTransaction().calendarHomeWithUID}.
+        When a L{CalDAVFile} representing an existing calendar home is looked
+        up in a CalendarHomeFile, it will create a corresponding
+        L{CalendarHome} via C{newTransaction().calendarHomeWithUID}.
         """
         calDavFile = yield self.getResource("calendars/users/wsanchez/")
         self.commit()
@@ -158,15 +159,35 @@ class WrappingTests(TestCase):
 
 
     @inlineCallbacks
+    def test_lookupDropboxHome(self):
+        """
+        When dropboxes are enabled, the 'dropbox' child of the user's calendar
+        home should be a L{DropboxCollection} wrapper around the user's
+        calendar home, with the dropbox-home resource type.
+        """
+        self.patch(config, "EnableDropBox", True)
+        dropBoxResource = yield self.getResource(
+            "calendars/users/wsanchez/dropbox"
+        )
+        self.commit()
+        self.assertIsInstance(dropBoxResource, DropboxCollection)
+        self.assertEquals((yield dropBoxResource.resourceType(None)),
+                          davxml.ResourceType.dropboxhome)
+
+
+    @inlineCallbacks
     def test_lookupExistingCalendar(self):
         """
         When a L{CalDAVFile} representing an existing calendar collection is
-        looked up in a L{CalendarHomeFile} representing a calendar home, it will
-        create a corresponding L{Calendar} via C{CalendarHome.calendarWithName}.
+        looked up in a L{CalendarHomeFile} representing a calendar home, it
+        will create a corresponding L{Calendar} via
+        C{CalendarHome.calendarWithName}.
         """
         calDavFile = yield self.getResource("calendars/users/wsanchez/calendar")
         self.commit()
         self.assertEquals(calDavFile.fp, calDavFile._newStoreCalendar._path)
+        self.assertEquals((yield calDavFile.resourceType(None)),
+                          davxml.ResourceType.calendar)
 
 
     @inlineCallbacks
@@ -214,7 +235,7 @@ class WrappingTests(TestCase):
             "calendars/users/wsanchez/calendar/1.ics"
         )
         self.commit()
-        self.assertEquals(calDavFileCalendar._newStoreObject._path, 
+        self.assertEquals(calDavFileCalendar._newStoreObject._path,
                           calDavFileCalendar.fp)
         self.assertEquals(calDavFileCalendar._principalCollections,
                           frozenset([self.principalsResource]))
@@ -233,6 +254,7 @@ class WrappingTests(TestCase):
         self.commit()
         self.assertEquals(calDavFileCalendar._principalCollections,
                           frozenset([self.principalsResource]))
+
 
     def test_createAddressBookStore(self):
         """
@@ -297,7 +319,7 @@ class WrappingTests(TestCase):
             "addressbooks/users/wsanchez/addressbook/1.vcf"
         )
         self.commit()
-        self.assertEquals(calDavFileAddressBook._newStoreObject._path, 
+        self.assertEquals(calDavFileAddressBook._newStoreObject._path,
                           calDavFileAddressBook.fp)
         self.assertEquals(calDavFileAddressBook._principalCollections,
                           frozenset([self.principalsResource]))

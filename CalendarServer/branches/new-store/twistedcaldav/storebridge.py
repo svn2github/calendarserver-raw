@@ -38,7 +38,7 @@ from twext.web2.responsecode import (
     FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED,
     BAD_REQUEST, OK, NOT_IMPLEMENTED, NOT_ALLOWED)
 from twext.web2.dav import davxml
-from twext.web2.dav.resource import TwistedGETContentMD5
+from twext.web2.dav.resource import TwistedGETContentMD5, TwistedACLInheritable
 from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
 from twext.web2.http import HTTPError, StatusResponse, Response
 from twext.web2.stream import ProducerStream, readStream
@@ -124,6 +124,23 @@ class _NewStorePropertiesWrapper(object):
         """
         return [(pname.namespace, pname.name) for pname in
                 self._newPropertyStore.keys()]
+
+
+
+def requiresPermissions(*permissions):
+    """
+    A decorator to wrap http_ methods in, to indicate that they should not be
+    run until the current user principal has been authorized for the given
+    permission set.
+    """
+    def wrap(thunk):
+        def authAndContinue(self, request):
+            d = self.authorize(request, permissions)
+            d.addCallback(lambda whatever: thunk(self, request))
+            return d
+        return authAndContinue
+    return wrap
+
 
 
 class _CalendarChildHelper(object):
@@ -234,6 +251,7 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
     def isCollection(self):
         return True
 
+
     def provisionFile(self):
         pass
 
@@ -242,7 +260,8 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
         pass
 
 
-class _GetChildHelper(object):
+
+class _GetChildHelper(CalDAVResource):
     def locateChild(self, request, segments):
         if segments[0] == '':
             return self, segments[1:]
@@ -268,14 +287,20 @@ class _GetChildHelper(object):
         return ("1", "access-control")
 
 
+    @requiresPermissions(davxml.Read())
+    def http_GET(self, request):
+        return super(_GetChildHelper, self).http_GET(request)
+
+
     http_PROPFIND = http_PROPFIND
 
 
 
-class DropboxCollection(_GetChildHelper, CalDAVResource):
+class DropboxCollection(_GetChildHelper):
     """
-    A wrapper around a calendar object which serves that calendar object's
-    attachments as a DAV collection.
+    A collection of all dropboxes (containers for attachments), presented as a
+    resource under the user's calendar home, where a dropbox is a
+    L{CalendarObjectDropbox}.
     """
     # FIXME: no direct tests for this class at all.
 
@@ -319,7 +344,9 @@ class DropboxCollection(_GetChildHelper, CalDAVResource):
 
 
 
-class NoDropboxHere(_GetChildHelper, CalDAVResource):
+
+
+class NoDropboxHere(_GetChildHelper):
 
     def isCollection(self):
         return False
@@ -338,7 +365,11 @@ class NoDropboxHere(_GetChildHelper, CalDAVResource):
 
 
 
-class CalendarObjectDropbox(_GetChildHelper, CalDAVResource):
+class CalendarObjectDropbox(_GetChildHelper):
+    """
+    A wrapper around a calendar object which serves that calendar object's
+    attachments as a DAV collection.
+    """
 
     def __init__(self, calendarObject, *a, **kw):
         super(CalendarObjectDropbox, self).__init__(*a, **kw)
@@ -361,7 +392,8 @@ class CalendarObjectDropbox(_GetChildHelper, CalDAVResource):
                 name,
                 principalCollections=self.principalCollections())
         else:
-            result = CalendarAttachment(attachment)
+            result = CalendarAttachment(
+                attachment, principalCollections=self.principalCollections())
         self.propagateTransaction(result)
         return result
 
@@ -381,6 +413,31 @@ class CalendarObjectDropbox(_GetChildHelper, CalDAVResource):
             l.append(attachment.name())
         return l
 
+
+    def accessControlList(self, *a, **kw):
+        """
+        All principals identified as ATTENDEEs on the event for this dropbox
+        may read all its children.
+        """
+        d = super(CalendarObjectDropbox, self).accessControlList(*a, **kw)
+        def moreACLs(originalACL):
+            originalACEs = list(originalACL.children)
+            cuas = self._newStoreCalendarObject.component().getAttendees()
+            newACEs = []
+            for calendarUserAddress in cuas:
+                principal = self.principalForCalendarUserAddress(
+                    calendarUserAddress
+                )
+                principalURL = principal.principalURL()
+                newACEs.append(davxml.ACE(
+                    davxml.Principal(davxml.HRef(principalURL)),
+                    davxml.Grant(davxml.Privilege(davxml.Read())),
+                    davxml.Protected(),
+                    TwistedACLInheritable(),
+                ))
+            return davxml.ACL(*tuple(newACEs + originalACEs))
+        d.addCallback(moreACLs)
+        return d
 
 
 class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
@@ -411,10 +468,10 @@ class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
 
 
 
-class CalendarAttachment(_GetChildHelper, CalDAVResource):
+class CalendarAttachment(_GetChildHelper):
 
-    def __init__(self, attachment):
-        super(CalendarAttachment, self).__init__()
+    def __init__(self, attachment, **kw):
+        super(CalendarAttachment, self).__init__(**kw)
         self._newStoreAttachment = attachment
 
 
@@ -422,10 +479,12 @@ class CalendarAttachment(_GetChildHelper, CalDAVResource):
         return None
 
 
+    # FIXME: @requiresPermissions(davxml.Write())
     def http_PUT(self, request):
         # FIXME: direct test
         # FIXME: MIME-Type
         # FIXME: refactor with ProtoCalendarAttachment.http_PUT
+        # FIXME: CDT test to make sure that permissions are enforced.
         t = self._newStoreAttachment.store("application/octet-stream")
         def done(ignored):
             t.loseConnection()
@@ -433,6 +492,7 @@ class CalendarAttachment(_GetChildHelper, CalDAVResource):
         return readStream(request.stream, t.write).addCallback(done)
 
 
+    @requiresPermissions(davxml.Read())
     def http_GET(self, request):
         stream = ProducerStream()
         class StreamProtocol(Protocol):
@@ -470,6 +530,7 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
 
     def isCollection(self):
         return True
+
 
     def isCalendarCollection(self):
         """
@@ -752,7 +813,7 @@ class CalendarObjectFile(CalDAVFile):
         calendarName = self._newStoreObject._calendar.name()
         homeUID = self._newStoreObject._calendar._calendarHome.uid()
         store = self._newStoreObject._transaction.store()
-        txn = store.newTransaction("new transaction for "+self._newStoreObject.name())
+        txn = store.newTransaction("new transaction for " + self._newStoreObject.name())
         newObject = (txn.calendarHomeWithUID(homeUID)
                         .calendarWithName(calendarName)
                         .calendarObjectWithName(objectName))
@@ -1441,7 +1502,7 @@ class AddressBookObjectFile(CalDAVFile):
         Name = self._newStoreObject._addressbook.name()
         homeUID = self._newStoreObject._addressbook._addressbookHome.uid()
         store = self._newStoreObject._transaction.store()
-        txn = store.newTransaction("new AB transaction for "+self._newStoreObject.name())
+        txn = store.newTransaction("new AB transaction for " + self._newStoreObject.name())
         newObject = (txn.HomeWithUID(homeUID)
                         .addressbookWithName(Name)
                         .addressbookObjectWithName(objectName))

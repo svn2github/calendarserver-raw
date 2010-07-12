@@ -443,16 +443,7 @@ class DirectoryPrincipalPropertySearchMixIn(object):
         returnValue(MultiStatusResponse(responses))
 
 
-class DAVResource (DirectoryPrincipalPropertySearchMixIn, SudoersMixin, SuperDAVResource, LoggingMixIn):
-    """
-    Extended L{twext.web2.dav.resource.DAVResource} implementation.
-    """
-    http_REPORT = http_REPORT
-
-    def render(self, request):
-        if self.isCollection():
-            return self.renderDirectory(request)
-        return super(DAVResource, self).render(request)
+class DirectoryRenderingMixIn(object):
 
     def directoryStyleSheet(self):
         return (
@@ -687,7 +678,31 @@ class DAVResource (DirectoryPrincipalPropertySearchMixIn, SudoersMixin, SuperDAV
 
 
 
-class DAVPrincipalResource (DirectoryPrincipalPropertySearchMixIn, SuperDAVPrincipalResource, LoggingMixIn):
+class DAVResource (DirectoryPrincipalPropertySearchMixIn,
+                   SudoersMixin, SuperDAVResource, LoggingMixIn,
+                   DirectoryRenderingMixIn):
+    """
+    Extended L{twext.web2.dav.resource.DAVResource} implementation.
+    """
+    http_REPORT = http_REPORT
+
+    def render(self, request):
+        if self.isCollection():
+            return self.renderDirectory(request)
+        return super(DAVResource, self).render(request)
+
+
+    def resourceType(self, request):
+        # Allow live property to be overridden by dead property
+        if self.deadProperties().contains((dav_namespace, "resourcetype")):
+            return succeed(self.deadProperties().get((dav_namespace, "resourcetype")))
+        return succeed(davxml.ResourceType())
+
+
+
+class DAVPrincipalResource (DirectoryPrincipalPropertySearchMixIn,
+                            SuperDAVPrincipalResource, LoggingMixIn,
+                            DirectoryRenderingMixIn):
     """
     Extended L{twext.web2.dav.static.DAVFile} implementation.
     """
@@ -764,7 +779,9 @@ class DAVPrincipalResource (DirectoryPrincipalPropertySearchMixIn, SuperDAVPrinc
             return succeed(davxml.ResourceType(davxml.Principal()))
 
 
-class DAVFile (SudoersMixin, SuperDAVFile, LoggingMixIn):
+
+class DAVFile (SudoersMixin, SuperDAVFile, LoggingMixIn,
+               DirectoryRenderingMixIn):
     """
     Extended L{twext.web2.dav.static.DAVFile} implementation.
     """
@@ -825,8 +842,6 @@ class DAVFile (SudoersMixin, SuperDAVFile, LoggingMixIn):
                 response.headers.setHeader(header, value)
 
         return response
-
-
 
 
 
