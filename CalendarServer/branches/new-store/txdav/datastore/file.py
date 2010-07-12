@@ -15,11 +15,12 @@
 # limitations under the License.
 ##
 
-from twext.python.log import LoggingMixIn
 
 """
 Common utility functions for a file based datastore.
 """
+
+from twext.python.log import LoggingMixIn
 
 def isValidName(name):
     """
@@ -73,6 +74,8 @@ def writeOperation(thunk):
                 % (self, thunk.__name__, self._transaction._termination))
         return thunk(self, *a, **kw)
     return inner
+
+
 
 class DataStore(LoggingMixIn):
     """
