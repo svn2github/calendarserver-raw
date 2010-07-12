@@ -448,7 +448,7 @@ class Attachment(object):
         return PropertyStore(
             self._calendarObject._parentCollection._home.peruser_uid(),
             self._calendarObject._parentCollection._home.uid(),
-            self._computePath()
+            self._computePath
         )
 
 

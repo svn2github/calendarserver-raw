@@ -234,7 +234,6 @@ class CommonStoreTransaction(DataStoreTransaction):
                 temporary.moveTo(notificationPath)
                 c._name = name
                 # FIXME: _lots_ of duplication of work here.
-                props.path = notificationPath
                 props.flush()
             except (IOError, OSError), e:
                 if e.errno == EEXIST and notificationPath.isdir():
@@ -345,7 +344,6 @@ class CommonHome(LoggingMixIn):
                 temporary.moveTo(childPath)
                 c._name = name
                 # FIXME: _lots_ of duplication of work here.
-                props.path = childPath
                 props.flush()
             except (IOError, OSError), e:
                 if e.errno == EEXIST and childPath.isdir():
@@ -411,7 +409,8 @@ class CommonHome(LoggingMixIn):
         # FIXME: needs tests for actual functionality
         # FIXME: needs to be cached
         # FIXME: transaction tests
-        props = PropertyStore(self.peruser_uid(), self.uid(), self._path)
+        props = PropertyStore(self.peruser_uid(), self.uid(),
+                              lambda : self._path)
         self._transaction.addOperation(props.flush, "flush home properties")
         return props
 
@@ -625,7 +624,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         props = PropertyStore(
             self._peruser_uid,
             self._home.uid(),
-            self._path
+            lambda: self._path
         )
         self.initPropertyStore(props)
 
@@ -688,7 +687,7 @@ class CommonObjectResource(LoggingMixIn):
         props = PropertyStore(
             self._parentCollection._home.peruser_uid(),
             self._parentCollection._home.uid(),
-            self._path
+            lambda : self._path
         )
         self._transaction.addOperation(props.flush, "object properties flush")
         return props

@@ -1,3 +1,4 @@
+# -*- test-case-name: txcaldav.calendarstore,txcarddav.addressbookstore -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -81,23 +82,26 @@ class PropertyStore(AbstractPropertyStore):
         "http://twistedmatrix.com/xml_namespace/dav/"         :"TD:",
         "http://twistedmatrix.com/xml_namespace/dav/private/" :"TDP:",
     }
-    _namespaceExpand = dict([ (v, k) for k, v in _namespaceCompress.iteritems( ) ])
+    _namespaceExpand = dict([ (v, k) for k, v in _namespaceCompress.iteritems() ])
 
-    def __init__(self, peruser, defaultuser, path):
+    def __init__(self, peruser, defaultuser, pathFactory):
         """
         Initialize a L{PropertyStore}.
 
-        @param path: the path to set extended attributes on.
-        @type path: L{CachingFilePath}
+        @param pathFactory: a 0-arg callable that returns the L{CachingFilePath} to set extended attributes on.
         """
         super(PropertyStore, self).__init__(peruser, defaultuser)
 
-        self.path = path
+        self._pathFactory = pathFactory
         # self.attrs = xattr(path.path)
         self.removed = set()
         self.modified = {}
-        
-        
+
+
+    @property
+    def path(self):
+        return self._pathFactory()
+
     @property
     def attrs(self):
         return xattr(self.path.path)
@@ -106,7 +110,7 @@ class PropertyStore(AbstractPropertyStore):
         return "<%s %s>" % (self.__class__.__name__, self.path.path)
 
     def _encodeKey(self, effective, compressNamespace=True):
-        
+
         qname, uid = effective
         namespace = self._namespaceCompress.get(qname.namespace, qname.namespace) if compressNamespace else qname.namespace
         result = urllib.quote("{%s}%s" % (namespace, qname.name), safe="{}:")
@@ -122,15 +126,15 @@ class PropertyStore(AbstractPropertyStore):
         index1 = name.find("{")
         index2 = name.find("}")
 
-        if (index1 is -1 or index2 is -1 or not len(name) > index2):
+        if (index1 is - 1 or index2 is - 1 or not len(name) > index2):
             raise ValueError("Invalid encoded name: %r" % (name,))
         if index1 == 0:
             uid = None
         else:
             uid = name[:index1]
-        propnamespace = name[index1+1:index2]
+        propnamespace = name[index1 + 1:index2]
         propnamespace = self._namespaceExpand.get(propnamespace, propnamespace)
-        propname = name[index2+1:]
+        propname = name[index2 + 1:]
 
         return PropertyName(propnamespace, propname), uid
 
@@ -163,7 +167,7 @@ class PropertyStore(AbstractPropertyStore):
                 except IOError, e:
                     raise KeyError(key)
 
-                try:                    
+                try:
                     # Write it back using the compressed format
                     self.attrs[self._encodeKey(effectiveKey)] = data
                     del self.attrs[self._encodeKey(effectiveKey, compressNamespace=False)]
@@ -253,7 +257,7 @@ class PropertyStore(AbstractPropertyStore):
         for effectivekey in self.modified:
             if effectivekey[1] == uid and effectivekey not in seen:
                 yield effectivekey[0]
-            
+
     #
     # I/O
     #
@@ -269,8 +273,8 @@ class PropertyStore(AbstractPropertyStore):
         if not self.path.exists():
             return
 
-        attrs    = self.attrs
-        removed  = self.removed
+        attrs = self.attrs
+        removed = self.removed
         modified = self.modified
 
         for key in removed:
@@ -287,9 +291,9 @@ class PropertyStore(AbstractPropertyStore):
             assert key not in removed
             value = modified[key]
             attrs[self._encodeKey(key)] = compress(value.toxml())
-        
+
         self.removed.clear()
-        self.modified.clear()        
+        self.modified.clear()
 
     def abort(self):
         self.removed.clear()
