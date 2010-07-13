@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twistedcaldav.notify import installNotificationClient
+from twistedcaldav import memcachepool
 
 __all__ = [
     "loadConfig",
@@ -135,3 +137,24 @@ def autoDisableMemcached(config):
 
     except socket.error:
         config.Memcached.Pools.Default.ClientEnabled = False
+
+def setupMemcached(config):
+    #
+    # Connect to memcached
+    #
+    memcachepool.installPools(
+        config.Memcached.Pools,
+        config.Memcached.MaxClients
+    )
+    autoDisableMemcached(config)
+
+def setupNotifications(config):
+    #
+    # Connect to notifications
+    #
+    if config.Notifications.Enabled:
+        installNotificationClient(
+            config.Notifications.InternalNotificationHost,
+            config.Notifications.InternalNotificationPort,
+        )
+

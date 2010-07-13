@@ -465,7 +465,7 @@ def storeCalendarObjectResource(
             # property cache before we do this as the etag property may have changed.
             #
             # Currently only care about this on a PUT
-            if source is None:
+            if source is None and not isiTIP:
                 if destination.exists():
                     destination.deadProperties().reloadCache()
                 destination.checkPreconditions(request)

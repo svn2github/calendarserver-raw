@@ -117,6 +117,7 @@ class Scheduler(object):
         self.originator = originator
         self.recipients = recipients
         self.calendar = calendar
+        self.calendardata = str(calendar)
         self.internal_request = internal_request
 
         # Do some extra authorization checks

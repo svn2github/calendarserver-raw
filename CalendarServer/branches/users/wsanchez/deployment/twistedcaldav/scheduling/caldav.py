@@ -153,7 +153,7 @@ class ScheduleViaCalDAV(DeliveryService):
                 isiTIP = True
             )
         except: # FIXME: bare except
-            self.log_error("Could not store data in Inbox : %s" % (recipient.inbox,))
+            log.error("Could not store data in Inbox : %s" % (recipient.inbox,))
             err = HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "recipient-permissions")))
             responses.add(recipient.cuaddr, Failure(exc_value=err), reqstatus="3.8;No authority")
             returnValue(False)
