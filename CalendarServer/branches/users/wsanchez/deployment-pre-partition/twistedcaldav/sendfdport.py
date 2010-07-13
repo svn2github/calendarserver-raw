@@ -251,13 +251,13 @@ class InheritedPort(FileDescriptor, object):
         @param fd: a file descriptor
 
         @type fd: C{int}
-        
-        @param transportFactory: a 3-argument function that takes the socket
-            object produced from the file descriptor, the (non-ancillary) data
-            sent along with the incoming file descriptor, and the protocol
-            built along with it, and returns an L{ITransport} provider.  Note
-            that this should NOT call C{makeConnection} on the protocol that it
-            produces, as this class will do that.
+
+        @param transportFactory: a 4-argument function that takes the peer
+            address, socket object produced from the file descriptor, the
+            (non-ancillary) data sent along with the incoming file descriptor,
+            and the protocol built along with it, and returns an L{ITransport}
+            provider.  Note that this should NOT call C{makeConnection} on the
+            protocol that it produces, as this class will do that.
 
         @param protocolFactory: an L{IProtocolFactory}
         """
@@ -297,7 +297,7 @@ class InheritedPort(FileDescriptor, object):
                 except:
                     peeraddr = ('0.0.0.0', 0)
                 protocol = self.protocolFactory.buildProtocol(peeraddr)
-                transport = self.transportFactory(skt, description, protocol)
+                transport = self.transportFactory(addr, skt, description, protocol)
                 protocol.makeConnection(transport)
             except:
                 log.err()

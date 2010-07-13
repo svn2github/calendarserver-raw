@@ -77,13 +77,13 @@ class ReportingHTTPService(Service, object):
         self.reportingFactory.inheritedPort.stopReading()
 
 
-    def createTransport(self, skt, data, protocol):
+    def createTransport(self, addr, skt, data, protocol):
         """
         Create a TCP transport, from a socket object passed by the parent.
         """
         self._connectionCount += 1
         transport = Server(skt, protocol,
-                           skt.getpeername(), JustEnoughLikeAPort,
+                           addr, JustEnoughLikeAPort,
                            self._connectionCount)
         if data == 'SSL':
             transport.startTLS(self.contextFactory)
