@@ -492,9 +492,9 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
                 if freebusy:
 
                     # Check for freebusy limit
-                    if ctr >= config.LimitFreeBusyAttendees:
+                    if config.LimitFreeBusyAttendees and ctr >= config.LimitFreeBusyAttendees:
                         err = HTTPError(ErrorResponse(responsecode.NOT_FOUND, (caldav_namespace, "recipient-limit")))
-                        responses.add(recipient, Failure(exc_value=err), reqstatus="5.3;No scheduling support for user")
+                        responses.add(recipient, Failure(exc_value=err), reqstatus="5.1;Service Unavailable")
                         recipientsState["BAD"] += 1
                         continue
 
