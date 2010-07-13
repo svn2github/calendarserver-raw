@@ -297,7 +297,7 @@ class InheritedPort(FileDescriptor, object):
                 except:
                     peeraddr = ('0.0.0.0', 0)
                 protocol = self.protocolFactory.buildProtocol(peeraddr)
-                transport = self.transportFactory(addr, skt, description, protocol)
+                transport = self.transportFactory(peeraddr, skt, description, protocol)
                 protocol.makeConnection(transport)
             except:
                 log.err()
