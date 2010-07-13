@@ -252,7 +252,7 @@ class CalendarObject(CommonObjectResource):
                 fh.write(str(component))
             finally:
                 fh.close()
-                
+
             # Now re-write the original properties on the updated file
             self.properties().flush()
 
@@ -322,12 +322,20 @@ class CalendarObject(CommonObjectResource):
 
     def createAttachmentWithName(self, name, contentType):
         """
-        
+        Implement L{ICalendarObject.removeAttachmentWithName}.
         """
-        # Make a (temp, remember rollbacks) file in dropbox-land
+        # Make a (FIXME: temp, remember rollbacks) file in dropbox-land
         attachment = Attachment(self, name)
         self._attachments[name] = attachment
         return attachment.store(contentType)
+
+
+    def removeAttachmentWithName(self, name):
+        """
+        Implement L{ICalendarObject.removeAttachmentWithName}.
+        """
+        # FIXME: rollback, tests for rollback
+        self._dropboxPath().child(name).remove()
 
 
     def attachmentWithName(self, name):
@@ -431,7 +439,12 @@ contentTypeKey = PropertyName.fromString(GETContentType.sname())
 
 class Attachment(object):
     """
-    
+    An L{Attachment} is a container for the data associated with a I{locally-
+    stored} calendar attachment.  That is to say, there will only be
+    L{Attachment} objects present on the I{organizer's} copy of and event, and
+    only for C{ATTACH} properties where this server is storing the resource.
+    (For example, the organizer may specify an C{ATTACH} property that
+    references an URI on a remote server.)
     """
 
     implements(IAttachment)
@@ -461,7 +474,6 @@ class Attachment(object):
 
 
     def contentType(self):
-        # FIXME: tests    
         return self._properties()[contentTypeKey].children[0].data
 
 
@@ -476,8 +488,9 @@ class Attachment(object):
     def retrieve(self, protocol):
         # FIXME: makeConnection
         # FIXME: actually stream
+        # FIMXE: connectionLost
         protocol.dataReceived(self._computePath().getContent())
-        # FIXME: ConnectionDone
+        # FIXME: ConnectionDone, not NotImplementedError
         protocol.connectionLost(Failure(NotImplementedError()))
 
 

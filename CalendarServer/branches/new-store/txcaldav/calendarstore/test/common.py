@@ -935,7 +935,9 @@ END:VCALENDAR
         attachment.retrieve(capture)
         data = yield capture.deferred
         self.assertEquals(data, "new attachment text")
-        self.assertEquals(attachment.contentType(), "text/x-fixture")
+        contentType = attachment.contentType()
+        self.assertIsInstance(contentType, str)
+        self.assertEquals(contentType, "text/x-fixture")
         self.assertEquals(attachment.md5(), '50a9f27aeed9247a0833f30a631f1858')
         self.assertEquals(
             [attachment.name() for attachment in obj.attachments()],
@@ -962,6 +964,33 @@ END:VCALENDAR
             self.commit()
             return self.calendarObjectUnderTest()
         return self.createAttachmentTest(refresh)
+
+
+    def test_removeAttachmentWithName(self, refresh=lambda x:x):
+        """
+        L{ICalendarObject.removeAttachmentWithName} will remove the calendar
+        object with the given name.
+        """
+        def deleteIt(ignored):
+            obj = self.calendarObjectUnderTest()
+            obj.removeAttachmentWithName("new.attachment")
+            obj = refresh(obj)
+            self.assertIdentical(
+                None, obj.attachmentWithName("new.attachment")
+            )
+            self.assertEquals(list(obj.attachments()), [])
+        return self.test_createAttachmentCommit().addCallback(deleteIt)
+
+
+    def test_removeAttachmentWithNameCommit(self):
+        """
+        L{ICalendarObject.removeAttachmentWithName} will remove the calendar
+        object with the given name.  (After commit, it will still be gone.)
+        """
+        def refresh(obj):
+            self.commit()
+            return self.calendarObjectUnderTest()
+        return self.test_removeAttachmentWithName(refresh)
 
 
     def test_noDropboxCalendar(self):

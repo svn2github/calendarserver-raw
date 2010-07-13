@@ -391,6 +391,16 @@ class ICalendarObject(Interface):
         """
 
 
+    def removeAttachmentWithName(name):
+        """
+        Delete an attachment with the given name.
+
+        @param name: The basename of the attachment (i.e. the last segment of
+            its URI) as given to L{attachmentWithName}.
+        @type name: C{str}
+        """
+
+
 
 class IAttachment(Interface):
     """
@@ -400,27 +410,31 @@ class IAttachment(Interface):
     def name():
         """
         A short name, unique to this attachment's L{ICalendarObject}.
+
+        @rtype: C{str}
         """
 
 
     def contentType():
         """
         A slash-separated content type of the body of this attachment.
+
+        @rtype: C{str}
         """
 
 
     def md5():
         """
-        The MD5 hash of this attachment's contents.
+        The MD5 hex digest of this attachment's contents.
+
+        @rtype: C{str}
         """
-        # Needed to compute the etag, and possibly the 'getcontentmd5'
-        # property.  Possibly need this on other stuff too; it shouldn't really
-        # be exposed in the interface as a dead property.
 
 
     def store(contentType):
         """
         @param contentType: The content type of the data which will be stored.
+        @type contentType: C{str}
 
         @return: An L{ITransport}/L{IConsumer} provider that will store the
             bytes passed to its 'write' method.
@@ -439,9 +453,12 @@ class IAttachment(Interface):
 
     def retrieve(protocol):
         """
+        Retrieve the content of this attachment into a protocol instance.
+
         @param protocol: A protocol which will receive the contents of the
             attachment to its C{dataReceived} method, and then a notification
             that the stream is complete to its C{connectionLost} method.
+        @type protocol: L{IProtocol}
         """
 
 
