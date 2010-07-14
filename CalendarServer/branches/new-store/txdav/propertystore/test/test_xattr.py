@@ -39,8 +39,8 @@ class PropertyStoreTest(base.PropertyStoreTest):
         tempDir.makedirs()
         tempFile = tempDir.child("test")
         tempFile.touch()
-        self.propertyStore = self.propertyStore1 = PropertyStore("user01", "user01", tempFile)
-        self.propertyStore2 = PropertyStore("user02", "user01", tempFile)
+        self.propertyStore = self.propertyStore1 = PropertyStore("user01", "user01", lambda : tempFile)
+        self.propertyStore2 = PropertyStore("user02", "user01", lambda : tempFile)
 
     def test_init(self):
         store = self.propertyStore
