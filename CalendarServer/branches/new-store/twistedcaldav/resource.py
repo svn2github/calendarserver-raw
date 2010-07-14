@@ -882,11 +882,13 @@ class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource,
         def gotChild(child, childpath):
             if child.isSpecialCollection(type):
                 callback(child, childpath)
-            elif child.isCollection():
-                if depth == "infinity":
-                    fc = child.findSpecialCollections(type, depth, request, callback, privileges)
-                    fc.addCallback(lambda x: reactor.callLater(0, getChild))
-                    return fc
+                
+            # No more regular collections
+            #elif child.isCollection():
+            #    if depth == "infinity":
+            #        fc = child.findSpecialCollections(type, depth, request, callback, privileges)
+            #        fc.addCallback(lambda x: reactor.callLater(0, getChild))
+            #        return fc
 
             reactor.callLater(0, getChild)
 
