@@ -336,6 +336,8 @@ class CalendarObject(CommonObjectResource):
         """
         # FIXME: rollback, tests for rollback
         self._dropboxPath().child(name).remove()
+        if name in self._attachments:
+            del self._attachments[name]
 
 
     def attachmentWithName(self, name):
@@ -352,7 +354,6 @@ class CalendarObject(CommonObjectResource):
         else:
             # FIXME: test for non-existent attachment.
             return None
-        # But, ahem.
 
 
     def _allSubcomponents(self, component):
@@ -362,17 +363,31 @@ class CalendarObject(CommonObjectResource):
                 yield deeper
 
 
-    def dropboxID(self):
+    def _anyProperty(self, name):
         component = self.component()
         for subcomp in self._allSubcomponents(component):
-            dropboxProperty = subcomp.getProperty("X-APPLE-DROPBOX")
+            dropboxProperty = subcomp.getProperty(name)
             if dropboxProperty is not None:
-                componentDropboxID = dropboxProperty.value().split("/")[-1]
-                return componentDropboxID
-        # FIXME: direct tests
+                return dropboxProperty.value()
+        return None
 
-        # FIXME: read ATTACH properties as well as X-APPLE-DROPBOX properties,
-        # since X-APPLE-DROPBOX only appears when others can write attachments.
+
+    def attendeesCanManageAttachments(self):
+        return bool(self._anyProperty("X-APPLE-DROPBOX"))
+
+
+    def dropboxID(self):
+        # FIXME: direct tests
+        dropboxProperty = self._anyProperty("X-APPLE-DROPBOX")
+        if dropboxProperty is not None:
+            componentDropboxID = dropboxProperty.split("/")[-1]
+            return componentDropboxID
+        attachProperty = self._anyProperty("ATTACH")
+        if attachProperty is not None:
+            # FIXME: more aggressive checking to see if this URI is really the
+            # 'right' URI.  Maybe needs to happen in the front end.
+            attachPath = attachProperty.split("/")[-2]
+            return attachPath
         return self.uid() + ".dropbox"
 
 
@@ -432,6 +447,7 @@ class AttachmentStorageTransport(object):
         # FIXME: do anything
         self._file.close()
         # TwistedGETContentMD5.fromString(md5)
+
 
 
 contentTypeKey = PropertyName.fromString(GETContentType.sname())
@@ -508,6 +524,7 @@ class CalendarStubResource(object):
     """
     Just enough resource to keep the calendar's sql DB classes going.
     """
+
     def __init__(self, calendar):
         self.calendar = calendar
         self.fp = self.calendar._path

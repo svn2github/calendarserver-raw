@@ -129,15 +129,28 @@ class _NewStorePropertiesWrapper(object):
 
 
 
-def requiresPermissions(*permissions):
+def requiresPermissions(*permissions, **kw):
     """
     A decorator to wrap http_ methods in, to indicate that they should not be
     run until the current user principal has been authorized for the given
     permission set.
     """
+    fromParent = kw.get('fromParent')
+    # FIXME: direct unit tests
     def wrap(thunk):
         def authAndContinue(self, request):
-            d = self.authorize(request, permissions)
+            if permissions:
+                d = self.authorize(request, permissions)
+            else:
+                d = succeed(None)
+            if fromParent:
+                d.addCallback(
+                    lambda whatever:
+                        request.locateResource(parentForURL(request.uri))
+                ).addCallback(
+                    lambda parent:
+                        parent.authorize(request, fromParent)
+                )
             d.addCallback(lambda whatever: thunk(self, request))
             return d
         return authAndContinue
@@ -394,6 +407,7 @@ class CalendarObjectDropbox(_GetChildHelper):
                 principalCollections=self.principalCollections())
         else:
             result = CalendarAttachment(
+                self._newStoreCalendarObject,
                 attachment, principalCollections=self.principalCollections())
         self.propagateTransaction(result)
         return result
@@ -455,6 +469,9 @@ class CalendarObjectDropbox(_GetChildHelper):
         """
         d = super(CalendarObjectDropbox, self).accessControlList(*a, **kw)
         def moreACLs(originalACL):
+            othersCanWrite = (
+                self._newStoreCalendarObject.attendeesCanManageAttachments()
+            )
             originalACEs = list(originalACL.children)
             cuas = self._newStoreCalendarObject.component().getAttendees()
             newACEs = []
@@ -463,9 +480,16 @@ class CalendarObjectDropbox(_GetChildHelper):
                     calendarUserAddress
                 )
                 principalURL = principal.principalURL()
+                if othersCanWrite:
+                    privileges = [davxml.Privilege(davxml.All())]
+                else:
+                    privileges = [
+                        davxml.Privilege(davxml.Read()),
+                        davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet())
+                    ]
                 newACEs.append(davxml.ACE(
                     davxml.Principal(davxml.HRef(principalURL)),
-                    davxml.Grant(davxml.Privilege(davxml.Read())),
+                    davxml.Grant(*privileges),
                     davxml.Protected(),
                     TwistedACLInheritable(),
                 ))
@@ -475,7 +499,7 @@ class CalendarObjectDropbox(_GetChildHelper):
 
 
 
-class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
+class ProtoCalendarAttachment(_GetChildHelper):
 
     def __init__(self, calendarObject, attachmentName, **kw):
         super(ProtoCalendarAttachment, self).__init__(**kw)
@@ -491,6 +515,12 @@ class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
         return NO_CONTENT
 
 
+    # FIXME: Permissions should dictate a different response, sometimes.
+    def http_GET(self, request):
+        return NOT_FOUND
+
+
+    @requiresPermissions(fromParent=[davxml.Bind()])
     def http_PUT(self, request):
         # FIXME: MIME-Type from header
         # FIXME: direct test
@@ -501,15 +531,16 @@ class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
         )
         def done(ignored):
             t.loseConnection()
-            return NO_CONTENT
+            return CREATED
         return readStream(request.stream, t.write).addCallback(done)
 
 
 
 class CalendarAttachment(_GetChildHelper):
 
-    def __init__(self, attachment, **kw):
+    def __init__(self, calendarObject, attachment, **kw):
         super(CalendarAttachment, self).__init__(**kw)
+        self._newStoreCalendarObject = calendarObject
         self._newStoreAttachment = attachment
 
 
@@ -529,7 +560,7 @@ class CalendarAttachment(_GetChildHelper):
         return None
 
 
-    # FIXME: @requiresPermissions(davxml.Write())
+    @requiresPermissions(davxml.WriteContent())
     def http_PUT(self, request):
         # FIXME: direct test
         # FIXME: MIME-Type from header
@@ -554,9 +585,14 @@ class CalendarAttachment(_GetChildHelper):
         return Response(OK, None, stream)
 
 
+    @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):
-        # FIXME: implement
-        raise NotImplementedError()
+        self._newStoreCalendarObject.removeAttachmentWithName(
+            self._newStoreAttachment.name()
+        )
+        del self._newStoreCalendarObject
+        self.__class__ = ProtoCalendarAttachment
+        return NO_CONTENT
 
 
     def isCollection(self):
@@ -589,20 +625,12 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         return True
 
 
-    # FIXME: @requiresPermissions(fromParent=[Bind()])
+    @requiresPermissions(fromParent=[davxml.Unbind()])
     @inlineCallbacks
     def http_DELETE(self, request):
         """
         Override http_DELETE to validate 'depth' header. 
         """
-
-        #
-        # Check authentication and access controls
-        #
-        parentURL = parentForURL(request.uri)
-        parent = (yield request.locateResource(parentURL))
-
-        yield parent.authorize(request, (davxml.Unbind(),))
 
         depth = request.headers.getHeader("depth", "infinity")
         if depth != "infinity":
@@ -719,6 +747,7 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         return FORBIDDEN
 
 
+    # FIXME: access control
     @inlineCallbacks
     def http_MOVE(self, request):
         """
@@ -881,8 +910,10 @@ class CalendarObjectFile(CalDAVFile, FancyEqMixin):
         # FIXME: Tests
         return True
 
+
     def name(self):
         return self._newStoreObject.name()
+
 
     def etag(self):
         # FIXME: far too slow to be used for real, but I needed something to
@@ -919,22 +950,12 @@ class CalendarObjectFile(CalDAVFile, FancyEqMixin):
         return self._newStoreObject.iCalendarText()
 
 
-    @inlineCallbacks
+    @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):
         """
         Override http_DELETE to validate 'depth' header. 
         """
-
-        #
-        # Check authentication and access controls
-        #
-        parentURL = parentForURL(request.uri)
-        parent = (yield request.locateResource(parentURL))
-
-        yield parent.authorize(request, (davxml.Unbind(),))
-
-        response = (yield self.storeRemove(request, True, request.uri))
-        returnValue(response)
+        return self.storeRemove(request, True, request.uri)
 
 
     @inlineCallbacks
@@ -1221,6 +1242,7 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
     def isCollection(self):
         return True
 
+
     def isAddressBookCollection(self):
         """
         Yes, it is a calendar collection.
@@ -1228,20 +1250,12 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
         return True
 
 
+    @requiresPermissions(fromParent=[davxml.Unbind()])
     @inlineCallbacks
     def http_DELETE(self, request):
         """
         Override http_DELETE to validate 'depth' header. 
         """
-
-        #
-        # Check authentication and access controls
-        #
-        parentURL = parentForURL(request.uri)
-        parent = (yield request.locateResource(parentURL))
-
-        yield parent.authorize(request, (davxml.Unbind(),))
-
         depth = request.headers.getHeader("depth", "infinity")
         if depth != "infinity":
             msg = "illegal depth header for DELETE on collection: %s" % (
@@ -1339,6 +1353,7 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
         return FORBIDDEN
 
 
+    # FIXME: access control
     @inlineCallbacks
     def http_MOVE(self, request):
         """
@@ -1362,6 +1377,7 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
         returnValue(NO_CONTENT)
 
 
+
 class ProtoAddressBookCollectionFile(CalDAVFile):
     """
     A resource representing an addressbook collection which hasn't yet been created.
@@ -1383,6 +1399,7 @@ class ProtoAddressBookCollectionFile(CalDAVFile):
 
     def isCollection(self):
         return True
+
 
     def createSimilarFile(self, path):
         # FIXME: this is necessary for 
@@ -1479,6 +1496,7 @@ class ProtoGlobalAddressBookCollectionFile(GlobalAddressBookFile):
 
     def isCollection(self):
         return True
+
 
     def createSimilarFile(self, path):
         # FIXME: this is necessary for 
@@ -1621,22 +1639,12 @@ class AddressBookObjectFile(CalDAVFile, FancyEqMixin):
         return self._newStoreObject.vCardText()
 
 
-    @inlineCallbacks
+    @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):
         """
         Override http_DELETE to validate 'depth' header. 
         """
-
-        #
-        # Check authentication and access controls
-        #
-        parentURL = parentForURL(request.uri)
-        parent = (yield request.locateResource(parentURL))
-
-        yield parent.authorize(request, (davxml.Unbind(),))
-
-        response = (yield self.storeRemove(request, request.uri))
-        returnValue(response)
+        return self.storeRemove(request, request.uri)
 
 
     @inlineCallbacks
@@ -1746,10 +1754,12 @@ class _NotificationChildHelper(object):
         """
         Initialize with a notification collection.
 
-        @param notifications: the wrapped http://daboo.name/groups/daboofamily/wiki/c4c42/6585_Sale.html.
+        @param notifications: the wrapped notification collection backend
+            object.
         @type notifications: L{txdav.common.inotification.INotificationCollection}
 
-        @param home: the home through which the given notification collection was accessed.
+        @param home: the home through which the given notification collection
+            was accessed.
         @type home: L{txdav.icommonstore.ICommonHome}
         """
         self._newStoreNotifications = notifications
@@ -1812,7 +1822,8 @@ class _NotificationChildHelper(object):
 
 
 
-class StoreNotificationCollectionFile(_NotificationChildHelper, NotificationCollectionFile):
+class StoreNotificationCollectionFile(_NotificationChildHelper,
+                                      NotificationCollectionFile):
     """
     Wrapper around a L{txcaldav.icalendar.ICalendar}.
     """
@@ -1829,12 +1840,12 @@ class StoreNotificationCollectionFile(_NotificationChildHelper, NotificationColl
     def isCollection(self):
         return True
 
+
     @inlineCallbacks
     def http_DELETE(self, request):
         """
         Override http_DELETE to reject. 
         """
-
         raise HTTPError(StatusResponse(FORBIDDEN, "Cannot delete notification collections"))
 
 
@@ -1852,6 +1863,8 @@ class StoreNotificationCollectionFile(_NotificationChildHelper, NotificationColl
         that calendar's name.
         """
         raise HTTPError(StatusResponse(FORBIDDEN, "Cannot move notification collections"))
+
+
 
 class StoreNotificationObjectFile(NotificationFile):
     """
@@ -1913,22 +1926,13 @@ class StoreNotificationObjectFile(NotificationFile):
         return self._newStoreObject.xmldata()
 
 
-    @inlineCallbacks
+    @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):
         """
         Override http_DELETE to validate 'depth' header. 
         """
+        return self.storeRemove(request, request.uri)
 
-        #
-        # Check authentication and access controls
-        #
-        parentURL = parentForURL(request.uri)
-        parent = (yield request.locateResource(parentURL))
-
-        yield parent.authorize(request, (davxml.Unbind(),))
-
-        response = (yield self.storeRemove(request, request.uri))
-        returnValue(response)
 
     @inlineCallbacks
     def storeRemove(self, request, where):
@@ -1965,6 +1969,7 @@ class StoreNotificationObjectFile(NotificationFile):
 
         returnValue(NO_CONTENT)
 
+
     def _initializeWithObject(self, notificationObject):
         self._newStoreObject = notificationObject
         self._dead_properties = _NewStorePropertiesWrapper(
@@ -1985,8 +1990,10 @@ class ProtoStoreNotificationObjectFile(NotificationFile):
         super(ProtoStoreNotificationObjectFile, self).__init__(*a, **kw)
         self._newStoreParentNotifications = parentNotifications
 
+
     def isCollection(self):
         return False
+
 
     def exists(self):
         # FIXME: tests
@@ -1996,4 +2003,6 @@ class ProtoStoreNotificationObjectFile(NotificationFile):
     def quotaSize(self, request):
         # FIXME: tests, workingness
         return succeed(0)
+
+
 
