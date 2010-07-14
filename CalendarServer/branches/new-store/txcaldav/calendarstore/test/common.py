@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twext.web2.http_headers import MimeType
 
 """
 Tests for common calendar store API functions.
@@ -917,7 +918,7 @@ END:VCALENDAR
         Common logic for attachment-creation tests.
         """
         obj = self.calendarObjectUnderTest()
-        t = obj.createAttachmentWithName("new.attachment", "text/x-fixture")
+        t = obj.createAttachmentWithName("new.attachment", MimeType("text", "x-fixture"))
         t.write("new attachment")
         t.write(" text")
         t.loseConnection()
@@ -936,8 +937,8 @@ END:VCALENDAR
         data = yield capture.deferred
         self.assertEquals(data, "new attachment text")
         contentType = attachment.contentType()
-        self.assertIsInstance(contentType, str)
-        self.assertEquals(contentType, "text/x-fixture")
+        self.assertIsInstance(contentType, MimeType)
+        self.assertEquals(contentType, MimeType("text", "x-fixture"))
         self.assertEquals(attachment.md5(), '50a9f27aeed9247a0833f30a631f1858')
         self.assertEquals(
             [attachment.name() for attachment in obj.attachments()],
@@ -1000,7 +1001,7 @@ END:VCALENDAR
         L{ICalendarHome.calendarWithName} or L{ICalendarHome.calendars}.
         """
         obj = self.calendarObjectUnderTest()
-        t = obj.createAttachmentWithName("new.attachment", "text/plain")
+        t = obj.createAttachmentWithName("new.attachment", MimeType("text", "plain"))
         t.write("new attachment text")
         t.loseConnection()
         self.commit()
