@@ -639,12 +639,14 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         raise NotImplementedError
 
 
-class CommonObjectResource(LoggingMixIn):
+class CommonObjectResource(LoggingMixIn, FancyEqMixin):
     """
     @ivar _path: The path of the file on disk
 
     @type _path: L{FilePath}
     """
+
+    compareAttributes = '_name _parentCollection'.split()
 
     def __init__(self, name, parent):
         self._name = name

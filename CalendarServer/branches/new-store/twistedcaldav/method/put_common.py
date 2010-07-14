@@ -280,9 +280,9 @@ class StoreCalendarObjectResource(object):
             else:
                 # Get UID from original resource
                 self.source_index = self.sourceparent.index()
-                self.uid = self.source_index.resourceUIDForName(self.source.fp.basename())
+                self.uid = self.source_index.resourceUIDForName(self.source.name())
                 if self.uid is None:
-                    log.err("Source calendar does not have a UID: %s" % self.source.fp.basename())
+                    log.err("Source calendar does not have a UID: %s" % self.source)
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "valid-calendar-object-resource")))
 
                 # FIXME: We need this here because we have to re-index the destination. Ideally it
@@ -359,7 +359,7 @@ class StoreCalendarObjectResource(object):
         """
         result = True
         message = ""
-        filename = self.destination.fp.basename()
+        filename = self.destination.name()
         if filename.startswith("."):
             result = False
             message = "File name %s not allowed in calendar collection" % (filename,)
@@ -589,12 +589,12 @@ class StoreCalendarObjectResource(object):
         
         # Adjust for a move into same calendar collection 
         oldname = None 
-        if self.sourceparent and (self.sourceparent.fp.path == self.destinationparent.fp.path) and self.deletesource: 
-            oldname = self.source.fp.basename() 
+        if self.sourceparent and (self.sourceparent == self.destinationparent) and self.deletesource: 
+            oldname = self.source.name() 
         
         # UID must be unique 
         index = self.destinationparent.index() 
-        if not index.isAllowedUID(uid, oldname, self.destination.fp.basename()): 
+        if not index.isAllowedUID(uid, oldname, self.destination.name()): 
             rname = index.resourceNameForUID(uid) 
             # This can happen if two simultaneous PUTs occur with the same UID. 
             # i.e. one PUT has reserved the UID but has not yet written the resource, 
@@ -605,10 +605,10 @@ class StoreCalendarObjectResource(object):
             message = "Calendar resource %s already exists with same UID %s" % (rname, uid) 
         else: 
             # Cannot overwrite a resource with different UID 
-            if self.destination.fp.exists(): 
-                olduid = index.resourceUIDForName(self.destination.fp.basename()) 
+            if self.destination.exists(): 
+                olduid = index.resourceUIDForName(self.destination.name()) 
                 if olduid != uid: 
-                    rname = self.destination.fp.basename() 
+                    rname = self.destination.name() 
                     result = False 
                     message = "Cannot overwrite calendar resource %s with different UID %s" % (rname, olduid) 
          
@@ -777,7 +777,7 @@ class StoreCalendarObjectResource(object):
     def doSourceDelete(self):
         # Delete the source resource
         yield self.source.storeRemove(self.request, False, self.source_uri)
-        log.debug("Source removed %s" % (self.source.fp.path,))
+        log.debug("Source removed %s" % (self.source,))
         returnValue(None)
 
     @inlineCallbacks

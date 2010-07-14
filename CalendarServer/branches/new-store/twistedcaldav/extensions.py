@@ -687,6 +687,9 @@ class DAVResource (DirectoryPrincipalPropertySearchMixIn,
     http_REPORT = http_REPORT
 
     def render(self, request):
+        if not self.exists():
+            return responsecode.NOT_FOUND
+
         if self.isCollection():
             return self.renderDirectory(request)
         return super(DAVResource, self).render(request)

@@ -26,6 +26,7 @@ from urlparse import urlsplit
 
 from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 from twisted.internet.protocol import Protocol
+from twisted.python.util import FancyEqMixin
 
 from twext.python import vcomponent
 from twext.python.filepath import CachingFilePath as FilePath
@@ -790,10 +791,12 @@ class ProtoCalendarCollectionFile(CalDAVFile):
 
 
 
-class CalendarObjectFile(CalDAVFile):
+class CalendarObjectFile(CalDAVFile, FancyEqMixin):
     """
     A resource wrapping a calendar object.
     """
+
+    compareAttributes = '_newStoreObject'.split()
 
     def __init__(self, calendarObject, *args, **kw):
         """
@@ -840,6 +843,8 @@ class CalendarObjectFile(CalDAVFile):
         # FIXME: Tests
         return True
 
+    def name(self):
+        return self._newStoreObject.name()
 
     def etag(self):
         # FIXME: far too slow to be used for real, but I needed something to
@@ -1039,7 +1044,9 @@ class CalendarObjectFile(CalDAVFile):
 
 
 
-class ProtoCalendarObjectFile(CalDAVFile):
+class ProtoCalendarObjectFile(CalDAVFile, FancyEqMixin):
+
+    compareAttributes = '_newStoreParentCalendar'.split()
 
     def __init__(self, parentCalendar, *a, **kw):
         super(ProtoCalendarObjectFile, self).__init__(*a, **kw)
@@ -1066,6 +1073,9 @@ class ProtoCalendarObjectFile(CalDAVFile):
         # FIXME: tests
         return False
 
+
+    def name(self):
+        return self.fp.basename()
 
     def quotaSize(self, request):
         # FIXME: tests, workingness
@@ -1484,10 +1494,12 @@ class ProtoGlobalAddressBookCollectionFile(GlobalAddressBookFile):
 
 
 
-class AddressBookObjectFile(CalDAVFile):
+class AddressBookObjectFile(CalDAVFile, FancyEqMixin):
     """
     A resource wrapping a addressbook object.
     """
+
+    compareAttributes = '_newStoreObject'.split()
 
     def __init__(self, Object, *args, **kw):
         """
@@ -1532,6 +1544,9 @@ class AddressBookObjectFile(CalDAVFile):
         # FIXME: Tests
         return True
 
+
+    def name(self):
+        return self._newStoreObject.name()
 
     def etag(self):
         # FIXME: far too slow to be used for real, but I needed something to
@@ -1646,7 +1661,9 @@ class AddressBookObjectFile(CalDAVFile):
 
 
 
-class ProtoAddressBookObjectFile(CalDAVFile):
+class ProtoAddressBookObjectFile(CalDAVFile, FancyEqMixin):
+
+    compareAttributes = '_newStoreParentAddressBook'.split()
 
     def __init__(self, parentAddressBook, *a, **kw):
         super(ProtoAddressBookObjectFile, self).__init__(*a, **kw)
@@ -1673,6 +1690,9 @@ class ProtoAddressBookObjectFile(CalDAVFile):
         # FIXME: tests
         return False
 
+
+    def name(self):
+        return self.fp.basename()
 
     def quotaSize(self, request):
         # FIXME: tests, workingness
