@@ -356,38 +356,26 @@ class CalendarObject(CommonObjectResource):
             return None
 
 
-    def _allSubcomponents(self, component):
-        for subcomponent in component.subcomponents():
-            yield subcomponent
-            for deeper in self._allSubcomponents(subcomponent):
-                yield deeper
-
-
-    def _anyProperty(self, name):
-        component = self.component()
-        for subcomp in self._allSubcomponents(component):
-            dropboxProperty = subcomp.getProperty(name)
-            if dropboxProperty is not None:
-                return dropboxProperty.value()
-        return None
-
-
     def attendeesCanManageAttachments(self):
-        return bool(self._anyProperty("X-APPLE-DROPBOX"))
+        return self.component().hasPropertyInAnyComponent("X-APPLE-DROPBOX")
 
 
     def dropboxID(self):
         # FIXME: direct tests
-        dropboxProperty = self._anyProperty("X-APPLE-DROPBOX")
+        dropboxProperty = self.component().getFirstPropertyInAnyComponent("X-APPLE-DROPBOX")
         if dropboxProperty is not None:
-            componentDropboxID = dropboxProperty.split("/")[-1]
+            componentDropboxID = dropboxProperty.value().split("/")[-1]
             return componentDropboxID
-        attachProperty = self._anyProperty("ATTACH")
+        attachProperty = self.component().getFirstPropertyInAnyComponent("ATTACH")
         if attachProperty is not None:
-            # FIXME: more aggressive checking to see if this URI is really the
-            # 'right' URI.  Maybe needs to happen in the front end.
-            attachPath = attachProperty.split("/")[-2]
-            return attachPath
+            # Make sure the value type is URI
+            valueType = attachProperty.params().get("VALUE", ("TEXT",))
+            if valueType[0] == "URI": 
+                # FIXME: more aggressive checking to see if this URI is really the
+                # 'right' URI.  Maybe needs to happen in the front end.
+                attachPath = attachProperty.value().split("/")[-2]
+                return attachPath
+        
         return self.uid() + ".dropbox"
 
 
