@@ -40,7 +40,8 @@ from twext.web2.responsecode import (
     BAD_REQUEST, OK, NOT_IMPLEMENTED, NOT_ALLOWED)
 from twext.web2.dav import davxml
 from twext.web2.dav.resource import TwistedGETContentMD5, TwistedACLInheritable
-from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL
+from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL, \
+    davXMLFromStream
 from twext.web2.http import HTTPError, StatusResponse, Response
 from twext.web2.stream import ProducerStream, readStream
 
@@ -263,6 +264,7 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
 
 
 class _GetChildHelper(CalDAVResource):
+
     def locateChild(self, request, segments):
         if segments[0] == '':
             return self, segments[1:]
@@ -345,8 +347,6 @@ class DropboxCollection(_GetChildHelper):
 
 
 
-
-
 class NoDropboxHere(_GetChildHelper):
 
     def isCollection(self):
@@ -399,13 +399,46 @@ class CalendarObjectDropbox(_GetChildHelper):
         return result
 
 
+    @inlineCallbacks
     def http_ACL(self, request):
-        # Sure, whatevs.
-        return OK
+        """
+        Don't ever actually make changes, but attempt to deny any ACL requests
+        that refer to permissions not referenced by attendees in the iCalendar
+        data.
+        """
+        attendees = self._newStoreCalendarObject.component().getAttendees()
+        attendees = [attendee.split("urn:uuid:")[-1] for attendee in attendees]
+        document = yield davXMLFromStream(request.stream)
+        for ace in document.root_element.children:
+            for element in ace.children:
+                if isinstance(element, davxml.Principal):
+                    for href in element.children:
+                        principalURI = href.children[0].data
+                        uidsPrefix = '/principals/__uids__/'
+                        if not principalURI.startswith(uidsPrefix):
+                            # Unknown principal.
+                            returnValue(FORBIDDEN)
+                        principalElements = principalURI[
+                            len(uidsPrefix):].split("/")
+                        if principalElements[-1] == '':
+                            principalElements.pop()
+                        if principalElements[-1] in ('calendar-proxy-read',
+                                                     'calendar-proxy-write'):
+                            principalElements.pop()
+                        if len(principalElements) != 1:
+                            returnValue(FORBIDDEN)
+                        principalUID = principalElements[0]
+                        if principalUID not in attendees:
+                            returnValue(FORBIDDEN)
+        returnValue(OK)
 
 
     def http_MKCOL(self, request):
         return CREATED
+
+
+    def http_DELETE(self, request):
+        return NO_CONTENT
 
 
     def listChildren(self):
@@ -441,8 +474,8 @@ class CalendarObjectDropbox(_GetChildHelper):
         return d
 
 
-class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
 
+class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
 
     def __init__(self, calendarObject, attachmentName, **kw):
         super(ProtoCalendarAttachment, self).__init__(**kw)
@@ -452,6 +485,10 @@ class ProtoCalendarAttachment(_GetChildHelper, CalDAVResource):
 
     def isCollection(self):
         return False
+
+
+    def http_DELETE(self, request):
+        return NO_CONTENT
 
 
     def http_PUT(self, request):
@@ -552,6 +589,7 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         return True
 
 
+    # FIXME: @requiresPermissions(fromParent=[Bind()])
     @inlineCallbacks
     def http_DELETE(self, request):
         """
