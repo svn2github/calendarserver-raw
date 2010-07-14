@@ -522,12 +522,16 @@ class ProtoCalendarAttachment(_GetChildHelper):
 
     @requiresPermissions(fromParent=[davxml.Bind()])
     def http_PUT(self, request):
-        # FIXME: MIME-Type from header
         # FIXME: direct test
         # FIXME: transformation?
+
+        content_type = request.headers.getHeader("content-type")
+        if content_type is None:
+            content_type = MimeType("application", "octet-stream")
+
         t = self.calendarObject.createAttachmentWithName(
             self.attachmentName,
-            "application/octet-stream"
+            content_type,
         )
         def done(ignored):
             t.loseConnection()
@@ -552,8 +556,7 @@ class CalendarAttachment(_GetChildHelper):
 
     def contentType(self):
         # FIXME: test
-        return MimeType.fromString(
-            self._newStoreAttachment.contentType())
+        return self._newStoreAttachment.contentType()
 
 
     def getChild(self, name):
@@ -563,10 +566,14 @@ class CalendarAttachment(_GetChildHelper):
     @requiresPermissions(davxml.WriteContent())
     def http_PUT(self, request):
         # FIXME: direct test
-        # FIXME: MIME-Type from header
         # FIXME: refactor with ProtoCalendarAttachment.http_PUT
         # FIXME: CDT test to make sure that permissions are enforced.
-        t = self._newStoreAttachment.store("application/octet-stream")
+
+        content_type = request.headers.getHeader("content-type")
+        if content_type is None:
+            content_type = MimeType("application", "octet-stream")
+
+        t = self._newStoreAttachment.store(content_type)
         def done(ignored):
             t.loseConnection()
             return NO_CONTENT
@@ -582,8 +589,7 @@ class CalendarAttachment(_GetChildHelper):
             def connectionLost(self, reason):
                 stream.finish()
         self._newStoreAttachment.retrieve(StreamProtocol())
-        return Response(OK, None, stream)
-
+        return Response(OK, {"content-type":self.contentType()}, stream)
 
     @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):

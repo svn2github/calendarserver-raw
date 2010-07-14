@@ -37,8 +37,9 @@ from txdav.propertystore.xattr import PropertyStore
 
 from twext.python.vcomponent import InvalidICalendarDataError
 from twext.python.vcomponent import VComponent
-# from twext.web2.dav.resource import TwistedGETContentMD5
 from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
+from twext.web2.dav.resource import TwistedGETContentMD5
+from twext.web2.http_headers import generateContentType
 
 
 from twistedcaldav import caldavxml, customxml
@@ -411,18 +412,21 @@ class CalendarObject(CommonObjectResource):
         )
 
 
+contentTypeKey = PropertyName.fromElement(GETContentType)
+md5key = PropertyName.fromElement(TwistedGETContentMD5)
 
 class AttachmentStorageTransport(object):
 
     implements(ITransport)
 
-    def __init__(self, attachment):
+    def __init__(self, attachment, contentType):
         """
         
         @param attachment:
         @type attachment:
         """
         self._attachment = attachment
+        self._contentType = contentType
         self._file = self._attachment._computePath().open("w")
 
 
@@ -434,12 +438,13 @@ class AttachmentStorageTransport(object):
     def loseConnection(self):
         # FIXME: do anything
         self._file.close()
-        # TwistedGETContentMD5.fromString(md5)
 
+        md5 = hashlib.md5(self._attachment._computePath().getContent()).hexdigest()
+        props = self._attachment._properties()
+        props[contentTypeKey] = GETContentType(generateContentType(self._contentType))
+        props[md5key] = TwistedGETContentMD5.fromString(md5)
+        props.flush()
 
-
-contentTypeKey = PropertyName.fromString(GETContentType.sname())
-# md5key = PropertyName.fromString(TwistedGETContentMD5.sname())
 
 class Attachment(object):
     """
@@ -478,16 +483,11 @@ class Attachment(object):
 
 
     def contentType(self):
-        return self._properties()[contentTypeKey].children[0].data
+        return self._properties()[contentTypeKey].mimeType()
 
 
     def store(self, contentType):
-        ast = AttachmentStorageTransport(self)
-        props = self._properties()
-        props[contentTypeKey] = GETContentType(contentType)
-        props.flush()
-        return ast
-
+        return AttachmentStorageTransport(self, contentType)
 
     def retrieve(self, protocol):
         # FIXME: makeConnection
@@ -499,7 +499,7 @@ class Attachment(object):
 
 
     def md5(self):
-        return hashlib.md5(self._computePath().getContent()).hexdigest()
+        return self._properties()[md5key]
 
 
     def _computePath(self):
