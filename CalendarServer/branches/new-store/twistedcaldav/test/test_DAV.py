@@ -46,9 +46,6 @@ class MKCOL         (twext.web2.dav.test.test_mkcol.MKCOL                ): reso
 class MOVE          (twext.web2.dav.test.test_move.MOVE                  ): resource_class = MyResource
 class OPTIONS       (twext.web2.dav.test.test_options.OPTIONS            ): resource_class = MyResource
 class PROP          (twext.web2.dav.test.test_prop.PROP                  ): resource_class = MyResource
-class PUT           (twext.web2.dav.test.test_put.PUT                    ):
-    resource_class = MyResource
-    test_PUT_no_parent = ignored
-
+class PUT           (twext.web2.dav.test.test_put.PUT                    ): resource_class = MyResource
 class REPORT        (twext.web2.dav.test.test_report.REPORT              ): resource_class = MyResource
 class REPORT_expand (twext.web2.dav.test.test_report_expand.REPORT_expand): resource_class = MyResource
