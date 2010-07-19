@@ -1,4 +1,4 @@
-# -*- test-case-name: txdav.datastore.test.test_file -*-
+# -*- test-case-name: txdav -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -21,6 +21,7 @@ Common utility functions for a file based datastore.
 """
 
 from twext.python.log import LoggingMixIn
+from txdav.idav import AlreadyFinishedError
 
 def isValidName(name):
     """
@@ -168,10 +169,11 @@ class DataStoreTransaction(LoggingMixIn):
         
         @type mode: C{str}
 
-        @raise RuntimeError: This transaction has already been terminated.
+        @raise AlreadyFinishedError: This transaction has already been
+            terminated.
         """
         if self._termination is not None:
-            raise RuntimeError("already %s" % (self._termination,))
+            raise AlreadyFinishedError("already %s" % (self._termination,))
         self._termination = mode
         self._tracker.done = True
 
