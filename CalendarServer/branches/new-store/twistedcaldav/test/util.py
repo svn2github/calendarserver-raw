@@ -282,6 +282,9 @@ class TestCase(twext.web2.dav.test.util.TestCase):
 
         return verifyChildren(root, structure)
 
+class norequest(object):
+    def addResponseFilter(self, filter):
+        "stub; ignore me"
 
 
 class HomeTestCase(TestCase):
@@ -324,7 +327,6 @@ class HomeTestCase(TestCase):
         it a new transaction.
         """
         users = self.homeProvisioner.getChild("users")
-        class norequest(object): pass
         user, ignored = (yield users.locateChild(norequest(), ["wsanchez"]))
 
         # Force the request to succeed regardless of the implementation of
@@ -391,7 +393,6 @@ class AddressBookHomeTestCase(TestCase):
         it a new transaction.
         """
         users = self.homeProvisioner.getChild("users")
-        class norequest(object): pass
         user, ignored = (yield users.locateChild(norequest(), ["wsanchez"]))
 
         # Force the request to succeed regardless of the implementation of
