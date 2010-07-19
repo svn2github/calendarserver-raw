@@ -1131,6 +1131,10 @@ class ProtoCalendarObjectFile(CalDAVFile, FancyEqMixin):
         returnValue(CREATED)
 
 
+    def createSimilarFile(self, name):
+        return None
+
+
     def isCollection(self):
         return False
 
@@ -1145,6 +1149,8 @@ class ProtoCalendarObjectFile(CalDAVFile, FancyEqMixin):
     def quotaSize(self, request):
         # FIXME: tests, workingness
         return succeed(0)
+
+
 
 class _AddressBookChildHelper(object):
     """
@@ -1735,8 +1741,13 @@ class ProtoAddressBookObjectFile(CalDAVFile, FancyEqMixin):
         returnValue(CREATED)
 
 
+    def createSimilarFile(self, name):
+        return None
+
+
     def isCollection(self):
         return False
+
 
     def exists(self):
         # FIXME: tests
