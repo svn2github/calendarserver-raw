@@ -18,8 +18,12 @@
 Tests for the interaction between model-level and protocol-level logic.
 """
 
+from twext.web2.server import Request
+from twext.web2.responsecode import OK, UNAUTHORIZED
+from twext.web2.http_headers import Headers
+from txdav.idav import AlreadyFinishedError
+
 from twext.web2.dav import davxml
-from twext.web2.dav.element.base import dav_namespace
 from twistedcaldav.config import config
 
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -37,6 +41,28 @@ from txcaldav.calendarstore.test.test_file import event4_text
 
 from txcarddav.addressbookstore.file import AddressBookStore, AddressBookHome
 from txcarddav.addressbookstore.test.test_file import vcard4_text
+
+
+class FakeChanRequest(object):
+    def writeHeaders(self, code, headers):
+        self.code = code
+        self.headers = headers
+    def registerProducer(self, producer, streaming):
+        pass
+    def write(self, data):
+        pass
+    def unregisterProducer(self):
+        pass
+    def abortConnection(self):
+        pass
+    def getHostInfo(self):
+        return '127.0.0.1', False
+    def getRemoteHost(self):
+        return '127.0.0.1'
+    def finish(self):
+        pass
+
+
 
 
 class WrappingTests(TestCase):
@@ -65,7 +91,7 @@ class WrappingTests(TestCase):
         @param objectName: The name of a calendar object.
         @type objectName: str
         @param objectText: Some iCalendar text to populate it with.
-        @type objectText: str 
+        @type objectText: str
         """
         record = self.directoryService.recordWithShortName("users", "wsanchez")
         uid = record.uid
@@ -89,7 +115,7 @@ class WrappingTests(TestCase):
         @param objectName: The name of a addressbook object.
         @type objectName: str
         @param objectText: Some iVcard text to populate it with.
-        @type objectText: str 
+        @type objectText: str
         """
         record = self.directoryService.recordWithShortName("users", "wsanchez")
         uid = record.uid
@@ -109,6 +135,8 @@ class WrappingTests(TestCase):
         txn.commit()
 
 
+    requestUnderTest = None
+
     @inlineCallbacks
     def getResource(self, path):
         """
@@ -119,11 +147,15 @@ class WrappingTests(TestCase):
 
         @type path: C{str}
         """
-        segments = path.split("/")
-        resource = self.site.resource
-        while segments:
-            resource, segments = yield resource.locateChild(self, segments)
-        returnValue(resource)
+        if self.requestUnderTest is None:
+            req = self.requestForPath(path)
+            self.requestUnderTest = req
+        else:
+            req = self.requestUnderTest
+        aResource = yield req.locateResource(
+            "http://localhost:8008/" + path
+        )
+        returnValue(aResource)
 
 
     def commit(self):
@@ -132,7 +164,57 @@ class WrappingTests(TestCase):
         an associated transaction.  Commit that transaction to bring the
         filesystem into a consistent state.
         """
-        self._newStoreTransaction.commit()
+        self.requestUnderTest._newStoreTransaction.commit()
+
+
+    def requestForPath(self, path):
+        """
+        Get a L{Request} with a L{FakeChanRequest} for a given path.
+        """
+        headers = Headers()
+        headers.addRawHeader("Host", "localhost:8008")
+        chanReq = FakeChanRequest()
+        req = Request(
+            site=self.site,
+            chanRequest=chanReq,
+            command='GET',
+            path=path,
+            version=('1', '1'),
+            contentLength=0,
+            headers=headers
+        )
+        req.credentialFactories = {}
+        return req
+
+
+    @inlineCallbacks
+    def test_autoRevertUnCommitted(self):
+        """
+        Resources that need to read from the back-end in a transaction will be
+        reverted by a response filter in the case where the request does not
+        commit them.  This can happen, for example, with resources that are
+        children of non-existent (proto-)resources.
+        """
+        for pathType in ['calendar', 'addressbook']:
+            req = self.requestForPath('/%ss/users/wsanchez/%s/forget/it'
+                                      % (pathType, pathType))
+            yield req.process()
+            self.assertEquals(req.chanRequest.code, 404)
+            self.assertRaises(AlreadyFinishedError,
+                              req._newStoreTransaction.commit)
+
+
+    @inlineCallbacks
+    def test_simpleRequest(self):
+        """
+        Sanity check and integration test: an unauthorized request of calendar
+        and addressbook resources results in an L{UNAUTHORIZED} response code.
+        """
+        for pathType in ['calendar', 'addressbook']:
+            req = self.requestForPath('/%ss/users/wsanchez/%s/'
+                                      % (pathType, pathType))
+            yield req.process()
+            self.assertEquals(req.chanRequest.code, UNAUTHORIZED)
 
 
     def test_createStore(self):
@@ -221,6 +303,7 @@ class WrappingTests(TestCase):
             self.assertIdentical(
                 getattr(calDavFile, "_newStoreCalendar", None), None
             )
+        self.commit()
 
 
     @inlineCallbacks

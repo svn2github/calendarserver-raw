@@ -66,6 +66,7 @@ from twext.web2.dav.resource import AccessDeniedError
 from twext.web2.dav.resource import davPrivilegeSet
 from twext.web2.dav.util import parentForURL, bindMethods, joinURL
 from twext.web2.http_headers import generateContentType, MimeType
+from txdav.idav import AlreadyFinishedError
 
 from twistedcaldav import caldavxml
 from twistedcaldav import carddavxml
@@ -890,6 +891,44 @@ class CalendarHomeTypeProvisioningFile (AutoProvisioningFileMixIn, DirectoryCale
 
 
 
+def _transactionFromRequest(request, newStore):
+    """
+    Return the associated transaction from the given HTTP request, creating a
+    new one from the given data store if none has yet been associated.
+
+    Also, if the request was not previously associated with a transaction, add
+    a failsafe transaction-abort response filter to abort any transaction which
+    has not been committed or aborted by the resource which responds to the
+    request.
+
+    @param request: The request to inspect.
+    @type request: L{IRequest}
+
+    @param newStore: The store to create a transaction from.
+    @type newStore: L{IDataStore}
+
+    @return: a transaction that should be used to read and write data
+        associated with the request.
+    @rtype: L{ITransaction} (and possibly L{ICalendarTransaction} and
+        L{IAddressBookTransaction} as well.
+    """
+    TRANSACTION_KEY = '_newStoreTransaction'
+    transaction = getattr(request, TRANSACTION_KEY, None)
+    if transaction is None:
+        transaction = newStore.newTransaction(repr(request))
+        def abortIfUncommitted(request, response):
+            try:
+                transaction.abort()
+            except AlreadyFinishedError:
+                pass
+            return response
+        abortIfUncommitted.handleErrors = True
+        request.addResponseFilter(abortIfUncommitted)
+        setattr(request, TRANSACTION_KEY, transaction)
+    return transaction
+
+
+
 class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalendarHomeUIDProvisioningResource, DAVFile):
     def __init__(self, path, parent, homeResourceClass=None):
         """
@@ -917,11 +956,7 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
 
     def homeResourceForRecord(self, record, request):
         self.provision()
-        TRANSACTION_KEY = '_newStoreTransaction'
-        transaction = getattr(request, TRANSACTION_KEY, None)
-        if transaction is None:
-            transaction = self.parent._newStore.newTransaction(repr(request))
-            setattr(request, TRANSACTION_KEY, transaction)
+        transaction = _transactionFromRequest(request, self.parent._newStore)
 
         name = record.uid
 
@@ -1599,11 +1634,7 @@ class AddressBookHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryAd
 
     def homeResourceForRecord(self, record, request):
         self.provision()
-        TRANSACTION_KEY = '_newStoreTransaction'
-        transaction = getattr(request, TRANSACTION_KEY, None)
-        if transaction is None:
-            transaction = self.parent._newStore.newTransaction(repr(request))
-            setattr(request, TRANSACTION_KEY, transaction)
+        transaction = _transactionFromRequest(request, self.parent._newStore)
 
         name = record.uid
 
