@@ -38,7 +38,7 @@ from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
 from txdav.common.inotifications import INotificationCollection, \
     INotificationObject
 from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
-    hidden, isValidName, cached
+    hidden, isValidName, cached, FileMetaDataMixin
 from txdav.idav import IDataStore
 from txdav.propertystore.base import PropertyName
 from txdav.propertystore.xattr import PropertyStore
@@ -205,11 +205,14 @@ class CommonStoreTransaction(DataStoreTransaction):
             return self._notifications[(uid, self)]
 
         home = self.homeWithUID(self._notificationHomeType, uid, create=True)
+        if (uid, self) in self._notifications:
+            return self._notifications[(uid, self)]
+
         notificationPath = home._path.child("notification")
         if not notificationPath.isdir():
-            notificationPath = self.createNotifcationCollection(home, notificationPath)
-
-        notifications = NotificationCollection(notificationPath.basename(), home)
+            notifications = self.createNotifcationCollection(home, notificationPath)
+        else:
+            notifications = NotificationCollection(notificationPath.basename(), home)
         self._notifications[(uid, self)] = notifications
         return notifications
 
@@ -241,12 +244,12 @@ class CommonStoreTransaction(DataStoreTransaction):
                 raise
             # FIXME: direct tests, undo for index creation
             # Return undo
-            return lambda: notificationPath.remove()
+            return lambda: home._path.child(notificationPath.basename()).remove()
 
         self.addOperation(do, "create child %r" % (name,))
         props = c.properties()
         props[PropertyName(*ResourceType.qname())] = c.resourceType()
-        return temporary
+        return c
 
 class StubResource(object):
     """
@@ -255,7 +258,7 @@ class StubResource(object):
     def __init__(self, stubit):
         self.fp = stubit._path
 
-class CommonHome(LoggingMixIn):
+class CommonHome(FileMetaDataMixin, LoggingMixIn):
 
     _childClass = None
 
@@ -351,7 +354,7 @@ class CommonHome(LoggingMixIn):
                 raise
             # FIXME: direct tests, undo for index creation
             # Return undo
-            return lambda: childPath.remove()
+            return lambda: self._path.child(childPath.basename()).remove()
 
         self._transaction.addOperation(do, "create child %r" % (name,))
         props = c.properties()
@@ -415,7 +418,7 @@ class CommonHome(LoggingMixIn):
         return props
 
 
-class CommonHomeChild(LoggingMixIn, FancyEqMixin):
+class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
     """
     """
 
@@ -639,7 +642,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         raise NotImplementedError
 
 
-class CommonObjectResource(LoggingMixIn, FancyEqMixin):
+class CommonObjectResource(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
     """
     @ivar _path: The path of the file on disk
 
@@ -662,10 +665,6 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
 
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self._path.path)
-
-
-    def name(self):
-        return self._path.basename()
 
 
     @writeOperation

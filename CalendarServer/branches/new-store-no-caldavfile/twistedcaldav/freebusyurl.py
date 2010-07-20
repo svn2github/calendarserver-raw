@@ -32,6 +32,8 @@ from twext.python.log import Logger
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
 from twext.web2.dav.http import ErrorResponse
+from twext.web2.dav.method.propfind import http_PROPFIND
+from twext.web2.dav.util import joinURL
 from twext.web2.http import HTTPError
 from twext.web2.http import Response
 from twext.web2.http import StatusResponse
@@ -45,7 +47,8 @@ from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.ical import Property
 from twistedcaldav.ical import parse_datetime
 from twistedcaldav.ical import parse_duration
-from twistedcaldav.resource import CalDAVResource
+from twistedcaldav.resource import CalDAVResource, ReadOnlyNoCopyResourceMixIn
+from twistedcaldav.resource import deliverSchedulePrivilegeSet
 from twistedcaldav.scheduling.caldav import ScheduleViaCalDAV
 from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.scheduling.scheduler import Scheduler
@@ -53,7 +56,7 @@ from twistedcaldav.scheduling.scheduler import Scheduler
 log = Logger()
 
 
-class FreeBusyURLResource (CalDAVResource):
+class FreeBusyURLResource (ReadOnlyNoCopyResourceMixIn, CalDAVResource):
     """
     Free-busy URL resource.
 
@@ -69,6 +72,9 @@ class FreeBusyURLResource (CalDAVResource):
         CalDAVResource.__init__(self, principalCollections=parent.principalCollections())
 
         self.parent = parent
+
+    def __repr__(self):
+        return "<%s (free-busy URL resource): %s>" % (self.__class__.__name__, joinURL(self.parent.url(), "freebusy"))
 
     def defaultAccessControlList(self):
         privs = (
@@ -101,6 +107,9 @@ class FreeBusyURLResource (CalDAVResource):
 
     def resourceType(self, request):
         return succeed(davxml.ResourceType.freebusyurl)
+
+    def contentType(self):
+        return MimeType("text", "calendar", charset="utf-8")
 
     def isCollection(self):
         return False
@@ -136,6 +145,8 @@ class FreeBusyURLResource (CalDAVResource):
         The free-busy URL POST method.
         """
         return self._processFBURL(request)
+
+    http_PROPFIND = http_PROPFIND
 
     @inlineCallbacks
     def _processFBURL(self, request):
@@ -250,3 +261,10 @@ class FreeBusyURLResource (CalDAVResource):
         response.headers.setHeader("content-type", MimeType.fromString("%s; charset=utf-8" % (self.format,)))
     
         returnValue(response)
+
+    ##
+    # ACL
+    ##
+
+    def supportedPrivileges(self, request):
+        return succeed(deliverSchedulePrivilegeSet)

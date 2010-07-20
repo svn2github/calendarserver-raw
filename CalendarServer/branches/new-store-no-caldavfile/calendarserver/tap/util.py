@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-
 __all__ = [
     "getRootResource",
     "FakeRequest",
@@ -47,12 +46,12 @@ from twistedcaldav.directory.util import NotFilePath
 from twistedcaldav.directory.wiki import WikiDirectoryService
 from twistedcaldav.notify import installNotificationClient
 from twistedcaldav.resource import CalDAVResource, AuthenticationWrapper
+from twistedcaldav.schedule import IScheduleInboxResource
 from twistedcaldav.simpleresource import SimpleResource
 from twistedcaldav.static import CalendarHomeProvisioningFile
-from twistedcaldav.static import IScheduleInboxFile
-from twistedcaldav.static import TimezoneServiceFile
 from twistedcaldav.static import AddressBookHomeProvisioningFile, DirectoryBackedAddressBookFile
 from twistedcaldav.timezones import TimezoneCache
+from twistedcaldav.timezoneservice import TimezoneServiceResource
 from twistedcaldav.util import getMemorySize, getNCPU
 from twisted.internet.defer import inlineCallbacks, returnValue
 
@@ -89,8 +88,8 @@ def getRootResource(config, resources=None):
     rootResourceClass            = RootResource
     principalResourceClass       = DirectoryPrincipalProvisioningResource
     calendarResourceClass        = CalendarHomeProvisioningFile
-    iScheduleResourceClass       = IScheduleInboxFile
-    timezoneServiceResourceClass = TimezoneServiceFile
+    iScheduleResourceClass       = IScheduleInboxResource
+    timezoneServiceResourceClass = TimezoneServiceResource
     webCalendarResourceClass     = WebCalendarResource
     webAdminResourceClass        = WebAdminResource
     addressBookResourceClass     = AddressBookHomeProvisioningFile
@@ -181,7 +180,7 @@ def getRootResource(config, resources=None):
         raise
 
     #
-    # Setup the PoxyDB Service
+    # Setup the ProxyDB Service
     #
     proxydbClass = namedClass(config.ProxyDBService.type)
 
@@ -369,7 +368,6 @@ def getRootResource(config, resources=None):
                       % (timezoneServiceResourceClass,))
 
         timezoneService = timezoneServiceResourceClass(
-            NotFilePath(isfile=True),
             root,
         )
         root.putChild("timezones", timezoneService)

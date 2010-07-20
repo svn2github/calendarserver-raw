@@ -28,13 +28,9 @@ __all__ = [
     "ScheduleFile",
     "ScheduleInboxFile",
     "ScheduleOutboxFile",
-    "IScheduleInboxFile",
     "DropBoxHomeFile",
     "DropBoxCollectionFile",
     "DropBoxChildFile",
-    "TimezoneServiceFile",
-    "NotificationCollectionFile",
-    "NotificationFile",
     "AddressBookHomeProvisioningFile",
     "AddressBookHomeUIDProvisioningFile",
     "AddressBookHomeFile",
@@ -60,12 +56,10 @@ from twext.web2.dav.element.base import dav_namespace
 from twext.web2.dav.fileop import mkcollection, rmdir
 from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 from twext.web2.dav.idav import IDAVResource
-from twext.web2.dav.method import put_common, delete_common
 from twext.web2.dav.noneprops import NonePropertyStore
 from twext.web2.dav.resource import AccessDeniedError
 from twext.web2.dav.resource import davPrivilegeSet
 from twext.web2.dav.util import parentForURL, bindMethods, joinURL
-from twext.web2.http_headers import generateContentType, MimeType
 
 from twistedcaldav import caldavxml
 from twistedcaldav import carddavxml
@@ -87,9 +81,8 @@ from twistedcaldav.ical import Property as iProperty
 from twistedcaldav.index import Index, IndexSchedule, SyncTokenValidException
 from twistedcaldav.resource import CalDAVResource, isCalendarCollectionResource, isPseudoCalendarCollectionResource
 from twistedcaldav.resource import isAddressBookCollectionResource
-from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource, IScheduleInboxResource
+from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
 from twistedcaldav.datafilters.privateevents import PrivateEventFilter
-from twistedcaldav.dropbox import DropBoxHomeResource, DropBoxCollectionResource
 from twistedcaldav.directorybackedaddressbook import DirectoryBackedAddressBookResource
 from twistedcaldav.directory.addressbook import uidsResourceName as uidsResourceNameAddressBook,\
     GlobalAddressBookResource
@@ -104,13 +97,10 @@ from twistedcaldav.directory.calendar import DirectoryCalendarHomeUIDProvisionin
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeResource
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
 from twistedcaldav.sharing import SharedHomeMixin
-from twistedcaldav.timezoneservice import TimezoneServiceResource
 from twistedcaldav.vcardindex import AddressBookIndex
 from twistedcaldav.notify import getPubSubConfiguration, getPubSubXMPPURI
 from twistedcaldav.notify import getPubSubHeartbeatURI, getPubSubPath
 from twistedcaldav.notify import ClientNotifier, getNodeCacher
-from twistedcaldav.notifications import NotificationCollectionResource,\
-    NotificationResource
 
 log = Logger()
 
@@ -1070,30 +1060,26 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
             DropBoxHomeFileClass = None
 
         if config.FreeBusyURL.Enabled:
-            FreeBusyURLFileClass = FreeBusyURLFile
+            FreeBusyURLResourceClass = FreeBusyURLResource
         else:
-            FreeBusyURLFileClass = None
+            FreeBusyURLResourceClass = None
             
-        if config.Sharing.Enabled and config.Sharing.Calendars.Enabled:
-            NotificationCollectionFileClass = NotificationCollectionFile
-        else:
-            NotificationCollectionFileClass = None
-
-
         # For storebridge stuff we special case this
-        if name == "notification":
+        if name == "notification" and config.Sharing.Enabled and config.Sharing.Calendars.Enabled:
             return self.createNotificationsFile(self.fp.child(name).path)
 
-        cls = {
-            "inbox"        : StoreScheduleInboxFile,
-            "outbox"       : ScheduleOutboxFile,
-            "dropbox"      : DropBoxHomeFileClass,
-            "freebusy"     : FreeBusyURLFileClass,
-            "notification" : NotificationCollectionFileClass,
-        }.get(name, None)
+        cls, isFileType = {
+            "inbox"        : (StoreScheduleInboxFile, True,),
+            "outbox"       : (ScheduleOutboxFile, True,),
+            "dropbox"      : (DropBoxHomeFileClass, True,),
+            "freebusy"     : (FreeBusyURLResourceClass, False,),
+        }.get(name, (None, True,))
 
         if cls is not None:
-            child = cls(self.fp.child(name).path, self)
+            if isFileType:
+                child = cls(self.fp.child(name).path, self)
+            else:
+                child = cls(self)
             child.clientNotifier = self.clientNotifier.clone(child,
                 label="collection")
             return child
@@ -1104,10 +1090,11 @@ class CalendarHomeFile(AutoProvisioningFileMixIn, SharedHomeMixin,
         txn = self._newStoreCalendarHome._transaction
         notifications = txn.notificationsWithUID(self._newStoreCalendarHome.uid())
 
-        from twistedcaldav.storebridge import StoreNotificationCollectionFile
-        similar = StoreNotificationCollectionFile(
-            notifications, self._newStoreCalendarHome,
-            path, self,
+        from twistedcaldav.storebridge import NotificationCollectionFile
+        similar = NotificationCollectionFile(
+            notifications,
+            self._newStoreCalendarHome,
+            principalCollections = self.principalCollections(),
         )
         self.propagateTransaction(similar)
         similar.clientNotifier = self.clientNotifier.clone(similar,
@@ -1342,203 +1329,6 @@ class ScheduleOutboxFile (ScheduleOutboxResource, ScheduleFile):
         responses = [davxml.StatusResponse(href, davxml.Status.fromResponseCode(responsecode.NOT_FOUND)) for href in multiget.resources]
         return succeed(MultiStatusResponse((responses)))
 
-class IScheduleInboxFile (ReadOnlyResourceMixIn, IScheduleInboxResource, CalDAVFile):
-    """
-    Server-to-server scheduling inbox resource.
-    """
-    def __init__(self, path, parent):
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-        IScheduleInboxResource.__init__(self, parent)
-
-    def __repr__(self):
-        return "<%s (server-to-server inbox resource): %s>" % (self.__class__.__name__, self.fp.path)
-
-    def isCollection(self):
-        return False
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return responsecode.NOT_FOUND
-
-    def deadProperties(self):
-        if not hasattr(self, "_dead_properties"):
-            self._dead_properties = NonePropertyStore(self)
-        return self._dead_properties
-
-    def etag(self):
-        return None
-
-    def checkPreconditions(self, request):
-        return None
-
-    ##
-    # ACL
-    ##
-
-    def supportedPrivileges(self, request):
-        return succeed(deliverSchedulePrivilegeSet)
-
-
-
-class FreeBusyURLFile (ReadOnlyResourceMixIn, AutoProvisioningFileMixIn, FreeBusyURLResource, CalDAVFile):
-    """
-    Free-busy URL resource.
-    """
-    def __init__(self, path, parent):
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-        FreeBusyURLResource.__init__(self, parent)
-
-    def __repr__(self):
-        return "<%s (free-busy URL resource): %s>" % (self.__class__.__name__, self.fp.path)
-
-    def isCollection(self):
-        return False
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return responsecode.NOT_FOUND
-
-    ##
-    # ACL
-    ##
-
-    def supportedPrivileges(self, request):
-        return succeed(deliverSchedulePrivilegeSet)
-
-class DropBoxHomeFile (AutoProvisioningFileMixIn, DropBoxHomeResource, CalDAVFile):
-    def __init__(self, path, parent):
-        DropBoxHomeResource.__init__(self)
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-        self.parent = parent
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return DropBoxCollectionFile(path, self)
-
-    def __repr__(self):
-        return "<%s (dropbox home collection): %s>" % (self.__class__.__name__, self.fp.path)
-
-class DropBoxCollectionFile (DropBoxCollectionResource, CalDAVFile):
-    def __init__(self, path, parent):
-        DropBoxCollectionResource.__init__(self)
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return DropBoxChildFile(path, self)
-
-    def __repr__(self):
-        return "<%s (dropbox collection): %s>" % (self.__class__.__name__, self.fp.path)
-
-class DropBoxChildFile (CalDAVFile):
-    def __init__(self, path, parent):
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-
-        assert self.fp.isfile() or not self.fp.exists()
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return responsecode.NOT_FOUND
-
-class TimezoneServiceFile (ReadOnlyResourceMixIn, TimezoneServiceResource, CalDAVFile):
-    def __init__(self, path, parent):
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-        TimezoneServiceResource.__init__(self, parent)
-
-        assert self.fp.isfile() or not self.fp.exists()
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return responsecode.NOT_FOUND
-
-    def deadProperties(self):
-        if not hasattr(self, "_dead_properties"):
-            self._dead_properties = NonePropertyStore(self)
-        return self._dead_properties
-
-    def etag(self):
-        return None
-
-    def checkPreconditions(self, request):
-        return None
-
-    def checkPrivileges(self, request, privileges, recurse=False, principal=None, inherited_aces=None):
-        return succeed(None)
-
-class NotificationCollectionFile(ReadOnlyResourceMixIn, NotificationCollectionResource, CalDAVFile):
-    """
-    Notification collection resource.
-    """
-    def __init__(self, path, parent):
-        NotificationCollectionResource.__init__(self)
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-        self.parent = parent
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return NotificationFile(path, self)
-
-    def __repr__(self):
-        return "<%s (notification collection): %s>" % (self.__class__.__name__, self.fp.path)
-
-    def _writeNotification(self, request, uid, rname, xmltype, xmldata):
-        
-        # TODO: use the generic StoreObject api so that quota, sync-token etc all get changed properly
-        child = self.createSimilarFile(self.fp.child(rname).path)
-        def _defer(_):
-            child.writeDeadProperty(davxml.GETContentType.fromString(generateContentType(MimeType("text", "xml", params={"charset":"utf-8"}))))
-            child.writeDeadProperty(customxml.NotificationType(xmltype))
-            return True
-
-        url = request.urlForResource(self)
-        url = joinURL(url, rname)
-        request._rememberResource(child, url)
-        d = put_common.storeResource(request, data=xmldata, destination=child, destination_uri=url)
-        d.addCallback(_defer)
-        return d
-
-
-    def _deleteNotification(self, request, rname):
-        child = self.createSimilarFile(self.fp.child(rname).path)
-        url = request.urlForResource(self)
-        url = joinURL(url, rname)
-        request._rememberResource(child, url)
-        return delete_common.deleteResource(request, child, url)
-
-class NotificationFile(NotificationResource, CalDAVFile):
-
-    def __init__(self, path, parent):
-        NotificationResource.__init__(self, parent)
-        CalDAVFile.__init__(self, path, principalCollections=parent.principalCollections())
-
-        assert self.fp.isfile() or not self.fp.exists()
-
-    def createSimilarFile(self, path):
-        if self.comparePath(path):
-            return self
-        else:
-            return responsecode.NOT_FOUND
-
-    def __repr__(self):
-        return "<%s (notification file): %s>" % (self.__class__.__name__, self.fp.path)
-        
-    def resourceName(self):
-        return self.fp.basename()
-
 class AddressBookHomeProvisioningFile (AutoProvisioningFileMixIn, DirectoryAddressBookHomeProvisioningResource, DAVFile):
     """
     Resource which provisions address book home collections as needed.
@@ -1743,21 +1533,27 @@ class AddressBookHomeFile (AutoProvisioningFileMixIn, SharedHomeMixin, Directory
 
     def provisionChild(self, name):
  
-        if config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled and not config.Sharing.Calendars.Enabled:
-            NotificationCollectionFileClass = NotificationCollectionFile
-        else:
-            NotificationCollectionFileClass = None
+        # For storebridge stuff we special case this
+        if name == "notification" and config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled and not config.Sharing.Calendars.Enabled:
+            return self.createNotificationsFile(self.fp.child(name).path)
 
-        cls = {
-            "notification" : NotificationCollectionFileClass,
-        }.get(name, None)
-
-        if cls is not None:
-            child = cls(self.fp.child(name).path, self)
-            child.clientNotifier = self.clientNotifier.clone(child,
-                label="collection")
-            return child
         return self.createSimilarFile(self.fp.child(name).path)
+
+    def createNotificationsFile(self, path):
+        
+        txn = self._newStoreAddressBookHome._transaction
+        notifications = txn.notificationsWithUID(self._newStoreAddressBookHome.uid())
+
+        from twistedcaldav.storebridge import NotificationCollectionFile
+        similar = NotificationCollectionFile(
+            notifications,
+            self._newStoreAddressBookHome,
+            principalCollections = self.principalCollections(),
+        )
+        self.propagateTransaction(similar)
+        similar.clientNotifier = self.clientNotifier.clone(similar,
+            label="collection")
+        return similar
 
     def createSimilarFile(self, path):
         if self.comparePath(path):
@@ -2081,10 +1877,6 @@ bindMethods(twistedcaldav.method, CalDAVFile)
 # Some resources do not support some methods
 setattr(CalendarHomeFile, "http_ACL", None)
 setattr(AddressBookHomeFile, "http_ACL", None)
-
-setattr(DropBoxCollectionFile, "http_MKCALENDAR", None)
-setattr(DropBoxChildFile, "http_MKCOL", None)
-setattr(DropBoxChildFile, "http_MKCALENDAR", None)
 
 # FIXME: Little bit of a circular dependency here...
 twistedcaldav.method.acl.CalDAVFile      = CalDAVFile

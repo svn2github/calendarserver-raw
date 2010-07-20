@@ -56,7 +56,7 @@ from txdav.common.datastore.file import CommonDataStore, CommonStoreTransaction,
     CommonHome, CommonHomeChild, CommonObjectResource
 from txdav.common.icommondatastore import InvalidObjectResourceError, \
     NoSuchObjectResourceError, InternalDataStoreError
-from txdav.datastore.file import writeOperation, hidden
+from txdav.datastore.file import writeOperation, hidden, FileMetaDataMixin
 from txdav.propertystore.base import PropertyName
 
 from zope.interface import implements
@@ -440,13 +440,13 @@ class AttachmentStorageTransport(object):
         self._file.close()
 
         md5 = hashlib.md5(self._attachment._computePath().getContent()).hexdigest()
-        props = self._attachment._properties()
+        props = self._attachment.properties()
         props[contentTypeKey] = GETContentType(generateContentType(self._contentType))
         props[md5key] = TwistedGETContentMD5.fromString(md5)
         props.flush()
 
 
-class Attachment(object):
+class Attachment(FileMetaDataMixin):
     """
     An L{Attachment} is a container for the data associated with a I{locally-
     stored} calendar attachment.  That is to say, there will only be
@@ -467,7 +467,7 @@ class Attachment(object):
         return self._name
 
 
-    def _properties(self):
+    def properties(self):
         """
         Create and return a private xattr L{PropertyStore} for storing some of
         the data about this L{Attachment}.  This is private because attachments
@@ -482,10 +482,6 @@ class Attachment(object):
         )
 
 
-    def contentType(self):
-        return self._properties()[contentTypeKey].mimeType()
-
-
     def store(self, contentType):
         return AttachmentStorageTransport(self, contentType)
 
@@ -496,10 +492,6 @@ class Attachment(object):
         protocol.dataReceived(self._computePath().getContent())
         # FIXME: ConnectionDone, not NotImplementedError
         protocol.connectionLost(Failure(NotImplementedError()))
-
-
-    def md5(self):
-        return self._properties()[md5key]
 
 
     def _computePath(self):

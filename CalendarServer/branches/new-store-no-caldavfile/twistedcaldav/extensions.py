@@ -686,6 +686,9 @@ class DAVResource (DirectoryPrincipalPropertySearchMixIn,
     """
     http_REPORT = http_REPORT
 
+    def davComplianceClasses(self):
+        return ("1", "access-control") # Add "2" when we have locking
+
     def render(self, request):
         if not self.exists():
             return responsecode.NOT_FOUND

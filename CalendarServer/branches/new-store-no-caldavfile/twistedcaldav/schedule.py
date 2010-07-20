@@ -31,21 +31,25 @@ from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
 from twext.web2.dav.element.extensions import SyncCollection
+from twext.web2.dav.element.rfc2518 import HRef
+from twext.web2.dav.noneprops import NonePropertyStore
 from twext.web2.dav.util import joinURL, normalizeURL
 from twext.web2.http import HTTPError
 from twext.web2.http import Response
 from twext.web2.http_headers import MimeType
 
 from twistedcaldav import caldavxml
-from twext.web2.dav.element.rfc2518 import HRef
-from txdav.propertystore.base import PropertyName
 from twistedcaldav.caldavxml import caldav_namespace, Opaque,\
     CalendarFreeBusySet, ScheduleCalendarTransp
 from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
-from twistedcaldav.resource import CalDAVResource
+from twistedcaldav.extensions import DAVResource
+from twistedcaldav.resource import CalDAVResource, ReadOnlyNoCopyResourceMixIn,\
+    deliverSchedulePrivilegeSet
 from twistedcaldav.resource import isCalendarCollectionResource
 from twistedcaldav.scheduling.scheduler import CalDAVScheduler, IScheduleScheduler
+
+from txdav.propertystore.base import PropertyName
 
 class CalendarSchedulingCollectionResource (CalDAVResource):
     """
@@ -306,7 +310,7 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
         result = (yield scheduler.doSchedulingViaPOST())
         returnValue(result.response())
 
-class IScheduleInboxResource (CalDAVResource):
+class IScheduleInboxResource (ReadOnlyNoCopyResourceMixIn, DAVResource):
     """
     iSchedule Inbox resource.
 
@@ -319,26 +323,20 @@ class IScheduleInboxResource (CalDAVResource):
         """
         assert parent is not None
 
-        CalDAVResource.__init__(self, principalCollections=parent.principalCollections())
+        DAVResource.__init__(self, principalCollections=parent.principalCollections())
 
         self.parent = parent
 
-    def defaultAccessControlList(self):
-        privs = (
-            davxml.Privilege(davxml.Read()),
-            davxml.Privilege(caldavxml.ScheduleDeliver()),
-        )
-        if config.Scheduling.CalDAV.OldDraftCompatibility:
-            privs += (davxml.Privilege(caldavxml.Schedule()),)
+    def deadProperties(self):
+        if not hasattr(self, "_dead_properties"):
+            self._dead_properties = NonePropertyStore(self)
+        return self._dead_properties
 
-        return davxml.ACL(
-            # DAV:Read, CalDAV:schedule-deliver for all principals (includes anonymous)
-            davxml.ACE(
-                davxml.Principal(davxml.All()),
-                davxml.Grant(*privs),
-                davxml.Protected(),
-            ),
-        )
+    def etag(self):
+        return None
+
+    def checkPreconditions(self, request):
+        return None
 
     def resourceType(self, request):
         return succeed(davxml.ResourceType.ischeduleinbox)
@@ -381,3 +379,27 @@ class IScheduleInboxResource (CalDAVResource):
         # Do the POST processing treating this as a non-local schedule
         result = (yield scheduler.doSchedulingViaPOST(use_request_headers=True))
         returnValue(result.response())
+
+    ##
+    # ACL
+    ##
+
+    def supportedPrivileges(self, request):
+        return succeed(deliverSchedulePrivilegeSet)
+
+    def defaultAccessControlList(self):
+        privs = (
+            davxml.Privilege(davxml.Read()),
+            davxml.Privilege(caldavxml.ScheduleDeliver()),
+        )
+        if config.Scheduling.CalDAV.OldDraftCompatibility:
+            privs += (davxml.Privilege(caldavxml.Schedule()),)
+
+        return davxml.ACL(
+            # DAV:Read, CalDAV:schedule-deliver for all principals (includes anonymous)
+            davxml.ACE(
+                davxml.Principal(davxml.All()),
+                davxml.Grant(*privs),
+                davxml.Protected(),
+            ),
+        )

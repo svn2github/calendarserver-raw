@@ -55,6 +55,9 @@ from calendarserver.tap.caldav import (
     CalDAVOptions, CalDAVServiceMaker, CalDAVService, GroupOwnedUNIXServer,
     DelayedStartupProcessMonitor, DelayedStartupLineLogger, TwistdSlaveProcess
 )
+from calendarserver.provision.root import RootResource
+from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
+from twistedcaldav.static import CalendarHomeProvisioningFile
 
 
 # Points to top of source tree.
@@ -698,7 +701,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
         site = self.getSite()
         root = site.resource.resource.resource
 
-        self.failUnless(isinstance(root, CalDAVServiceMaker.rootResourceClass))
+        self.failUnless(isinstance(root, RootResource))
 
     def test_principalResource(self):
         """
@@ -709,7 +712,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
 
         self.failUnless(isinstance(
             root.getChild("principals"),
-            CalDAVServiceMaker.principalResourceClass
+            DirectoryPrincipalProvisioningResource
         ))
 
     def test_calendarResource(self):
@@ -721,7 +724,7 @@ class ServiceHTTPFactoryTests(BaseServiceMakerTests):
 
         self.failUnless(isinstance(
             root.getChild("calendars"),
-            CalDAVServiceMaker.calendarResourceClass
+            CalendarHomeProvisioningFile
         ))
 
 

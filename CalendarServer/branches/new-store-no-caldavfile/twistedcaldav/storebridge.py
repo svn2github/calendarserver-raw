@@ -39,14 +39,14 @@ from twext.web2.responsecode import (
     FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED,
     BAD_REQUEST, OK, NOT_IMPLEMENTED, NOT_ALLOWED)
 from twext.web2.dav import davxml
-from twext.web2.dav.resource import TwistedGETContentMD5, TwistedACLInheritable
+from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL, \
     davXMLFromStream
 from twext.web2.http import HTTPError, StatusResponse, Response
-from twext.web2.stream import ProducerStream, readStream
+from twext.web2.stream import ProducerStream, readStream, MemoryStream
 
 from twistedcaldav.static import CalDAVFile, ScheduleInboxFile, \
-    NotificationCollectionFile, NotificationFile, GlobalAddressBookFile
+    GlobalAddressBookFile
 from twistedcaldav.vcard import Component as VCard
 from twistedcaldav.resource import CalDAVResource
 
@@ -55,11 +55,13 @@ from txdav.common.icommondatastore import NoSuchObjectResourceError, \
 from txdav.propertystore.base import PropertyName
 
 from twistedcaldav.caldavxml import ScheduleTag, caldav_namespace
-from twistedcaldav.scheduling.implicit import ImplicitScheduler
+from twistedcaldav.method.propfind import http_PROPFIND
+from twistedcaldav.notifications import NotificationCollectionResource,\
+    NotificationResource
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+from twistedcaldav.scheduling.implicit import ImplicitScheduler
 
 from twisted.python.log import err as logDefaultException
-from twistedcaldav.method.propfind import http_PROPFIND
 
 log = Logger()
 
@@ -928,8 +930,9 @@ class CalendarObjectFile(CalDAVFile, FancyEqMixin):
 
         # FIXME: direct tests
         try:
-            if self.hasDeadProperty(TwistedGETContentMD5):
-                return ETag(str(self.readDeadProperty(TwistedGETContentMD5)))
+            md5 = self._newStoreObject.md5()
+            if md5:
+                return ETag(md5)
             else:
                 return ETag(
                     hashlib.new("md5", self.iCalendarText()).hexdigest(),
@@ -1617,8 +1620,9 @@ class AddressBookObjectFile(CalDAVFile, FancyEqMixin):
 
         # FIXME: direct tests
         try:
-            if self.hasDeadProperty(TwistedGETContentMD5):
-                return ETag(str(self.readDeadProperty(TwistedGETContentMD5)))
+            md5 = self._newStoreObject.md5()
+            if md5:
+                return ETag(md5)
             else:
                 return ETag(
                     hashlib.new("md5", self.vCardText()).hexdigest(),
@@ -1775,6 +1779,15 @@ class _NotificationChildHelper(object):
         )
 
 
+    def locateChild(self, request, segments):
+        if segments[0] == '':
+            return self, segments[1:]
+        return self.getChild(segments[0]), segments[1:]
+
+
+    def getChild(self, name):
+        return None
+
     def notificationsDB(self):
         """
         Retrieve the new-style index wrapper.
@@ -1790,7 +1803,7 @@ class _NotificationChildHelper(object):
     @classmethod
     def transform(cls, self, notifications, home):
         """
-        Transform C{self} into a L{NotificationCollectionFile}.
+        Transform C{self} into a L{NotificationCollectionResource}.
         """
         self.__class__ = cls
         self._initializeWithNotifications(notifications, home)
@@ -1809,12 +1822,12 @@ class _NotificationChildHelper(object):
         )
 
         if newStoreObject is not None:
-            similar = StoreNotificationObjectFile(newStoreObject, path, self)
+            similar = StoreNotificationObjectFile(newStoreObject, self)
         else:
             # FIXME: creation in http_PUT should talk to a specific resource
             # type; this is the domain of StoreCalendarObjectResource.
             # similar = ProtoCalendarObjectFile(self._newStoreCalendar, path)
-            similar = ProtoStoreNotificationObjectFile(self._newStoreNotifications, path, self)
+            similar = ProtoStoreNotificationObjectFile(self._newStoreNotifications, self)
 
         # FIXME: tests should be failing without this line.
         # Specifically, http_PUT won't be committing its transaction properly.
@@ -1828,8 +1841,8 @@ class _NotificationChildHelper(object):
 
 
 
-class StoreNotificationCollectionFile(_NotificationChildHelper,
-                                      NotificationCollectionFile):
+class NotificationCollectionFile(_NotificationChildHelper,
+                                      NotificationCollectionResource):
     """
     Wrapper around a L{txcaldav.icalendar.ICalendar}.
     """
@@ -1839,40 +1852,114 @@ class StoreNotificationCollectionFile(_NotificationChildHelper,
         Create a CalendarCollectionFile from a L{txcaldav.icalendar.ICalendar}
         and the arguments required for L{CalDAVFile}.
         """
-        super(StoreNotificationCollectionFile, self).__init__(*args, **kw)
+        super(NotificationCollectionFile, self).__init__(*args, **kw)
         self._initializeWithNotifications(notifications, home)
+
+
+    def getChild(self, name):
+        notificationObject = self._newStoreNotifications.notificationObjectWithName(name)
+        if notificationObject is None:
+            return None
+        notification = StoreNotificationObjectFile(
+            notificationObject,
+            self,
+        )
+        self.propagateTransaction(notification)
+        return notification
+
+
+    def listChildren(self):
+        l = []
+        for notification in self._newStoreNotifications.notificationObjects():
+            l.append(notification.name())
+        return l
+
+    def isCollection(self):
+        return True
+
+    def addNotification(self, request, uid, xmltype, xmldata):
+        
+        self._newStoreNotifications.writeNotificationObject(uid, xmltype, xmldata)
+        return succeed(None)
+
+    def deleteNotification(self, request, record):
+        self._newStoreNotifications.removeNotificationObjectWithName(record.name)
+        return succeed(None)
+        
+class ProtoNotificationCollectionFile(NotificationCollectionResource):
+    """
+    A resource representing a notification collection which hasn't yet been created.
+    """
+
+    def __init__(self, home, *args, **kw):
+        """
+        A placeholder resource for a notification collection which does not yet
+        exist, but will become a L{NotificationCollectionFile}.
+
+        @param home: The calendar home which will be this resource's parent,
+            when it exists.
+
+        @type home: L{txcaldav.icalendarstore.ICalendarHome}
+        """
+        self._newStoreParentHome = home
+        super(ProtoNotificationCollectionFile, self).__init__(*args, **kw)
 
 
     def isCollection(self):
         return True
 
+    def createSimilarFile(self, path):
+        # FIXME: this is necessary for 
+        # twistedcaldav.test.test_mkcalendar.
+        #     MKCALENDAR.test_make_calendar_no_parent - there should be a more
+        # structured way to refuse creation with a non-existent parent.
+        return NoParent(path)
 
-    @inlineCallbacks
-    def http_DELETE(self, request):
+
+    def provisionFile(self):
         """
-        Override http_DELETE to reject. 
+        Create a calendar collection.
         """
-        raise HTTPError(StatusResponse(FORBIDDEN, "Cannot delete notification collections"))
+        # FIXME: there should be no need for this.
+        return self.createNotificationCollection()
 
 
-    def http_COPY(self, request):
+    def createNotificationCollection(self):
         """
-        Copying of calendar collections isn't allowed.
+        Override C{createCalendarCollection} to actually do the work.
         """
-        raise HTTPError(StatusResponse(FORBIDDEN, "Cannot copy notification collections"))
+        d = succeed(CREATED)
+
+        notificationName = self.fp.basename()
+        self._newStoreParentHome.createChildWithName(notificationName)
+        newStoreNotification = self._newStoreParentHome.childWithName(
+            notificationName
+        )
+        NotificationCollectionFile.transform(
+            self, newStoreNotification, self._newStoreParentHome
+        )
+        return d
 
 
-    @inlineCallbacks
-    def http_MOVE(self, request):
+    def exists(self):
+        # FIXME: tests
+        return False
+
+
+    def provision(self):
         """
-        Moving a calendar collection is allowed for the purposes of changing
-        that calendar's name.
+        This resource should do nothing if it's provisioned.
         """
-        raise HTTPError(StatusResponse(FORBIDDEN, "Cannot move notification collections"))
+        # FIXME: should be deleted, or raise an exception
+
+
+    def quotaSize(self, request):
+        # FIXME: tests, workingness
+        return succeed(0)
 
 
 
-class StoreNotificationObjectFile(NotificationFile):
+class StoreNotificationObjectFile(NotificationResource):
     """
     A resource wrapping a calendar object.
     """
@@ -1904,8 +1991,9 @@ class StoreNotificationObjectFile(NotificationFile):
 
         # FIXME: direct tests
         try:
-            if self.hasDeadProperty(TwistedGETContentMD5):
-                return ETag(str(self.readDeadProperty(TwistedGETContentMD5)))
+            md5 = self._newStoreObject.md5()
+            if md5:
+                return ETag(md5)
             else:
                 return ETag(
                     hashlib.new("md5", self.text()).hexdigest(),
@@ -1917,6 +2005,17 @@ class StoreNotificationObjectFile(NotificationFile):
             # call storeRemove.
             return None
 
+    def contentType(self):
+        return self._newStoreObject.contentType()
+
+    def contentLength(self):
+        return self._newStoreObject.size()
+
+    def lastModified(self):
+        return self._newStoreObject.modified()
+
+    def creationDate(self):
+        return self._newStoreObject.created()
 
     def newStoreProperties(self):
         return self._newStoreObject.properties()
@@ -1931,6 +2030,10 @@ class StoreNotificationObjectFile(NotificationFile):
         assert ignored is None, "This is a notification object, not a notification"
         return self._newStoreObject.xmldata()
 
+
+    @requiresPermissions(davxml.Read())
+    def http_GET(self, request):
+        return Response(OK, {"content-type":self.contentType()}, MemoryStream(self.text()))
 
     @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):
@@ -1990,7 +2093,7 @@ class StoreNotificationObjectFile(NotificationFile):
 
 
 
-class ProtoStoreNotificationObjectFile(NotificationFile):
+class ProtoStoreNotificationObjectFile(NotificationResource):
 
     def __init__(self, parentNotifications, *a, **kw):
         super(ProtoStoreNotificationObjectFile, self).__init__(*a, **kw)

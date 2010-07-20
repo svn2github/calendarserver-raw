@@ -47,9 +47,11 @@ from twext.web2.dav import davxml
 from twext.web2.dav.auth import AuthenticationWrapper as SuperAuthenticationWrapper
 from twext.web2.dav.davxml import dav_namespace
 from twext.web2.dav.idav import IDAVPrincipalCollectionResource
-from twext.web2.dav.resource import AccessDeniedError, DAVPrincipalCollectionResource
+from twext.web2.dav.resource import AccessDeniedError, DAVPrincipalCollectionResource,\
+    davPrivilegeSet
 from twext.web2.dav.resource import TwistedACLInheritable
-from twext.web2.dav.util import joinURL, parentForURL, unimplemented, normalizeURL
+from twext.web2.dav.util import joinURL, parentForURL, unimplemented, normalizeURL,\
+    bindMethods
 from twext.web2.http import HTTPError, RedirectResponse, StatusResponse, Response
 from twext.web2.http_headers import MimeType
 from twext.web2.stream import MemoryStream
@@ -102,6 +104,109 @@ class CalDAVComplianceMixIn(object):
             + config.CalDAVComplianceClasses
         )
 
+class ReadOnlyResourceMixIn (object):
+    """
+    Read only resource.
+    """
+
+    def writeProperty(self, property, request):
+        raise HTTPError(self.readOnlyResponse)
+
+    def http_ACL(self, request):       return responsecode.FORBIDDEN
+    def http_DELETE(self, request):    return responsecode.FORBIDDEN
+    def http_MKCOL(self, request):     return responsecode.FORBIDDEN
+    def http_MOVE(self, request):      return responsecode.FORBIDDEN
+    def http_PROPPATCH(self, request): return responsecode.FORBIDDEN
+    def http_PUT(self, request):       return responsecode.FORBIDDEN
+
+    def http_MKCALENDAR(self, request):
+        return ErrorResponse(
+            responsecode.FORBIDDEN,
+            (caldav_namespace, "calendar-collection-location-ok")
+        )
+
+class ReadOnlyNoCopyResourceMixIn (ReadOnlyResourceMixIn):
+    """
+    Read only resource that disallows COPY.
+    """
+
+    def http_COPY(self, request): return responsecode.FORBIDDEN
+
+def _schedulePrivilegeSet(deliver):
+    edited = False
+
+    top_supported_privileges = []
+
+    for supported_privilege in davPrivilegeSet.childrenOfType(davxml.SupportedPrivilege):
+        all_privilege = supported_privilege.childOfType(davxml.Privilege)
+        if isinstance(all_privilege.children[0], davxml.All):
+            all_description = supported_privilege.childOfType(davxml.Description)
+            all_supported_privileges = list(supported_privilege.childrenOfType(davxml.SupportedPrivilege))
+            all_supported_privileges.append(
+                davxml.SupportedPrivilege(
+                    davxml.Privilege(caldavxml.ScheduleDeliver() if deliver else caldavxml.ScheduleSend()),
+                    davxml.Description("schedule privileges for current principal", **{"xml:lang": "en"}),
+                ),
+            )
+            if config.Scheduling.CalDAV.OldDraftCompatibility:
+                all_supported_privileges.append(
+                    davxml.SupportedPrivilege(
+                        davxml.Privilege(caldavxml.Schedule()),
+                        davxml.Description("old-style schedule privileges for current principal", **{"xml:lang": "en"}),
+                    ),
+                )
+            top_supported_privileges.append(
+                davxml.SupportedPrivilege(all_privilege, all_description, *all_supported_privileges)
+            )
+            edited = True
+        else:
+            top_supported_privileges.append(supported_privilege)
+
+    assert edited, "Structure of davPrivilegeSet changed in a way that I don't know how to extend for schedulePrivilegeSet"
+
+    return davxml.SupportedPrivilegeSet(*top_supported_privileges)
+
+deliverSchedulePrivilegeSet = _schedulePrivilegeSet(True)
+sendSchedulePrivilegeSet = _schedulePrivilegeSet(False)
+
+def _calendarPrivilegeSet ():
+    edited = False
+
+    top_supported_privileges = []
+
+    for supported_privilege in davPrivilegeSet.childrenOfType(davxml.SupportedPrivilege):
+        all_privilege = supported_privilege.childOfType(davxml.Privilege)
+        if isinstance(all_privilege.children[0], davxml.All):
+            all_description = supported_privilege.childOfType(davxml.Description)
+            all_supported_privileges = []
+            for all_supported_privilege in supported_privilege.childrenOfType(davxml.SupportedPrivilege):
+                read_privilege = all_supported_privilege.childOfType(davxml.Privilege)
+                if isinstance(read_privilege.children[0], davxml.Read):
+                    read_description = all_supported_privilege.childOfType(davxml.Description)
+                    read_supported_privileges = list(all_supported_privilege.childrenOfType(davxml.SupportedPrivilege))
+                    read_supported_privileges.append(
+                        davxml.SupportedPrivilege(
+                            davxml.Privilege(caldavxml.ReadFreeBusy()),
+                            davxml.Description("allow free busy report query", **{"xml:lang": "en"}),
+                        )
+                    )
+                    all_supported_privileges.append(
+                        davxml.SupportedPrivilege(read_privilege, read_description, *read_supported_privileges)
+                    )
+                    edited = True
+                else:
+                    all_supported_privileges.append(all_supported_privilege)
+            top_supported_privileges.append(
+                davxml.SupportedPrivilege(all_privilege, all_description, *all_supported_privileges)
+            )
+        else:
+            top_supported_privileges.append(supported_privilege)
+
+    assert edited, "Structure of davPrivilegeSet changed in a way that I don't know how to extend for calendarPrivilegeSet"
+
+    return davxml.SupportedPrivilegeSet(*top_supported_privileges)
+
+calendarPrivilegeSet = _calendarPrivilegeSet()
 
 class CalDAVResource (CalDAVComplianceMixIn, SharedCollectionMixin, DAVResource, LoggingMixIn):
     """
@@ -1587,4 +1692,3 @@ def isAddressBookCollectionResource(resource):
         return False
     else:
         return resource.isAddressBookCollection()
-

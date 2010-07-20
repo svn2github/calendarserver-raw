@@ -21,6 +21,13 @@ Common utility functions for a file based datastore.
 """
 
 from twext.python.log import LoggingMixIn
+from twext.web2.dav.element.rfc2518 import GETContentType
+from twext.web2.dav.resource import TwistedGETContentMD5
+
+from txdav.idav import IDataStoreResource
+from txdav.propertystore.base import PropertyName
+
+from zope.interface.declarations import implements
 
 def isValidName(name):
     """
@@ -201,3 +208,72 @@ class DataStoreTransaction(LoggingMixIn):
                 raise
 
 
+class FileMetaDataMixin(object):
+    
+    implements(IDataStoreResource)
+    
+    def name(self):
+        """
+        Identify the name of the object
+
+        @return: the name of this object.
+        @rtype: C{str}
+        """
+
+        return self._path.basename()
+
+    def contentType(self):
+        """
+        The content type of the object's content.
+
+        @rtype: L{MimeType}
+        """
+        try:
+            return self.properties()[PropertyName.fromElement(GETContentType)].mimeType()
+        except KeyError:
+            return None
+
+    def md5(self):
+        """
+        The MD5 hex digest of this object's content.
+
+        @rtype: C{str}
+        """
+        try:
+            return str(self.properties()[PropertyName.fromElement(TwistedGETContentMD5)])
+        except KeyError:
+            return None
+
+    def size(self):
+        """
+        The octet-size of this object's content.
+
+        @rtype: C{int}
+        """
+        if self._path.exists():
+            return self._path.getsize()
+        else:
+            return 0
+
+    def created(self):
+        """
+        The creation date-time stamp of this object.
+
+        @rtype: C{int}
+        """
+        if self._path.exists():
+            return self._path.getmtime() # No creation time on POSIX
+        else:
+            return None
+
+    def modified(self):
+        """
+        The last modification date-time stamp of this object.
+
+        @rtype: C{int}
+        """
+        if self._path.exists():
+            return self._path.getmtime()
+        else:
+            return None
+    
