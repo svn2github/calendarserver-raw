@@ -36,8 +36,11 @@ from twext.python.filepath import CachingFilePath as FilePath
 from twext.python.log import Logger
 
 from twistedcaldav import memcachepool
+from twistedcaldav.bind import doBind
 from twistedcaldav.directory import augment, calendaruserproxy
+from twistedcaldav.directory.addressbook import DirectoryAddressBookHomeProvisioningResource
 from twistedcaldav.directory.aggregate import AggregateDirectoryService
+from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
 from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.internal import InternalDirectoryService
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
@@ -48,8 +51,7 @@ from twistedcaldav.notify import installNotificationClient
 from twistedcaldav.resource import CalDAVResource, AuthenticationWrapper
 from twistedcaldav.schedule import IScheduleInboxResource
 from twistedcaldav.simpleresource import SimpleResource
-from twistedcaldav.static import CalendarHomeProvisioningFile
-from twistedcaldav.static import AddressBookHomeProvisioningFile, DirectoryBackedAddressBookFile
+from twistedcaldav.static import DirectoryBackedAddressBookFile
 from twistedcaldav.timezones import TimezoneCache
 from twistedcaldav.timezoneservice import TimezoneServiceResource
 from twistedcaldav.util import getMemorySize, getNCPU
@@ -81,18 +83,21 @@ def getRootResource(config, resources=None):
     tuples containing: path, resource class, __init__ args list, and optional
     authentication scheme ("basic" or "digest").
     """
+    
+    # FIXME: this is only here to workaround circular imports
+    doBind()
 
     #
     # Default resource classes
     #
     rootResourceClass            = RootResource
     principalResourceClass       = DirectoryPrincipalProvisioningResource
-    calendarResourceClass        = CalendarHomeProvisioningFile
+    calendarResourceClass        = DirectoryCalendarHomeProvisioningResource
     iScheduleResourceClass       = IScheduleInboxResource
     timezoneServiceResourceClass = TimezoneServiceResource
     webCalendarResourceClass     = WebCalendarResource
     webAdminResourceClass        = WebAdminResource
-    addressBookResourceClass     = AddressBookHomeProvisioningFile
+    addressBookResourceClass     = DirectoryAddressBookHomeProvisioningResource
     directoryBackedAddressBookResourceClass = DirectoryBackedAddressBookFile
 
     #
@@ -286,16 +291,16 @@ def getRootResource(config, resources=None):
     if config.EnableCalDAV:
         log.info("Setting up calendar collection: %r" % (calendarResourceClass,))
         calendarCollection = calendarResourceClass(
-            os.path.join(config.DocumentRoot, "calendars"),
-            directory, "/calendars/",
+            directory,
+            "/calendars/",
             _newStore,
         )
 
     if config.EnableCardDAV:
         log.info("Setting up address book collection: %r" % (addressBookResourceClass,))
         addressBookCollection = addressBookResourceClass(
-            os.path.join(config.DocumentRoot, "addressbooks"),
-            directory, "/addressbooks/",
+            directory,
+            "/addressbooks/",
             _newStore,
         )
 

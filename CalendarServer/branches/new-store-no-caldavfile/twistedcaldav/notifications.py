@@ -29,7 +29,6 @@ from twext.web2.dav import davxml
 
 from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 
-from twistedcaldav.method.propfind import http_PROPFIND
 from twistedcaldav.resource import ReadOnlyNoCopyResourceMixIn, CalDAVResource
 from twistedcaldav.sql import AbstractSQLDatabase, db_prefix
 
@@ -65,13 +64,9 @@ class NotificationResource(CalDAVResource):
         if response == responsecode.NO_CONTENT:
             yield self._parent.removedNotifictionMessage(request, self.resourceName())
         returnValue(response)
-
-    http_PROPFIND = http_PROPFIND
     
 class NotificationCollectionResource(ReadOnlyNoCopyResourceMixIn, CalDAVResource):
 
-    http_PROPFIND = http_PROPFIND
-    
     def notificationsDB(self):
         
         if not hasattr(self, "_notificationsDB"):
@@ -81,8 +76,8 @@ class NotificationCollectionResource(ReadOnlyNoCopyResourceMixIn, CalDAVResource
     def isCollection(self):
         return True
 
-    def resourceType(self, request):
-        return succeed(davxml.ResourceType.notification)
+    def resourceType(self):
+        return davxml.ResourceType.notification
 
     @inlineCallbacks
     def addNotification(self, request, uid, xmltype, xmldata):

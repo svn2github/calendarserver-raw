@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twistedcaldav.schedule import ScheduleInboxResource
+from twistedcaldav.extensions import DAVResourceWithChildrenMixin
 
 """
 Wrappers to translate between the APIs in L{txcaldav.icalendarstore} and
@@ -45,17 +47,15 @@ from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL, \
 from twext.web2.http import HTTPError, StatusResponse, Response
 from twext.web2.stream import ProducerStream, readStream, MemoryStream
 
-from twistedcaldav.static import CalDAVFile, ScheduleInboxFile, \
-    GlobalAddressBookFile
+from twistedcaldav.static import CalDAVFile
 from twistedcaldav.vcard import Component as VCard
-from twistedcaldav.resource import CalDAVResource
+from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource
 
 from txdav.common.icommondatastore import NoSuchObjectResourceError, \
     InternalDataStoreError
 from txdav.propertystore.base import PropertyName
 
 from twistedcaldav.caldavxml import ScheduleTag, caldav_namespace
-from twistedcaldav.method.propfind import http_PROPFIND
 from twistedcaldav.notifications import NotificationCollectionResource,\
     NotificationResource
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
@@ -205,38 +205,42 @@ class _CalendarChildHelper(object):
     @classmethod
     def transform(cls, self, calendar, home):
         """
-        Transform C{self} into a L{CalendarCollectionFile}.
+        Transform C{self} into a L{CalendarCollectionResource}.
         """
         self.__class__ = cls
         self._initializeWithCalendar(calendar, home)
 
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         """
         Create a L{CalendarObjectFile} or L{ProtoCalendarObjectFile} based on a
         path object.
         """
-        if not isinstance(path, FilePath):
-            path = FilePath(path)
 
-        newStoreObject = self._newStoreCalendar.calendarObjectWithName(
-            path.basename()
-        )
+        newStoreObject = self._newStoreCalendar.calendarObjectWithName(name)
 
         if newStoreObject is not None:
-            similar = CalendarObjectFile(newStoreObject, path,
+            similar = CalendarObjectFile(newStoreObject, newStoreObject._path,
                 principalCollections=self._principalCollections)
         else:
             # FIXME: creation in http_PUT should talk to a specific resource
             # type; this is the domain of StoreCalendarObjectResource.
             # similar = ProtoCalendarObjectFile(self._newStoreCalendar, path)
-            similar = ProtoCalendarObjectFile(self._newStoreCalendar, path,
+            similar = ProtoCalendarObjectFile(self._newStoreCalendar, self._newStoreCalendar._path.child(name),
                 principalCollections=self._principalCollections)
 
         # FIXME: tests should be failing without this line.
         # Specifically, http_PUT won't be committing its transaction properly.
         self.propagateTransaction(similar)
         return similar
+
+    def listChildren(self):
+        """
+        @return: a sequence of the names of all known children of this resource.
+        """
+        children = set(self.putChildren.keys())
+        children.update(self._newStoreCalendar.listCalendarObjects())
+        return children
 
 
     def quotaSize(self, request):
@@ -245,10 +249,10 @@ class _CalendarChildHelper(object):
 
 
 
-class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
+class StoreScheduleInboxResource(_CalendarChildHelper, ScheduleInboxResource):
 
     def __init__(self, *a, **kw):
-        super(StoreScheduleInboxFile, self).__init__(*a, **kw)
+        super(StoreScheduleInboxResource, self).__init__(*a, **kw)
         self.parent.propagateTransaction(self)
         home = self.parent._newStoreCalendarHome
         storage = home.calendarWithName("inbox")
@@ -263,10 +267,6 @@ class StoreScheduleInboxFile(_CalendarChildHelper, ScheduleInboxFile):
             storage,
             self.parent._newStoreCalendarHome
         )
-
-
-    def isCollection(self):
-        return True
 
 
     def provisionFile(self):
@@ -297,7 +297,7 @@ class _GetChildHelper(CalDAVResource):
             qname = property.qname()
 
         if qname == (dav_namespace, "resourcetype"):
-            return self.resourceType(request)
+            return succeed(self.resourceType())
         return super(_GetChildHelper, self).readProperty(property, request)
 
 
@@ -310,9 +310,6 @@ class _GetChildHelper(CalDAVResource):
         return super(_GetChildHelper, self).http_GET(request)
 
 
-    http_PROPFIND = http_PROPFIND
-
-
 
 class DropboxCollection(_GetChildHelper):
     """
@@ -322,9 +319,7 @@ class DropboxCollection(_GetChildHelper):
     """
     # FIXME: no direct tests for this class at all.
 
-    def __init__(self, path, parent, *a, **kw):
-        # FIXME: constructor signature takes a 'path' because CalendarHomeFile
-        # requires it, but we don't need it (and shouldn't have it) eventually.
+    def __init__(self, parent, *a, **kw):
         super(DropboxCollection, self).__init__(
             *a, principalCollections=parent.principalCollections(), **kw)
         self._newStoreCalendarHome = parent._newStoreCalendarHome
@@ -349,8 +344,8 @@ class DropboxCollection(_GetChildHelper):
         return objectDropbox
 
 
-    def resourceType(self, request):
-        return succeed(davxml.ResourceType.dropboxhome)
+    def resourceType(self,):
+        return davxml.ResourceType.dropboxhome
 
 
     def listChildren(self):
@@ -396,8 +391,8 @@ class CalendarObjectDropbox(_GetChildHelper):
         return True
 
 
-    def resourceType(self, request):
-        return succeed(davxml.ResourceType.dropbox)
+    def resourceType(self):
+        return davxml.ResourceType.dropbox
 
 
     def getChild(self, name):
@@ -608,17 +603,18 @@ class CalendarAttachment(_GetChildHelper):
 
 
 
-class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
+class CalendarCollectionResource(_CalendarChildHelper, CalDAVResource, DAVResourceWithChildrenMixin):
     """
     Wrapper around a L{txcaldav.icalendar.ICalendar}.
     """
 
     def __init__(self, calendar, home, *args, **kw):
         """
-        Create a CalendarCollectionFile from a L{txcaldav.icalendar.ICalendar}
-        and the arguments required for L{CalDAVFile}.
+        Create a CalendarCollectionResource from a L{txcaldav.icalendar.ICalendar}
+        and the arguments required for L{CalDAVResource}.
         """
-        super(CalendarCollectionFile, self).__init__(*args, **kw)
+        super(CalendarCollectionResource, self).__init__(*args, **kw)
+        DAVResourceWithChildrenMixin.__init__(self)
         self._initializeWithCalendar(calendar, home)
 
 
@@ -690,7 +686,7 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
 
         # Is this a sharee's view of a shared calendar?  If so, they can't do
         # scheduling onto it, so just delete it and move on.
-        isVirtual = yield self.isVirtualShare(request)
+        isVirtual =self.isVirtualShare()
         if isVirtual:
             log.debug("Removing shared calendar %s" % (self,))
             yield self.removeVirtualShare(request)
@@ -729,7 +725,7 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         self._newStoreParentHome.removeCalendarWithName(
             self._newStoreCalendar.name()
         )
-        self.__class__ = ProtoCalendarCollectionFile
+        self.__class__ = ProtoCalendarCollectionResource
         del self._newStoreCalendar
 
         # FIXME: handle exceptions, possibly like this:
@@ -773,17 +769,17 @@ class CalendarCollectionFile(_CalendarChildHelper, CalDAVFile):
         basename = destination.fp.basename()
         calendar = self._newStoreCalendar
         calendar.rename(basename)
-        CalendarCollectionFile.transform(destination, calendar,
+        CalendarCollectionResource.transform(destination, calendar,
                                          self._newStoreParentHome)
         del self._newStoreCalendar
-        self.__class__ = ProtoCalendarCollectionFile
+        self.__class__ = ProtoCalendarCollectionResource
         self.movedCalendar(request, defaultCalendar,
                            destination, destinationURI)
         returnValue(NO_CONTENT)
 
 
 
-class NoParent(CalDAVFile):
+class NoParent(CalDAVResource):
     def http_MKCALENDAR(self, request):
         return CONFLICT
 
@@ -793,7 +789,7 @@ class NoParent(CalDAVFile):
 
 
 
-class ProtoCalendarCollectionFile(CalDAVFile):
+class ProtoCalendarCollectionResource(CalDAVResource):
     """
     A resource representing a calendar collection which hasn't yet been created.
     """
@@ -801,7 +797,7 @@ class ProtoCalendarCollectionFile(CalDAVFile):
     def __init__(self, home, *args, **kw):
         """
         A placeholder resource for a calendar collection which does not yet
-        exist, but will become a L{CalendarCollectionFile}.
+        exist, but will become a L{CalendarCollectionResource}.
 
         @param home: The calendar home which will be this resource's parent,
             when it exists.
@@ -809,18 +805,18 @@ class ProtoCalendarCollectionFile(CalDAVFile):
         @type home: L{txcaldav.icalendarstore.ICalendarHome}
         """
         self._newStoreParentHome = home
-        super(ProtoCalendarCollectionFile, self).__init__(*args, **kw)
+        super(ProtoCalendarCollectionResource, self).__init__(*args, **kw)
 
 
     def isCollection(self):
         return True
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         # FIXME: this is necessary for 
         # twistedcaldav.test.test_mkcalendar.
         #     MKCALENDAR.test_make_calendar_no_parent - there should be a more
         # structured way to refuse creation with a non-existent parent.
-        return NoParent(path)
+        return NoParent()
 
 
     def provisionFile(self):
@@ -842,7 +838,7 @@ class ProtoCalendarCollectionFile(CalDAVFile):
         newStoreCalendar = self._newStoreParentHome.calendarWithName(
             calendarName
         )
-        CalendarCollectionFile.transform(
+        CalendarCollectionResource.transform(
             self, newStoreCalendar, self._newStoreParentHome
         )
         return d
@@ -1008,7 +1004,7 @@ class CalendarObjectFile(CalDAVFile, FancyEqMixin):
         required.
 
         @param request: Unused by this implementation; present for signature
-            compatibility with L{CalendarCollectionFile.storeRemove}.
+            compatibility with L{CalendarCollectionResource.storeRemove}.
 
         @type request: L{twext.web2.iweb.IRequest}
 
@@ -1194,38 +1190,42 @@ class _AddressBookChildHelper(object):
     @classmethod
     def transform(cls, self, addressbook, home):
         """
-        Transform C{self} into a L{AddressBookCollectionFile}.
+        Transform C{self} into a L{AddressBookCollectionResource}.
         """
         self.__class__ = cls
         self._initializeWithAddressBook(addressbook, home)
 
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         """
         Create a L{AddressBookObjectFile} or L{ProtoAddressBookObjectFile} based on a
         path object.
         """
-        if not isinstance(path, FilePath):
-            path = FilePath(path)
-
-        newStoreObject = self._newStoreAddressBook.addressbookObjectWithName(
-            path.basename()
-        )
+        newStoreObject = self._newStoreAddressBook.addressbookObjectWithName(name)
 
         if newStoreObject is not None:
-            similar = AddressBookObjectFile(newStoreObject, path,
+            similar = AddressBookObjectFile(newStoreObject, newStoreObject._path,
                 principalCollections=self._principalCollections)
         else:
             # FIXME: creation in http_PUT should talk to a specific resource
             # type; this is the domain of StoreAddressBookObjectResource.
             # similar = ProtoAddressBookObjectFile(self._newStoreAddressBook, path)
-            similar = ProtoAddressBookObjectFile(self._newStoreAddressBook, path,
+            similar = ProtoAddressBookObjectFile(self._newStoreAddressBook, self._newStoreAddressBook._path.child(name),
                 principalCollections=self._principalCollections)
 
         # FIXME: tests should be failing without this line.
         # Specifically, http_PUT won't be committing its transaction properly.
         self.propagateTransaction(similar)
         return similar
+
+    def listChildren(self):
+        """
+        @return: a sequence of the names of all known children of this resource.
+        """
+        children = set(self.putChildren.keys())
+        children.update(self._newStoreAddressBook.listAddressbookObjects())
+        return children
+
 
 
     def quotaSize(self, request):
@@ -1234,17 +1234,18 @@ class _AddressBookChildHelper(object):
 
 
 
-class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
+class AddressBookCollectionResource(_AddressBookChildHelper, CalDAVResource, DAVResourceWithChildrenMixin):
     """
     Wrapper around a L{txcarddav.iaddressbook.IAddressBook}.
     """
 
     def __init__(self, addressbook, home, *args, **kw):
         """
-        Create a AddressBookCollectionFile from a L{txcarddav.iaddressbook.IAddressBook}
-        and the arguments required for L{CalDAVFile}.
+        Create a AddressBookCollectionResource from a L{txcarddav.iaddressbook.IAddressBook}
+        and the arguments required for L{CalDAVResource}.
         """
-        super(AddressBookCollectionFile, self).__init__(*args, **kw)
+        super(AddressBookCollectionResource, self).__init__(*args, **kw)
+        DAVResourceWithChildrenMixin.__init__(self)
         self._initializeWithAddressBook(addressbook, home)
 
 
@@ -1301,7 +1302,7 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
         """
 
         # Check virtual share first
-        isVirtual = yield self.isVirtualShare(request)
+        isVirtual = self.isVirtualShare()
         if isVirtual:
             log.debug("Removing shared calendar %s" % (self,))
             yield self.removeVirtualShare(request)
@@ -1340,7 +1341,7 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
         self._newStoreParentHome.removeAddressBookWithName(
             self._newStoreAddressBook.name()
         )
-        self.__class__ = ProtoAddressBookCollectionFile
+        self.__class__ = ProtoAddressBookCollectionResource
         del self._newStoreAddressBook
 
         # FIXME: handle exceptions, possibly like this:
@@ -1379,15 +1380,15 @@ class AddressBookCollectionFile(_AddressBookChildHelper, CalDAVFile):
         basename = destination.fp.basename()
         addressbook = self._newStoreAddressBook
         addressbook.rename(basename)
-        AddressBookCollectionFile.transform(destination, addressbook,
+        AddressBookCollectionResource.transform(destination, addressbook,
                                          self._newStoreParentHome)
         del self._newStoreAddressBook
-        self.__class__ = ProtoAddressBookCollectionFile
+        self.__class__ = ProtoAddressBookCollectionResource
         returnValue(NO_CONTENT)
 
 
 
-class ProtoAddressBookCollectionFile(CalDAVFile):
+class ProtoAddressBookCollectionResource(CalDAVResource):
     """
     A resource representing an addressbook collection which hasn't yet been created.
     """
@@ -1395,7 +1396,7 @@ class ProtoAddressBookCollectionFile(CalDAVFile):
     def __init__(self, home, *args, **kw):
         """
         A placeholder resource for an addressbook collection which does not yet
-        exist, but will become a L{AddressBookCollectionFile}.
+        exist, but will become a L{AddressBookCollectionResource}.
 
         @param home: The addressbook home which will be this resource's parent,
             when it exists.
@@ -1403,19 +1404,19 @@ class ProtoAddressBookCollectionFile(CalDAVFile):
         @type home: L{txcarddav.iaddressbookstore.IAddressBookHome}
         """
         self._newStoreParentHome = home
-        super(ProtoAddressBookCollectionFile, self).__init__(*args, **kw)
+        super(ProtoAddressBookCollectionResource, self).__init__(*args, **kw)
 
 
     def isCollection(self):
         return True
 
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         # FIXME: this is necessary for 
         # twistedcaldav.test.test_mkcol.
         #     MKCOL.test_make_addressbook_no_parent - there should be a more
         # structured way to refuse creation with a non-existent parent.
-        return NoParent(path)
+        return NoParent()
 
 
     def provisionFile(self):
@@ -1438,7 +1439,7 @@ class ProtoAddressBookCollectionFile(CalDAVFile):
         newStoreAddressBook = self._newStoreParentHome.addressbookWithName(
             Name
         )
-        AddressBookCollectionFile.transform(
+        AddressBookCollectionResource.transform(
             self, newStoreAddressBook, self._newStoreParentHome
         )
         return d
@@ -1461,102 +1462,17 @@ class ProtoAddressBookCollectionFile(CalDAVFile):
         return succeed(0)
 
 
-class GlobalAddressBookCollectionFile(_AddressBookChildHelper, GlobalAddressBookFile):
+class GlobalAddressBookCollectionResource(GlobalAddressBookResource, AddressBookCollectionResource):
     """
     Wrapper around a L{txcarddav.iaddressbook.IAddressBook}.
     """
+    pass
 
-    def __init__(self, addressbook, home, *args, **kw):
-        """
-        Create a GlobalAddressBookCollectionFile from a L{txcarddav.iaddressbook.IAddressBook}
-        and the arguments required for L{CalDAVFile}.
-        """
-        super(GlobalAddressBookCollectionFile, self).__init__(*args, **kw)
-        self._initializeWithAddressBook(addressbook, home)
-
-
-    def isCollection(self):
-        return True
-
-    def isAddressBookCollection(self):
-        """
-        Yes, it is a calendar collection.
-        """
-        return True
-
-class ProtoGlobalAddressBookCollectionFile(GlobalAddressBookFile):
+class ProtoGlobalAddressBookCollectionResource(GlobalAddressBookResource, ProtoAddressBookCollectionResource):
     """
     A resource representing an addressbook collection which hasn't yet been created.
     """
-
-    def __init__(self, home, *args, **kw):
-        """
-        A placeholder resource for an addressbook collection which does not yet
-        exist, but will become a L{GlobalAddressBookCollectionFile}.
-
-        @param home: The addressbook home which will be this resource's parent,
-            when it exists.
-
-        @type home: L{txcarddav.iaddressbookstore.IAddressBookHome}
-        """
-        self._newStoreParentHome = home
-        super(ProtoGlobalAddressBookCollectionFile, self).__init__(*args, **kw)
-
-
-    def isCollection(self):
-        return True
-
-
-    def createSimilarFile(self, path):
-        # FIXME: this is necessary for 
-        # twistedcaldav.test.test_mkcol.
-        #     MKCOL.test_make_addressbook_no_parent - there should be a more
-        # structured way to refuse creation with a non-existent parent.
-        return NoParent(path)
-
-
-    def provisionFile(self):
-        """
-        Create an addressbook collection.
-        """
-        # FIXME: this should be done in the backend; provisionDefaultAddressBooks
-        # should go away.
-        return self.createAddressBookCollection()
-
-
-    def createAddressBookCollection(self):
-        """
-        Override C{createAddressBookCollection} to actually do the work.
-        """
-        d = succeed(CREATED)
-
-        Name = self.fp.basename()
-        self._newStoreParentHome.createAddressBookWithName(Name)
-        newStoreAddressBook = self._newStoreParentHome.addressbookWithName(
-            Name
-        )
-        GlobalAddressBookCollectionFile.transform(
-            self, newStoreAddressBook, self._newStoreParentHome
-        )
-        return d
-
-
-    def exists(self):
-        # FIXME: tests
-        return False
-
-
-    def provision(self):
-        """
-        This resource should do nothing if it's provisioned.
-        """
-        # FIXME: should be deleted, or raise an exception
-
-
-    def quotaSize(self, request):
-        # FIXME: tests, workingness
-        return succeed(0)
-
+    pass
 
 
 class AddressBookObjectFile(CalDAVFile, FancyEqMixin):
@@ -1785,9 +1701,6 @@ class _NotificationChildHelper(object):
         return self.getChild(segments[0]), segments[1:]
 
 
-    def getChild(self, name):
-        return None
-
     def notificationsDB(self):
         """
         Retrieve the new-style index wrapper.
@@ -1809,17 +1722,12 @@ class _NotificationChildHelper(object):
         self._initializeWithNotifications(notifications, home)
 
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         """
         Create a L{NotificationObjectFile} or L{ProtoNotificationObjectFile} based on a
         path object.
         """
-        if not isinstance(path, FilePath):
-            path = FilePath(path)
-
-        newStoreObject = self._newStoreNotifications.notificationObjectWithName(
-            path.basename()
-        )
+        newStoreObject = self._newStoreNotifications.notificationObjectWithName(name)
 
         if newStoreObject is not None:
             similar = StoreNotificationObjectFile(newStoreObject, self)
@@ -1834,6 +1742,15 @@ class _NotificationChildHelper(object):
         self.propagateTransaction(similar)
         return similar
 
+    def listChildren(self):
+        """
+        @return: a sequence of the names of all known children of this resource.
+        """
+        children = set(self.putChildren.keys())
+        children.update(self._newStoreNotifications.listNotificationObjects())
+        return children
+
+
 
     def quotaSize(self, request):
         # FIXME: tests, workingness
@@ -1841,7 +1758,7 @@ class _NotificationChildHelper(object):
 
 
 
-class NotificationCollectionFile(_NotificationChildHelper,
+class StoreNotificationCollectionResource(_NotificationChildHelper,
                                       NotificationCollectionResource):
     """
     Wrapper around a L{txcaldav.icalendar.ICalendar}.
@@ -1849,23 +1766,11 @@ class NotificationCollectionFile(_NotificationChildHelper,
 
     def __init__(self, notifications, home, *args, **kw):
         """
-        Create a CalendarCollectionFile from a L{txcaldav.icalendar.ICalendar}
-        and the arguments required for L{CalDAVFile}.
+        Create a CalendarCollectionResource from a L{txcaldav.icalendar.ICalendar}
+        and the arguments required for L{CalDAVResource}.
         """
-        super(NotificationCollectionFile, self).__init__(*args, **kw)
+        super(StoreNotificationCollectionResource, self).__init__(*args, **kw)
         self._initializeWithNotifications(notifications, home)
-
-
-    def getChild(self, name):
-        notificationObject = self._newStoreNotifications.notificationObjectWithName(name)
-        if notificationObject is None:
-            return None
-        notification = StoreNotificationObjectFile(
-            notificationObject,
-            self,
-        )
-        self.propagateTransaction(notification)
-        return notification
 
 
     def listChildren(self):
@@ -1886,7 +1791,7 @@ class NotificationCollectionFile(_NotificationChildHelper,
         self._newStoreNotifications.removeNotificationObjectWithName(record.name)
         return succeed(None)
         
-class ProtoNotificationCollectionFile(NotificationCollectionResource):
+class StoreProtoNotificationCollectionResource(NotificationCollectionResource):
     """
     A resource representing a notification collection which hasn't yet been created.
     """
@@ -1894,7 +1799,7 @@ class ProtoNotificationCollectionFile(NotificationCollectionResource):
     def __init__(self, home, *args, **kw):
         """
         A placeholder resource for a notification collection which does not yet
-        exist, but will become a L{NotificationCollectionFile}.
+        exist, but will become a L{StoreNotificationCollectionResource}.
 
         @param home: The calendar home which will be this resource's parent,
             when it exists.
@@ -1902,18 +1807,18 @@ class ProtoNotificationCollectionFile(NotificationCollectionResource):
         @type home: L{txcaldav.icalendarstore.ICalendarHome}
         """
         self._newStoreParentHome = home
-        super(ProtoNotificationCollectionFile, self).__init__(*args, **kw)
+        super(StoreProtoNotificationCollectionResource, self).__init__(*args, **kw)
 
 
     def isCollection(self):
         return True
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         # FIXME: this is necessary for 
         # twistedcaldav.test.test_mkcalendar.
         #     MKCALENDAR.test_make_calendar_no_parent - there should be a more
         # structured way to refuse creation with a non-existent parent.
-        return NoParent(path)
+        return NoParent()
 
 
     def provisionFile(self):
@@ -1935,7 +1840,7 @@ class ProtoNotificationCollectionFile(NotificationCollectionResource):
         newStoreNotification = self._newStoreParentHome.childWithName(
             notificationName
         )
-        NotificationCollectionFile.transform(
+        StoreNotificationCollectionResource.transform(
             self, newStoreNotification, self._newStoreParentHome
         )
         return d

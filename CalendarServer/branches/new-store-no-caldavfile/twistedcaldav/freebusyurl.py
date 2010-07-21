@@ -32,7 +32,6 @@ from twext.python.log import Logger
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
 from twext.web2.dav.http import ErrorResponse
-from twext.web2.dav.method.propfind import http_PROPFIND
 from twext.web2.dav.util import joinURL
 from twext.web2.http import HTTPError
 from twext.web2.http import Response
@@ -48,7 +47,7 @@ from twistedcaldav.ical import Property
 from twistedcaldav.ical import parse_datetime
 from twistedcaldav.ical import parse_duration
 from twistedcaldav.resource import CalDAVResource, ReadOnlyNoCopyResourceMixIn
-from twistedcaldav.resource import deliverSchedulePrivilegeSet
+from twistedcaldav.schedule import deliverSchedulePrivilegeSet
 from twistedcaldav.scheduling.caldav import ScheduleViaCalDAV
 from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.scheduling.scheduler import Scheduler
@@ -105,8 +104,8 @@ class FreeBusyURLResource (ReadOnlyNoCopyResourceMixIn, CalDAVResource):
             )
         return davxml.ACL(*aces)
 
-    def resourceType(self, request):
-        return succeed(davxml.ResourceType.freebusyurl)
+    def resourceType(self):
+        return davxml.ResourceType.freebusyurl
 
     def contentType(self):
         return MimeType("text", "calendar", charset="utf-8")
@@ -145,8 +144,6 @@ class FreeBusyURLResource (ReadOnlyNoCopyResourceMixIn, CalDAVResource):
         The free-busy URL POST method.
         """
         return self._processFBURL(request)
-
-    http_PROPFIND = http_PROPFIND
 
     @inlineCallbacks
     def _processFBURL(self, request):

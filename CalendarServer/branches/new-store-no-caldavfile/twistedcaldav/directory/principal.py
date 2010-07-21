@@ -936,7 +936,6 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def calendarHome(self, request):
         # FIXME: self.record.service.calendarHomesCollection smells like a hack
-        # See CalendarHomeProvisioningFile.__init__()
         service = self.record.service
         if hasattr(service, "calendarHomesCollection"):
             return service.calendarHomesCollection.homeForDirectoryRecord(self.record, request)
@@ -960,7 +959,6 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def addressBookHome(self, request):
         # FIXME: self.record.service.addressBookHomesCollection smells like a hack
-        # See AddressBookHomeProvisioningFile.__init__()
         service = self.record.service
         if hasattr(service, "addressBookHomesCollection"):
             return service.addressBookHomesCollection.homeForDirectoryRecord(self.record, request)

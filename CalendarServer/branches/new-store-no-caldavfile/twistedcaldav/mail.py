@@ -61,11 +61,12 @@ from twistedcaldav.config import config
 from twistedcaldav.directory.util import NotFilePath
 from twistedcaldav.ical import Property
 from twistedcaldav.localization import translationTo
+from twistedcaldav.schedule import deliverSchedulePrivilegeSet
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
 from twistedcaldav.scheduling.scheduler import IMIPScheduler
 from twistedcaldav.sql import AbstractSQLDatabase
-from twistedcaldav.static import CalDAVFile, deliverSchedulePrivilegeSet
+from twistedcaldav.static import CalDAVFile
 from twistedcaldav.util import AuthorizedHTTPGetter
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
 
@@ -219,8 +220,8 @@ class IMIPInboxResource(CalDAVFile):
 
         return succeed(self.iMIPACL)
 
-    def resourceType(self, request):
-        return succeed(davxml.ResourceType.ischeduleinbox)
+    def resourceType(self):
+        return davxml.ResourceType.ischeduleinbox
 
     def isCollection(self):
         return False

@@ -64,6 +64,7 @@ class AddressBookHome(CommonHome):
         self._childClass = AddressBook
 
     addressbooks = CommonHome.children
+    listAddressbooks = CommonHome.listChildren
     addressbookWithName = CommonHome.childWithName
     createAddressBookWithName = CommonHome.createChildWithName
     removeAddressBookWithName = CommonHome.removeChildWithName
@@ -112,6 +113,7 @@ class AddressBook(CommonHomeChild):
 
     ownerAddressBookHome = CommonHomeChild.ownerHome
     addressbookObjects = CommonHomeChild.objectResources
+    listAddressbookObjects = CommonHomeChild.listObjectResources
     addressbookObjectWithName = CommonHomeChild.objectResourceWithName
     addressbookObjectWithUID = CommonHomeChild.objectResourceWithUID
     createAddressBookObjectWithName = CommonHomeChild.createObjectResourceWithName

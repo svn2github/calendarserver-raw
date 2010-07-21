@@ -295,8 +295,23 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
         return self._shares
 
     def children(self):
+        """
+        Return a set of the child resource objects.
+        """
         return set(self._newChildren.itervalues()) | set(
             self.childWithName(name)
+            for name in self._path.listdir()
+            if not name.startswith(".")
+        )
+
+    def listChildren(self):
+        """
+        Return a set of the names of the child resources.
+        """
+        return set(
+            [child.name() for child in self._newChildren.itervalues()]
+        ) | set(
+            name
             for name in self._path.listdir()
             if not name.startswith(".")
         )
@@ -508,6 +523,9 @@ class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
         self.properties().setPerUserUID(uid)
 
     def objectResources(self):
+        """
+        Return a list of object resource objects.
+        """
         return sorted((
             self.objectResourceWithName(name)
             for name in (
@@ -517,6 +535,21 @@ class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
                 set(self._removedObjectResources)
             )),
             key=lambda calObj: calObj.name()
+        )
+
+
+    def listObjectResources(self):
+        """
+        Return a list of object resource names.
+        """
+        return sorted((
+            name
+            for name in (
+                set(self._newObjectResources.iterkeys()) |
+                set(name for name in self._path.listdir()
+                    if not name.startswith(".")) -
+                set(self._removedObjectResources)
+            ))
         )
 
 
@@ -739,6 +772,7 @@ class NotificationCollection(CommonHomeChild):
         return ResourceType.notification
 
     notificationObjects = CommonHomeChild.objectResources
+    listNotificationObjects = CommonHomeChild.listObjectResources
     notificationObjectWithName = CommonHomeChild.objectResourceWithName
     removeNotificationObjectWithUID = CommonHomeChild.removeObjectResourceWithUID
     notificationObjectsSinceToken = CommonHomeChild.objectResourcesSinceToken

@@ -90,8 +90,8 @@ class TimezoneServiceResource (ReadOnlyNoCopyResourceMixIn, DAVResource):
             ),
         )
 
-    def resourceType(self, request):
-        return succeed(davxml.ResourceType.timezones)
+    def resourceType(self):
+        return davxml.ResourceType.timezones
 
     def isCollection(self):
         return False

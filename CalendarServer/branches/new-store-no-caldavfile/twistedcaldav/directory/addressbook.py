@@ -25,7 +25,6 @@ __all__ = [
     "DirectoryAddressBookHomeTypeProvisioningResource",
     "DirectoryAddressBookHomeUIDProvisioningResource",
     "DirectoryAddressBookHomeResource",
-    "GlobalAddressBookResource",
 ]
 
 from twext.python.log import Logger
@@ -39,22 +38,30 @@ from twisted.internet.defer import succeed
 
 from twistedcaldav.config import config
 from twistedcaldav.directory.idirectory import IDirectoryService
-from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
-from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVResource
-from twistedcaldav.notifications import NotificationCollectionResource
-from twistedcaldav.resource import CalDAVResource, CalDAVComplianceMixIn
+from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn,\
+    DirectoryReverseProxyResource
+from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVResource,\
+    DAVResourceWithChildrenMixin
 
 log = Logger()
 
 # Use __underbars__ convention to avoid conflicts with directory resource types.
 uidsResourceName = "__uids__"
 
+# FIXME: copied from resource.py to avoid circular dependency
+class CalDAVComplianceMixIn(object):
+    def davComplianceClasses(self):
+        return (
+            tuple(super(CalDAVComplianceMixIn, self).davComplianceClasses())
+            + config.CalDAVComplianceClasses
+        )
 
 class DirectoryAddressBookProvisioningResource (
     AutoProvisioningResourceMixIn,
     ReadOnlyResourceMixIn,
     CalDAVComplianceMixIn,
     DAVResource,
+    DAVResourceWithChildrenMixin,
 ):
     def defaultAccessControlList(self):
         return config.ProvisioningResourceACL
@@ -64,7 +71,7 @@ class DirectoryAddressBookHomeProvisioningResource (DirectoryAddressBookProvisio
     """
     Resource which provisions address book home collections as needed.    
     """
-    def __init__(self, directory, url):
+    def __init__(self, directory, url, store):
         """
         @param directory: an L{IDirectoryService} to provision address books from.
         @param url: the canonical URL for the resource.
@@ -73,9 +80,11 @@ class DirectoryAddressBookHomeProvisioningResource (DirectoryAddressBookProvisio
         assert url.endswith("/"), "Collection URL must end in '/'"
 
         DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.directory = IDirectoryService(directory)
         self._url = url
+        self._newStore = store
 
         # FIXME: Smells like a hack
         directory.addressBookHomesCollection = self
@@ -91,14 +100,14 @@ class DirectoryAddressBookHomeProvisioningResource (DirectoryAddressBookProvisio
 
         provisionChild(uidsResourceName)
 
-    def provisionChild(self, recordType):
-        raise NotImplementedError("Subclass must implement provisionChild()")
+    def provisionChild(self, name):
+        if name == uidsResourceName:
+            return DirectoryAddressBookHomeUIDProvisioningResource(self)
+
+        return DirectoryAddressBookHomeTypeProvisioningResource(self, name)
 
     def url(self):
         return self._url
-
-    def getChild(self, name):
-        return self.putChildren.get(name, None)
 
     def listChildren(self):
         return self.directory.recordTypes()
@@ -142,6 +151,7 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
         assert recordType is not None
 
         DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.directory = parent.directory
         self.recordType = recordType
@@ -177,7 +187,7 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
             # Not a listable collection
             raise HTTPError(responsecode.FORBIDDEN)
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         raise HTTPError(responsecode.NOT_FOUND)
 
     ##
@@ -199,6 +209,7 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
 
 
 class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvisioningResource):
+
     def __init__(self, parent):
         """
         @param parent: the parent of this resource
@@ -206,12 +217,29 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
         assert parent is not None
 
         DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.directory = parent.directory
         self.parent = parent
+        
+        # TODO: better way to get this class - perhaps request from the store
+        from twistedcaldav.resource import AddressBookHomeResource
+        self.homeResourceClass = AddressBookHomeResource
 
     def url(self):
         return joinURL(self.parent.url(), uidsResourceName)
+
+    def locateChild(self, request, segments):
+
+        name = segments[0]
+        if name == "":
+            return (self, ())
+
+        record = self.directory.recordWithUID(name)
+        if record:
+            return (self.homeResourceForRecord(record, request), segments[1:])
+        else:
+            return (None, ())
 
     def getChild(self, name, record=None):
         raise NotImplementedError("DirectoryAddressBookHomeUIDProvisioningResource.getChild no longer exists.")
@@ -219,6 +247,34 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
     def listChildren(self):
         # Not a listable collection
         raise HTTPError(responsecode.FORBIDDEN)
+
+    def homeResourceForRecord(self, record, request):
+
+        self.provision()
+        TRANSACTION_KEY = '_newStoreTransaction'
+        transaction = getattr(request, TRANSACTION_KEY, None)
+        if transaction is None:
+            transaction = self.parent._newStore.newTransaction(repr(request))
+            setattr(request, TRANSACTION_KEY, transaction)
+
+        name = record.uid
+
+        if record is None:
+            self.log_msg("No directory record with GUID %r" % (name,))
+            return None
+
+        if not record.enabledForAddressBooks:
+            self.log_msg("Directory record %r is not enabled for address books" % (record,))
+            return None
+
+        assert len(name) > 4, "Directory record has an invalid GUID: %r" % (name,)
+        
+        if record.locallyHosted():
+            child = self.homeResourceClass(self, record, transaction)
+        else:
+            child = DirectoryReverseProxyResource(self, record)
+
+        return child
 
     ##
     # DAV
@@ -238,7 +294,7 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
         return self.parent.principalForRecord(record)
 
 
-class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, CalDAVResource):
+class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, DAVResource, DAVResourceWithChildrenMixin):
     """
     Address book home collection resource.
     """
@@ -249,13 +305,15 @@ class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, CalDAVRes
         assert parent is not None
         assert record is not None
 
-        CalDAVResource.__init__(self)
+        DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.record = record
         self.parent = parent
 
         childlist = ()
         if config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled and not config.Sharing.Calendars.Enabled:
+            from twistedcaldav.notifications import NotificationCollectionResource
             childlist += (
                 ("notification", NotificationCollectionResource),
             )
@@ -275,7 +333,6 @@ class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, CalDAVRes
     
             childName = "addressbook"
             child = self.provisionChild(childName)
-            assert isinstance(child, CalDAVResource), "Child %r is not a %s: %r" % (childName, CalDAVResource.__name__, child) #@UndefinedVariable
 
             d = child.createAddressBookCollection()
         except:
@@ -370,43 +427,3 @@ class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, CalDAVRes
             is quota-controlled, or C{None} if not quota controlled.
         """
         return config.UserQuota if config.UserQuota != 0 else None
-
-class GlobalAddressBookResource (CalDAVResource):
-    """
-    Global address book. All we care about is making sure permissions are setup.
-    """
-
-    def resourceType(self, request):
-        return succeed(davxml.ResourceType.sharedaddressbook)
-
-    def defaultAccessControlList(self):
-
-        aces = (
-            davxml.ACE(
-                davxml.Principal(davxml.Authenticated()),
-                davxml.Grant(
-                    davxml.Privilege(davxml.Read()),
-                    davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
-                    davxml.Privilege(davxml.Write()),
-                ),
-                davxml.Protected(),
-                TwistedACLInheritable(),
-           ),
-        )
-        
-        if config.GlobalAddressBook.EnableAnonymousReadAccess:
-            aces += (
-                davxml.ACE(
-                    davxml.Principal(davxml.Unauthenticated()),
-                    davxml.Grant(
-                        davxml.Privilege(davxml.Read()),
-                    ),
-                    davxml.Protected(),
-                    TwistedACLInheritable(),
-               ),
-            )
-        return davxml.ACL(*aces)
-
-    def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
-        # Permissions here are fixed, and are not subject to inheritance rules, etc.
-        return succeed(self.defaultAccessControlList())

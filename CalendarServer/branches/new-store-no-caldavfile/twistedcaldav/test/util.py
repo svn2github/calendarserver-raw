@@ -40,12 +40,12 @@ from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav import memcacher
 from twistedcaldav.config import config
-from twistedcaldav.static import CalDAVFile, CalendarHomeProvisioningFile,\
-    AddressBookHomeProvisioningFile
-from twistedcaldav.directory.xmlfile import XMLDirectoryService
+from twistedcaldav.static import CalDAVFile, AddressBookHomeProvisioningFile
 from twistedcaldav.directory import augment
+from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
 from twistedcaldav.directory.principal import (
     DirectoryPrincipalProvisioningResource)
+from twistedcaldav.directory.xmlfile import XMLDirectoryService
 
 from txdav.common.datastore.file import CommonDataStore
 
@@ -96,7 +96,7 @@ class TestCase(twext.web2.dav.test.util.TestCase):
 
     def setupCalendars(self):
         """
-        Set up the resource at /calendars (a L{CalendarHomeProvisioningFile}),
+        Set up the resource at /calendars (a L{DirectoryCalendarHomeProvisioningResource}),
         and assign it as C{self.calendarCollection}.
         """
         path = self.site.resource.fp.child("calendars")
@@ -105,8 +105,7 @@ class TestCase(twext.web2.dav.test.util.TestCase):
         # Need a data store
         _newStore = CommonDataStore(self.site.resource.fp, True, False)
 
-        self.calendarCollection = CalendarHomeProvisioningFile(
-            path,
+        self.calendarCollection = DirectoryCalendarHomeProvisioningResource(
             self.directoryService,
             "/calendars/",
             _newStore
@@ -293,7 +292,7 @@ class HomeTestCase(TestCase):
     def setUp(self):
         """
         Replace self.site.resource with an appropriately provisioned
-        CalendarHomeFile, and replace self.docroot with a path pointing at that
+        CalendarHomeResource, and replace self.docroot with a path pointing at that
         file.
         """
         super(HomeTestCase, self).setUp()
@@ -305,8 +304,7 @@ class HomeTestCase(TestCase):
         # Need a data store
         _newStore = CommonDataStore(fp, True, False)
 
-        self.homeProvisioner = CalendarHomeProvisioningFile(
-            os.path.join(fp.path, "calendars"),
+        self.homeProvisioner = DirectoryCalendarHomeProvisioningResource(
             self.directoryService, "/calendars/",
             _newStore
         )

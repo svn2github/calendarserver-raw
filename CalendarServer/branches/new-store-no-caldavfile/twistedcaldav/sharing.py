@@ -66,26 +66,23 @@ class SharedCollectionMixin(object):
                 return None
         return self.isShared(request).addCallback(sharedOK)
 
-    @inlineCallbacks
-    def upgradeToShare(self, request):
+    def upgradeToShare(self):
         """ Upgrade this collection to a shared state """
         
         # Change resourcetype
-        rtype = (yield self.resourceType(request))
+        rtype = self.resourceType()
         rtype = davxml.ResourceType(*(rtype.children + (customxml.SharedOwner(),)))
         self.writeDeadProperty(rtype)
         
         # Create invites database
         self.invitesDB().create()
-
-        returnValue(True)
     
     @inlineCallbacks
     def downgradeFromShare(self, request):
         
         # Change resource type (note this might be called after deleting a resource
         # so we have to cope with that)
-        rtype = (yield self.resourceType(request))
+        rtype = self.resourceType()
         rtype = davxml.ResourceType(*([child for child in rtype.children if child != customxml.SharedOwner()]))
         self.writeDeadProperty(rtype)
         
@@ -212,9 +209,9 @@ class SharedCollectionMixin(object):
         elif hasattr(self, "_newStoreAddressBook"):
             self._newStoreAddressBook.setSharingUID(self._shareePrincipal.principalUID())
 
-    def isVirtualShare(self, request):
+    def isVirtualShare(self):
         """ Return True if this is a shared calendar collection """
-        return succeed(hasattr(self, "_isVirtualShare"))
+        return hasattr(self, "_isVirtualShare")
 
     def removeVirtualShare(self, request):
         """ Return True if this is a shared calendar collection """
@@ -226,17 +223,16 @@ class SharedCollectionMixin(object):
             shareeHome = self._shareePrincipal.addressBookHome(request)
         return shareeHome.removeShare(request, self._share)
 
-    @inlineCallbacks
-    def resourceType(self, request):
+    def resourceType(self):
         superObject = super(SharedCollectionMixin, self)
         try:
             superMethod = superObject.resourceType
         except AttributeError:
             rtype = davxml.ResourceType()
         else:
-            rtype = (yield superMethod(request))
+            rtype = superMethod()
 
-        isVirt = (yield self.isVirtualShare(request))
+        isVirt = self.isVirtualShare()
         if isVirt:
             rtype = davxml.ResourceType(
                 *(
@@ -244,7 +240,7 @@ class SharedCollectionMixin(object):
                     (customxml.Shared(),)
                 )
             )
-        returnValue(rtype)
+        return rtype
         
     def sharedResourceType(self):
         """
@@ -635,10 +631,7 @@ class SharedCollectionMixin(object):
 
             def _autoShare(isShared, request):
                 if not isShared:
-                    return self.upgradeToShare(request)
-                else:
-                    return succeed(True)
-                raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Cannot upgrade to shared calendar"))
+                    self.upgradeToShare()
 
             @inlineCallbacks
             def _processInviteDoc(_, request):

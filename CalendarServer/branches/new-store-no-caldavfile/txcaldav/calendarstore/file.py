@@ -75,7 +75,7 @@ class CalendarHome(CommonHome):
 
 
     def calendarWithName(self, name):
-        if name == 'dropbox':
+        if name in ('dropbox', 'notifications', 'freebusy'):
             # "dropbox" is a file storage area, not a calendar.
             return None
         else:
@@ -86,10 +86,22 @@ class CalendarHome(CommonHome):
     removeCalendarWithName = CommonHome.removeChildWithName
 
     def calendars(self):
+        """
+        Return a generator of the child resource objects.
+        """
         for child in self.children():
             if child.name() in ('dropbox', 'notification'):
                 continue
             yield child
+
+    def listCalendars(self):
+        """
+        Return a generator of the child resource names.
+        """
+        for name in self.listChildren():
+            if name in ('dropbox', 'notification'):
+                continue
+            yield name
 
 
     def calendarObjectWithDropboxID(self, dropboxID):
@@ -157,6 +169,7 @@ class Calendar(CommonHomeChild):
 
     ownerCalendarHome = CommonHomeChild.ownerHome
     calendarObjects = CommonHomeChild.objectResources
+    listCalendarObjects = CommonHomeChild.listObjectResources
     calendarObjectWithName = CommonHomeChild.objectResourceWithName
     calendarObjectWithUID = CommonHomeChild.objectResourceWithUID
     createCalendarObjectWithName = CommonHomeChild.createObjectResourceWithName

@@ -15,5 +15,17 @@
 ##
 
 """
-xxxDAV protocol data store for Twisted.
+Bind methods.
+Have to have this in a separate module for now.
 """
+
+from twext.web2.dav.util import bindMethods
+
+##
+# Attach methods
+##
+
+def doBind():
+    import twistedcaldav.method
+    from twistedcaldav.resource import CalDAVResource
+    bindMethods(twistedcaldav.method, CalDAVResource)

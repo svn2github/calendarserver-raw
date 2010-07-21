@@ -40,26 +40,32 @@ from twext.python.log import Logger
 from twistedcaldav import caldavxml
 from twistedcaldav.config import config
 from twistedcaldav.dropbox import DropBoxHomeResource
-from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVResource
-from twistedcaldav.freebusyurl import FreeBusyURLResource
-from twistedcaldav.resource import CalDAVResource, CalDAVComplianceMixIn
-from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
+from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVResource,\
+    DAVResourceWithChildrenMixin
 from twistedcaldav.directory.idirectory import IDirectoryService
 from twistedcaldav.directory.wiki import getWikiACL
-from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn
-from twistedcaldav.notifications import NotificationCollectionResource
+from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn,\
+    DirectoryReverseProxyResource
 
 log = Logger()
 
 # Use __underbars__ convention to avoid conflicts with directory resource types.
 uidsResourceName = "__uids__"
 
+# FIXME: copied from resource.py to avoid circular dependency
+class CalDAVComplianceMixIn(object):
+    def davComplianceClasses(self):
+        return (
+            tuple(super(CalDAVComplianceMixIn, self).davComplianceClasses())
+            + config.CalDAVComplianceClasses
+        )
 
 class DirectoryCalendarProvisioningResource (
     AutoProvisioningResourceMixIn,
     ReadOnlyResourceMixIn,
     CalDAVComplianceMixIn,
     DAVResource,
+    DAVResourceWithChildrenMixin,
 ):
     def defaultAccessControlList(self):
         return config.ProvisioningResourceACL
@@ -69,7 +75,7 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
     """
     Resource which provisions calendar home collections as needed.    
     """
-    def __init__(self, directory, url):
+    def __init__(self, directory, url, store):
         """
         @param directory: an L{IDirectoryService} to provision calendars from.
         @param url: the canonical URL for the resource.
@@ -78,9 +84,11 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
         assert url.endswith("/"), "Collection URL must end in '/'"
 
         DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.directory = IDirectoryService(directory)
         self._url = url
+        self._newStore = store
 
         # FIXME: Smells like a hack
         directory.calendarHomesCollection = self
@@ -96,14 +104,14 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
 
         provisionChild(uidsResourceName)
 
-    def provisionChild(self, recordType):
-        raise NotImplementedError("Subclass must implement provisionChild()")
+    def provisionChild(self, name):
+        if name == uidsResourceName:
+            return DirectoryCalendarHomeUIDProvisioningResource(self)
+
+        return DirectoryCalendarHomeTypeProvisioningResource(self, name)
 
     def url(self):
         return self._url
-
-    def getChild(self, name):
-        return self.putChildren.get(name, None)
 
     def listChildren(self):
         return self.directory.recordTypes()
@@ -147,6 +155,7 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
         assert recordType is not None
 
         DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.directory = parent.directory
         self.recordType = recordType
@@ -182,7 +191,7 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
             # Not a listable collection
             raise HTTPError(responsecode.FORBIDDEN)
 
-    def createSimilarFile(self, path):
+    def makeChild(self, name):
         raise HTTPError(responsecode.NOT_FOUND)
 
     ##
@@ -204,6 +213,7 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
 
 
 class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisioningResource):
+
     def __init__(self, parent):
         """
         @param parent: the parent of this resource
@@ -211,12 +221,29 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
         assert parent is not None
 
         DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.directory = parent.directory
         self.parent = parent
+        
+        # TODO: better way to get this class - perhaps request from the store
+        from twistedcaldav.resource import CalendarHomeResource
+        self.homeResourceClass = CalendarHomeResource
 
     def url(self):
         return joinURL(self.parent.url(), uidsResourceName)
+
+    def locateChild(self, request, segments):
+
+        name = segments[0]
+        if name == "":
+            return (self, ())
+
+        record = self.directory.recordWithUID(name)
+        if record:
+            return (self.homeResourceForRecord(record, request), segments[1:])
+        else:
+            return (None, ())
 
     def getChild(self, name, record=None):
         raise NotImplementedError("DirectoryCalendarProvisioningResource.getChild no longer exists.")
@@ -224,6 +251,34 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
     def listChildren(self):
         # Not a listable collection
         raise HTTPError(responsecode.FORBIDDEN)
+
+    def homeResourceForRecord(self, record, request):
+
+        self.provision()
+        TRANSACTION_KEY = '_newStoreTransaction'
+        transaction = getattr(request, TRANSACTION_KEY, None)
+        if transaction is None:
+            transaction = self.parent._newStore.newTransaction(repr(request))
+            setattr(request, TRANSACTION_KEY, transaction)
+
+        name = record.uid
+
+        if record is None:
+            self.log_msg("No directory record with GUID %r" % (name,))
+            return None
+
+        if not record.enabledForCalendaring:
+            self.log_msg("Directory record %r is not enabled for calendaring" % (record,))
+            return None
+
+        assert len(name) > 4, "Directory record has an invalid GUID: %r" % (name,)
+        
+        if record.locallyHosted():
+            child = self.homeResourceClass(self, record, transaction)
+        else:
+            child = DirectoryReverseProxyResource(self, record)
+
+        return child
 
     ##
     # DAV
@@ -243,7 +298,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
         return self.parent.principalForRecord(record)
 
 
-class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResource):
+class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, DAVResource, DAVResourceWithChildrenMixin):
     """
     Calendar home collection resource.
     """
@@ -254,12 +309,14 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
         assert parent is not None
         assert record is not None
 
-        CalDAVResource.__init__(self)
+        DAVResource.__init__(self)
+        DAVResourceWithChildrenMixin.__init__(self)
 
         self.record = record
         self.parent = parent
 
         # Cache children which must be of a specific type
+        from twistedcaldav.schedule import ScheduleInboxResource, ScheduleOutboxResource
         childlist = (
             ("inbox" , ScheduleInboxResource ),
             ("outbox", ScheduleOutboxResource),
@@ -269,10 +326,12 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, CalDAVResour
                 ("dropbox", DropBoxHomeResource),
             )
         if config.FreeBusyURL.Enabled:
+            from twistedcaldav.freebusyurl import FreeBusyURLResource
             childlist += (
                 ("freebusy", FreeBusyURLResource),
             )
         if config.Sharing.Enabled and config.Sharing.Calendars.Enabled:
+            from twistedcaldav.notifications import NotificationCollectionResource
             childlist += (
                 ("notification", NotificationCollectionResource),
             )

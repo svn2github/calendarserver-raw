@@ -23,7 +23,6 @@ from twext.web2.dav.fileop import rmdir
 from twext.web2.dav.resource import AccessDeniedError
 from twext.web2.test.test_server import SimpleRequest
 
-from twistedcaldav.static import CalendarHomeProvisioningFile
 from twistedcaldav.config import config
 from twistedcaldav.directory import augment, calendaruserproxy
 from twistedcaldav.directory.directory import DirectoryService
@@ -358,21 +357,19 @@ class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
         # Need to create a calendar home provisioner for each service.
         calendarRootResources = {}
 
-        # Need a data store
-        _newStore = CommonDataStore(FilePath(self.docroot), True, False)
-
         for directory in self.directoryServices:
-            url = "/homes_" + directory.__class__.__name__ + "/"
-            path = os.path.join(self.docroot, url[1:])
+            path = os.path.join(self.docroot, directory.__class__.__name__)
 
             if os.path.exists(path):
                 rmdir(path)
             os.mkdir(path)
 
-            provisioningResource = CalendarHomeProvisioningFile(
-                path,
+            # Need a data store
+            _newStore = CommonDataStore(path, True, False)
+
+            provisioningResource = DirectoryCalendarHomeProvisioningResource(
                 directory,
-                url,
+                "/calendars/",
                 _newStore
             )
 

@@ -674,7 +674,7 @@ class StoreCalendarObjectResource(object):
             if do_implicit_action and self.allowImplicitSchedule:
 
                 # Cannot do implicit in sharee's shared calendar
-                isvirt = (yield self.destinationparent.isVirtualShare(self.request))
+                isvirt = self.destinationparent.isVirtualShare()
                 if isvirt:
                     raise HTTPError(ErrorResponse(
                         responsecode.FORBIDDEN,
