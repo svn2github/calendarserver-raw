@@ -72,7 +72,7 @@ def getDirectory():
                 #
                 # We need that in order to locate calendar homes via the directory.
                 #
-                from twistedcaldav.resource import DirectoryCalendarHomeProvisioningResource
+                from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
                 DirectoryCalendarHomeProvisioningResource(self, "/calendars/", _newStore)
 
                 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
@@ -142,6 +142,7 @@ def getDirectory():
     # Need a data store
     _newStore = CommonDataStore(FilePath(config.DocumentRoot), True, False)
 
+    from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
     calendarCollection = DirectoryCalendarHomeProvisioningResource(
         aggregate, "/calendars/",
         _newStore,
