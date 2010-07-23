@@ -72,6 +72,25 @@ for branch in branches:
 else:
     version = "unknown (%s :: %s)" % (base_version, svn_revision)
 
+def find_modules():
+    modules = [
+        "twisted.plugins",
+    ]
+
+    for root, dirs, files in os.walk("."):
+        for exclude in (
+            ".svn",
+            "_trial_temp",
+            "build",
+        ):
+            if exclude in dirs:
+                dirs.remove(exclude)
+
+        if "__init__.py" in files:
+            modules.append(".".join(root.split(os.path.sep)[1:]))
+
+    return modules
+
 #
 # Options
 #
@@ -128,15 +147,7 @@ dist = setup(
     author_email     = None,
     license          = None,
     platforms        = [ "all" ],
-    packages         = [
-                         "twistedcaldav",
-                         "twistedcaldav.directory", 
-                         "twistedcaldav.method",
-                         "twistedcaldav.query", 
-                         "twistedcaldav.admin",
-                         "twistedcaldav.py", 
-                         "twisted",
-                       ],
+    packages         = find_modules(),
     package_data     = {
                          "twisted": ["plugins/caldav.py",
                                      "plugins/kqueuereactor.py"],
@@ -146,6 +157,7 @@ dist = setup(
                             "bin/caldavd",
                             "bin/caldav_load_augmentdb",
                             "bin/caldav_manage_augments",
+                            "bin/caldav_manage_postgres",
                        ],
     data_files       = [ ("caldavd", ["conf/caldavd.plist"]) ],
     ext_modules      = extensions,
