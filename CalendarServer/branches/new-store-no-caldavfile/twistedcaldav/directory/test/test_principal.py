@@ -25,6 +25,7 @@ from twext.web2.test.test_server import SimpleRequest
 
 from twistedcaldav.config import config
 from twistedcaldav.directory import augment, calendaruserproxy
+from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.directory.test.test_xmlfile import xmlFile, augmentsFile
@@ -35,7 +36,6 @@ from twistedcaldav.directory.principal import DirectoryCalendarPrincipalResource
 
 import twistedcaldav.test.util
 from txdav.common.datastore.file import CommonDataStore
-from twisted.python.filepath import FilePath
 
 
 class ProvisionedPrincipals (twistedcaldav.test.util.TestCase):
