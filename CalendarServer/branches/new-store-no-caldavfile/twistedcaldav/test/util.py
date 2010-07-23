@@ -36,12 +36,14 @@ from twext.python.memcacheclient import ClientFactory
 from twext.python.filepath import CachingFilePath as FilePath
 import twext.web2.dav.test.util
 from twext.web2.dav import davxml
+from twext.web2.dav.static import DAVFile
 from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav import memcacher
+from twistedcaldav.bind import doBind
 from twistedcaldav.config import config
-from twistedcaldav.static import CalDAVFile, AddressBookHomeProvisioningFile
 from twistedcaldav.directory import augment
+from twistedcaldav.directory.addressbook import DirectoryAddressBookHomeProvisioningResource
 from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
 from twistedcaldav.directory.principal import (
     DirectoryPrincipalProvisioningResource)
@@ -66,7 +68,7 @@ augmentsFile = dirTest.child("augments.xml")
 proxiesFile = dirTest.child("proxies.xml")
 
 class TestCase(twext.web2.dav.test.util.TestCase):
-    resource_class = CalDAVFile
+    resource_class = DAVFile
 
     def createStockDirectoryService(self):
         """
@@ -115,8 +117,7 @@ class TestCase(twext.web2.dav.test.util.TestCase):
         path = self.site.resource.fp.child("addressbooks")
         path.createDirectory()
 
-        self.addressbookCollection = AddressBookHomeProvisioningFile(
-            path,
+        self.addressbookCollection = DirectoryAddressBookHomeProvisioningResource(
             self.directoryService,
             "/addressbooks/",
             _newStore
@@ -127,11 +128,16 @@ class TestCase(twext.web2.dav.test.util.TestCase):
     def setUp(self):
         super(TestCase, self).setUp()
 
+        # FIXME: this is only here to workaround circular imports
+        doBind()
+
         config.reset()
         serverroot = self.mktemp()
         os.mkdir(serverroot)
-        config.ServerRoot = serverroot
+        config.ServerRoot = os.path.abspath(serverroot)
         config.ConfigRoot = "config"
+        config.LogRoot = "logs"
+        config.RunRoot = "logs"
         
         if not os.path.exists(config.DataRoot):
             os.makedirs(config.DataRoot)
@@ -139,6 +145,8 @@ class TestCase(twext.web2.dav.test.util.TestCase):
             os.makedirs(config.DocumentRoot)
         if not os.path.exists(config.ConfigRoot):
             os.makedirs(config.ConfigRoot)
+        if not os.path.exists(config.LogRoot):
+            os.makedirs(config.LogRoot)
 
         config.Memcached.Pools.Default.ClientEnabled = False
         config.Memcached.Pools.Default.ServerEnabled = False
@@ -370,8 +378,7 @@ class AddressBookHomeTestCase(TestCase):
         # Need a data store
         _newStore = CommonDataStore(fp, True, False)
 
-        self.homeProvisioner = AddressBookHomeProvisioningFile(
-            os.path.join(fp.path, "addressbooks"),
+        self.homeProvisioner = DirectoryAddressBookHomeProvisioningResource(
             self.directoryService, "/addressbooks/",
             _newStore
         )
