@@ -33,6 +33,7 @@ from twext.web2.dav import davxml
 from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import joinURL
 from twext.web2.http import HTTPError
+from twext.web2.http_headers import ETag, MimeType
 
 from twisted.internet.defer import succeed
 
@@ -42,6 +43,8 @@ from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn,\
     DirectoryReverseProxyResource
 from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVResource,\
     DAVResourceWithChildrenMixin
+
+from uuid import uuid4
 
 log = Logger()
 
@@ -60,11 +63,17 @@ class DirectoryAddressBookProvisioningResource (
     AutoProvisioningResourceMixIn,
     ReadOnlyResourceMixIn,
     CalDAVComplianceMixIn,
-    DAVResource,
     DAVResourceWithChildrenMixin,
+    DAVResource,
 ):
     def defaultAccessControlList(self):
         return config.ProvisioningResourceACL
+
+    def etag(self):
+        return ETag(str(uuid4()))
+
+    def contentType(self):
+        return MimeType("httpd", "unix-directory")
 
 
 class DirectoryAddressBookHomeProvisioningResource (DirectoryAddressBookProvisioningResource):
@@ -79,8 +88,7 @@ class DirectoryAddressBookHomeProvisioningResource (DirectoryAddressBookProvisio
         assert directory is not None
         assert url.endswith("/"), "Collection URL must end in '/'"
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryAddressBookHomeProvisioningResource, self).__init__()
 
         self.directory = IDirectoryService(directory)
         self._url = url
@@ -136,6 +144,9 @@ class DirectoryAddressBookHomeProvisioningResource (DirectoryAddressBookProvisio
     def isCollection(self):
         return True
 
+    def displayName(self):
+        return "addressbooks"
+
 
 class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProvisioningResource):
     """
@@ -150,8 +161,7 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
         assert parent is not None
         assert recordType is not None
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryAddressBookHomeTypeProvisioningResource, self).__init__()
 
         self.directory = parent.directory
         self.recordType = recordType
@@ -188,7 +198,7 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
             raise HTTPError(responsecode.FORBIDDEN)
 
     def makeChild(self, name):
-        raise HTTPError(responsecode.NOT_FOUND)
+        return None
 
     ##
     # DAV
@@ -196,6 +206,9 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
     
     def isCollection(self):
         return True
+
+    def displayName(self):
+        return self.recordType
 
     ##
     # ACL
@@ -216,8 +229,7 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
         """
         assert parent is not None
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryAddressBookHomeUIDProvisioningResource, self).__init__()
 
         self.directory = parent.directory
         self.parent = parent
@@ -283,6 +295,9 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
     def isCollection(self):
         return True
 
+    def displayName(self):
+        return uidsResourceName
+
     ##
     # ACL
     ##
@@ -294,7 +309,7 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
         return self.parent.principalForRecord(record)
 
 
-class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, DAVResource, DAVResourceWithChildrenMixin):
+class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, DAVResource):
     """
     Address book home collection resource.
     """
@@ -305,8 +320,7 @@ class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, DAVResour
         assert parent is not None
         assert record is not None
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryAddressBookHomeResource, self).__init__()
 
         self.record = record
         self.parent = parent

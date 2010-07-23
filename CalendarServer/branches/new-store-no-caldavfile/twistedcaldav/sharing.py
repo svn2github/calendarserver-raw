@@ -24,15 +24,20 @@ from twext.web2.dav import davxml
 from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import allDataFromStream, joinURL
-from twext.web2.http import HTTPError, Response, StatusResponse, XMLResponse
+from twext.web2.http import HTTPError, Response, XMLResponse
+
 from twisted.internet.defer import succeed, inlineCallbacks, DeferredList,\
     returnValue
+
 from twistedcaldav import customxml, caldavxml
 from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
+from twistedcaldav.linkresource import LinkFollowerMixIn
 from twistedcaldav.sql import AbstractSQLDatabase, db_prefix
-from uuid import uuid4
+
 from vobject.icalendar import dateTimeToString, utc
+
+from uuid import uuid4
 import datetime
 import os
 import types
@@ -791,7 +796,7 @@ class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
 
     def __init__(self, resource):
         """
-        @param resource: the L{twistedcaldav.static.CalDAVFile} resource for
+        @param resource: the L{CalDAVResource} resource for
             the shared collection. C{resource} must be a calendar/addressbook collection.)
         """
         self.resource = resource
@@ -917,7 +922,7 @@ class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
         
         return Invite(*[str(item) if type(item) == types.UnicodeType else item for item in row])
 
-class SharedHomeMixin(object):
+class SharedHomeMixin(LinkFollowerMixIn):
     """
     A mix-in for calendar/addressbook homes that defines the operations for manipulating a sharee's
     set of shared calendars.
@@ -1146,7 +1151,7 @@ class SharedCollectionsDatabase(AbstractSQLDatabase, LoggingMixIn):
 
     def __init__(self, resource):   
         """
-        @param resource: the L{twistedcaldav.static.CalDAVFile} resource for
+        @param resource: the L{CalDAVResource} resource for
             the shared collection. C{resource} must be a calendar/addressbook home collection.)
         """
         self.resource = resource

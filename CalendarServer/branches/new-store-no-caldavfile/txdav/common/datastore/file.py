@@ -308,13 +308,13 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
         """
         Return a set of the names of the child resources.
         """
-        return set(
+        return sorted(set(
             [child.name() for child in self._newChildren.itervalues()]
         ) | set(
             name
             for name in self._path.listdir()
             if not name.startswith(".")
-        )
+        ))
 
     def childWithName(self, name):
         child = self._newChildren.get(name)
@@ -629,7 +629,7 @@ class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
 
 
     def _updateSyncToken(self, reset=False):
-        # FIXME: add locking a-la CalDAVFile.bumpSyncToken
+        # FIXME: add locking a-la CalDAVResource.bumpSyncToken
         # FIXME: tests for desired concurrency properties
         ctag = PropertyName.fromString(GETCTag.sname())
         props = self.properties()

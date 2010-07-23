@@ -26,6 +26,10 @@ from twext.web2.dav.util import bindMethods
 ##
 
 def doBind():
+    import twext.web2.dav.method
+    from twext.web2.dav.resource import DAVResource
+    bindMethods(twext.web2.dav.method, DAVResource)
+
     import twistedcaldav.method
     from twistedcaldav.resource import CalDAVResource
     bindMethods(twistedcaldav.method, CalDAVResource)

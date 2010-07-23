@@ -58,15 +58,14 @@ from twext.python.log import Logger, LoggingMixIn
 from twistedcaldav import ical, caldavxml
 from twistedcaldav import memcachepool
 from twistedcaldav.config import config
-from twistedcaldav.directory.util import NotFilePath
 from twistedcaldav.ical import Property
 from twistedcaldav.localization import translationTo
+from twistedcaldav.resource import CalDAVResource
 from twistedcaldav.schedule import deliverSchedulePrivilegeSet
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
 from twistedcaldav.scheduling.scheduler import IMIPScheduler
 from twistedcaldav.sql import AbstractSQLDatabase
-from twistedcaldav.static import CalDAVFile
 from twistedcaldav.util import AuthorizedHTTPGetter
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
 
@@ -174,7 +173,7 @@ class MailGatewayOptions(Options):
 
 
 
-class IMIPInboxResource(CalDAVFile):
+class IMIPInboxResource(CalDAVResource):
     """
     IMIP-delivery Inbox resource.
 
@@ -187,7 +186,7 @@ class IMIPInboxResource(CalDAVFile):
         """
         assert parent is not None
 
-        CalDAVFile.__init__(self, NotFilePath(isfile=True), principalCollections=parent.principalCollections())
+        CalDAVResource.__init__(self, principalCollections=parent.principalCollections())
 
         self.parent = parent
 

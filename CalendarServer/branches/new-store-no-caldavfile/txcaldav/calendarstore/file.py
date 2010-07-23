@@ -281,7 +281,7 @@ class CalendarObject(CommonObjectResource):
     def component(self):
         if self._component is not None:
             return self._component
-        text = self.iCalendarText()
+        text = self.text()
 
         try:
             component = VComponent.fromString(text)
@@ -293,7 +293,7 @@ class CalendarObject(CommonObjectResource):
         return component
 
 
-    def iCalendarText(self):
+    def text(self):
         if self._component is not None:
             return str(self._component)
         try:
@@ -319,6 +319,7 @@ class CalendarObject(CommonObjectResource):
             )
         return text
 
+    iCalendarText = text
 
     def uid(self):
         if not hasattr(self, "_uid"):
@@ -440,7 +441,7 @@ class AttachmentStorageTransport(object):
         """
         self._attachment = attachment
         self._contentType = contentType
-        self._file = self._attachment._computePath().open("w")
+        self._file = self._attachment._path.open("w")
 
 
     def write(self, data):
@@ -452,7 +453,7 @@ class AttachmentStorageTransport(object):
         # FIXME: do anything
         self._file.close()
 
-        md5 = hashlib.md5(self._attachment._computePath().getContent()).hexdigest()
+        md5 = hashlib.md5(self._attachment._path.getContent()).hexdigest()
         props = self._attachment.properties()
         props[contentTypeKey] = GETContentType(generateContentType(self._contentType))
         props[md5key] = TwistedGETContentMD5.fromString(md5)
@@ -491,7 +492,7 @@ class Attachment(FileMetaDataMixin):
         return PropertyStore(
             self._calendarObject._parentCollection._home.peruser_uid(),
             self._calendarObject._parentCollection._home.uid(),
-            self._computePath
+            lambda :self._path
         )
 
 
@@ -502,12 +503,12 @@ class Attachment(FileMetaDataMixin):
         # FIXME: makeConnection
         # FIXME: actually stream
         # FIMXE: connectionLost
-        protocol.dataReceived(self._computePath().getContent())
+        protocol.dataReceived(self._path.getContent())
         # FIXME: ConnectionDone, not NotImplementedError
         protocol.connectionLost(Failure(NotImplementedError()))
 
-
-    def _computePath(self):
+    @property
+    def _path(self):
         dropboxPath = self._calendarObject._dropboxPath()
         return dropboxPath.child(self.name())
 

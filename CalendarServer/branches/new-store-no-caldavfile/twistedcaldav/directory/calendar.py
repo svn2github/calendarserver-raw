@@ -28,14 +28,15 @@ __all__ = [
     "DirectoryCalendarHomeResource",
 ]
 
-from twisted.internet.defer import succeed
+from twext.python.log import Logger
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
-from twext.web2.http import HTTPError
-from twext.web2.dav.util import joinURL
 from twext.web2.dav.resource import TwistedACLInheritable
+from twext.web2.dav.util import joinURL
+from twext.web2.http import HTTPError
+from twext.web2.http_headers import ETag, MimeType
 
-from twext.python.log import Logger
+from twisted.internet.defer import succeed
 
 from twistedcaldav import caldavxml
 from twistedcaldav.config import config
@@ -46,6 +47,8 @@ from twistedcaldav.directory.idirectory import IDirectoryService
 from twistedcaldav.directory.wiki import getWikiACL
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn,\
     DirectoryReverseProxyResource
+
+from uuid import uuid4
 
 log = Logger()
 
@@ -64,12 +67,17 @@ class DirectoryCalendarProvisioningResource (
     AutoProvisioningResourceMixIn,
     ReadOnlyResourceMixIn,
     CalDAVComplianceMixIn,
-    DAVResource,
     DAVResourceWithChildrenMixin,
+    DAVResource,
 ):
     def defaultAccessControlList(self):
         return config.ProvisioningResourceACL
 
+    def etag(self):
+        return ETag(str(uuid4()))
+
+    def contentType(self):
+        return MimeType("httpd", "unix-directory")
 
 class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningResource):
     """
@@ -83,8 +91,7 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
         assert directory is not None
         assert url.endswith("/"), "Collection URL must end in '/'"
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryCalendarHomeProvisioningResource, self).__init__()
 
         self.directory = IDirectoryService(directory)
         self._url = url
@@ -140,6 +147,8 @@ class DirectoryCalendarHomeProvisioningResource (DirectoryCalendarProvisioningRe
     def isCollection(self):
         return True
 
+    def displayName(self):
+        return "calendars"
 
 class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioningResource):
     """
@@ -154,8 +163,7 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
         assert parent is not None
         assert recordType is not None
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryCalendarHomeTypeProvisioningResource, self).__init__()
 
         self.directory = parent.directory
         self.recordType = recordType
@@ -192,7 +200,7 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
             raise HTTPError(responsecode.FORBIDDEN)
 
     def makeChild(self, name):
-        raise HTTPError(responsecode.NOT_FOUND)
+        return None
 
     ##
     # DAV
@@ -200,6 +208,9 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
     
     def isCollection(self):
         return True
+
+    def displayName(self):
+        return self.recordType
 
     ##
     # ACL
@@ -211,7 +222,6 @@ class DirectoryCalendarHomeTypeProvisioningResource (DirectoryCalendarProvisioni
     def principalForRecord(self, record):
         return self._parent.principalForRecord(record)
 
-
 class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisioningResource):
 
     def __init__(self, parent):
@@ -220,8 +230,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
         """
         assert parent is not None
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryCalendarHomeUIDProvisioningResource, self).__init__()
 
         self.directory = parent.directory
         self.parent = parent
@@ -287,6 +296,9 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
     def isCollection(self):
         return True
 
+    def displayName(self):
+        return uidsResourceName
+
     ##
     # ACL
     ##
@@ -298,7 +310,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
         return self.parent.principalForRecord(record)
 
 
-class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, DAVResource, DAVResourceWithChildrenMixin):
+class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, DAVResource):
     """
     Calendar home collection resource.
     """
@@ -309,8 +321,7 @@ class DirectoryCalendarHomeResource (AutoProvisioningResourceMixIn, DAVResource,
         assert parent is not None
         assert record is not None
 
-        DAVResource.__init__(self)
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(DirectoryCalendarHomeResource, self).__init__()
 
         self.record = record
         self.parent = parent

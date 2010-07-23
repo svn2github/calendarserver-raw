@@ -25,13 +25,12 @@ __all__ = [
     "IScheduleInboxResource",
 ]
 
-from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 
-from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
 from twext.web2.dav.element.extensions import SyncCollection
 from twext.web2.dav.element.rfc2518 import HRef
+from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 from twext.web2.dav.noneprops import NonePropertyStore
 from twext.web2.dav.resource import davPrivilegeSet
 from twext.web2.dav.util import joinURL, normalizeURL
@@ -39,12 +38,14 @@ from twext.web2.http import HTTPError
 from twext.web2.http import Response
 from twext.web2.http_headers import MimeType
 
+from twisted.internet.defer import inlineCallbacks, returnValue, succeed
+
 from twistedcaldav import caldavxml
 from twistedcaldav.caldavxml import caldav_namespace, Opaque,\
     CalendarFreeBusySet, ScheduleCalendarTransp
 from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
-from twistedcaldav.extensions import DAVResource, DAVResourceWithChildrenMixin
+from twistedcaldav.extensions import DAVResource
 from twistedcaldav.resource import CalDAVResource, ReadOnlyNoCopyResourceMixIn
 from twistedcaldav.resource import isCalendarCollectionResource
 from twistedcaldav.scheduling.scheduler import CalDAVScheduler, IScheduleScheduler
@@ -88,7 +89,7 @@ def _schedulePrivilegeSet(deliver):
 deliverSchedulePrivilegeSet = _schedulePrivilegeSet(True)
 sendSchedulePrivilegeSet = _schedulePrivilegeSet(False)
 
-class CalendarSchedulingCollectionResource (CalDAVResource, DAVResourceWithChildrenMixin):
+class CalendarSchedulingCollectionResource (CalDAVResource):
     """
     CalDAV principal resource.
 
@@ -101,8 +102,7 @@ class CalendarSchedulingCollectionResource (CalDAVResource, DAVResourceWithChild
         """
         assert parent is not None
 
-        CalDAVResource.__init__(self, principalCollections=parent.principalCollections())
-        DAVResourceWithChildrenMixin.__init__(self)
+        super(CalendarSchedulingCollectionResource, self).__init__(principalCollections=parent.principalCollections())
 
         self.parent = parent
 

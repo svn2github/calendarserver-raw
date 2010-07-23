@@ -61,7 +61,7 @@ from twext.python.log import Logger, LoggingMixIn
 import twistedcaldav
 from twistedcaldav import customxml
 from twistedcaldav.customxml import calendarserver_namespace
-from twistedcaldav.util import Alternator, printTracebacks
+from twistedcaldav.util import Alternator
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.method.report import http_REPORT
@@ -718,8 +718,9 @@ class DAVResourceWithChildrenMixin (object):
     Bits needed from twext.web2.static
     """
 
-    def __init__(self):
+    def __init__(self, principalCollections=None):
         self.putChildren = {}
+        super(DAVResourceWithChildrenMixin, self).__init__(principalCollections=principalCollections)
 
     def putChild(self, name, child):
         """
@@ -742,7 +743,7 @@ class DAVResourceWithChildrenMixin (object):
             result = self.makeChild(name)
         return result
 
-    def makeChild(self):
+    def makeChild(self, name):
         # Subclasses with real children need to override this and return the appropriate object
         return None
 

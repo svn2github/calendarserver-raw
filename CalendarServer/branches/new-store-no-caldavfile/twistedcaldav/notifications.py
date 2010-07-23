@@ -137,7 +137,7 @@ class NotificationsDatabase(AbstractSQLDatabase, LoggingMixIn):
 
     def __init__(self, resource):
         """
-        @param resource: the L{twistedcaldav.static.CalDAVFile} resource for
+        @param resource: the L{CalDAVResource} resource for
             the notifications collection.)
         """
         self.resource = resource
