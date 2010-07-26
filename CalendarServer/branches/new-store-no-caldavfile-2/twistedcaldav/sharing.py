@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.test.test_sharing -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -809,6 +810,17 @@ class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
         """
         self._db()
 
+
+    @property
+    def dbpath(self):
+        return self.resource.fp.child(InvitesDatabase.db_basename).path
+
+
+    @dbpath.setter
+    def dbpath(self, newpath):
+        pass
+
+
     def allRecords(self):
         
         records = self._db_execute("select * from INVITE order by USERID")
@@ -1157,6 +1169,17 @@ class SharedCollectionsDatabase(AbstractSQLDatabase, LoggingMixIn):
         self.resource = resource
         db_filename = os.path.join(self.resource.fp.path, SharedCollectionsDatabase.db_basename)
         super(SharedCollectionsDatabase, self).__init__(db_filename, True, autocommit=True)
+
+
+    @property
+    def dbpath(self):
+        return self.resource.fp.child(SharedCollectionsDatabase.db_basename).path
+
+
+    @dbpath.setter
+    def dbpath(self, newpath):
+        pass
+
 
     def create(self):
         """
