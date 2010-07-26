@@ -48,7 +48,7 @@ from twext.web2.stream import ProducerStream, readStream, MemoryStream
 
 from twistedcaldav.caldavxml import ScheduleTag, caldav_namespace
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
-from twistedcaldav.notifications import NotificationCollectionResource,\
+from twistedcaldav.notifications import NotificationCollectionResource, \
     NotificationResource
 from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource
 from twistedcaldav.schedule import ScheduleInboxResource
@@ -154,6 +154,7 @@ def requiresPermissions(*permissions, **kw):
     return wrap
 
 
+
 class _NewStoreFileMetaDataHelper(object):
 
     def name(self):
@@ -194,6 +195,8 @@ class _NewStoreFileMetaDataHelper(object):
 
     def newStoreProperties(self):
         return self._newStoreObject.properties()
+
+
 
 class _CalendarChildHelper(object):
     """
@@ -730,7 +733,7 @@ class CalendarCollectionResource(_CalendarChildHelper, CalDAVResource):
 
         # Is this a sharee's view of a shared calendar?  If so, they can't do
         # scheduling onto it, so just delete it and move on.
-        isVirtual =self.isVirtualShare()
+        isVirtual = self.isVirtualShare()
         if isVirtual:
             log.debug("Removing shared calendar %s" % (self,))
             yield self.removeVirtualShare(request)
@@ -971,6 +974,10 @@ class CalendarObjectResource(_NewStoreFileMetaDataHelper, CalDAVResource, FancyE
     def iCalendarText(self, ignored=None):
         assert ignored is None, "This is a calendar object, not a calendar"
         return self._newStoreObject.iCalendarText()
+
+
+    def text(self):
+        return self.iCalendarText()
 
 
     @requiresPermissions(fromParent=[davxml.Unbind()])
@@ -1801,14 +1808,14 @@ class StoreNotificationCollectionResource(_NotificationChildHelper,
         return True
 
     def addNotification(self, request, uid, xmltype, xmldata):
-        
+
         self._newStoreNotifications.writeNotificationObject(uid, xmltype, xmldata)
         return succeed(None)
 
     def deleteNotification(self, request, record):
         self._newStoreNotifications.removeNotificationObjectWithName(record.name)
         return succeed(None)
-        
+
 class StoreProtoNotificationCollectionResource(NotificationCollectionResource):
     """
     A resource representing a notification collection which hasn't yet been created.
