@@ -54,6 +54,11 @@ def preconditions_PUT(self, request):
         yield parent
         parent = parent.getResult()
 
+        if not parent.exists():
+            raise HTTPError(
+                StatusResponse(
+                    responsecode.CONFLICT,
+                    "cannot PUT to non-existent parent"))
         x = waitForDeferred(parent.authorize(request, (davxml.Bind(),)))
         yield x
         x.getResult()

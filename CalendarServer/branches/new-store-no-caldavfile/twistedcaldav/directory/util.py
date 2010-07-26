@@ -41,6 +41,7 @@ def uuidFromName(namespace, name):
 import errno
 import time
 from twext.python.filepath import CachingFilePath as FilePath
+from txdav.idav import AlreadyFinishedError
 
 class NotFilePath(FilePath):
     """
@@ -181,3 +182,43 @@ class NotFilePath(FilePath):
             raise NotImplementedError()
 
     moveTo = _notAllowed
+
+
+
+def transactionFromRequest(request, newStore):
+    """
+    Return the associated transaction from the given HTTP request, creating a
+    new one from the given data store if none has yet been associated.
+
+    Also, if the request was not previously associated with a transaction, add
+    a failsafe transaction-abort response filter to abort any transaction which
+    has not been committed or aborted by the resource which responds to the
+    request.
+
+    @param request: The request to inspect.
+    @type request: L{IRequest}
+
+    @param newStore: The store to create a transaction from.
+    @type newStore: L{IDataStore}
+
+    @return: a transaction that should be used to read and write data
+        associated with the request.
+    @rtype: L{ITransaction} (and possibly L{ICalendarTransaction} and
+        L{IAddressBookTransaction} as well.
+    """
+    TRANSACTION_KEY = '_newStoreTransaction'
+    transaction = getattr(request, TRANSACTION_KEY, None)
+    if transaction is None:
+        transaction = newStore.newTransaction(repr(request))
+        def abortIfUncommitted(request, response):
+            try:
+                transaction.abort()
+            except AlreadyFinishedError:
+                pass
+            return response
+        abortIfUncommitted.handleErrors = True
+        request.addResponseFilter(abortIfUncommitted)
+        setattr(request, TRANSACTION_KEY, transaction)
+    return transaction
+
+

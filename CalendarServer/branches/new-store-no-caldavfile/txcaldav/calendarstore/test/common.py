@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-from twext.web2.http_headers import MimeType
 
 """
 Tests for common calendar store API functions.
@@ -27,7 +26,7 @@ from zope.interface.exceptions import (
 from twisted.internet.defer import Deferred, inlineCallbacks
 from twisted.internet.protocol import Protocol
 
-from txdav.idav import IPropertyStore, IDataStore
+from txdav.idav import IPropertyStore, IDataStore, AlreadyFinishedError
 from txdav.propertystore.base import PropertyName
 
 from txdav.common.icommondatastore import HomeChildNameAlreadyExistsError, \
@@ -43,6 +42,7 @@ from txcaldav.icalendarstore import (
 
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2.dav import davxml
+from twext.web2.http_headers import MimeType
 from twext.web2.dav.element.base import WebDAVUnknownElement
 from twext.python.vcomponent import VComponent
 
@@ -1010,5 +1010,18 @@ END:VCALENDAR
         self.assertEquals(
             set([n.name() for n in self.homeUnderTest().calendars()]),
             set(home1_calendarNames))
+
+
+    def test_finishedOnCommit(self):
+        """ 
+        Calling L{ITransaction.abort} or L{ITransaction.commit} after
+        L{ITransaction.commit} has already been called raises an
+        L{AlreadyFinishedError}.
+        """
+        self.calendarObjectUnderTest()
+        txn = self.lastTransaction
+        self.commit()
+        self.assertRaises(AlreadyFinishedError, txn.commit)
+        self.assertRaises(AlreadyFinishedError, txn.abort)
 
 

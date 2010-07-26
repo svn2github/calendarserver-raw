@@ -21,7 +21,7 @@ WebDAV interfaces
 __all__ = [
     "PropertyStoreError",
     "PropertyChangeNotAllowedError",
-    "AbortedTransactionError",
+    "AlreadyFinishedError",
     "IPropertyName",
     "IPropertyStore",
     "IDataStore",
@@ -29,7 +29,6 @@ __all__ = [
 ]
 
 from zope.interface import Attribute, Interface
-
 from zope.interface.common.mapping import IMapping
 
 #
@@ -42,6 +41,7 @@ class PropertyStoreError(RuntimeError):
     """
 
 
+
 class PropertyChangeNotAllowedError(PropertyStoreError):
     """
     Property cannot be edited.
@@ -51,9 +51,11 @@ class PropertyChangeNotAllowedError(PropertyStoreError):
         self.keys = keys
 
 
-class AbortedTransactionError(RuntimeError):
+
+class AlreadyFinishedError(Exception):
     """
-    This transaction has aborted.
+    The transaction was already completed via an C{abort} or C{commit} and
+    cannot be aborted or committed again.
     """
 
 
@@ -183,10 +185,16 @@ class ITransaction(Interface):
     def abort():
         """
         Abort this transaction.
+
+        @raise AlreadyFinishedError: The transaction was already finished with
+            an 'abort' or 'commit' and cannot be aborted again.
         """
 
 
     def commit():
         """
         Perform this transaction.
+
+        @raise AlreadyFinishedError: The transaction was already finished with
+            an 'abort' or 'commit' and cannot be committed again.
         """

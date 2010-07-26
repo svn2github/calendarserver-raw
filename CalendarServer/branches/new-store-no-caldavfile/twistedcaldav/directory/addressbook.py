@@ -39,6 +39,7 @@ from twisted.internet.defer import succeed
 
 from twistedcaldav.config import config
 from twistedcaldav.directory.idirectory import IDirectoryService
+from twistedcaldav.directory.util import transactionFromRequest
 from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn,\
     DirectoryReverseProxyResource
 from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVResource,\
@@ -263,11 +264,7 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
     def homeResourceForRecord(self, record, request):
 
         self.provision()
-        TRANSACTION_KEY = '_newStoreTransaction'
-        transaction = getattr(request, TRANSACTION_KEY, None)
-        if transaction is None:
-            transaction = self.parent._newStore.newTransaction(repr(request))
-            setattr(request, TRANSACTION_KEY, transaction)
+        transaction = transactionFromRequest(request, self.parent._newStore)
 
         name = record.uid
 

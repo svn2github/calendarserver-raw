@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twistedcaldav.directory.util import transactionFromRequest
 
 """
 Implements a directory-backed calendar hierarchy.
@@ -264,12 +265,7 @@ class DirectoryCalendarHomeUIDProvisioningResource (DirectoryCalendarProvisionin
     def homeResourceForRecord(self, record, request):
 
         self.provision()
-        TRANSACTION_KEY = '_newStoreTransaction'
-        transaction = getattr(request, TRANSACTION_KEY, None)
-        if transaction is None:
-            transaction = self.parent._newStore.newTransaction(repr(request))
-            setattr(request, TRANSACTION_KEY, transaction)
-
+        transaction = transactionFromRequest(request, self.parent._newStore)
         name = record.uid
 
         if record is None:

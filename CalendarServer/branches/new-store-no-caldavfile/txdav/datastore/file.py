@@ -26,6 +26,7 @@ from twext.web2.dav.resource import TwistedGETContentMD5
 
 from txdav.idav import IDataStoreResource
 from txdav.propertystore.base import PropertyName
+from txdav.idav import AlreadyFinishedError
 
 from zope.interface.declarations import implements
 
@@ -175,10 +176,11 @@ class DataStoreTransaction(LoggingMixIn):
         
         @type mode: C{str}
 
-        @raise RuntimeError: This transaction has already been terminated.
+        @raise AlreadyFinishedError: This transaction has already been
+            terminated.
         """
         if self._termination is not None:
-            raise RuntimeError("already %s" % (self._termination,))
+            raise AlreadyFinishedError("already %s" % (self._termination,))
         self._termination = mode
         self._tracker.done = True
 
