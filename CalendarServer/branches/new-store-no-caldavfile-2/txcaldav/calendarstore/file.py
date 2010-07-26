@@ -56,7 +56,7 @@ from txdav.common.datastore.file import CommonDataStore, CommonStoreTransaction,
     CommonHome, CommonHomeChild, CommonObjectResource
 from txdav.common.icommondatastore import InvalidObjectResourceError, \
     NoSuchObjectResourceError, InternalDataStoreError
-from txdav.datastore.file import writeOperation, hidden
+from txdav.datastore.file import writeOperation, hidden, FileMetaDataMixin
 from txdav.propertystore.base import PropertyName
 
 from zope.interface import implements
@@ -75,7 +75,7 @@ class CalendarHome(CommonHome):
 
 
     def calendarWithName(self, name):
-        if name == 'dropbox':
+        if name in ('dropbox', 'notifications', 'freebusy'):
             # "dropbox" is a file storage area, not a calendar.
             return None
         else:
@@ -86,10 +86,22 @@ class CalendarHome(CommonHome):
     removeCalendarWithName = CommonHome.removeChildWithName
 
     def calendars(self):
+        """
+        Return a generator of the child resource objects.
+        """
         for child in self.children():
             if child.name() in ('dropbox', 'notification'):
                 continue
             yield child
+
+    def listCalendars(self):
+        """
+        Return a generator of the child resource names.
+        """
+        for name in self.listChildren():
+            if name in ('dropbox', 'notification'):
+                continue
+            yield name
 
 
     def calendarObjectWithDropboxID(self, dropboxID):
@@ -157,6 +169,7 @@ class Calendar(CommonHomeChild):
 
     ownerCalendarHome = CommonHomeChild.ownerHome
     calendarObjects = CommonHomeChild.objectResources
+    listCalendarObjects = CommonHomeChild.listObjectResources
     calendarObjectWithName = CommonHomeChild.objectResourceWithName
     calendarObjectWithUID = CommonHomeChild.objectResourceWithUID
     createCalendarObjectWithName = CommonHomeChild.createObjectResourceWithName
@@ -268,7 +281,7 @@ class CalendarObject(CommonObjectResource):
     def component(self):
         if self._component is not None:
             return self._component
-        text = self.iCalendarText()
+        text = self.text()
 
         try:
             component = VComponent.fromString(text)
@@ -280,7 +293,7 @@ class CalendarObject(CommonObjectResource):
         return component
 
 
-    def iCalendarText(self):
+    def text(self):
         if self._component is not None:
             return str(self._component)
         try:
@@ -306,6 +319,7 @@ class CalendarObject(CommonObjectResource):
             )
         return text
 
+    iCalendarText = text
 
     def uid(self):
         if not hasattr(self, "_uid"):
@@ -427,7 +441,7 @@ class AttachmentStorageTransport(object):
         """
         self._attachment = attachment
         self._contentType = contentType
-        self._file = self._attachment._computePath().open("w")
+        self._file = self._attachment._path.open("w")
 
 
     def write(self, data):
@@ -439,14 +453,14 @@ class AttachmentStorageTransport(object):
         # FIXME: do anything
         self._file.close()
 
-        md5 = hashlib.md5(self._attachment._computePath().getContent()).hexdigest()
-        props = self._attachment._properties()
+        md5 = hashlib.md5(self._attachment._path.getContent()).hexdigest()
+        props = self._attachment.properties()
         props[contentTypeKey] = GETContentType(generateContentType(self._contentType))
         props[md5key] = TwistedGETContentMD5.fromString(md5)
         props.flush()
 
 
-class Attachment(object):
+class Attachment(FileMetaDataMixin):
     """
     An L{Attachment} is a container for the data associated with a I{locally-
     stored} calendar attachment.  That is to say, there will only be
@@ -467,7 +481,7 @@ class Attachment(object):
         return self._name
 
 
-    def _properties(self):
+    def properties(self):
         """
         Create and return a private xattr L{PropertyStore} for storing some of
         the data about this L{Attachment}.  This is private because attachments
@@ -478,12 +492,8 @@ class Attachment(object):
         return PropertyStore(
             self._calendarObject._parentCollection._home.peruser_uid(),
             self._calendarObject._parentCollection._home.uid(),
-            self._computePath
+            lambda :self._path
         )
-
-
-    def contentType(self):
-        return self._properties()[contentTypeKey].mimeType()
 
 
     def store(self, contentType):
@@ -493,16 +503,12 @@ class Attachment(object):
         # FIXME: makeConnection
         # FIXME: actually stream
         # FIMXE: connectionLost
-        protocol.dataReceived(self._computePath().getContent())
+        protocol.dataReceived(self._path.getContent())
         # FIXME: ConnectionDone, not NotImplementedError
         protocol.connectionLost(Failure(NotImplementedError()))
 
-
-    def md5(self):
-        return self._properties()[md5key]
-
-
-    def _computePath(self):
+    @property
+    def _path(self):
         dropboxPath = self._calendarObject._dropboxPath()
         return dropboxPath.child(self.name())
 

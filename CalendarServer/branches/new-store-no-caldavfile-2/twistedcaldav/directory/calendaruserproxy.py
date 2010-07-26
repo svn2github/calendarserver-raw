@@ -128,13 +128,13 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
         """
         return ProxyDBService
 
-    def resourceType(self, request):
+    def resourceType(self):
         if self.proxyType == "calendar-proxy-read":
-            return succeed(davxml.ResourceType.calendarproxyread)
+            return davxml.ResourceType.calendarproxyread
         elif self.proxyType == "calendar-proxy-write":
-            return succeed(davxml.ResourceType.calendarproxywrite)
+            return davxml.ResourceType.calendarproxywrite
         else:
-            return super(CalendarUserProxyPrincipalResource, self).resourceType(request)
+            return super(CalendarUserProxyPrincipalResource, self).resourceType()
 
     def isProxyType(self, read_write):
         if (

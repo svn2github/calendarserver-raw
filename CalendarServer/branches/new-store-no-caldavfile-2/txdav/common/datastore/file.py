@@ -38,7 +38,7 @@ from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
 from txdav.common.inotifications import INotificationCollection, \
     INotificationObject
 from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
-    hidden, isValidName, cached
+    hidden, isValidName, cached, FileMetaDataMixin
 from txdav.idav import IDataStore
 from txdav.propertystore.base import PropertyName
 from txdav.propertystore.xattr import PropertyStore
@@ -205,11 +205,14 @@ class CommonStoreTransaction(DataStoreTransaction):
             return self._notifications[(uid, self)]
 
         home = self.homeWithUID(self._notificationHomeType, uid, create=True)
+        if (uid, self) in self._notifications:
+            return self._notifications[(uid, self)]
+
         notificationPath = home._path.child("notification")
         if not notificationPath.isdir():
-            notificationPath = self.createNotifcationCollection(home, notificationPath)
-
-        notifications = NotificationCollection(notificationPath.basename(), home)
+            notifications = self.createNotifcationCollection(home, notificationPath)
+        else:
+            notifications = NotificationCollection(notificationPath.basename(), home)
         self._notifications[(uid, self)] = notifications
         return notifications
 
@@ -241,12 +244,12 @@ class CommonStoreTransaction(DataStoreTransaction):
                 raise
             # FIXME: direct tests, undo for index creation
             # Return undo
-            return lambda: notificationPath.remove()
+            return lambda: home._path.child(notificationPath.basename()).remove()
 
         self.addOperation(do, "create child %r" % (name,))
         props = c.properties()
         props[PropertyName(*ResourceType.qname())] = c.resourceType()
-        return temporary
+        return c
 
 class StubResource(object):
     """
@@ -255,7 +258,7 @@ class StubResource(object):
     def __init__(self, stubit):
         self.fp = stubit._path
 
-class CommonHome(LoggingMixIn):
+class CommonHome(FileMetaDataMixin, LoggingMixIn):
 
     _childClass = None
 
@@ -292,11 +295,26 @@ class CommonHome(LoggingMixIn):
         return self._shares
 
     def children(self):
+        """
+        Return a set of the child resource objects.
+        """
         return set(self._newChildren.itervalues()) | set(
             self.childWithName(name)
             for name in self._path.listdir()
             if not name.startswith(".")
         )
+
+    def listChildren(self):
+        """
+        Return a set of the names of the child resources.
+        """
+        return sorted(set(
+            [child.name() for child in self._newChildren.itervalues()]
+        ) | set(
+            name
+            for name in self._path.listdir()
+            if not name.startswith(".")
+        ))
 
     def childWithName(self, name):
         child = self._newChildren.get(name)
@@ -351,7 +369,7 @@ class CommonHome(LoggingMixIn):
                 raise
             # FIXME: direct tests, undo for index creation
             # Return undo
-            return lambda: childPath.remove()
+            return lambda: self._path.child(childPath.basename()).remove()
 
         self._transaction.addOperation(do, "create child %r" % (name,))
         props = c.properties()
@@ -415,7 +433,7 @@ class CommonHome(LoggingMixIn):
         return props
 
 
-class CommonHomeChild(LoggingMixIn, FancyEqMixin):
+class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
     """
     """
 
@@ -505,6 +523,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         self.properties().setPerUserUID(uid)
 
     def objectResources(self):
+        """
+        Return a list of object resource objects.
+        """
         return sorted((
             self.objectResourceWithName(name)
             for name in (
@@ -514,6 +535,21 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
                 set(self._removedObjectResources)
             )),
             key=lambda calObj: calObj.name()
+        )
+
+
+    def listObjectResources(self):
+        """
+        Return a list of object resource names.
+        """
+        return sorted((
+            name
+            for name in (
+                set(self._newObjectResources.iterkeys()) |
+                set(name for name in self._path.listdir()
+                    if not name.startswith(".")) -
+                set(self._removedObjectResources)
+            ))
         )
 
 
@@ -593,7 +629,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
 
 
     def _updateSyncToken(self, reset=False):
-        # FIXME: add locking a-la CalDAVFile.bumpSyncToken
+        # FIXME: add locking a-la CalDAVResource.bumpSyncToken
         # FIXME: tests for desired concurrency properties
         ctag = PropertyName.fromString(GETCTag.sname())
         props = self.properties()
@@ -639,7 +675,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin):
         raise NotImplementedError
 
 
-class CommonObjectResource(LoggingMixIn, FancyEqMixin):
+class CommonObjectResource(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
     """
     @ivar _path: The path of the file on disk
 
@@ -662,10 +698,6 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
 
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self._path.path)
-
-
-    def name(self):
-        return self._path.basename()
 
 
     @writeOperation
@@ -740,6 +772,7 @@ class NotificationCollection(CommonHomeChild):
         return ResourceType.notification
 
     notificationObjects = CommonHomeChild.objectResources
+    listNotificationObjects = CommonHomeChild.listObjectResources
     notificationObjectWithName = CommonHomeChild.objectResourceWithName
     removeNotificationObjectWithUID = CommonHomeChild.removeObjectResourceWithUID
     notificationObjectsSinceToken = CommonHomeChild.objectResourcesSinceToken

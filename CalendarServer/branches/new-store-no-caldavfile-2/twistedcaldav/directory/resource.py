@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twistedcaldav.client.reverseproxy import ReverseProxyResource
+from twext.web2.dav.util import joinURL
 
 """
 Implements a directory-backed principal hierarchy.
@@ -69,3 +71,16 @@ class AutoProvisioningResourceMixIn (object):
         
         result = (yield super(AutoProvisioningResourceMixIn, self).locateChild(request, segments))
         returnValue(result)
+
+class DirectoryReverseProxyResource(ReverseProxyResource):
+    
+    def __init__(self, parent, record):
+        self.parent = parent
+        self.record = record
+        
+        super(DirectoryReverseProxyResource, self).__init__(self.record.hostedAt)
+    
+    def url(self):
+        return joinURL(self.parent.url(), self.record.uid)
+
+

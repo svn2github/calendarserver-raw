@@ -24,15 +24,20 @@ from twext.web2.dav import davxml
 from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import allDataFromStream, joinURL
-from twext.web2.http import HTTPError, Response, StatusResponse, XMLResponse
+from twext.web2.http import HTTPError, Response, XMLResponse
+
 from twisted.internet.defer import succeed, inlineCallbacks, DeferredList,\
     returnValue
+
 from twistedcaldav import customxml, caldavxml
 from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
+from twistedcaldav.linkresource import LinkFollowerMixIn
 from twistedcaldav.sql import AbstractSQLDatabase, db_prefix
-from uuid import uuid4
+
 from vobject.icalendar import dateTimeToString, utc
+
+from uuid import uuid4
 import datetime
 import os
 import types
@@ -66,26 +71,23 @@ class SharedCollectionMixin(object):
                 return None
         return self.isShared(request).addCallback(sharedOK)
 
-    @inlineCallbacks
-    def upgradeToShare(self, request):
+    def upgradeToShare(self):
         """ Upgrade this collection to a shared state """
         
         # Change resourcetype
-        rtype = (yield self.resourceType(request))
+        rtype = self.resourceType()
         rtype = davxml.ResourceType(*(rtype.children + (customxml.SharedOwner(),)))
         self.writeDeadProperty(rtype)
         
         # Create invites database
         self.invitesDB().create()
-
-        returnValue(True)
     
     @inlineCallbacks
     def downgradeFromShare(self, request):
         
         # Change resource type (note this might be called after deleting a resource
         # so we have to cope with that)
-        rtype = (yield self.resourceType(request))
+        rtype = self.resourceType()
         rtype = davxml.ResourceType(*([child for child in rtype.children if child != customxml.SharedOwner()]))
         self.writeDeadProperty(rtype)
         
@@ -212,9 +214,9 @@ class SharedCollectionMixin(object):
         elif hasattr(self, "_newStoreAddressBook"):
             self._newStoreAddressBook.setSharingUID(self._shareePrincipal.principalUID())
 
-    def isVirtualShare(self, request):
+    def isVirtualShare(self):
         """ Return True if this is a shared calendar collection """
-        return succeed(hasattr(self, "_isVirtualShare"))
+        return hasattr(self, "_isVirtualShare")
 
     def removeVirtualShare(self, request):
         """ Return True if this is a shared calendar collection """
@@ -226,17 +228,16 @@ class SharedCollectionMixin(object):
             shareeHome = self._shareePrincipal.addressBookHome(request)
         return shareeHome.removeShare(request, self._share)
 
-    @inlineCallbacks
-    def resourceType(self, request):
+    def resourceType(self):
         superObject = super(SharedCollectionMixin, self)
         try:
             superMethod = superObject.resourceType
         except AttributeError:
             rtype = davxml.ResourceType()
         else:
-            rtype = (yield superMethod(request))
+            rtype = superMethod()
 
-        isVirt = (yield self.isVirtualShare(request))
+        isVirt = self.isVirtualShare()
         if isVirt:
             rtype = davxml.ResourceType(
                 *(
@@ -244,7 +245,7 @@ class SharedCollectionMixin(object):
                     (customxml.Shared(),)
                 )
             )
-        returnValue(rtype)
+        return rtype
         
     def sharedResourceType(self):
         """
@@ -635,10 +636,7 @@ class SharedCollectionMixin(object):
 
             def _autoShare(isShared, request):
                 if not isShared:
-                    return self.upgradeToShare(request)
-                else:
-                    return succeed(True)
-                raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Cannot upgrade to shared calendar"))
+                    self.upgradeToShare()
 
             @inlineCallbacks
             def _processInviteDoc(_, request):
@@ -798,7 +796,7 @@ class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
 
     def __init__(self, resource):
         """
-        @param resource: the L{twistedcaldav.static.CalDAVFile} resource for
+        @param resource: the L{CalDAVResource} resource for
             the shared collection. C{resource} must be a calendar/addressbook collection.)
         """
         self.resource = resource
@@ -924,7 +922,7 @@ class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
         
         return Invite(*[str(item) if type(item) == types.UnicodeType else item for item in row])
 
-class SharedHomeMixin(object):
+class SharedHomeMixin(LinkFollowerMixIn):
     """
     A mix-in for calendar/addressbook homes that defines the operations for manipulating a sharee's
     set of shared calendars.
@@ -1153,7 +1151,7 @@ class SharedCollectionsDatabase(AbstractSQLDatabase, LoggingMixIn):
 
     def __init__(self, resource):   
         """
-        @param resource: the L{twistedcaldav.static.CalDAVFile} resource for
+        @param resource: the L{CalDAVResource} resource for
             the shared collection. C{resource} must be a calendar/addressbook home collection.)
         """
         self.resource = resource
