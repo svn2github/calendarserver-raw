@@ -23,13 +23,10 @@ from twext.web2.test.test_server import SimpleRequest
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav import customxml
 from twistedcaldav.config import config
-from twistedcaldav.static import CalDAVFile
-from twistedcaldav.test.util import InMemoryPropertyStore
-from twistedcaldav.test.util import TestCase
-import os
+from twistedcaldav.test.util import HomeTestCase
 
 
-class SharingTests(TestCase):
+class SharingTests(HomeTestCase):
 
     class FakePrincipal(object):
         
@@ -50,25 +47,25 @@ class SharingTests(TestCase):
             return self.displayname
             
 
+    @inlineCallbacks
     def setUp(self):
-        super(SharingTests, self).setUp()
-        config.Sharing.Enabled = True
-        config.Sharing.Calendars.Enabled = True
+        self.patch(config.Sharing, "Enabled", True)
+        self.patch(config.Sharing.Calendars, "Enabled", True)
 
-        collection = self.mktemp()
-        os.mkdir(collection)
-        self.resource = CalDAVFile(collection, self.site.resource)
-        self.resource._dead_properties = InMemoryPropertyStore()
-        self.resource.writeDeadProperty(davxml.ResourceType.calendar)
-        self.site.resource.putChild("calendar", self.resource)
-        
+        yield super(SharingTests, self).setUp()
+
+        self.resource = (
+            yield self.site.resource.locateChild(self.request, ["calendar"])
+        )[0]
+
         self.resource.validUserIDForShare = self._fakeValidUserID
         self.resource.validUserIDWithCommonNameForShare = self._fakeValidUserID
-        self.resource.sendInvite = lambda record, request:succeed(True)
-        self.resource.removeInvite = lambda record, request:succeed(True)
-        
+        self.resource.sendInvite = lambda record, request: succeed(True)
+        self.resource.removeInvite = lambda record, request: succeed(True)
+
         self.resource.principalForCalendarUserAddress = lambda cuaddr: SharingTests.FakePrincipal(cuaddr)
-        
+
+
     def _fakeValidUserID(self, userid, *args):
         if userid.startswith("/principals/"):
             return userid
