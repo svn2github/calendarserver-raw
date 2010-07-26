@@ -332,7 +332,8 @@ class HomeTestCase(TestCase):
         it a new transaction.
         """
         users = self.homeProvisioner.getChild("users")
-        user, ignored = (yield users.locateChild(norequest(), ["wsanchez"]))
+        self.request = norequest()
+        user, ignored = (yield users.locateChild(self.request, ["wsanchez"]))
 
         # Force the request to succeed regardless of the implementation of
         # accessControlList.
