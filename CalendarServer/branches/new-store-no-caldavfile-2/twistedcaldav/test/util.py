@@ -33,7 +33,7 @@ from twisted.internet.error import ProcessDone
 from twisted.internet.protocol import ProcessProtocol
 
 from twext.python.memcacheclient import ClientFactory
-from twext.python.filepath import CachingFilePath as FilePath
+from twext.python.filepath import CachingFilePath as FilePath, CachingFilePath
 import twext.web2.dav.test.util
 from twext.web2.dav import davxml
 from twext.web2.dav.static import DAVFile
@@ -101,11 +101,10 @@ class TestCase(twext.web2.dav.test.util.TestCase):
         Set up the resource at /calendars (a L{DirectoryCalendarHomeProvisioningResource}),
         and assign it as C{self.calendarCollection}.
         """
-        path = self.site.resource.fp.child("calendars")
-        path.createDirectory()
 
         # Need a data store
-        _newStore = CommonDataStore(self.site.resource.fp, True, False)
+        _newStore = CommonDataStore(CachingFilePath(config.DocumentRoot),
+                                    True, False)
 
         self.calendarCollection = DirectoryCalendarHomeProvisioningResource(
             self.directoryService,
@@ -113,9 +112,6 @@ class TestCase(twext.web2.dav.test.util.TestCase):
             _newStore
         )
         self.site.resource.putChild("calendars", self.calendarCollection)
-
-        path = self.site.resource.fp.child("addressbooks")
-        path.createDirectory()
 
         self.addressbookCollection = DirectoryAddressBookHomeProvisioningResource(
             self.directoryService,
@@ -309,6 +305,7 @@ class HomeTestCase(TestCase):
         super(HomeTestCase, self).setUp()
 
         fp = FilePath(self.mktemp())
+        fp.createDirectory()
 
         self.createStockDirectoryService()
 
@@ -320,11 +317,13 @@ class HomeTestCase(TestCase):
             _newStore
         )
         
-        def _defer(_):
+        def _defer(user):
             # Commit the transaction
             self.site.resource._associatedTransaction.commit()
-            
+            self.docroot = user._newStoreCalendarHome._path.path
+
         return self._refreshRoot().addCallback(_defer)
+
 
     @inlineCallbacks
     def _refreshRoot(self):
@@ -344,10 +343,8 @@ class HomeTestCase(TestCase):
         # Fix the site to point directly at the user's calendar home so that we
         # can focus on testing just that rather than hierarchy traversal..
         self.site.resource = user
+        returnValue(user)
 
-        # Fix the docroot so that 'mkdtemp' will create directories in the right
-        # place (beneath the calendar).
-        self.docroot = user.fp.path
 
     @inlineCallbacks
     def send(self, request, callback):
@@ -410,9 +407,6 @@ class AddressBookHomeTestCase(TestCase):
         # can focus on testing just that rather than hierarchy traversal..
         self.site.resource = user
 
-        # Fix the docroot so that 'mkdtemp' will create directories in the right
-        # place (beneath the calendar).
-        self.docroot = user.fp.path
 
     @inlineCallbacks
     def send(self, request, callback):
