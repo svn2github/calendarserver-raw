@@ -280,4 +280,3 @@ class FileMetaDataMixin(object):
             return self._path.getmtime()
         else:
             return None
-    
