@@ -174,13 +174,9 @@ class CommonStoreTransaction(DataStoreTransaction):
                 homePath = childPath.temporarySibling()
                 createDirectory(homePath)
                 def do():
-                    def lastly():
-                        homePath.moveTo(childPath)
-                        # home._path = homePath
-                        # do this _after_ all other file operations
-                        home._path = childPath
-                        return lambda : None
-                    self.addOperation(lastly, "create home finalize")
+                    homePath.moveTo(childPath)
+                    # do this _after_ all other file operations
+                    home._path = childPath
                     return lambda : None
                 self.addOperation(do, "create home UID %r" % (uid,))
 
@@ -208,55 +204,61 @@ class CommonStoreTransaction(DataStoreTransaction):
         if (uid, self) in self._notifications:
             return self._notifications[(uid, self)]
 
-        notificationPath = home._path.child("notification")
-        if not notificationPath.isdir():
-            notifications = self.createNotifcationCollection(home, notificationPath)
+        notificationCollectionName = "notification"
+        if not home._path.child(notificationCollectionName).isdir():
+            notifications = self._createNotificationCollection(home, notificationCollectionName)
         else:
-            notifications = NotificationCollection(notificationPath.basename(), home)
+            notifications = NotificationCollection(notificationCollectionName, home)
         self._notifications[(uid, self)] = notifications
         return notifications
 
-    def createNotifcationCollection(self, home, notificationPath):
 
-        if notificationPath.isdir():
-            return notificationPath
-
-        name = notificationPath.basename()
-
-        temporary = hidden(notificationPath.temporarySibling())
+    def _createNotificationCollection(self, home, collectionName):
+        # FIXME: this is a near-copy of CommonHome.createChildWithName.
+        temporary = hidden(home._path.child(collectionName).temporarySibling())
         temporary.createDirectory()
-        # In order for the index to work (which is doing real file ops on disk
-        # via SQLite) we need to create a real directory _immediately_.
-
-        # FIXME: some way to roll this back.
+        temporaryName = temporary.basename()
 
         c = NotificationCollection(temporary.basename(), home)
+
         def do():
+            childPath = home._path.child(collectionName)
+            temporary = childPath.sibling(temporaryName)
             try:
                 props = c.properties()
-                temporary.moveTo(notificationPath)
-                c._name = name
+                temporary.moveTo(childPath)
+                c._name = collectionName
                 # FIXME: _lots_ of duplication of work here.
                 props.flush()
             except (IOError, OSError), e:
-                if e.errno == EEXIST and notificationPath.isdir():
-                    raise HomeChildNameAlreadyExistsError(name)
+                if e.errno == EEXIST and childPath.isdir():
+                    raise HomeChildNameAlreadyExistsError(collectionName)
                 raise
             # FIXME: direct tests, undo for index creation
             # Return undo
-            return lambda: home._path.child(notificationPath.basename()).remove()
+            return lambda: home._path.child(collectionName).remove()
 
-        self.addOperation(do, "create child %r" % (name,))
+        self.addOperation(do, "create notification child %r" %
+                          (collectionName,))
         props = c.properties()
         props[PropertyName(*ResourceType.qname())] = c.resourceType()
         return c
+
+
 
 class StubResource(object):
     """
     Just enough resource to keep the shared sql DB classes going.
     """
-    def __init__(self, stubit):
-        self.fp = stubit._path
+    def __init__(self, commonHome):
+        self._commonHome = commonHome
+
+
+    @property
+    def fp(self):
+        return self._commonHome._path
+
+
 
 class CommonHome(FileMetaDataMixin, LoggingMixIn):
 
@@ -280,8 +282,10 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
     def uid(self):
         return self._uid
 
+
     def peruser_uid(self):
         return self._peruser_uid
+
 
     def _updateSyncToken(self, reset=False):
         "Stub for updating sync token."
@@ -294,6 +298,7 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
         """
         return self._shares
 
+
     def children(self):
         """
         Return a set of the child resource objects.
@@ -303,6 +308,7 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
             for name in self._path.listdir()
             if not name.startswith(".")
         )
+
 
     def listChildren(self):
         """
@@ -315,6 +321,7 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
             for name in self._path.listdir()
             if not name.startswith(".")
         ))
+
 
     def childWithName(self, name):
         child = self._newChildren.get(name)
@@ -348,6 +355,7 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
             raise HomeChildNameAlreadyExistsError(name)
 
         temporary = hidden(childPath.temporarySibling())
+        temporaryName = temporary.basename()
         temporary.createDirectory()
         # In order for the index to work (which is doing real file ops on disk
         # via SQLite) we need to create a real directory _immediately_.
@@ -357,6 +365,8 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
         c = self._newChildren[name] = self._childClass(temporary.basename(), self, name)
         c.retrieveOldIndex().create()
         def do():
+            childPath = self._path.child(name)
+            temporary = childPath.sibling(temporaryName)
             try:
                 props = c.properties()
                 temporary.moveTo(childPath)
@@ -376,8 +386,10 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
         props[PropertyName(*ResourceType.qname())] = c.resourceType()
         self.createdChild(c)
 
+
     def createdChild(self, child):
         pass
+
 
     @writeOperation
     def removeChildWithName(self, name):
@@ -422,6 +434,7 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
             do, "prepare child remove %r" % (name,)
         )
 
+
     # @cached
     def properties(self):
         # FIXME: needs tests for actual functionality
@@ -431,6 +444,7 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
                               lambda : self._path)
         self._transaction.addOperation(props.flush, "flush home properties")
         return props
+
 
 
 class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):

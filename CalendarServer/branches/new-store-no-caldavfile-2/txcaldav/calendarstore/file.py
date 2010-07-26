@@ -385,12 +385,12 @@ class CalendarObject(CommonObjectResource):
         if attachProperty is not None:
             # Make sure the value type is URI
             valueType = attachProperty.params().get("VALUE", ("TEXT",))
-            if valueType[0] == "URI": 
+            if valueType[0] == "URI":
                 # FIXME: more aggressive checking to see if this URI is really the
                 # 'right' URI.  Maybe needs to happen in the front end.
                 attachPath = attachProperty.value().split("/")[-2]
                 return attachPath
-        
+
         return self.uid() + ".dropbox"
 
 
@@ -521,10 +521,16 @@ class CalendarStubResource(object):
 
     def __init__(self, calendar):
         self.calendar = calendar
-        self.fp = self.calendar._path
+
+
+    @property
+    def fp(self):
+        return self.calendar._path
+
 
     def isCalendarCollection(self):
         return True
+
 
     def getChild(self, name):
         calendarObject = self.calendar.calendarObjectWithName(name)
@@ -540,6 +546,7 @@ class CalendarStubResource(object):
         else:
             return None
 
+
     def bumpSyncToken(self, reset=False):
         # FIXME: needs direct tests
         return self.calendar._updateSyncToken(reset)
@@ -548,6 +555,8 @@ class CalendarStubResource(object):
     def initSyncToken(self):
         # FIXME: needs direct tests
         self.bumpSyncToken(True)
+
+
 
 class Index(object):
     #
