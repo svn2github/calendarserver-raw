@@ -527,7 +527,7 @@ class OpenDirectoryService(DirectoryService):
             # Look up augment information
             # TODO: this needs to be deferred but for now we hard code the deferred result because
             # we know it is completing immediately.
-            d = augment.AugmentService.getAugmentRecord(record.guid)
+            d = augment.AugmentService.getAugmentRecord(record.guid, recordType)
             d.addCallback(lambda x:record.addAugmentInformation(x))
 
             # Check for disabled items

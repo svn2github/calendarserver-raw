@@ -45,6 +45,13 @@ class AugmentRecord(object):
         self.enabledForCalendaring = enabledForCalendaring
         self.autoSchedule = autoSchedule
 
+recordTypesMap = {
+    "users" : "User",
+    "groups" : "Group",
+    "locations" : "Location",
+    "resources" : "Resource",
+}
+
 class AugmentDB(object):
     """
     Abstract base class for an augment record database.
@@ -55,7 +62,7 @@ class AugmentDB(object):
         self.cachedRecords = {}
     
     @inlineCallbacks
-    def getAugmentRecord(self, uid):
+    def getAugmentRecord(self, uid, recordType):
         """
         Get an AugmentRecord for the specified UID or the default.
 
@@ -64,13 +71,21 @@ class AugmentDB(object):
         
         @return: L{Deferred}
         """
-        
+        recordType = recordTypesMap[recordType]
+
         result = (yield self._lookupAugmentRecord(uid))
         if result is not None:
             returnValue(result)
         
         # Try wildcard/default matches next
-        for lookup in ("%s*" % (uid[0:2],), "%s*" % (uid[0],), "Default"):
+        for lookup in (
+            "%s-%s*" % (recordType, uid[0:2]),
+            "%s-%s*" % (recordType, uid[0]),
+            "%s*" % (uid[0:2],),
+            "%s*" % (uid[0],),
+            "%s-Default" % (recordType,),
+            "Default",
+        ):
             result = (yield self._cachedAugmentRecord(lookup))
             if result is not None:
                 result = copy.deepcopy(result)

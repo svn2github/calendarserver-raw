@@ -18,6 +18,7 @@ from twistedcaldav.test.util import TestCase
 from twistedcaldav.directory.augment import AugmentXMLDB, AugmentSqliteDB,\
     AugmentPostgreSQLDB
 from twisted.internet.defer import inlineCallbacks
+from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.directory.xmlaugmentsparser import XMLAugmentsParser
 import cStringIO
 import os
@@ -47,21 +48,28 @@ testRecordWildcardDefault = (
     {"uid":"CCD30AD3-582F-4682-8B65-2EDE92C5656E", "enabled":True,  "hostedAt":"00003", "enabledForCalendaring":True,  "autoSchedule":True },
 )
 
+testRecordTypeDefault = (
+    ("locations", {"uid":"A4318887-F2C7-4A70-9056-B88CC8DB26F1", "enabled":True,  "hostedAt":"00004", "enabledForCalendaring":True, "autoSchedule":True}),
+    ("locations", {"uid":"AA5F935F-3358-4510-A649-B391D63279F2", "enabled":True,  "hostedAt":"00005", "enabledForCalendaring":True, "autoSchedule":True}),
+    ("resources", {"uid":"A5318887-F2C7-4A70-9056-B88CC8DB26F1", "enabled":True,  "hostedAt":"00006", "enabledForCalendaring":True, "autoSchedule":True}),
+    ("resources", {"uid":"AA6F935F-3358-4510-A649-B391D63279F2", "enabled":True,  "hostedAt":"00007", "enabledForCalendaring":True, "autoSchedule":True}),
+)
+
 class AugmentTests(TestCase):
 
     @inlineCallbacks
-    def _checkRecord(self, db, items):
+    def _checkRecord(self, db, items, recordType=DirectoryService.recordType_users):
         
-        record = (yield db.getAugmentRecord(items["uid"]))
+        record = (yield db.getAugmentRecord(items["uid"], recordType))
         self.assertTrue(record is not None)
         
         for k,v in items.iteritems():
             self.assertEqual(getattr(record, k), v)
 
     @inlineCallbacks
-    def _checkNoRecord(self, db, uid):
+    def _checkNoRecord(self, db, uid, recordType=DirectoryService.recordType_users):
         
-        record = (yield db.getAugmentRecord(uid))
+        record = (yield db.getAugmentRecord(uid, recordType))
         self.assertTrue(record is None)
 
 class AugmentTestsMixin(object):
@@ -102,6 +110,7 @@ class AugmentTestsMixin(object):
         for item in testRecordWildcardDefault:
             yield self._checkRecord(db, item)
 
+
 class AugmentXMLTests(AugmentTests, AugmentTestsMixin):
 
     @inlineCallbacks
@@ -124,6 +133,26 @@ class AugmentXMLTests(AugmentTests, AugmentTestsMixin):
 
         for item in testRecordWildcardDefault:
             yield self._checkRecord(db, item)
+
+    @inlineCallbacks
+    def test_read_typed_default(self):
+        """
+        Augments key ("uid" element in xml) can be any of the following, in
+        this order of precedence:
+
+        full uid
+        <recordType>-XX*
+        <recordType>-X*
+        XX*
+        X*
+        <recordType>-Default
+        Default
+        """
+
+        db = AugmentXMLDB((xmlFileDefault,))
+
+        for recordType, item in testRecordTypeDefault:
+            yield self._checkRecord(db, item, recordType)
 
     def test_parseErrors(self):
         

@@ -72,7 +72,7 @@ class XMLDirectoryService(DirectoryService):
             # Look up augment information
             # TODO: this needs to be deferred but for now we hard code the deferred result because
             # we know it is completing immediately.
-            d = augment.AugmentService.getAugmentRecord(record.guid)
+            d = augment.AugmentService.getAugmentRecord(record.guid, recordType)
             d.addCallback(lambda x:record.addAugmentInformation(x))
 
             yield record
@@ -90,7 +90,7 @@ class XMLDirectoryService(DirectoryService):
                 # Look up augment information
                 # TODO: this needs to be deferred but for now we hard code the deferred result because
                 # we know it is completing immediately.
-                d = augment.AugmentService.getAugmentRecord(record.guid)
+                d = augment.AugmentService.getAugmentRecord(record.guid, recordType)
                 d.addCallback(lambda x:record.addAugmentInformation(x))
 
                 return record
