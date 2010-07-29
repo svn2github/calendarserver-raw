@@ -209,7 +209,7 @@ class HTTPClientPool(LoggingMixIn):
         @return: A L{Deferred} that fires with the result of the given command.
         """
 
-        return client.submitRequest(request, closeAfter=False)
+        return client.submitRequest(request, closeAfter=True)
 
     @inlineCallbacks
     def submitRequest(self, request, *args, **kwargs):
