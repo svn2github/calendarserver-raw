@@ -357,9 +357,10 @@ py_dependency () {
   local get_type="www";   # Protocol to use
   local  version="";      # Minimum version required
   local   f_hash="";      # Checksum
+  local build_args="";     # Args to pass to py_build
 
   OPTIND=1;
-  while getopts "ofier:v:m:" option; do
+  while getopts "ofier:v:m:b:" option; do
     case "${option}" in
       'o') optional="true"; ;;
       'f') override="true"; ;;
@@ -368,6 +369,7 @@ py_dependency () {
       'r') get_type="svn"; revision="${OPTARG}"; ;;
       'v')  version="-v ${OPTARG}"; ;;
       'm')   f_hash="-m ${OPTARG}"; ;;
+      'b') build_args="${OPTARG}"; ;;
     esac;
   done;
   shift $((${OPTIND} - 1));
@@ -397,9 +399,9 @@ py_dependency () {
         fi;
       fi;
     else
-      py_build "${name}" "${srcdir}" "${optional}";
+      py_build "${name}" "${srcdir}" "${optional}" $build_args;
     fi;
-    py_install "${name}" "${srcdir}";
+    py_install "${name}" "${srcdir}" $build_args;
 
     if "${inplace}"; then
       local add_pythonpath="${srcdir}";
@@ -510,6 +512,12 @@ dependencies () {
   py_dependency \
     "PyXML" "xml.dom.ext" "${px}" \
     "http://internap.dl.sourceforge.net/sourceforge/pyxml/${px}.tar.gz";
+
+  local lxml="lxml-2.2.7";
+  py_dependency \
+    -b "--static-deps --libxml2-version=2.7.7 --libxslt-version=1.1.26" \
+    "lxml" "lxml" "${lxml}" \
+    "http://pypi.python.org/packages/source/l/lxml/lxml-2.2.7.tar.gz";
 
   local po="pyOpenSSL-0.10";
   py_dependency -v 0.9 \

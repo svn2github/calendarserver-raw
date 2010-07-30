@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2005, 2010 Apple Computer, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -41,6 +41,7 @@ import cStringIO as StringIO
 import xml.dom.minidom
 import xml.sax
 
+import lxml.etree
 from twext.web2.dav.element.base import WebDAVElement, WebDAVUnknownElement, PCDATAElement
 from twext.web2.dav.element.util import PrintXML
 
@@ -54,8 +55,7 @@ def registerElements(module):
     """
     element_names = []
 
-    items = module.__all__ if hasattr(module, "__all__") else dir(module)
-    for element_class_name in items:
+    for element_class_name in dir(module):
         element_class = getattr(module, element_class_name)
 
         if type(element_class) is type and issubclass(element_class, WebDAVElement):
@@ -72,7 +72,6 @@ def registerElement(element_class, element_names=None):
     Register the supplied XML elements with the parser.
     """
     qname = element_class.namespace, element_class.name
-    
     if qname in elements_by_tag_name:
         raise AssertionError(
             "Attempting to register qname %s multiple times: (%r, %r)"
@@ -92,7 +91,7 @@ def lookupElement(qname):
 
 elements_by_tag_name = {}
 
-class WebDAVContentHandler (xml.sax.handler.ContentHandler):
+class PyXMLWebDAVContentHandler (xml.sax.handler.ContentHandler):
     def setDocumentLocator(self, locator): self.locator = locator
     locator = None
 
@@ -132,7 +131,6 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
                 attributes_dict[attr_name.encode("utf-8")] = attributes.getValueByQName(attr_name)
 
         tag_namespace, tag_name = name
-
         if name in elements_by_tag_name:
             element_class = elements_by_tag_name[name]
         elif name in self.unknownElementClasses:
@@ -140,8 +138,8 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
         else:
             def element_class(*args, **kwargs):
                 element = WebDAVUnknownElement(*args, **kwargs)
-                element.namespace = tag_namespace
-                element.name      = tag_name
+                element.namespace = tag_namespace.encode('utf-8') if tag_namespace else tag_namespace
+                element.name      = tag_name.encode('utf-8')
                 return element
             self.unknownElementClasses[name] = element_class
 
@@ -192,33 +190,160 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
     def skippedEntity(self, name):
         raise AssertionError("skipped entities are not allowed")
 
+class pyxmlparser(object):
+    def parseElement(self, source):
+        raise NotImplementedError('PyXML parser does not have support for parsing from an arbitrary element')
+
+    def parseString(self, source):
+        return self.parse(StringIO.StringIO(source))
+
+    def parse(self, source):
+        handler = PyXMLWebDAVContentHandler()
+        parser  = xml.sax.make_parser()
+
+        parser.setContentHandler(handler)
+        parser.setFeature(xml.sax.handler.feature_namespaces, True)
+
+        try:
+            parser.parse(source)
+        except xml.sax.SAXParseException, e:
+            raise ValueError(e)
+
+        return handler.dom
+
+    parseStream = parse
+
+
+class WebDAVContentHandler(object):
+    class StackData(object):
+        def __init__(self, name, klass, attributes, children):
+            self.name = name
+            self.klass = klass
+            self.attributes = attributes
+            self.children = children
+
+    def __init__(self):
+        self.handlers = {'start' : self.startElement,
+                         'end'   : self.endElement}
+
+        self.stack = [self.StackData(None, None, None, [])]
+
+        # Keep a cache of the subclasses we create for unknown XML
+        # elements, so that we don't create multiple classes for the
+        # same element; it's fairly typical for elements to appear
+        # multiple times in a document.
+        self.unknownElementClasses = {}
+
+    def handle(self, event, element):
+        handlerMethod = self.handlers.get(event, lambda *args: None)
+        handlerMethod(element)
+
+    def getQname(self, element):
+        tag_namespace = element.nsmap[element.prefix]
+        if tag_namespace:
+            tag_name = element.tag.split("{%s}" % tag_namespace)[1]
+        else:
+            tag_name = element.tag
+        return (tag_namespace, tag_name)
+
+    def endDocument(self):
+        top = self.stack[-1]
+
+        assert top.name is None
+        assert top.klass is None
+        assert top.attributes is None
+        assert len(top.children) is 1, "Must have exactly one root element, got %d" % len(top.children)
+
+        self.dom = WebDAVDocument(top.children[0])
+        del(self.unknownElementClasses)
+
+    def startElement(self, element):
+        name = self.getQname(element)
+        if name in elements_by_tag_name:
+            element_class = elements_by_tag_name[name]
+        elif name in self.unknownElementClasses:
+            element_class = self.unknownElementClasses[name]
+        else:
+            (tag_namespace, tag_name) = name
+
+            def element_class(*args, **kwargs):
+                element = WebDAVUnknownElement(*args, **kwargs)
+                element.namespace = tag_namespace.encode('utf-8') if tag_namespace else tag_namespace
+                element.name      = tag_name.encode('utf-8')
+                return element
+
+            self.unknownElementClasses[name] = element_class
+        attributes = {}
+        for k, v in element.items():
+            #Cheat a little.
+            k = k.replace('{http://www.w3.org/XML/1998/namespace}', 'xml:')
+            attributes[k] = v
+
+        stackData = self.StackData(name, element_class, attributes, [])
+        self.stack.append(stackData)
+
+    def endElement(self, element):
+        # Pop the current element from the stack...
+        top = self.stack[-1]
+        del(self.stack[-1])
+
+        name = self.getQname(element)
+        assert top.name == name, "Last item on stack is %s while closing %s" % (top.name, name)
+
+        if element.text:
+            text = element.text.strip()
+            if text:
+                top.children.append(PCDATAElement(text))
+
+        # ...then instantiate the element and add it to the parent's list of
+        # children.
+        try:
+            davElement = top.klass(*top.children, **top.attributes)
+        except ValueError, e:
+            e.args = ("%s at %s" % (e.args[0], element.sourceline)) + e.args[1:]
+            raise # Re-raises modified e, but preserves traceback
+        
+        self.stack[-1].children.append(davElement)
+        element.clear()
+
+class lxmlparser(object):
+    def parseElement(self, source):
+        return self.parse(source, lxml.etree.iterwalk)
+    
+    def parseString(self, source):
+        return self.parse(StringIO.StringIO(source))
+
+    def parse(self, source, iterate=lxml.etree.iterparse):
+        handler = WebDAVContentHandler()
+        try: 
+            context = iterate(source, events=('start', 'end'))
+            [handler.handle(event, element) for (event, element) in context]
+            handler.endDocument()
+        except lxml.etree.Error as e:
+            raise ValueError(e)
+
+        return handler.dom
+
+    parseStream = parse
+
+# Hook to override if needed
+ParserClass = lxmlparser
+
 class WebDAVDocument (object):
     """
     WebDAV XML document.
     """
-    def _parse(source_is_string):
-        def parse(source):
-            handler = WebDAVContentHandler()
-            parser  = xml.sax.make_parser()
+    @classmethod
+    def fromStream(cls, source):
+        return ParserClass().parseStream(source)
 
-            parser.setContentHandler(handler)
-            parser.setFeature(xml.sax.handler.feature_namespaces, True)
+    @classmethod
+    def fromString(cls, source):
+        return ParserClass().parseString(source)
 
-            if source_is_string: source = StringIO.StringIO(source)
-
-            try:
-                parser.parse(source)
-            except xml.sax.SAXParseException, e:
-                raise ValueError(e)
-
-            #handler.dom.root_element.validate()
-
-            return handler.dom
-
-        return parse
-        
-    fromStream = staticmethod(_parse(False))
-    fromString = staticmethod(_parse(True ))
+    @classmethod
+    def fromElement(cls, source):
+        return ParserClass().parseElement(source)
 
     def __init__(self, root_element):
         """

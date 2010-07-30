@@ -22,6 +22,7 @@ from twext.web2 import responsecode
 from twext.web2.iweb import IResponse
 from twext.web2.stream import MemoryStream
 from twext.web2.dav import davxml
+import twext.web2.dav
 from twext.web2.dav.fileop import rmdir
 from twext.web2.dav.util import davXMLFromStream
 from twext.web2.test.test_server import SimpleRequest
