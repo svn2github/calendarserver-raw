@@ -33,6 +33,7 @@ from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.extensions import ErrorResponse
 from twistedcaldav.ical import Component
 from twistedcaldav.log import Logger, LoggingMixIn
+from twistedcaldav.method import report_common
 from twistedcaldav.scheduling import addressmapping
 from twistedcaldav.scheduling.caldav import ScheduleViaCalDAV
 from twistedcaldav.scheduling.cuaddress import InvalidCalendarUser,\
@@ -41,6 +42,7 @@ from twistedcaldav.scheduling.ischedule import ScheduleViaISchedule
 from twistedcaldav.scheduling.ischeduleservers import IScheduleServers
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
 
+import datetime
 import itertools
 import re
 import socket
@@ -383,9 +385,8 @@ class Scheduler(object):
         for ctr, recipient in enumerate(self.recipients):
     
             # Check for freebusy limit
-            if freebusy and ctr >= config.LimitFreeBusyAttendees:
-                err = HTTPError(ErrorResponse(responsecode.NOT_FOUND, (caldav_namespace, "recipient-limit")))
-                responses.add(recipient.cuaddr, Failure(exc_value=err), reqstatus=iTIPRequestStatus.NO_USER_SUPPORT)
+            if freebusy and config.LimitFreeBusyAttendees and ctr >= config.LimitFreeBusyAttendees:
+                self.handleFreeBusyLimit(recipient, responses)
                 continue
                 
             if self.fakeTheResult:
@@ -435,6 +436,37 @@ class Scheduler(object):
         # Create the scheduler and run it.
         requestor = ScheduleViaISchedule(self, recipients, responses, freebusy)
         return requestor.generateSchedulingResponses()
+
+    def handleFreeBusyLimit(self, recipient, responses):
+
+        # If time period requested >= 24 hours, then return error, else mark as BUSY-TENTATIVE
+        if self.timeRange.end - self.timeRange.start >= datetime.timedelta(hours=24):
+            #err = HTTPError(ErrorResponse(responsecode.NOT_FOUND, (caldav_namespace, "recipient-limit")))
+            #responses.add(recipient.cuaddr, Failure(exc_value=err), reqstatus=iTIPRequestStatus.SERVICE_UNAVAILABLE)
+            pass
+        else:
+
+            # Extract the ORGANIZER property and UID value from the calendar data for use later
+            organizerProp = self.calendar.getOrganizerProperty()
+            uid = self.calendar.resourceUID()
+    
+            cuas = recipient.principal.calendarUserAddresses()
+            attendeeProp = self.calendar.getAttendeeProperty(cuas)
+    
+            # First list is BUSY, second BUSY-TENTATIVE, third BUSY-UNAVAILABLE
+            fbinfo = ([], [(self.timeRange.start, self.timeRange.end),], [])
+        
+            # Build VFREEBUSY iTIP reply for this recipient
+            fbresult = report_common.buildFreeBusyResult(
+                fbinfo,
+                self.timeRange,
+                organizer = organizerProp,
+                attendee = attendeeProp,
+                uid = uid,
+                method = "REPLY"
+            )
+    
+            responses.add(recipient.cuaddr, responsecode.OK, reqstatus=iTIPRequestStatus.SUCCESS, calendar=fbresult)
 
 class CalDAVScheduler(Scheduler):
 
