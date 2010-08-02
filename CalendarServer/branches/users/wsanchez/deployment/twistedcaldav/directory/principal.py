@@ -534,6 +534,10 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
         groups = self._getRelatives("groups")
 
         if config.EnableProxyPrincipals:
+            # Get any directory specified proxies
+            groups.update(self._getRelatives("proxyFor", proxy='read-write'))
+            groups.update(self._getRelatives("readOnlyProxyFor", proxy='read-only'))
+
             # Get proxy group UIDs and map to principal resources
             proxies = []
             d = waitForDeferred(self._calendar_user_proxy_index().getMemberships(self.principalUID()))
@@ -565,6 +569,13 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
                 proxyFors.update(results)
 
         if config.EnableProxyPrincipals:
+            # Get any directory specified proxies
+            if read_write:
+                directoryProxies = self._getRelatives("proxyFor", proxy='read-write')
+            else:
+                directoryProxies = self._getRelatives("readOnlyProxyFor", proxy='read-only')
+            proxyFors.update([subprincipal.parent for subprincipal in directoryProxies])
+
             # Get proxy group UIDs and map to principal resources
             proxies = []
             d = waitForDeferred(self._calendar_user_proxy_index().getMemberships(self.principalUID()))
@@ -711,6 +722,15 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def autoSchedule(self):
         return self.record.autoSchedule
+
+    def proxies(self):
+        return self._getRelatives("proxies")
+
+    def readOnlyProxies(self):
+        return self._getRelatives("readOnlyProxies")
+
+    def hasEditableProxyMembership(self):
+        return self.record.hasEditableProxyMembership()
 
     def scheduleInbox(self, request):
         home = self._calendarHome()

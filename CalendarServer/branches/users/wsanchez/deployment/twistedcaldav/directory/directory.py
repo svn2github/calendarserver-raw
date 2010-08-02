@@ -245,6 +245,21 @@ class DirectoryRecord(LoggingMixIn):
     def groups(self):
         return ()
 
+    def proxies(self):
+        return ()
+
+    def proxyFor(self):
+        return ()
+
+    def readOnlyProxies(self):
+        return ()
+
+    def readOnlyProxyFor(self):
+        return ()
+
+    def hasEditableProxyMembership(self):
+        return self.recordType in (DirectoryService.recordType_users, DirectoryService.recordType_groups)
+
     def verifyCredentials(self, credentials):
         return False
 

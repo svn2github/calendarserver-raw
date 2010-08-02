@@ -23,8 +23,11 @@ __all__ = [
     "OpenDirectoryInitError",
 ]
 
+import os
 import sys
 import signal
+
+from xml.parsers.expat import ExpatError
 
 import opendirectory
 import dsattributes
@@ -50,6 +53,8 @@ from twistedcaldav.directory import augment
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 from twistedcaldav.directory.directory import DirectoryError, UnknownRecordTypeError
 
+from plistlib import readPlistFromString, readPlist
+
 serverPreferences = '/Library/Preferences/com.apple.servermgr_info.plist'
 saclGroup = 'com.apple.access_calendar'
 
@@ -62,9 +67,11 @@ class OpenDirectoryService(DirectoryService):
     def __repr__(self):
         return "<%s %r: %r>" % (self.__class__.__name__, self.realmName, self.node)
 
-    def __init__(self, node="/Search", dosetup=True, doreload=True, cacheTimeout=30, signalIntervalSeconds=10, **kwds):
+    def __init__(self, node="/Search", requireComputerRecord=True, dosetup=True, doreload=True, cacheTimeout=30, signalIntervalSeconds=10, **kwds):
         """
         @param node: an OpenDirectory node name to bind to.
+        @param requireComputerRecord: C{True} if the directory schema is to be used to determine
+            which calendar users are enabled.
         @param dosetup: if C{True} then the directory records are initialized,
                         if C{False} they are not.
                         This should only be set to C{False} when doing unit tests.
@@ -78,6 +85,9 @@ class OpenDirectoryService(DirectoryService):
         self.realmName = node
         self.directory = directory
         self.node = node
+        self.requireComputerRecord = requireComputerRecord
+        self.computerRecords = {}
+        self.servicetags = set()
         self.cacheTimeout = cacheTimeout
         self.signalIntervalSeconds = signalIntervalSeconds
         self._records = {}
@@ -87,6 +97,21 @@ class OpenDirectoryService(DirectoryService):
         self.isWorkgroupServer = False
 
         if dosetup:
+            if self.requireComputerRecord:
+                try:
+                    self._lookupVHostRecord()
+                except Exception, e:
+                    self.log_error("Unable to locate virtual host record: %s" % (e,))
+                    raise
+
+                if os.path.exists(serverPreferences):
+                    serverInfo = readPlist(serverPreferences)
+
+                    self.isWorkgroupServer = serverInfo.get('ServiceConfig', {}).get('IsWorkgroupServer', False)
+
+                    if self.isWorkgroupServer:
+                        self.log_info("Enabling Workgroup Server compatibility mode")
+
             if doreload:
                 for recordType in self.recordTypes():
                     self.recordsForType(recordType)
@@ -260,6 +285,195 @@ class OpenDirectoryService(DirectoryService):
         return self.memcacheClient
 
 
+    def _lookupVHostRecord(self):
+        """
+        Get the OD service record for this host.
+        """
+
+        # The server must have been configured with a virtual hostname.
+        vhostname = config.ServerHostName
+        if not vhostname:
+            raise OpenDirectoryInitError(
+                "There is no virtual hostname configured for the server for use with Open Directory (node=%s)"
+                % (self.realmName,)
+            )
+         
+        # Find a record in /Computers with an apple-serviceinfo attribute value equal to the virtual hostname
+        # and return some useful attributes.
+        attrs = [
+            dsattributes.kDS1AttrGeneratedUID,
+            dsattributes.kDSNAttrRecordName,
+            dsattributes.kDSNAttrMetaNodeLocation,
+            "dsAttrTypeNative:apple-serviceinfo",
+        ]
+
+        self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r)" % (
+            self.directory,
+            dsquery.match(
+                "dsAttrTypeNative:apple-serviceinfo",
+                vhostname,
+                dsattributes.eDSContains,
+            ).generate(),
+            True,    # case insentive for hostnames
+            dsattributes.kDSStdRecordTypeComputers,
+            attrs
+        ))
+        records = opendirectory.queryRecordsWithAttributes_list(
+            self.directory,
+            dsquery.match(
+                "dsAttrTypeNative:apple-serviceinfo",
+                vhostname,
+                dsattributes.eDSContains,
+            ).generate(),
+            True,    # case insentive for hostnames
+            dsattributes.kDSStdRecordTypeComputers,
+            attrs
+        )
+        self._parseComputersRecords(records, vhostname)
+
+    def _parseComputersRecords(self, records, vhostname):
+        # Must have some results
+        if len(records) == 0:
+            raise OpenDirectoryInitError(
+                "Open Directory (node=%s) has no /Computers records with a virtual hostname: %s"
+                % (self.realmName, vhostname)
+            )
+
+        # Now find all appropriate records and determine the enabled (only) service tags for each.
+        for recordname, record in records:
+            self._parseServiceInfo(vhostname, recordname, record)
+
+        # Log all the matching records
+        for key, value in self.computerRecords.iteritems():
+            _ignore_recordname, enabled, servicetag = value
+            self.log_info("Matched Directory record: %s with ServicesLocator: %s, state: %s" % (
+                key,
+                servicetag,
+                {True:"enabled", False:"disabled"}[enabled]
+            ))
+
+        # Log all the enabled service tags - or generate an error if there are none
+        if self.servicetags:
+            for tag in self.servicetags:
+                self.log_info("Enabled ServicesLocator: %s" % (tag,))
+        else:
+            raise OpenDirectoryInitError(
+                "Open Directory (node=%s) no /Computers records with an enabled and valid "
+                "calendar service were found matching virtual hostname: %s"
+                % (self.realmName, vhostname)
+            )
+
+    def _parseServiceInfo(self, vhostname, recordname, record):
+
+        # Extract some useful attributes
+        recordguid = record[dsattributes.kDS1AttrGeneratedUID]
+        recordlocation = "%s/Computers/%s" % (record[dsattributes.kDSNAttrMetaNodeLocation], recordname)
+
+        # First check for apple-serviceinfo attribute
+        plist = record.get("dsAttrTypeNative:apple-serviceinfo", None)
+        if not plist:
+            return False
+
+        # Parse the plist and look for our special entry
+        plist = readPlistFromString(plist)
+        vhosts = plist.get("com.apple.macosxserver.virtualhosts", None)
+        if not vhosts:
+            self.log_error(
+                "Open Directory (node=%s) %s record does not have a "
+                "com.apple.macosxserver.virtualhosts in its apple-serviceinfo attribute value"
+                % (self.realmName, recordlocation)
+            )
+            return False
+        
+        # Iterate over each vhost and find one that is a calendar service
+        hostguid = None
+        for key, value in vhosts.iteritems():
+            serviceTypes = value.get("serviceType", None)
+            if serviceTypes:
+                for type in serviceTypes:
+                    if type == "calendar":
+                        hostguid = key
+                        break
+                    
+        if not hostguid:
+            # We can get false positives from the query - we ignore those.
+            return False
+            
+        # Get host name
+        hostname = vhosts[hostguid].get("hostname", None)
+        if not hostname:
+            self.log_error(
+                "Open Directory (node=%s) %s record does not have "
+                "any host name in its apple-serviceinfo attribute value"
+                % (self.realmName, recordlocation)
+            )
+            return False
+        if hostname != vhostname:
+            # We can get false positives from the query - we ignore those.
+            return False
+        
+        # Get host details. At this point we only check that it is present. We actually
+        # ignore the details themselves (scheme/port) as we use our own config for that.
+        hostdetails = vhosts[hostguid].get("hostDetails", None)
+        if not hostdetails:
+            self.log_error(
+                "Open Directory (node=%s) %s record does not have "
+                "any host details in its apple-serviceinfo attribute value"
+                % (self.realmName, recordlocation)
+            )
+            return False
+        
+        # Look at the service data
+        serviceInfos = vhosts[hostguid].get("serviceInfo", None)
+        if not serviceInfos or not serviceInfos.has_key("calendar"):
+            self.log_error(
+                "Open Directory (node=%s) %s record does not have a "
+                "calendar service in its apple-serviceinfo attribute value"
+                % (self.realmName, recordlocation)
+            )
+            return False
+        serviceInfo = serviceInfos["calendar"]
+        
+        # Check that this service is enabled
+        enabled = serviceInfo.get("enabled", True)
+
+        # Create the string we will use to match users with accounts on this server
+        servicetag = "%s:%s:calendar" % (recordguid, hostguid)
+        
+        self.computerRecords[recordlocation] = (recordname, enabled, servicetag)
+        
+        if enabled:
+            self.servicetags.add(servicetag)
+        
+        return True
+    
+    def _parseResourceInfo(self, plist, guid, recordType, shortname):
+        """
+        Parse OD ResourceInfo attribute and extract information that the server needs.
+
+        @param plist: the plist that is the attribute value.
+        @type plist: str
+        @param guid: the directory GUID of the record being parsed.
+        @type guid: str
+        @param shortname: the record shortname of the record being parsed.
+        @type shortname: str
+        @return: a C{tuple} of C{bool} for auto-accept, C{str} for proxy GUID, C{str} for read-only proxy GUID.
+        """
+        try:
+            plist = readPlistFromString(plist)
+            wpframework = plist.get("com.apple.WhitePagesFramework", {})
+            autoaccept = wpframework.get("AutoAcceptsInvitation", False)
+            proxy = wpframework.get("CalendaringDelegate", None)
+            read_only_proxy = wpframework.get("ReadOnlyCalendaringDelegate", None)
+        except (ExpatError, AttributeError), e:
+            self.log_error(
+                "Failed to parse ResourceInfo attribute of record (%s)%s (guid=%s): %s\n%s" %
+                (recordType, shortname, guid, e, plist,)
+            )
+            raise ValueError("Invalid ResourceInfo")
+
+        return (autoaccept, proxy, read_only_proxy,)
+
     def recordTypes(self):
         return (
             DirectoryService.recordType_users,
@@ -281,7 +495,7 @@ class OpenDirectoryService(DirectoryService):
         """
         @param recordType: a record type
         @return: a dictionary containing all records for the given record
-        type.  Keys are short names and values are the cooresponding
+        type.  Keys are short names and values are the corresponding
         OpenDirectoryRecord for the given record type.
         """
         return self._storage(recordType)["records"]
@@ -457,6 +671,15 @@ class OpenDirectoryService(DirectoryService):
         
         if recordType == DirectoryService.recordType_groups:
             groupsForGUID = {}
+        elif recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+            proxiesForGUID = {}
+            readOnlyProxiesForGUID = {}
+
+        def allowForACLs():
+            return recordType in (
+                DirectoryService.recordType_users,
+                DirectoryService.recordType_groups,
+            )
 
         def _setFromAttribute(attribute, lower=False):
             if attribute:
@@ -486,6 +709,30 @@ class OpenDirectoryService(DirectoryService):
                     del cuaddrs[cuaddr]
 
         for (recordShortName, value) in results:
+            enabledForCalendaring = True
+
+            if self.requireComputerRecord:
+                servicesLocators = value.get(dsattributes.kDSNAttrServicesLocator)
+
+                if servicesLocators:
+                    if type(servicesLocators) is str:
+                        servicesLocators = (servicesLocators,)
+
+                    for locator in servicesLocators:
+                        if locator in self.servicetags:
+                            break
+                    else:
+                        if allowForACLs():
+                            enabledForCalendaring = False
+                        else:
+                            invalidRecord(recordShortName)
+                            continue
+                else:
+                    if allowForACLs():
+                        enabledForCalendaring = False
+                    else:
+                        invalidRecord(recordShortName)
+                        continue
 
             # Now get useful record info.
             recordGUID     = value.get(dsattributes.kDS1AttrGeneratedUID)
@@ -513,6 +760,22 @@ class OpenDirectoryService(DirectoryService):
             else:
                 memberGUIDs = ()
 
+            # Special case for resources and locations
+            autoSchedule = False
+            proxyGUIDs = ()
+            readOnlyProxyGUIDs = ()
+            if recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+                resourceInfo = value.get(dsattributes.kDSNAttrResourceInfo)
+                if resourceInfo is not None:
+                    try:
+                        autoSchedule, proxy, read_only_proxy = self._parseResourceInfo(resourceInfo, recordGUID, recordType, recordShortName)
+                    except ValueError:
+                        continue
+                    if proxy:
+                        proxyGUIDs = (proxy,)
+                    if read_only_proxy:
+                        readOnlyProxyGUIDs = (read_only_proxy,)
+
             record = OpenDirectoryRecord(
                 service               = self,
                 recordType            = recordType,
@@ -522,6 +785,8 @@ class OpenDirectoryService(DirectoryService):
                 fullName              = recordFullName,
                 emailAddresses        = recordEmailAddresses,
                 memberGUIDs           = memberGUIDs,
+                proxyGUIDs            = proxyGUIDs,
+                readOnlyProxyGUIDs    = readOnlyProxyGUIDs,
             )
 
             # Look up augment information
@@ -529,6 +794,12 @@ class OpenDirectoryService(DirectoryService):
             # we know it is completing immediately.
             d = augment.AugmentService.getAugmentRecord(record.guid, recordType)
             d.addCallback(lambda x:record.addAugmentInformation(x))
+            
+            # Override based on ServicesLocator and ResourceInfo
+            if not enabledForCalendaring:
+                record.enabledForCalendaring = False
+            if autoSchedule:
+                record.autoSchedule = True
 
             # Check for disabled items
             if record.shortName in disabledNames or record.guid in disabledGUIDs:
@@ -557,6 +828,11 @@ class OpenDirectoryService(DirectoryService):
                     if recordType == DirectoryService.recordType_groups:
                         self._indexGroup(record, record._memberGUIDs, groupsForGUID)
 
+                    # Do proxy indexing if needed
+                    elif recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+                        self._indexGroup(record, record._proxyGUIDs, proxiesForGUID)
+                        self._indexGroup(record, record._readOnlyProxyGUIDs, readOnlyProxiesForGUID)
+
         #
         # Replace the entire cache
         #
@@ -574,6 +850,11 @@ class OpenDirectoryService(DirectoryService):
         if recordType == DirectoryService.recordType_groups:
             storage["groupsForGUID"] = groupsForGUID
 
+        # Add proxy indexing if needed
+        elif recordType in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+            storage["proxiesForGUID"] = proxiesForGUID
+            storage["readOnlyProxiesForGUID"] = readOnlyProxiesForGUID
+
         self._records[recordType] = storage
 
         self.log_info(
@@ -590,6 +871,7 @@ class OpenDirectoryService(DirectoryService):
             dsattributes.kDSNAttrMetaNodeLocation,
         ]
 
+        query = None
         if recordType == DirectoryService.recordType_users:
             listRecordType = dsattributes.kDSStdRecordTypeUsers
 
@@ -600,24 +882,128 @@ class OpenDirectoryService(DirectoryService):
 
         elif recordType == DirectoryService.recordType_locations:
             listRecordType = dsattributes.kDSStdRecordTypePlaces
+            attrs.append(dsattributes.kDSNAttrResourceInfo)
         
         elif recordType == DirectoryService.recordType_resources:
             listRecordType = dsattributes.kDSStdRecordTypeResources
+            attrs.append(dsattributes.kDSNAttrResourceInfo)
         
         else:
             raise UnknownRecordTypeError("Unknown Open Directory record type: %s" % (recordType))
 
+        if self.requireComputerRecord:
+            if self.isWorkgroupServer and recordType == DirectoryService.recordType_users:
+                self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r,%r,%r)" % (
+                    self.directory,
+                    dsattributes.kDSNAttrRecordName,
+                    saclGroup,
+                    dsattributes.eDSExact,
+                    False,
+                    dsattributes.kDSStdRecordTypeGroups,
+                    [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups],
+                ))
+                results = opendirectory.queryRecordsWithAttribute_list(
+                    self.directory,
+                    dsattributes.kDSNAttrRecordName,
+                    saclGroup,
+                    dsattributes.eDSExact,
+                    False,
+                    dsattributes.kDSStdRecordTypeGroups,
+                    [dsattributes.kDSNAttrGroupMembers, dsattributes.kDSNAttrNestedGroups]
+                )
+
+                if len(results) == 1:
+                    members      = results[0][1].get(dsattributes.kDSNAttrGroupMembers, [])
+                    nestedGroups = results[0][1].get(dsattributes.kDSNAttrNestedGroups, [])
+                else:
+                    members = []
+                    nestedGroups = []
+
+                guidQueries = []
+
+                for GUID in self._expandGroupMembership(members, nestedGroups):
+                    guidQueries.append(
+                        dsquery.match(dsattributes.kDS1AttrGeneratedUID, GUID, dsattributes.eDSExact)
+                    )
+
+                if not guidQueries:
+                    self.log_warn("No SACL enabled users found.")
+                    return ()
+
+                query = dsquery.expression(dsquery.expression.OR, guidQueries)
+
+            #
+            # For users and groups, we'll load all entries, even if
+            # they don't have a services locator for this server.
+            #
+            elif (
+                recordType != DirectoryService.recordType_users and
+                recordType != DirectoryService.recordType_groups
+            ):
+                tag_queries = []
+
+                for tag in self.servicetags:
+                    tag_queries.append(dsquery.match(dsattributes.kDSNAttrServicesLocator, tag, dsattributes.eDSExact))
+
+                if len(tag_queries) == 1:
+                    subquery = tag_queries[0]
+                else:
+                    subquery = dsquery.expression(dsquery.expression.OR, tag_queries)
+
+                if query is None:
+                    query = subquery
+                else:
+                    query = dsquery.expression(dsquery.expression.AND, (subquery, query))
+
+        subquery = None
+
         try:
-            self.log_debug("opendirectory.listAllRecordsWithAttributes_list(%r,%r,%r)" % (
-                self.directory,
-                listRecordType,
-                attrs,
-            ))
-            results = opendirectory.listAllRecordsWithAttributes_list(
-                self.directory,
-                listRecordType,
-                attrs,
-            )
+            if query:
+                if isinstance(query, dsquery.match):
+                    self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r,%r,%r)" % (
+                        self.directory,
+                        query.attribute,
+                        query.value,
+                        query.matchType,
+                        False,
+                        listRecordType,
+                        attrs,
+                    ))
+                    results = opendirectory.queryRecordsWithAttribute_list(
+                        self.directory,
+                        query.attribute,
+                        query.value,
+                        query.matchType,
+                        False,
+                        listRecordType,
+                        attrs,
+                    )
+                else:
+                    self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r)" % (
+                        self.directory,
+                        query.generate(),
+                        False,
+                        listRecordType,
+                        attrs,
+                    ))
+                    results = opendirectory.queryRecordsWithAttributes_list(
+                        self.directory,
+                        query.generate(),
+                        False,
+                        listRecordType,
+                        attrs,
+                    )
+            else:
+                self.log_debug("opendirectory.listAllRecordsWithAttributes_list(%r,%r,%r)" % (
+                    self.directory,
+                    listRecordType,
+                    attrs,
+                ))
+                results = opendirectory.listAllRecordsWithAttributes_list(
+                    self.directory,
+                    listRecordType,
+                    attrs,
+                )
         except opendirectory.ODError, ex:
             self.log_error("Open Directory (node=%s) error: %s" % (self.realmName, str(ex)))
             raise
@@ -630,7 +1016,7 @@ class OpenDirectoryRecord(DirectoryRecord):
     """
     def __init__(
         self, service, recordType, guid, nodeName, shortName, fullName,
-        emailAddresses, memberGUIDs,
+        emailAddresses, memberGUIDs, proxyGUIDs, readOnlyProxyGUIDs,
     ):
         super(OpenDirectoryRecord, self).__init__(
             service               = service,
@@ -642,6 +1028,8 @@ class OpenDirectoryRecord(DirectoryRecord):
         )
         self.nodeName = nodeName
         self._memberGUIDs = tuple(memberGUIDs)
+        self._proxyGUIDs = tuple(proxyGUIDs)
+        self._readOnlyProxyGUIDs = tuple(readOnlyProxyGUIDs)
 
     def __repr__(self):
         if self.service.realmName == self.nodeName:
@@ -670,6 +1058,41 @@ class OpenDirectoryRecord(DirectoryRecord):
 
     def groups(self):
         return self.service.groupsForGUID(self.guid)
+
+    def proxies(self):
+        if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+            return
+
+        for guid in self._proxyGUIDs:
+            proxyRecord = self.service.recordWithGUID(guid)
+            if proxyRecord is None:
+                self.log_error("No record for proxy in %s with GUID %s" % (self.shortName, guid))
+            else:
+                yield proxyRecord
+
+    def proxyFor(self):
+        result = set()
+        result.update(self.service.proxiesForGUID(DirectoryService.recordType_resources, self.guid))
+        result.update(self.service.proxiesForGUID(DirectoryService.recordType_locations, self.guid))
+        return result
+
+    def readOnlyProxies(self):
+        if self.recordType not in (DirectoryService.recordType_resources, DirectoryService.recordType_locations):
+            return
+
+        for guid in self._readOnlyProxyGUIDs:
+            proxyRecord = self.service.recordWithGUID(guid)
+            if proxyRecord is None:
+                self.log_error("No record for proxy in %s with GUID %s" % (self.shortName, guid))
+            else:
+                yield proxyRecord
+
+    def readOnlyProxyFor(self):
+        result = set()
+        result.update(self.service.readOnlyProxiesForGUID(DirectoryService.recordType_resources, self.guid))
+        result.update(self.service.readOnlyProxiesForGUID(DirectoryService.recordType_locations, self.guid))
+        return result
+
 
     def getMemcacheKey(self, shortName):
         key = "auth-%s" % (md5(shortName).hexdigest(),)

@@ -160,7 +160,15 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
         assert isinstance(property, davxml.WebDAVElement)
 
         if property.qname() == (dav_namespace, "group-member-set"):
-            return self.setGroupMemberSet(property, request)
+            if self.hasEditableMembership():
+                return self.setGroupMemberSet(property, request)
+            else:
+                raise HTTPError(
+                    StatusResponse(
+                        responsecode.FORBIDDEN,
+                        "Proxies cannot be changed."
+                    )
+                )
 
         return super(CalendarUserProxyPrincipalResource, self).writeProperty(property, request)
 
@@ -320,27 +328,34 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
 
     @inlineCallbacks
     def _directGroupMembers(self):
-        # Get member UIDs from database and map to principal resources
-        members = yield self._index().getMembers(self.uid)
-        found = []
-        missing = []
-        for uid in members:
-            p = self.pcollection.principalForUID(uid)
-            if p:
-                found.append(p)
-                # Make sure any outstanding deletion timer entries for
-                # existing principals are removed
-                yield self._index().refreshPrincipal(uid)
+        if self.hasEditableMembership():
+            # Get member UIDs from database and map to principal resources
+            members = yield self._index().getMembers(self.uid)
+            found = []
+            missing = []
+            for uid in members:
+                p = self.pcollection.principalForUID(uid)
+                if p:
+                    found.append(p)
+                    # Make sure any outstanding deletion timer entries for
+                    # existing principals are removed
+                    yield self._index().refreshPrincipal(uid)
+                else:
+                    missing.append(uid)
+    
+            # Clean-up ones that are missing
+            for uid in missing:
+                cacheTimeout = config.DirectoryService.params.get("cacheTimeout", 30) * 60 # in seconds
+    
+                yield self._index().removePrincipal(uid, delay=cacheTimeout*2)
+    
+            returnValue(found)
+        else:
+            # Fixed proxies
+            if self.proxyType == "calendar-proxy-write":
+                returnValue(self.parent.proxies())
             else:
-                missing.append(uid)
-
-        # Clean-up ones that are missing
-        for uid in missing:
-            cacheTimeout = config.DirectoryService.params.get("cacheTimeout", 30) * 60 # in seconds
-
-            yield self._index().removePrincipal(uid, delay=cacheTimeout*2)
-
-        returnValue(found)
+                returnValue(self.parent.readOnlyProxies())
 
     def groupMembers(self):
         return self._expandMemberUIDs()
@@ -350,6 +365,9 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
         # Get membership UIDs and map to principal resources
         memberships = yield self._index().getMemberships(self.uid)
         returnValue([p for p in [self.pcollection.principalForUID(uid) for uid in memberships] if p])
+
+    def hasEditableMembership(self):
+        return self.parent.hasEditableProxyMembership()
 
 class ProxyDB(AbstractADBAPIDatabase, LoggingMixIn):
     """
