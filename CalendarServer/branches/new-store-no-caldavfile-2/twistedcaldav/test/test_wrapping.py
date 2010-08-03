@@ -235,7 +235,7 @@ class WrappingTests(TestCase):
         """
         calDavFile = yield self.getResource("calendars/users/wsanchez/")
         self.commit()
-        self.assertIsInstance(calDavFile._newStoreCalendarHome, CalendarHome)
+        self.assertIsInstance(calDavFile._newStoreHome, CalendarHome)
 
 
     @inlineCallbacks
@@ -350,7 +350,7 @@ class WrappingTests(TestCase):
         """
         calDavFile = yield self.getResource("addressbooks/users/wsanchez/")
         self.commit()
-        self.assertIsInstance(calDavFile._newStoreAddressBookHome, AddressBookHome)
+        self.assertIsInstance(calDavFile._newStoreHome, AddressBookHome)
 
 
     @inlineCallbacks

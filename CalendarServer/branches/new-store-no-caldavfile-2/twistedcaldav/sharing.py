@@ -946,14 +946,24 @@ class SharedHomeMixin(LinkFollowerMixIn):
             self._sharesDB = SharedCollectionsDatabase(self)
         return self._sharesDB
 
-    def provisionShares(self):
+    def provisionShare(self, name):
         
-        if not hasattr(self, "_provisionedShares"):
+        # Try to find a matching share
+        child = None
+        shares = self.allShares()
+        if name in shares:
             from twistedcaldav.sharedcollection import SharedCollectionResource
-            for share in self.sharesDB().allRecords():
-                child = SharedCollectionResource(self, share)
-                self.putChild(share.localname, child)
-            self._provisionedShares = True
+            child = SharedCollectionResource(self, shares[name])
+            self.putChild(name, child)
+        return child
+
+    def allShares(self):
+        if not hasattr(self, "_allShares"):
+            self._allShares = dict([(share.localname, share) for share in self.sharesDB().allRecords()])
+        return self._allShares
+
+    def allShareNames(self):
+        return tuple(self.allShares().keys())
 
     @inlineCallbacks
     def acceptInviteShare(self, request, hostUrl, inviteUID, displayname=None):

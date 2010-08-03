@@ -20,7 +20,6 @@ Implements a directory-backed addressbook hierarchy.
 
 __all__ = [
     "uidsResourceName",
-   #"DirectoryAddressBookProvisioningResource",
     "DirectoryAddressBookHomeProvisioningResource",
     "DirectoryAddressBookHomeTypeProvisioningResource",
     "DirectoryAddressBookHomeUIDProvisioningResource",
@@ -29,21 +28,17 @@ __all__ = [
 
 from twext.python.log import Logger
 from twext.web2 import responsecode
-from twext.web2.dav import davxml
-from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import joinURL
 from twext.web2.http import HTTPError
 from twext.web2.http_headers import ETag, MimeType
 
-from twisted.internet.defer import succeed
-
 from twistedcaldav.config import config
 from twistedcaldav.directory.idirectory import IDirectoryService
+from twistedcaldav.directory.resource import DirectoryReverseProxyResource
 from twistedcaldav.directory.util import transactionFromRequest
-from twistedcaldav.directory.resource import AutoProvisioningResourceMixIn,\
-    DirectoryReverseProxyResource
 from twistedcaldav.extensions import ReadOnlyResourceMixIn, DAVResource,\
     DAVResourceWithChildrenMixin
+from twistedcaldav.resource import AddressBookHomeResource
 
 from uuid import uuid4
 
@@ -61,7 +56,6 @@ class CalDAVComplianceMixIn(object):
         )
 
 class DirectoryAddressBookProvisioningResource (
-    AutoProvisioningResourceMixIn,
     ReadOnlyResourceMixIn,
     CalDAVComplianceMixIn,
     DAVResourceWithChildrenMixin,
@@ -101,19 +95,10 @@ class DirectoryAddressBookHomeProvisioningResource (DirectoryAddressBookProvisio
         #
         # Create children
         #
-        def provisionChild(name):
-            self.putChild(name, self.provisionChild(name))
-
         for recordType in self.directory.recordTypes():
-            provisionChild(recordType)
+            self.putChild(recordType, DirectoryAddressBookHomeTypeProvisioningResource(self, recordType))
 
-        provisionChild(uidsResourceName)
-
-    def provisionChild(self, name):
-        if name == uidsResourceName:
-            return DirectoryAddressBookHomeUIDProvisioningResource(self)
-
-        return DirectoryAddressBookHomeTypeProvisioningResource(self, name)
+        self.putChild(uidsResourceName, DirectoryAddressBookHomeUIDProvisioningResource(self))
 
     def url(self):
         return self._url
@@ -172,7 +157,6 @@ class DirectoryAddressBookHomeTypeProvisioningResource (DirectoryAddressBookProv
         return joinURL(self._parent.url(), self.recordType)
 
     def locateChild(self, request, segments):
-        self.provision()
         name = segments[0]
         if name == "":
             return (self, segments[1:])
@@ -234,10 +218,6 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
 
         self.directory = parent.directory
         self.parent = parent
-        
-        # TODO: better way to get this class - perhaps request from the store
-        from twistedcaldav.resource import AddressBookHomeResource
-        self.homeResourceClass = AddressBookHomeResource
 
     def url(self):
         return joinURL(self.parent.url(), uidsResourceName)
@@ -263,7 +243,6 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
 
     def homeResourceForRecord(self, record, request):
 
-        self.provision()
         transaction = transactionFromRequest(request, self.parent._newStore)
 
         name = record.uid
@@ -279,7 +258,7 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
         assert len(name) > 4, "Directory record has an invalid GUID: %r" % (name,)
         
         if record.locallyHosted():
-            child = self.homeResourceClass(self, record, transaction)
+            child = DirectoryAddressBookHomeResource(self, record, transaction)
         else:
             child = DirectoryReverseProxyResource(self, record)
 
@@ -306,135 +285,20 @@ class DirectoryAddressBookHomeUIDProvisioningResource (DirectoryAddressBookProvi
         return self.parent.principalForRecord(record)
 
 
-class DirectoryAddressBookHomeResource (AutoProvisioningResourceMixIn, DAVResource):
+class DirectoryAddressBookHomeResource (AddressBookHomeResource):
     """
     Address book home collection resource.
     """
-    def __init__(self, parent, record):
+    def __init__(self, parent, record, transaction):
         """
         @param path: the path to the file which will back the resource.
         """
         assert parent is not None
         assert record is not None
-
-        super(DirectoryAddressBookHomeResource, self).__init__()
+        assert transaction is not None
 
         self.record = record
-        self.parent = parent
-
-        childlist = ()
-        if config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled and not config.Sharing.Calendars.Enabled:
-            from twistedcaldav.notifications import NotificationCollectionResource
-            childlist += (
-                ("notification", NotificationCollectionResource),
-            )
-        for name, cls in childlist:
-            child = self.provisionChild(name)
-            assert isinstance(child, cls), "Child %r is not a %s: %r" % (name, cls.__name__, child)
-            self.putChild(name, child)
-
-    def provisionDefaultAddressBooks(self):
-
-        # Disable notifications during provisioning
-        if hasattr(self, "clientNotifier"):
-            self.clientNotifier.disableNotify()
-
-        try:
-            self.provision()
-    
-            childName = "addressbook"
-            child = self.provisionChild(childName)
-
-            d = child.createAddressBookCollection()
-        except:
-            # We want to make sure to re-enable notifications, so do so
-            # if there is an immediate exception above, or via errback, below
-            if hasattr(self, "clientNotifier"):
-                self.clientNotifier.enableNotify(None)
-            raise
-
-        # Re-enable notifications
-        if hasattr(self, "clientNotifier"):
-            d.addCallback(self.clientNotifier.enableNotify)
-            d.addErrback(self.clientNotifier.enableNotify)
-
-        return d
-
-    def provisionChild(self, name):
-        raise NotImplementedError("Subclass must implement provisionChild()")
-
-    def url(self):
-        return joinURL(self.parent.url(), self.record.uid, "/")
-
-    def canonicalURL(self, request):
-        return succeed(self.url())
-    ##
-    # DAV
-    ##
-    
-    def isCollection(self):
-        return True
-
-    def http_COPY(self, request):
-        return responsecode.FORBIDDEN
-
-    ##
-    # ACL
-    ##
-
-    def owner(self, request):
-        return succeed(davxml.HRef(self.principalForRecord().principalURL()))
-
-    def ownerPrincipal(self, request):
-        return succeed(self.principalForRecord())
-
-    def resourceOwnerPrincipal(self, request):
-        return succeed(self.principalForRecord())
-
-    def defaultAccessControlList(self):
-        myPrincipal = self.principalForRecord()
-
-        aces = (
-            # Inheritable DAV:all access for the resource's associated principal.
-            davxml.ACE(
-                davxml.Principal(davxml.HRef(myPrincipal.principalURL())),
-                davxml.Grant(davxml.Privilege(davxml.All())),
-                davxml.Protected(),
-                TwistedACLInheritable(),
-            ),
-        )
-
-        # Give read access to config.ReadPrincipals
-        aces += config.ReadACEs
-
-        # Give all access to config.AdminPrincipals
-        aces += config.AdminACEs
-        
-        return davxml.ACL(*aces)
-
-    def accessControlList(self, request, inheritance=True, expanding=False, inherited_aces=None):
-        # Permissions here are fixed, and are not subject to inheritance rules, etc.
-        return succeed(self.defaultAccessControlList())
-
-    def principalCollections(self):
-        return self.parent.principalCollections()
+        super(DirectoryAddressBookHomeResource, self).__init__(parent, record.uid, transaction)
 
     def principalForRecord(self):
         return self.parent.principalForRecord(self.record)
-
-    ##
-    # Quota
-    ##
-
-    def hasQuotaRoot(self, request):
-        """
-        @return: a C{True} if this resource has quota root, C{False} otherwise.
-        """
-        return config.UserQuota != 0
-    
-    def quotaRoot(self, request):
-        """
-        @return: a C{int} containing the maximum allowed bytes if this collection
-            is quota-controlled, or C{None} if not quota controlled.
-        """
-        return config.UserQuota if config.UserQuota != 0 else None

@@ -320,7 +320,7 @@ class HomeTestCase(TestCase):
         def _defer(user):
             # Commit the transaction
             self.site.resource._associatedTransaction.commit()
-            self.docroot = user._newStoreCalendarHome._path.path
+            self.docroot = user._newStoreHome._path.path
 
         return self._refreshRoot().addCallback(_defer)
 

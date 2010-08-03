@@ -635,7 +635,7 @@ class DirectoryRenderingMixIn(object):
                 return value
             
         url = urllib.quote(name, '/')
-        if isinstance(child, SuperDAVFile) and child.isCollection():
+        if isinstance(child, DAVResource) and child.isCollection():
             url += "/"
             name += "/"
 
@@ -710,8 +710,10 @@ class DAVResource (DirectoryPrincipalPropertySearchMixIn,
         # Allow live property to be overridden by dead property
         if self.deadProperties().contains((dav_namespace, "resourcetype")):
             return self.deadProperties().get((dav_namespace, "resourcetype"))
-        return davxml.ResourceType()
+        return davxml.ResourceType(davxml.Collection()) if self.isCollection() else davxml.ResourceType()
 
+    def contentType(self):
+        return MimeType("httpd", "unix-directory") if self.isCollection() else None
 
 class DAVResourceWithChildrenMixin (object):
     """

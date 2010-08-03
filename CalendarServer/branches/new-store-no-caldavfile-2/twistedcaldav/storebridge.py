@@ -297,7 +297,7 @@ class StoreScheduleInboxResource(_CalendarChildHelper, ScheduleInboxResource):
     def __init__(self, *a, **kw):
         super(StoreScheduleInboxResource, self).__init__(*a, **kw)
         self.parent.propagateTransaction(self)
-        home = self.parent._newStoreCalendarHome
+        home = self.parent._newStoreHome
         storage = home.calendarWithName("inbox")
         if storage is None:
             # raise RuntimeError("backend should be handling this for us")
@@ -308,7 +308,7 @@ class StoreScheduleInboxResource(_CalendarChildHelper, ScheduleInboxResource):
             storage = home.calendarWithName("inbox")
         self._initializeWithCalendar(
             storage,
-            self.parent._newStoreCalendarHome
+            self.parent._newStoreHome
         )
 
 
@@ -365,7 +365,7 @@ class DropboxCollection(_GetChildHelper):
     def __init__(self, parent, *a, **kw):
         kw.update(principalCollections=parent.principalCollections())
         super(DropboxCollection, self).__init__(*a, **kw)
-        self._newStoreCalendarHome = parent._newStoreCalendarHome
+        self._newStoreHome = parent._newStoreHome
         parent.propagateTransaction(self)
 
 
@@ -377,7 +377,7 @@ class DropboxCollection(_GetChildHelper):
 
 
     def getChild(self, name):
-        calendarObject = self._newStoreCalendarHome.calendarObjectWithDropboxID(name)
+        calendarObject = self._newStoreHome.calendarObjectWithDropboxID(name)
         if calendarObject is None:
             return NoDropboxHere()
         objectDropbox = CalendarObjectDropbox(
@@ -393,7 +393,7 @@ class DropboxCollection(_GetChildHelper):
 
     def listChildren(self):
         l = []
-        for everyCalendar in self._newStoreCalendarHome.calendars():
+        for everyCalendar in self._newStoreHome.calendars():
             for everyObject in everyCalendar.calendarObjects():
                 l.append(everyObject.dropboxID())
         return l

@@ -29,10 +29,10 @@ from twext.web2.test.test_server import SimpleRequest
 from twistedcaldav import caldavxml
 from twistedcaldav import ical
 from twistedcaldav.index import db_basename
-from twistedcaldav.test.util import HomeTestCase
+from twistedcaldav.test.util import TestCase
 from twistedcaldav.config import config
 
-class CalendarMultiget (HomeTestCase):
+class CalendarMultiget (TestCase):
     """
     calendar-multiget REPORT
     """
@@ -44,12 +44,14 @@ class CalendarMultiget (HomeTestCase):
         All events.
         (CalDAV-access-09, section 7.6.8)
         """
+        self.createStockDirectoryService()
+        self.setupCalendars()
         okuids = [r[0] for r in (os.path.splitext(f) for f in os.listdir(self.holidays_dir)) if r[1] == ".ics"]
         okuids[:] = okuids[1:10]
 
         baduids = ["12345@example.com", "67890@example.com"]
 
-        return self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids)
+        return self.simple_event_multiget("/calendars/users/wsanchez/calendar_multiget_events/", okuids, baduids)
 
     def test_multiget_all_events(self):
         """
