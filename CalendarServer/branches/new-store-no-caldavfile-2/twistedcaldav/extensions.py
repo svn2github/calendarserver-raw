@@ -705,7 +705,6 @@ class DAVResource (DirectoryPrincipalPropertySearchMixIn,
             return self.renderDirectory(request)
         return super(DAVResource, self).render(request)
 
-
     def resourceType(self):
         # Allow live property to be overridden by dead property
         if self.deadProperties().contains((dav_namespace, "resourcetype")):
@@ -777,6 +776,14 @@ class DAVPrincipalResource (DirectoryPrincipalPropertySearchMixIn,
         )
 
     http_REPORT = http_REPORT
+
+    def render(self, request):
+        if not self.exists():
+            return responsecode.NOT_FOUND
+
+        if self.isCollection():
+            return self.renderDirectory(request)
+        return super(DAVResource, self).render(request)
 
     @inlineCallbacks
     def readProperty(self, property, request):

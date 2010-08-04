@@ -71,7 +71,6 @@ from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
 from twistedcaldav.datafilters.privateevents import PrivateEventFilter
 from twistedcaldav.directory.internal import InternalDirectoryRecord
-from twistedcaldav.dropbox import DropBoxHomeResource
 from twistedcaldav.extensions import DAVResource, DAVPrincipalResource,\
     PropertyNotFoundError, DAVResourceWithChildrenMixin
 from twistedcaldav.ical import Component
@@ -1889,7 +1888,7 @@ class CalendarPrincipalCollectionResource (DAVPrincipalCollectionResource, CalDA
             ),
         )
 
-class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVPrincipalResource):
+class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenMixin, DAVPrincipalResource):
     """
     CalDAV principal resource.
 

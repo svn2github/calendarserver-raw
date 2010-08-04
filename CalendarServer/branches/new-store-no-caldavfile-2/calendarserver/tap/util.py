@@ -46,7 +46,6 @@ from twistedcaldav.directory.digest import QopDigestCredentialFactory
 from twistedcaldav.directory.internal import InternalDirectoryService
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.sudo import SudoDirectoryService
-from twistedcaldav.directory.util import NotFilePath
 from twistedcaldav.directory.wiki import WikiDirectoryService
 from twistedcaldav.directorybackedaddressbook import DirectoryBackedAddressBookResource
 from twistedcaldav.notify import installNotificationClient
@@ -382,7 +381,6 @@ def getRootResource(config, resources=None):
                       % (iScheduleResourceClass,))
 
         ischedule = iScheduleResourceClass(
-            NotFilePath(isfile=True),
             root,
         )
         root.putChild("ischedule", ischedule)
