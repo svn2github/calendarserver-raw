@@ -146,7 +146,7 @@ limitations under the License.
       <dict>
         <key>xmlFiles</key>
         <array>
-	      <string>conf/auth/augments-test.xml</string>
+	      <string>conf/augments-test.xml</string>
         </array>
       </dict>
     </dict>
@@ -214,7 +214,7 @@ limitations under the License.
      -->
 
 	<key>ProxyLoadFromFile</key>
-    <string>conf/auth/proxies-test.xml</string>
+    <string>conf/proxies-test.xml</string>
 
   <!--
     Special principals
