@@ -43,6 +43,7 @@ from twistedcaldav import caldavxml
 from twistedcaldav.resource import isPseudoCalendarCollectionResource
 from twistedcaldav.static import CalDAVFile, CalendarHomeFile
 from twistedcaldav.config import config, defaultConfigFile
+from twistedcaldav.directory import augment
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 
 def loadConfig(configFileName):
@@ -58,6 +59,17 @@ def loadConfig(configFileName):
     return config
 
 def getDirectory():
+    #
+    # Setup the Augment Service
+    #
+    augmentClass = namedClass(config.AugmentService.type)
+
+    try:
+        augment.AugmentService = augmentClass(**config.AugmentService.params)
+    except IOError, e:
+        print "Could not start augment service"
+        raise
+
     BaseDirectoryService = namedClass(config.DirectoryService["type"])
 
     class MyDirectoryService (BaseDirectoryService):
@@ -120,8 +132,7 @@ dummyDirectoryRecord = DirectoryRecord(
     guid = "8EF0892F-7CB6-4B8E-B294-7C5A5321136A",
     shortName = "dummy",
     fullName = "Dummy McDummerson",
-    calendarUserAddresses = set(),
-    autoSchedule = False,
+    emailAddresses = (),
 )
 
 class UsageError (StandardError):
@@ -251,8 +262,7 @@ def main():
                     guid = guid,
                     shortName = "dummy",
                     fullName = "",
-                    calendarUserAddresses = set(),
-                    autoSchedule = False,
+                    emailAddresses = (),
                 )
 
             parent = CalDAVFile(dirname(abspath(path)))
@@ -262,7 +272,11 @@ def main():
 
         for record in records:
             recordType, shortName = record
-            calendarHome = directory.calendarHomeForShortName(recordType, shortName)
+            try:
+                calendarHome = directory.calendarHomeForShortName(recordType, shortName)
+            except Exception, e:
+                log.msg("Exception for calendar home '%s': %s" % (calendarHome, e))
+                calendarHome = None
             if not calendarHome:
                 sys.stderr.write("No calendar home found for record: (%s)%s\n" % (recordType, shortName))
                 sys.exit(1)
@@ -270,7 +284,11 @@ def main():
 
         if allRecords:
             for record in directory.allRecords():
-                calendarHome = directory.calendarHomeForRecord(record)
+                try:
+                    calendarHome = directory.calendarHomeForRecord(record)
+                except Exception, e:
+                    log.msg("Exception for calendar home '%s': %s" % (calendarHome, e))
+                    calendarHome = None
                 if not calendarHome:
                     pass
                 else:
