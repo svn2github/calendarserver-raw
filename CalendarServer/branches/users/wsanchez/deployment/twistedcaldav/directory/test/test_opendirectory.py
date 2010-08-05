@@ -72,6 +72,8 @@ else:
                 fullName              = "Some user",
                 emailAddresses        = set(("someuser@example.com",)),
                 memberGUIDs           = [],
+                proxyGUIDs            = [],
+                readOnlyProxyGUIDs    = [],
             )
 
             digestFields = {}

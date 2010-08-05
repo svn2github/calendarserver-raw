@@ -330,34 +330,34 @@ class CalendarUserProxyPrincipalResource (CalDAVComplianceMixIn, PermissionsMixI
 
     @inlineCallbacks
     def _directGroupMembers(self):
-        if self.hasEditableMembership():
-            # Get member UIDs from database and map to principal resources
-            members = yield self._index().getMembers(self.uid)
-            found = []
-            missing = []
-            for uid in members:
-                p = self.pcollection.principalForUID(uid)
-                if p:
-                    found.append(p)
-                    # Make sure any outstanding deletion timer entries for
-                    # existing principals are removed
-                    yield self._index().refreshPrincipal(uid)
-                else:
-                    missing.append(uid)
-    
-            # Clean-up ones that are missing
-            for uid in missing:
-                cacheTimeout = config.DirectoryService.params.get("cacheTimeout", 30) * 60 # in seconds
-    
-                yield self._index().removePrincipal(uid, delay=cacheTimeout*2)
-    
-            returnValue(found)
-        else:
-            # Fixed proxies
-            if self.proxyType == "calendar-proxy-write":
-                returnValue(self.parent.proxies())
+        # Get member UIDs from database and map to principal resources
+        members = yield self._index().getMembers(self.uid)
+        found = []
+        missing = []
+        for uid in members:
+            p = self.pcollection.principalForUID(uid)
+            if p:
+                found.append(p)
+                # Make sure any outstanding deletion timer entries for
+                # existing principals are removed
+                yield self._index().refreshPrincipal(uid)
             else:
-                returnValue(self.parent.readOnlyProxies())
+                missing.append(uid)
+
+        # Clean-up ones that are missing
+        for uid in missing:
+            cacheTimeout = config.DirectoryService.params.get("cacheTimeout", 30) * 60 # in seconds
+
+            yield self._index().removePrincipal(uid, delay=cacheTimeout*2)
+
+        # Fixed proxies
+        if self.proxyType == "calendar-proxy-write":
+            found.extend(self.parent.proxies())
+        else:
+            found.extend(self.parent.readOnlyProxies())
+
+        returnValue(found)
+
 
     def groupMembers(self):
         return self._expandMemberUIDs()
