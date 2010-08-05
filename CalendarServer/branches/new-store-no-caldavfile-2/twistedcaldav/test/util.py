@@ -15,6 +15,7 @@
 ##
 
 from __future__ import with_statement
+from calendarserver.provision.root import RootResource
 
 __all__ = [
     "featureUnimplemented",
@@ -36,7 +37,6 @@ from twext.python.memcacheclient import ClientFactory
 from twext.python.filepath import CachingFilePath as FilePath, CachingFilePath
 import twext.web2.dav.test.util
 from twext.web2.dav import davxml
-from twext.web2.dav.static import DAVFile
 from twext.web2.http import HTTPError, StatusResponse
 
 from twistedcaldav import memcacher
@@ -68,7 +68,7 @@ augmentsFile = dirTest.child("augments.xml")
 proxiesFile = dirTest.child("proxies.xml")
 
 class TestCase(twext.web2.dav.test.util.TestCase):
-    resource_class = DAVFile
+    resource_class = RootResource
 
     def createStockDirectoryService(self):
         """
@@ -332,8 +332,7 @@ class HomeTestCase(TestCase):
         it a new transaction.
         """
         users = self.homeProvisioner.getChild("users")
-        self.request = norequest()
-        user, ignored = (yield users.locateChild(self.request, ["wsanchez"]))
+        user, ignored = (yield users.locateChild(norequest(), ["wsanchez"]))
 
         # Force the request to succeed regardless of the implementation of
         # accessControlList.
@@ -372,6 +371,7 @@ class AddressBookHomeTestCase(TestCase):
         super(AddressBookHomeTestCase, self).setUp()
 
         fp = FilePath(self.mktemp())
+        fp.createDirectory()
 
         self.createStockDirectoryService()
 
@@ -383,9 +383,10 @@ class AddressBookHomeTestCase(TestCase):
             _newStore
         )
         
-        def _defer(_):
+        def _defer(user):
             # Commit the transaction
             self.site.resource._associatedTransaction.commit()
+            self.docroot = user._newStoreHome._path.path
             
         return self._refreshRoot().addCallback(_defer)
 
@@ -407,6 +408,7 @@ class AddressBookHomeTestCase(TestCase):
         # Fix the site to point directly at the user's calendar home so that we
         # can focus on testing just that rather than hierarchy traversal..
         self.site.resource = user
+        returnValue(user)
 
 
     @inlineCallbacks

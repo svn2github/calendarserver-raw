@@ -196,8 +196,6 @@ class _NewStoreFileMetaDataHelper(object):
     def newStoreProperties(self):
         return self._newStoreObject.properties()
 
-
-
 class _CalendarChildHelper(object):
     """
     Methods for things which are like calendars.
@@ -664,6 +662,15 @@ class CalendarCollectionResource(_CalendarChildHelper, CalDAVResource):
 
     def name(self):
         return self._newStoreCalendar.name()
+
+    def etag(self):
+        return ETag(self._newStoreCalendar.md5())
+
+    def lastModified(self):
+        return self._newStoreCalendar.modified()
+
+    def creationDate(self):
+        return self._newStoreCalendar.created()
 
     def isCollection(self):
         return True
@@ -1288,6 +1295,15 @@ class AddressBookCollectionResource(_AddressBookChildHelper, CalDAVResource):
     def name(self):
         return self._newStoreAddressBook.name()
 
+    def etag(self):
+        return ETag(self._newStoreAddressBook.md5())
+
+    def lastModified(self):
+        return self._newStoreAddressBook.modified()
+
+    def creationDate(self):
+        return self._newStoreAddressBook.created()
+
     def isCollection(self):
         return True
 
@@ -1576,6 +1592,10 @@ class AddressBookObjectResource(_NewStoreFileMetaDataHelper, CalDAVResource, Fan
     def vCardText(self, ignored=None):
         assert ignored is None, "This is a addressbook object, not a addressbook"
         return self._newStoreObject.vCardText()
+
+
+    def text(self):
+        return self.vCardText()
 
 
     def render(self, request):

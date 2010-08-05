@@ -29,10 +29,10 @@ from twext.web2.test.test_server import SimpleRequest
 from twistedcaldav import caldavxml
 from twistedcaldav import ical
 from twistedcaldav.index import db_basename
-from twistedcaldav.test.util import TestCase
+from twistedcaldav.test.util import HomeTestCase, todo
 from twistedcaldav.config import config
 
-class CalendarMultiget (TestCase):
+class CalendarMultiget (HomeTestCase):
     """
     calendar-multiget REPORT
     """
@@ -44,14 +44,12 @@ class CalendarMultiget (TestCase):
         All events.
         (CalDAV-access-09, section 7.6.8)
         """
-        self.createStockDirectoryService()
-        self.setupCalendars()
         okuids = [r[0] for r in (os.path.splitext(f) for f in os.listdir(self.holidays_dir)) if r[1] == ".ics"]
         okuids[:] = okuids[1:10]
 
-        baduids = ["12345@example.com", "67890@example.com"]
+        baduids = ["12345%40example.com", "67890%40example.com"]
 
-        return self.simple_event_multiget("/calendars/users/wsanchez/calendar_multiget_events/", okuids, baduids)
+        return self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids)
 
     def test_multiget_all_events(self):
         """
@@ -60,7 +58,7 @@ class CalendarMultiget (TestCase):
         """
         okuids = [r[0] for r in (os.path.splitext(f) for f in os.listdir(self.holidays_dir)) if r[1] == ".ics"]
 
-        baduids = ["12345@example.com", "67890@example.com"]
+        baduids = ["12345%40example.com", "67890%40example.com"]
 
         return self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids)
 
@@ -81,7 +79,7 @@ class CalendarMultiget (TestCase):
 
         okuids = [r[0] for r in (os.path.splitext(f) for f in os.listdir(self.holidays_dir)) if r[1] == ".ics"]
 
-        baduids = ["12345@example.com", "67890@example.com"]
+        baduids = ["12345%40example.com", "67890%40example.com"]
 
         d = self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids)
         d.addCallbacks(_restoreValueOK, _restoreValueError)
@@ -104,10 +102,11 @@ class CalendarMultiget (TestCase):
 
         okuids = [r[0] for r in (os.path.splitext(f) for f in os.listdir(self.holidays_dir)) if r[1] == ".ics"]
 
-        baduids = ["12345@example.com", "67890@example.com"]
+        baduids = ["12345%40example.com", "67890%40example.com"]
 
         return self.simple_event_multiget("/calendar_multiget_events/", okuids, baduids, withData=False)
 
+    @todo("Remove: Does not work with new store")
     @inlineCallbacks
     def test_multiget_one_broken_event(self):
         """
@@ -157,7 +156,9 @@ VERSION:2.0
 BEGIN:VEVENT
 UID:bad
 DTSTART;VALUE=DATE:20020214
-DTEND;VALUE=DATE:20020""".replace("\n", "\r\n"))
+DTEND;VALUE=DATE:20020
+END:VCALENDAR
+""".replace("\n", "\r\n"))
         f.close
 
         okuids = ["good", ]

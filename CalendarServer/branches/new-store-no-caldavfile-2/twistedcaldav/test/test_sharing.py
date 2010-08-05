@@ -23,17 +23,26 @@ from twext.web2.test.test_server import SimpleRequest
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav import customxml
 from twistedcaldav.config import config
-from twistedcaldav.test.util import HomeTestCase
+from twistedcaldav.test.util import HomeTestCase, norequest
+from twistedcaldav.resource import CalDAVResource
 
 
 class SharingTests(HomeTestCase):
 
     class FakePrincipal(object):
         
+        class FakeRecord(object):
+            
+            def __init__(self, name, cuaddr):
+                self.fullName = name
+                self.guid = name
+                self.calendarUserAddresses = set((cuaddr,))
+
         def __init__(self, cuaddr):
             self.path = "/principals/__uids__/%s" % (cuaddr[7:].split('@')[0],)
             self.homepath = "/calendars/__uids__/%s" % (cuaddr[7:].split('@')[0],)
             self.displayname = cuaddr[7:].split('@')[0].upper()
+            self.record = self.FakeRecord(cuaddr[7:].split('@')[0], cuaddr)
 
         def calendarHome(self, request):
             class FakeHome(object):
@@ -49,21 +58,22 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def setUp(self):
+        yield super(SharingTests, self).setUp()
+
         self.patch(config.Sharing, "Enabled", True)
         self.patch(config.Sharing.Calendars, "Enabled", True)
 
-        yield super(SharingTests, self).setUp()
-
         self.resource = (
-            yield self.site.resource.locateChild(self.request, ["calendar"])
+            yield self.site.resource.locateChild(norequest(), ["calendar"])
         )[0]
+        self.site.resource.putChild("calendar", self.resource)
 
-        self.resource.validUserIDForShare = self._fakeValidUserID
-        self.resource.validUserIDWithCommonNameForShare = self._fakeValidUserID
-        self.resource.sendInvite = lambda record, request: succeed(True)
-        self.resource.removeInvite = lambda record, request: succeed(True)
+        CalDAVResource.validUserIDForShare = self._fakeValidUserID
+        CalDAVResource.validUserIDWithCommonNameForShare = self._fakeValidUserID
+        CalDAVResource.sendInvite = lambda self, record, request: succeed(True)
+        CalDAVResource.removeInvite = lambda self, record, request: succeed(True)
 
-        self.resource.principalForCalendarUserAddress = lambda cuaddr: SharingTests.FakePrincipal(cuaddr)
+        CalDAVResource.principalForCalendarUserAddress = lambda self, cuaddr: SharingTests.FakePrincipal(cuaddr)
 
 
     def _fakeValidUserID(self, userid, *args):
@@ -219,7 +229,7 @@ class SharingTests(HomeTestCase):
         
         isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
-        isVShared = (yield self.resource.isVirtualShare(None))
+        isVShared = (yield self.resource.isVirtualShare())
         self.assertFalse(isVShared)
 
     @inlineCallbacks
