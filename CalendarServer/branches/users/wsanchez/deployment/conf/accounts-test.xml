@@ -36,6 +36,7 @@ limitations under the License.
     <guid>user%02d</guid>
     <password>user%02d</password>
     <name>User %02d</name>
+    <email-address>user%02d@example.com</email-address>
   </user>
   <user repeat="10">
     <uid>public%02d</uid>
