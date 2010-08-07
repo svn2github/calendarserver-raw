@@ -690,6 +690,13 @@ class OpenDirectoryService(DirectoryService):
             else:
                 return ()
 
+        def invalidRecord(recordShortName):
+            self.log_error(
+                "Directory (incorrectly) returned a record with no applicable "
+                "ServicesLocator attribute: (%s) %s"
+                % (recordType, recordShortName)
+            )
+
         def disableRecord(record):
             self.log_warn("Record disabled due to conflict (record name and GUID must match): %s" % (record,))
 
