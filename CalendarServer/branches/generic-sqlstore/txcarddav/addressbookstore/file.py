@@ -73,7 +73,7 @@ class AddressBookHome(CommonHome):
     def _addressbookStore(self):
         return self._dataStore
 
-    def created(self):
+    def createdHome(self):
         self.createAddressBookWithName("addressbook")
 
 class AddressBook(CommonHomeChild):

@@ -200,7 +200,7 @@ class CommonStoreTransaction(DataStoreTransaction):
             notifier)
         self._homes[storeType][(uid, self)] = home
         if creating:
-            home.created()
+            home.createdHome()
 
             # Create notification collection
             if storeType == ECALENDARTYPE:

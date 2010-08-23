@@ -20,7 +20,6 @@ PostgreSQL data store.
 """
 
 __all__ = [
-    "PostgresStore",
     "PostgresCalendarHome",
     "PostgresCalendar",
     "PostgresCalendarObject",
@@ -34,10 +33,8 @@ import StringIO
 
 from twistedcaldav.sharing import SharedCollectionRecord #@UnusedImport
 
-from inspect import getargspec
 from zope.interface.declarations import implements
 
-from twisted.application.service import Service
 from twisted.internet.error import ConnectionLost
 from twisted.internet.interfaces import ITransport
 from twisted.python import hashlib
@@ -47,7 +44,6 @@ from twisted.python.modules import getModule
 
 from twext.web2.dav.element.rfc2518 import ResourceType
 
-from txdav.idav import IDataStore, AlreadyFinishedError
 from txdav.common.inotifications import (INotificationCollection,
     INotificationObject)
 
@@ -58,11 +54,10 @@ from txcaldav.calendarstore.util import (validateCalendarComponent,
     validateAddressBookComponent, dropboxIDFromCalendarObject, CalendarSyncTokenHelper,
     AddressbookSyncTokenHelper)
 from txdav.datastore.file import cached
+from txdav.datastore.sql import memoized
 
-from txcaldav.icalendarstore import (ICalendarTransaction, ICalendarHome,
-    ICalendar, ICalendarObject, IAttachment)
-from txcarddav.iaddressbookstore import (IAddressBookTransaction,
-    IAddressBookHome, IAddressBook, IAddressBookObject)
+from txcaldav.icalendarstore import (ICalendarHome, ICalendar, ICalendarObject, IAttachment)
+from txcarddav.iaddressbookstore import (IAddressBookHome, IAddressBook, IAddressBookObject)
 from txdav.propertystore.base import AbstractPropertyStore, PropertyName
 from txdav.propertystore.none import PropertyStore
 
@@ -74,6 +69,7 @@ from twext.python.vcomponent import VComponent
 
 from twistedcaldav import carddavxml
 from twistedcaldav.config import config
+from twistedcaldav.caldavxml import ScheduleCalendarTransp, Opaque
 from twistedcaldav.customxml import NotificationType
 from twistedcaldav.dateops import normalizeForIndex
 from twistedcaldav.index import IndexedSearchException, ReservationError,\
@@ -148,70 +144,6 @@ indexfbtype_to_icalfbtype = {
     3: 'U',
     4: 'T',
 }
-
-
-def _getarg(argname, argspec, args, kw):
-    """
-    Get an argument from some arguments.
-
-    @param argname: The name of the argument to retrieve.
-
-    @param argspec: The result of L{inspect.getargspec}.
-
-    @param args: positional arguments passed to the function specified by
-        argspec.
-
-    @param kw: keyword arguments passed to the function specified by
-        argspec.
-
-    @return: The value of the argument named by 'argname'.
-    """
-    argnames = argspec[0]
-    try:
-        argpos = argnames.index(argname)
-    except ValueError:
-        argpos = None
-    if argpos is not None:
-        if len(args) > argpos:
-            return args[argpos]
-    if argname in kw:
-        return kw[argname]
-    else:
-        raise TypeError("could not find key argument %r in %r/%r (%r)" %
-            (argname, args, kw, argpos)
-        )
-
-
-
-def memoized(keyArgument, memoAttribute):
-    """
-    Decorator which memoizes the result of a method on that method's instance.
-
-    @param keyArgument: The name of the 'key' argument.
-
-    @type keyArgument: C{str}
-
-    @param memoAttribute: The name of the attribute on the instance which
-        should be used for memoizing the result of this method; the attribute
-        itself must be a dictionary.
-
-    @type memoAttribute: C{str}
-    """
-    def decorate(thunk):
-        spec = getargspec(thunk)
-        def outer(*a, **kw):
-            self = a[0]
-            memo = getattr(self, memoAttribute)
-            key = _getarg(keyArgument, spec, a, kw)
-            if key in memo:
-                return memo[key]
-            result = thunk(*a, **kw)
-            if result is not None:
-                memo[key] = result
-            return result
-        return outer
-    return decorate
-
 
 
 class PropertyStore(AbstractPropertyStore):
@@ -1693,6 +1625,14 @@ class PostgresCalendarHome(object):
         return names
 
 
+    def createdHome(self):
+        self.createCalendarWithName("calendar")
+        defaultCal = self.calendarWithName("calendar")
+        props = defaultCal.properties()
+        props[PropertyName(*ScheduleCalendarTransp.qname())] = ScheduleCalendarTransp(
+            Opaque())
+        self.createCalendarWithName("inbox")
+
     def calendars(self):
         """
         Retrieve calendars contained in this calendar home.
@@ -2056,151 +1996,6 @@ class PostgresNotificationCollection(object):
         )
 
 
-
-class PostgresTransaction(object):
-    """
-    Transaction implementation for postgres database.
-    """
-    implements(ICalendarTransaction, IAddressBookTransaction)
-
-    def __init__(self, store, connection, notifierFactory, label):
-        # print 'STARTING', label
-        self._store = store
-        self._connection = connection
-        self._cursor = connection.cursor()
-        self._completed = False
-        self._calendarHomes = {}
-        self._addressbookHomes = {}
-        self._notificationHomes = {}
-        self._postCommitOperations = []
-        self._notifierFactory = notifierFactory
-        self._label = label
-
-
-    def store(self):
-        return self._store
-
-
-    def __repr__(self):
-        return 'PG-TXN<%s>' % (self._label,)
-
-
-    def execSQL(self, sql, args=[]):
-        # print 'EXECUTE %s: %s' % (self._label, sql)
-        self._cursor.execute(sql, args)
-        if self._cursor.description:
-            return self._cursor.fetchall()
-        else:
-            return None
-
-
-    def __del__(self):
-        if not self._completed:
-            self._connection.rollback()
-            self._connection.close()
-
-
-    @memoized('uid', '_calendarHomes')
-    def calendarHomeWithUID(self, uid, create=False):
-        data = self.execSQL(
-            "select RESOURCE_ID from CALENDAR_HOME where OWNER_UID = %s",
-            [uid]
-        )
-        if not data:
-            if not create:
-                return None
-            self.execSQL(
-                "insert into CALENDAR_HOME (OWNER_UID) values (%s)",
-                [uid]
-            )
-            home = self.calendarHomeWithUID(uid)
-            home.createCalendarWithName("calendar")
-            return home
-        resid = data[0][0]
-
-        if self._notifierFactory:
-            notifier = self._notifierFactory.newNotifier(id=uid)
-        else:
-            notifier = None
-
-        return PostgresCalendarHome(self, uid, resid, notifier)
-
-
-    @memoized('uid', '_addressbookHomes')
-    def addressbookHomeWithUID(self, uid, create=False):
-        data = self.execSQL(
-            "select RESOURCE_ID from ADDRESSBOOK_HOME where OWNER_UID = %s",
-            [uid]
-        )
-        if not data:
-            if not create:
-                return None
-            self.execSQL(
-                "insert into ADDRESSBOOK_HOME (OWNER_UID) values (%s)",
-                [uid]
-            )
-            home = self.addressbookHomeWithUID(uid)
-            home.createAddressBookWithName("addressbook")
-            return home
-        resid = data[0][0]
-
-        if self._notifierFactory:
-            notifier = self._notifierFactory.newNotifier(id=uid)
-        else:
-            notifier = None
-
-        return PostgresAddressBookHome(self, uid, resid, notifier)
-
-
-    @memoized('uid', '_notificationHomes')
-    def notificationsWithUID(self, uid):
-        """
-        Implement notificationsWithUID.
-        """
-        rows = self.execSQL(
-            """
-            select RESOURCE_ID from NOTIFICATION_HOME where
-            OWNER_UID = %s
-            """, [uid])
-        if rows:
-            [[resourceID]] = rows
-        else:
-            [[resourceID]] = self.execSQL("select nextval('RESOURCE_ID_SEQ')")
-            resourceID = str(resourceID)
-            self.execSQL(
-                "insert into NOTIFICATION_HOME (RESOURCE_ID, OWNER_UID) "
-                "values (%s, %s)", [resourceID, uid])
-        return PostgresNotificationCollection(self, uid, resourceID)
-
-
-    def abort(self):
-        if not self._completed:
-            # print 'ABORTING', self._label
-            self._completed = True
-            self._connection.rollback()
-            self._connection.close()
-        else:
-            raise AlreadyFinishedError()
-
-
-    def commit(self):
-        if not self._completed:
-            # print 'COMPLETING', self._label
-            self._completed = True
-            self._connection.commit()
-            self._connection.close()
-            for operation in self._postCommitOperations:
-                operation()
-        else:
-            raise AlreadyFinishedError()
-
-
-    def postCommit(self, operation):
-        """
-        Run things after 'commit.'
-        """
-        self._postCommitOperations.append(operation)
-        # FIXME: implement.
 
 # CARDDAV
 
@@ -3130,6 +2925,9 @@ class PostgresAddressBookHome(object):
         return names
 
 
+    def createdHome(self):
+        self.createAddressBookWithName("addressbook")
+
     def addressbooks(self):
         """
         Retrieve addressbooks contained in this addressbook home.
@@ -3258,26 +3056,3 @@ class PostgresAddressBookHome(object):
             return self._notifier.getID(label)
         else:
             return None
-
-
-#
-
-
-class PostgresStore(Service, object):
-
-    implements(IDataStore)
-
-    def __init__(self, connectionFactory, notifierFactory, attachmentsPath):
-        self.connectionFactory = connectionFactory
-        self.notifierFactory = notifierFactory
-        self.attachmentsPath = attachmentsPath
-
-
-    def newTransaction(self, label="unlabeled"):
-        return PostgresTransaction(
-            self,
-            self.connectionFactory(),
-            self.notifierFactory,
-            label
-        )
-

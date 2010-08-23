@@ -24,11 +24,12 @@ import gc
 from txcaldav.calendarstore.test.common import CommonTests as CalendarCommonTests
 from txcarddav.addressbookstore.test.common import CommonTests as AddressBookCommonTests
 from txdav.common.icommondatastore import NoSuchHomeChildError
+from txdav.common.datastore.sql import CommonDataStore
 
 from twisted.trial import unittest
 from txdav.datastore.subpostgres import (PostgresService,
     DiagnosticConnectionWrapper)
-from txcaldav.calendarstore.postgres import PostgresStore, v1_schema
+from txcaldav.calendarstore.postgres import v1_schema
 from twisted.internet.defer import Deferred, inlineCallbacks, succeed
 from twisted.internet import reactor
 from twext.python.filepath import CachingFilePath
@@ -80,7 +81,7 @@ class StoreBuilder(object):
                 except OSError:
                     pass
                 try:
-                    self.store = PostgresStore(
+                    self.store = CommonDataStore(
                         lambda label=None: connectionFactory(
                             label or currentTestID
                         ),
@@ -172,10 +173,11 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
             calendars = self.requirements[homeUID]
             if calendars is not None:
                 home = populateTxn.calendarHomeWithUID(homeUID, True)
-                # We don't want the default calendar to appear unless it's
+                # We don't want the default calendar or inbox to appear unless it's
                 # explicitly listed.
                 try:
                     home.removeCalendarWithName("calendar")
+                    home.removeCalendarWithName("inbox")
                 except NoSuchHomeChildError:
                     pass
                 for calendarName in calendars:

@@ -730,8 +730,8 @@ class CommonTests(object):
                               home.calendarWithName(calendar.name()))
 
         self.assertEquals(
-            list(c.name() for c in calendars),
-            home1_calendarNames
+            set(c.name() for c in calendars),
+            set(home1_calendarNames)
         )
 
 

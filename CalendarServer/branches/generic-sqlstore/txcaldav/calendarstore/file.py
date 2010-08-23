@@ -125,7 +125,7 @@ class CalendarHome(CommonHome):
         return self._dataStore
 
 
-    def created(self):
+    def createdHome(self):
         self.createCalendarWithName("calendar")
         defaultCal = self.calendarWithName("calendar")
         props = defaultCal.properties()
