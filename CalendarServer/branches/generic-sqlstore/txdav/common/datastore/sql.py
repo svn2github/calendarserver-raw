@@ -108,9 +108,11 @@ class CommonStoreTransaction(object):
         return 'PG-TXN<%s>' % (self._label,)
 
 
-    def execSQL(self, sql, args=[]):
+    def execSQL(self, sql, args=[], raiseOnZeroRowCount=None):
         # print 'EXECUTE %s: %s' % (self._label, sql)
         self._cursor.execute(sql, args)
+        if raiseOnZeroRowCount is not None and self._cursor.rowcount == 0:
+            raise raiseOnZeroRowCount()
         if self._cursor.description:
             return self._cursor.fetchall()
         else:

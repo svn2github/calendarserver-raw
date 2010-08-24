@@ -38,34 +38,75 @@ from txdav.propertystore.base import PropertyName
 class PropertyStoreTest(unittest.TestCase):
     # Subclass must define self.propertyStore in setUp().
 
+    def _preTest(self):
+        self.addCleanup(self._postTest)
+    def _postTest(self):
+        pass
+    def _changed(self, store):
+        store.flush()
+    def _abort(self, store):
+        store.abort()
+
     def test_interface(self):
         try:
+            self._preTest()
             verifyObject(IPropertyStore, self.propertyStore)
         except BrokenMethodImplementation, e:
             self.fail(e)
 
     def test_set_get_contains(self):
+        
+        self._preTest()
         store = self.propertyStore
 
         name = propertyName("test")
         value = propertyValue("Hello, World!")
 
+        # Test with commit after change
+        store[name] = value
+        self._changed(store)
+        self.assertEquals(store.get(name, None), value)
+        self.failUnless(name in store)
+
+        # Test without commit after change
+        value = propertyValue("Hello, Universe!")
         store[name] = value
         self.assertEquals(store.get(name, None), value)
         self.failUnless(name in store)
 
     def test_delete_get_contains(self):
+
+        self._preTest()
         store = self.propertyStore
 
+        # Test with commit after change
         name = propertyName("test")
         value = propertyValue("Hello, World!")
 
         store[name] = value
+        self._changed(store)
+
         del store[name]
+        self._changed(store)
+
+        self.assertEquals(store.get(name, None), None)
+        self.failIf(name in store)
+
+        # Test without commit after change
+        name = propertyName("test")
+        value = propertyValue("Hello, Universe!")
+
+        store[name] = value
+        self._changed(store)
+
+        del store[name]
+
         self.assertEquals(store.get(name, None), None)
         self.failIf(name in store)
 
     def test_peruser(self):
+
+        self._preTest()
         store1 = self.propertyStore1
         store2 = self.propertyStore2
 
@@ -74,34 +115,36 @@ class PropertyStoreTest(unittest.TestCase):
         value2 = propertyValue("Hello, World2!")
 
         store1[name] = value1
-        store1.flush()
+        self._changed(store1)
         self.assertEquals(store1.get(name, None), value1)
         self.assertEquals(store2.get(name, None), None)
         self.failUnless(name in store1)
         self.failIf(name in store2)
         
         store2[name] = value2
-        store2.flush()
+        self._changed(store2)
         self.assertEquals(store1.get(name, None), value1)
         self.assertEquals(store2.get(name, None), value2)
         self.failUnless(name in store1)
         self.failUnless(name in store2)
         
         del store2[name]
-        store2.flush()
+        self._changed(store2)
         self.assertEquals(store1.get(name, None), value1)
         self.assertEquals(store2.get(name, None), None)
         self.failUnless(name in store1)
         self.failIf(name in store2)
         
         del store1[name]
-        store1.flush()
+        self._changed(store1)
         self.assertEquals(store1.get(name, None), None)
         self.assertEquals(store2.get(name, None), None)
         self.failIf(name in store1)
         self.failIf(name in store2)
         
     def test_peruser_shadow(self):
+
+        self._preTest()
         store1 = self.propertyStore1
         store2 = self.propertyStore2
 
@@ -114,35 +157,37 @@ class PropertyStoreTest(unittest.TestCase):
         value2 = propertyValue("Hello, World2!")
 
         store1[name] = value1
-        store1.flush()
+        self._changed(store1)
         self.assertEquals(store1.get(name, None), value1)
         self.assertEquals(store2.get(name, None), value1)
         self.failUnless(name in store1)
         self.failUnless(name in store2)
         
         store2[name] = value2
-        store2.flush()
+        self._changed(store2)
         self.assertEquals(store1.get(name, None), value1)
         self.assertEquals(store2.get(name, None), value2)
         self.failUnless(name in store1)
         self.failUnless(name in store2)
         
         del store2[name]
-        store2.flush()
+        self._changed(store2)
         self.assertEquals(store1.get(name, None), value1)
         self.assertEquals(store2.get(name, None), value1)
         self.failUnless(name in store1)
         self.failUnless(name in store2)
         
         del store1[name]
-        store1.flush()
+        self._changed(store1)
         self.assertEquals(store1.get(name, None), None)
         self.assertEquals(store2.get(name, None), None)
         self.failIf(name in store1)
         self.failIf(name in store2)
-        
+
 
     def test_peruser_global(self):
+
+        self._preTest()
         store1 = self.propertyStore1
         store2 = self.propertyStore2
 
@@ -155,21 +200,21 @@ class PropertyStoreTest(unittest.TestCase):
         value2 = propertyValue("Hello, World2!")
 
         store1[name] = value1
-        store1.flush()
+        self._changed(store1)
         self.assertEquals(store1.get(name, None), value1)
         self.assertEquals(store2.get(name, None), value1)
         self.failUnless(name in store1)
         self.failUnless(name in store2)
         
         store2[name] = value2
-        store2.flush()
+        self._changed(store2)
         self.assertEquals(store1.get(name, None), value2)
         self.assertEquals(store2.get(name, None), value2)
         self.failUnless(name in store1)
         self.failUnless(name in store2)
         
         del store2[name]
-        store2.flush()
+        self._changed(store2)
         self.assertEquals(store1.get(name, None), None)
         self.assertEquals(store2.get(name, None), None)
         self.failIf(name in store1)
@@ -177,6 +222,8 @@ class PropertyStoreTest(unittest.TestCase):
         
 
     def test_iteration(self):
+
+        self._preTest()
         store = self.propertyStore
 
         value = propertyValue("Hello, World!")
@@ -190,12 +237,16 @@ class PropertyStoreTest(unittest.TestCase):
         self.assertEquals(len(store), len(names))
 
     def test_delete_none(self):
+
+        self._preTest()
         def doDelete():
             del self.propertyStore[propertyName("xyzzy")]
 
         self.assertRaises(KeyError, doDelete)
 
     def test_keyInPropertyName(self):
+
+        self._preTest()
         store = self.propertyStore
 
         def doGet():
@@ -208,7 +259,7 @@ class PropertyStoreTest(unittest.TestCase):
             del store["xyzzy"]
 
         def doContains():
-            "xyzzy" in store
+            return "xyzzy" in store
 
         self.assertRaises(TypeError, doGet)
         self.assertRaises(TypeError, doSet)
@@ -216,6 +267,8 @@ class PropertyStoreTest(unittest.TestCase):
         self.assertRaises(TypeError, doContains)
 
     def test_flush(self):
+
+        self._preTest()
         store = self.propertyStore
 
         name = propertyName("test")
@@ -226,8 +279,8 @@ class PropertyStoreTest(unittest.TestCase):
         #
         store[name] = value
 
-        store.flush()
-        store.abort()
+        self._changed(store)
+        self._abort(store)
 
         self.assertEquals(store.get(name, None), value)
         self.assertEquals(len(store), 1)
@@ -237,13 +290,15 @@ class PropertyStoreTest(unittest.TestCase):
         #
         del store[name]
 
-        store.flush()
-        store.abort()
+        self._changed(store)
+        self._abort(store)
 
         self.assertEquals(store.get(name, None), None)
         self.assertEquals(len(store), 0)
 
     def test_abort(self):
+
+        self._preTest()
         store = self.propertyStore
 
         name = propertyName("test")
@@ -251,7 +306,7 @@ class PropertyStoreTest(unittest.TestCase):
 
         store[name] = value
 
-        store.abort()
+        self._abort(store)
 
         self.assertEquals(store.get(name, None), None)
         self.assertEquals(len(store), 0)

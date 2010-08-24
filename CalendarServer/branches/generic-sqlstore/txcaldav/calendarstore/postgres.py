@@ -58,11 +58,10 @@ from txdav.datastore.sql import memoized
 
 from txcaldav.icalendarstore import (ICalendarHome, ICalendar, ICalendarObject, IAttachment)
 from txcarddav.iaddressbookstore import (IAddressBookHome, IAddressBook, IAddressBookObject)
-from txdav.propertystore.base import AbstractPropertyStore, PropertyName
-from txdav.propertystore.none import PropertyStore
+from txdav.propertystore.base import PropertyName
+from txdav.propertystore.sql import PropertyStore
 
 from twext.web2.http_headers import MimeType, generateContentType
-from twext.web2.dav.element.parser import WebDAVDocument
 
 from twext.python.log import Logger, LoggingMixIn
 from twext.python.vcomponent import VComponent
@@ -144,50 +143,6 @@ indexfbtype_to_icalfbtype = {
     3: 'U',
     4: 'T',
 }
-
-
-class PropertyStore(AbstractPropertyStore):
-
-    def __init__(self, defaultuser, txn, resourceID):
-        super(PropertyStore, self).__init__(defaultuser)
-        self._txn = txn
-        self._resourceID = resourceID
-
-
-    def _getitem_uid(self, key, uid):
-        rows = self._txn.execSQL(
-            "select VALUE from RESOURCE_PROPERTY where "
-            "RESOURCE_ID = %s and NAME = %s and VIEWER_UID = %s",
-            [self._resourceID, key.toString(), uid])
-        if not rows:
-            raise KeyError(key)
-        return WebDAVDocument.fromString(rows[0][0]).root_element
-
-
-    def _setitem_uid(self, key, value, uid):
-        self._delitem_uid(key, uid)
-        self._txn.execSQL(
-            "insert into RESOURCE_PROPERTY "
-            "(RESOURCE_ID, NAME, VALUE, VIEWER_UID) values (%s, %s, %s, %s)",
-            [self._resourceID, key.toString(), value.toxml(), uid])
-
-
-    def _delitem_uid(self, key, uid):
-        self._txn.execSQL(
-            "delete from RESOURCE_PROPERTY where VIEWER_UID = %s"
-            "and RESOURCE_ID = %s AND NAME = %s",
-            [uid, self._resourceID, key.toString()])
-
-
-    def _keys_uid(self, uid):
-        rows = self._txn.execSQL(
-            "select NAME from RESOURCE_PROPERTY where "
-            "VIEWER_UID = %s and RESOURCE_ID = %s",
-            [uid, self._resourceID]
-        )
-        for row in rows:
-            yield PropertyName.fromString(row[0])
-
 
 
 class PostgresCalendarObject(object):
