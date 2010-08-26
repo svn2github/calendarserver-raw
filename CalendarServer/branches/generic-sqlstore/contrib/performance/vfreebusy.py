@@ -6,8 +6,6 @@ from urllib2 import HTTPDigestAuthHandler
 from uuid import uuid4
 from datetime import datetime, timedelta
 
-from protocol.url import URL
-
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet import reactor
 from twisted.web.client import Agent
@@ -97,10 +95,8 @@ def makeEvents(n):
 
 
 @inlineCallbacks
-def measure(dtrace, events, samples):
+def measure(host, port, dtrace, events, samples):
     user = password = "user01"
-    host = "localhost"
-    port = 8008
     root = "/"
     principal = "/"
     calendar = "vfreebusy-benchmark"
@@ -114,19 +110,20 @@ def measure(dtrace, events, samples):
     agent = AuthHandlerAgent(Agent(reactor), authinfo)
 
     # First set things up
-    account = yield initialize(agent, host, port, user, password, root, principal, calendar)
+    account = yield initialize(
+        agent, host, port, user, password, root, principal, calendar)
 
     base = "/calendars/users/%s/%s/foo-%%d.ics" % (user, calendar)
     for i, cal in enumerate(makeEvents(events)):
-        yield account.writeData(URL(base % (i,)), cal, "text/calendar")
+        yield account.writeData(base % (i,), cal, "text/calendar")
 
     method = 'POST'
-    uri = 'http://localhost:8008/calendars/__uids__/%s/outbox/' % (user,)
+    uri = 'http://%s:%d/calendars/__uids__/%s/outbox/' % (host, port, user)
     headers = Headers({"content-type": ["text/calendar"]})
     body = StringProducer(vfreebusy)
 
     samples = yield sample(
-        dtrace, samples, 
+        dtrace, samples,
         agent, lambda: (method, uri, headers, body))
     returnValue(samples)
 

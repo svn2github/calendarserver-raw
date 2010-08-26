@@ -1,4 +1,3 @@
 #!/usr/bin/python
-
-from benchmark import main
+from upload import main
 raise SystemExit(main())
