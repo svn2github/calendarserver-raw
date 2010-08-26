@@ -71,7 +71,7 @@ create table NOTIFICATION (
 
 create table CALENDAR_BIND (
   CALENDAR_HOME_RESOURCE_ID integer      not null references CALENDAR_HOME,
-  CALENDAR_RESOURCE_ID      integer      not null references CALENDAR,
+  CALENDAR_RESOURCE_ID      integer      not null references CALENDAR on delete cascade,
   
   -- An invitation which hasn't been accepted yet will not yet have a resource
   -- name, so this field may be null.
@@ -117,7 +117,7 @@ insert into CALENDAR_BIND_STATUS values (3, 'invalid');
 
 create table CALENDAR_OBJECT (
   RESOURCE_ID          integer      primary key default nextval('RESOURCE_ID_SEQ'),
-  CALENDAR_RESOURCE_ID integer      not null references CALENDAR,
+  CALENDAR_RESOURCE_ID integer      not null references CALENDAR on delete cascade,
   RESOURCE_NAME        varchar(255) not null,
   ICALENDAR_TEXT       text         not null,
   ICALENDAR_UID        varchar(255) not null,
@@ -162,7 +162,7 @@ create sequence INSTANCE_ID_SEQ;
 
 create table TIME_RANGE (
   INSTANCE_ID                 integer        primary key default nextval('INSTANCE_ID_SEQ'),
-  CALENDAR_RESOURCE_ID        integer        not null references CALENDAR,
+  CALENDAR_RESOURCE_ID        integer        not null references CALENDAR on delete cascade,
   CALENDAR_OBJECT_RESOURCE_ID integer        not null references CALENDAR_OBJECT on delete cascade,
   FLOATING                    boolean        not null,
   START_DATE                  timestamp      not null,
@@ -289,7 +289,7 @@ create table ADDRESSBOOK (
 
 create table ADDRESSBOOK_BIND (
   ADDRESSBOOK_HOME_RESOURCE_ID integer      not null references ADDRESSBOOK_HOME,
-  ADDRESSBOOK_RESOURCE_ID      integer      not null references ADDRESSBOOK,
+  ADDRESSBOOK_RESOURCE_ID      integer      not null references ADDRESSBOOK on delete cascade,
 
   -- An invitation which hasn't been accepted yet will not yet have a resource
   -- name, so this field may be null.
@@ -308,7 +308,7 @@ create table ADDRESSBOOK_BIND (
 
 create table ADDRESSBOOK_OBJECT (
   RESOURCE_ID             integer      primary key default nextval('RESOURCE_ID_SEQ'),
-  ADDRESSBOOK_RESOURCE_ID integer      not null references ADDRESSBOOK,
+  ADDRESSBOOK_RESOURCE_ID integer      not null references ADDRESSBOOK on delete cascade,
   RESOURCE_NAME           varchar(255) not null,
   VCARD_TEXT              text         not null,
   VCARD_UID               varchar(255) not null,

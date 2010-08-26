@@ -227,8 +227,8 @@ class CalendarObject(CommonObjectResource):
 
 
     @writeOperation
-    def setComponent(self, component):
-        validateCalendarComponent(self, self._calendar, component)
+    def setComponent(self, component, inserting=False):
+        validateCalendarComponent(self, self._calendar, component, inserting)
 
         self._calendar.retrieveOldIndex().addResource(
             self.name(), component

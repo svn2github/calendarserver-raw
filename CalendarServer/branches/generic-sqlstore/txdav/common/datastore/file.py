@@ -39,7 +39,8 @@ from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
 from txdav.common.inotifications import INotificationCollection, \
     INotificationObject
 from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
-    hidden, isValidName, cached, FileMetaDataMixin
+    hidden, isValidName, FileMetaDataMixin
+from txdav.datastore.util import cached
 from txdav.idav import IDataStore
 from txdav.propertystore.base import PropertyName
 from txdav.propertystore.xattr import PropertyStore
@@ -635,7 +636,7 @@ class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
             raise ObjectResourceNameAlreadyExistsError(name)
 
         objectResource = self._objectResourceClass(name, self)
-        objectResource.setComponent(component)
+        objectResource.setComponent(component, inserting=True)
         self._cachedObjectResources[name] = objectResource
 
         # Note: setComponent triggers a notification, so we don't need to
@@ -704,7 +705,7 @@ class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
 
         @param props: the L{PropertyStore} from C{properties()}.
         """
-
+        pass
 
     def _doValidate(self, component):
         raise NotImplementedError
@@ -742,7 +743,7 @@ class CommonObjectResource(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
 
 
     @writeOperation
-    def setComponent(self, component):
+    def setComponent(self, component, inserting=False):
         raise NotImplementedError
 
 
@@ -761,8 +762,18 @@ class CommonObjectResource(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
     def properties(self):
         uid = self._parentCollection._home.uid()
         props = PropertyStore(uid, lambda : self._path)
+        self.initPropertyStore(props)
         self._transaction.addOperation(props.flush, "object properties flush")
         return props
+
+    def initPropertyStore(self, props):
+        """
+        A hook for subclasses to override in order to set up their property
+        store after it's been created.
+
+        @param props: the L{PropertyStore} from C{properties()}.
+        """
+        pass
 
 class CommonStubResource(object):
     """
@@ -877,7 +888,7 @@ class NotificationObject(CommonObjectResource):
 
 
     @writeOperation
-    def setData(self, uid, xmltype, xmldata):
+    def setData(self, uid, xmltype, xmldata, inserting=False):
 
         rname = uid + ".xml"
         self._parentCollection.retrieveOldIndex().addOrUpdateRecord(

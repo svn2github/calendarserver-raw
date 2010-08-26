@@ -1,3 +1,4 @@
+# -*- test-case-name: txcarddav.addressbookstore.test -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -15,30 +16,21 @@
 ##
 
 """
-Tests for txcaldav.calendarstore.postgres, mostly based on
-L{txcaldav.calendarstore.test.common}.
+Store test utility functions
 """
 
 import gc
 
-from txcaldav.calendarstore.test.common import CommonTests as CalendarCommonTests
-from txcarddav.addressbookstore.test.common import CommonTests as AddressBookCommonTests
-from txdav.common.icommondatastore import NoSuchHomeChildError
-from txdav.common.datastore.sql import CommonDataStore
-
-from twisted.trial import unittest
-from txdav.datastore.subpostgres import (PostgresService,
-    DiagnosticConnectionWrapper)
-from txcaldav.calendarstore.postgres import v1_schema
-from twisted.internet.defer import Deferred, inlineCallbacks, succeed
-from twisted.internet import reactor
 from twext.python.filepath import CachingFilePath
-from twext.python.vcomponent import VComponent
-from twistedcaldav.vcard import Component as VCard
+
+from twisted.internet import reactor
+from twisted.internet.defer import Deferred, succeed
 from twisted.internet.task import deferLater
 from twisted.python import log
 
-
+from txdav.common.datastore.sql import CommonDataStore, v1_schema
+from txdav.datastore.subpostgres import PostgresService,\
+    DiagnosticConnectionWrapper
 
 def allInstancesOf(cls):
     for o in gc.get_referrers(cls):
@@ -53,9 +45,7 @@ def dumpConnectionStatus():
         print connection.label, connection.state
     print '--- CONNECTIONS END ---'
 
-
-
-class StoreBuilder(object):
+class SQLStoreBuilder(object):
     """
     Test-fixture-builder which can construct a PostgresStore.
     """
@@ -147,99 +137,3 @@ class StoreBuilder(object):
                 log.err()
         cleanupConn.commit()
         cleanupConn.close()
-
-
-
-theStoreBuilder = StoreBuilder()
-buildStore = theStoreBuilder.buildStore
-
-
-
-class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
-    """
-    Calendar SQL storage tests.
-    """
-
-    @inlineCallbacks
-    def setUp(self):
-        super(CalendarSQLStorageTests, self).setUp()
-        self.calendarStore = yield buildStore(self, self.notifierFactory)
-        self.populate()
-
-
-    def populate(self):
-        populateTxn = self.calendarStore.newTransaction()
-        for homeUID in self.requirements:
-            calendars = self.requirements[homeUID]
-            if calendars is not None:
-                home = populateTxn.calendarHomeWithUID(homeUID, True)
-                # We don't want the default calendar or inbox to appear unless it's
-                # explicitly listed.
-                try:
-                    home.removeCalendarWithName("calendar")
-                    home.removeCalendarWithName("inbox")
-                except NoSuchHomeChildError:
-                    pass
-                for calendarName in calendars:
-                    calendarObjNames = calendars[calendarName]
-                    if calendarObjNames is not None:
-                        home.createCalendarWithName(calendarName)
-                        calendar = home.calendarWithName(calendarName)
-                        for objectName in calendarObjNames:
-                            objData = calendarObjNames[objectName]
-                            calendar.createCalendarObjectWithName(
-                                objectName, VComponent.fromString(objData)
-                            )
-        populateTxn.commit()
-        self.notifierFactory.reset()
-
-
-    def storeUnderTest(self):
-        """
-        Create and return a L{CalendarStore} for testing.
-        """
-        return self.calendarStore
-
-
-class AddressBookSQLStorageTests(AddressBookCommonTests, unittest.TestCase):
-    """
-    AddressBook SQL storage tests.
-    """
-
-    @inlineCallbacks
-    def setUp(self):
-        super(AddressBookSQLStorageTests, self).setUp()
-        self.addressbookStore = yield buildStore(self, self.notifierFactory)
-        self.populate()
-
-    def populate(self):
-        populateTxn = self.addressbookStore.newTransaction()
-        for homeUID in self.requirements:
-            addressbooks = self.requirements[homeUID]
-            if addressbooks is not None:
-                home = populateTxn.addressbookHomeWithUID(homeUID, True)
-                # We don't want the default addressbook to appear unless it's
-                # explicitly listed.
-                home.removeAddressBookWithName("addressbook")
-                for addressbookName in addressbooks:
-                    addressbookObjNames = addressbooks[addressbookName]
-                    if addressbookObjNames is not None:
-                        home.createAddressBookWithName(addressbookName)
-                        addressbook = home.addressbookWithName(addressbookName)
-                        for objectName in addressbookObjNames:
-                            objData = addressbookObjNames[objectName]
-                            addressbook.createAddressBookObjectWithName(
-                                objectName, VCard.fromString(objData)
-                            )
-
-        populateTxn.commit()
-        self.notifierFactory.reset()
-
-
-
-    def storeUnderTest(self):
-        """
-        Create and return a L{AddressBookStore} for testing.
-        """
-        return self.addressbookStore
-

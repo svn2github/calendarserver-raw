@@ -35,14 +35,14 @@ from twistedcaldav.sharing import InvitesDatabase
 from twistedcaldav.vcard import Component as VComponent, InvalidVCardDataError
 from twistedcaldav.vcardindex import AddressBookIndex as OldIndex
 
+from txcarddav.addressbookstore.util import validateAddressBookComponent
 from txcarddav.iaddressbookstore import IAddressBook, IAddressBookObject
 from txcarddav.iaddressbookstore import IAddressBookHome
 
 from txdav.common.datastore.file import CommonDataStore, CommonHome,\
     CommonStoreTransaction, CommonHomeChild, CommonObjectResource,\
     CommonStubResource
-from txdav.common.icommondatastore import InvalidObjectResourceError,\
-    NoSuchObjectResourceError, InternalDataStoreError
+from txdav.common.icommondatastore import NoSuchObjectResourceError, InternalDataStoreError
 from txdav.datastore.file import hidden, writeOperation
 from txdav.propertystore.base import PropertyName
 
@@ -110,7 +110,7 @@ class AddressBook(CommonHomeChild):
         return self._home
 
     def resourceType(self):
-        return ResourceType.addressbook
+        return ResourceType.addressbook #@UndefinedVariable
 
     ownerAddressBookHome = CommonHomeChild.ownerHome
     addressbookObjects = CommonHomeChild.objectResources
@@ -158,24 +158,8 @@ class AddressBookObject(CommonObjectResource):
 
 
     @writeOperation
-    def setComponent(self, component):
-        if not isinstance(component, VComponent):
-            raise TypeError(type(component))
-
-        try:
-            if component.resourceUID() != self.uid():
-                raise InvalidObjectResourceError(
-                    "UID may not change (%s != %s)" % (
-                        component.resourceUID(), self.uid()
-                     )
-                )
-        except NoSuchObjectResourceError:
-            pass
-
-        try:
-            self._addressbook._doValidate(component)
-        except InvalidVCardDataError, e:
-            raise InvalidObjectResourceError(e)
+    def setComponent(self, component, inserting=False):
+        validateAddressBookComponent(self, self._addressbook, component, inserting)
 
         self._addressbook.retrieveOldIndex().addResource(
             self.name(), component

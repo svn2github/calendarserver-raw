@@ -88,7 +88,7 @@ from calendarserver.accesslog import RotatingFileAccessLoggingObserver
 from calendarserver.tap.util import getRootResource, computeProcessCount
 from calendarserver.tools.util import checkDirectory
 
-from txcaldav.calendarstore.postgres import v1_schema
+from txdav.common.datastore.sql import v1_schema
 from txdav.datastore.subpostgres import PostgresService
 from twext.python.filepath import CachingFilePath
 
