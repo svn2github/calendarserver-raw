@@ -25,7 +25,7 @@ from twistedcaldav import customxml
 from twistedcaldav.config import config
 from twistedcaldav.test.util import HomeTestCase, norequest
 from twistedcaldav.resource import CalDAVResource
-from txdav.caldav.datastore.test.test_postgres import buildStore
+from txdav.caldav.datastore.test.test_sql import buildStore
 from txdav.caldav.datastore.test.common import StubNotifierFactory
 
 

@@ -1,4 +1,4 @@
-# -*- test-case-name: txdav.caldav.datastore.test.test_postgres -*-
+# -*- test-case-name: txdav.base.propertystore.test.test_sql -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
