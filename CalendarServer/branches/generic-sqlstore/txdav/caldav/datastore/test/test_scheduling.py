@@ -15,13 +15,13 @@
 ##
 
 """
-Tests for L{txcaldav.calendarstore.scheduling}.
+Tests for L{txdav.caldav.datastore.scheduling}.
 """
 
 from twisted.trial.unittest import TestCase
-from txcaldav.calendarstore.test.common import CommonTests
-from txcaldav.calendarstore.test.test_file import setUpCalendarStore
-from txcaldav.calendarstore.scheduling import ImplicitStore
+from txdav.caldav.datastore.test.common import CommonTests
+from txdav.caldav.datastore.test.test_file import setUpCalendarStore
+from txdav.caldav.datastore.scheduling import ImplicitStore
 
 simpleEvent = """BEGIN:VCALENDAR
 VERSION:2.0

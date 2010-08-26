@@ -15,8 +15,8 @@
 ##
 
 """
-Tests for txcaldav.calendarstore.postgres, mostly based on
-L{txcaldav.calendarstore.test.common}.
+Tests for txdav.caldav.datastore.postgres, mostly based on
+L{txdav.caldav.datastore.test.common}.
 """
 
 
@@ -28,7 +28,7 @@ from twisted.internet.task import deferLater
 from twisted.python import log
 
 from txdav.common.datastore.sql import v1_schema
-from txcaldav.calendarstore.test.common import StubNotifierFactory
+from txdav.caldav.datastore.test.common import StubNotifierFactory
 
 from txdav.common.datastore.sql import CommonDataStore
 from txdav.base.datastore.subpostgres import PostgresService

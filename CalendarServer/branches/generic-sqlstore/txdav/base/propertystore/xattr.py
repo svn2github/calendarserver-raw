@@ -1,4 +1,4 @@
-# -*- test-case-name: txdav.base.propertystore.test.test_xattr,txcaldav.calendarstore,txcarddav.addressbookstore -*-
+# -*- test-case-name: txdav.base.propertystore.test.test_xattr,txdav.caldav.datastore,txdav.carddav.datastore -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #

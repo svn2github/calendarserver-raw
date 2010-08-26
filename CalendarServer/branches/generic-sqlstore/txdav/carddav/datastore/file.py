@@ -1,4 +1,4 @@
-# -*- test-case-name: txcarddav.addressbookstore.test.test_file -*-
+# -*- test-case-name: txdav.carddav.datastore.test.test_file -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -35,9 +35,9 @@ from twistedcaldav.sharing import InvitesDatabase
 from twistedcaldav.vcard import Component as VComponent, InvalidVCardDataError
 from twistedcaldav.vcardindex import AddressBookIndex as OldIndex
 
-from txcarddav.addressbookstore.util import validateAddressBookComponent
-from txcarddav.iaddressbookstore import IAddressBook, IAddressBookObject
-from txcarddav.iaddressbookstore import IAddressBookHome
+from txdav.carddav.datastore.util import validateAddressBookComponent
+from txdav.carddav.iaddressbookstore import IAddressBook, IAddressBookObject
+from txdav.carddav.iaddressbookstore import IAddressBookHome
 
 from txdav.common.datastore.file import CommonDataStore, CommonHome,\
     CommonStoreTransaction, CommonHomeChild, CommonObjectResource,\

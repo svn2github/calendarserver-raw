@@ -29,10 +29,10 @@ from txdav.common.icommondatastore import ObjectResourceUIDAlreadyExistsError
 from txdav.common.icommondatastore import NoSuchHomeChildError
 from txdav.common.icommondatastore import NoSuchObjectResourceError
 
-from txcarddav.addressbookstore.file import AddressBookStore, AddressBookHome
-from txcarddav.addressbookstore.file import AddressBook, AddressBookObject
+from txdav.carddav.datastore.file import AddressBookStore, AddressBookHome
+from txdav.carddav.datastore.file import AddressBook, AddressBookObject
 
-from txcarddav.addressbookstore.test.common import (
+from txdav.carddav.datastore.test.common import (
     CommonTests, vcard4_text, vcard1modified_text, StubNotifierFactory)
 
 storePath = FilePath(__file__).parent().child("addressbook_store")

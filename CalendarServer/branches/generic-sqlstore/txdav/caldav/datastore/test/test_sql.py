@@ -15,11 +15,11 @@
 ##
 
 """
-Tests for txcaldav.calendarstore.postgres, mostly based on
-L{txcaldav.calendarstore.test.common}.
+Tests for txdav.caldav.datastore.postgres, mostly based on
+L{txdav.caldav.datastore.test.common}.
 """
 
-from txcaldav.calendarstore.test.common import CommonTests as CalendarCommonTests
+from txdav.caldav.datastore.test.common import CommonTests as CalendarCommonTests
 
 from txdav.common.datastore.test.util import SQLStoreBuilder
 from txdav.common.icommondatastore import NoSuchHomeChildError

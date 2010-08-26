@@ -1,4 +1,4 @@
-# -*- test-case-name: txcaldav.calendarstore.test.test_sql -*-
+# -*- test-case-name: txdav.caldav.datastore.test.test_sql -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -36,9 +36,9 @@ from twistedcaldav.dateops import normalizeForIndex
 from twistedcaldav.index import IndexedSearchException
 from twistedcaldav.instance import InvalidOverriddenInstanceError
 
-from txcaldav.calendarstore.util import validateCalendarComponent,\
+from txdav.caldav.datastore.util import validateCalendarComponent,\
     dropboxIDFromCalendarObject
-from txcaldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObject,\
+from txdav.caldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObject,\
     IAttachment
 
 from txdav.common.datastore.sql import CommonHome, CommonHomeChild,\

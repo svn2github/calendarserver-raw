@@ -33,10 +33,10 @@ from txdav.common.icommondatastore import ObjectResourceUIDAlreadyExistsError
 from txdav.common.icommondatastore import NoSuchHomeChildError
 from txdav.common.icommondatastore import NoSuchObjectResourceError
 
-from txcaldav.calendarstore.file import CalendarStore, CalendarHome
-from txcaldav.calendarstore.file import Calendar, CalendarObject
+from txdav.caldav.datastore.file import CalendarStore, CalendarHome
+from txdav.caldav.datastore.file import Calendar, CalendarObject
 
-from txcaldav.calendarstore.test.common import (
+from txdav.caldav.datastore.test.common import (
     CommonTests, event4_text, event1modified_text)
 
 storePath = FilePath(__file__).parent().child("calendar_store")

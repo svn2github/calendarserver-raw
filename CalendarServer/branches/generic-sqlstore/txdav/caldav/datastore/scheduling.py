@@ -1,4 +1,4 @@
-# -*- test-case-name: txcaldav.calendarstore.test.test_scheduling -*-
+# -*- test-case-name: txdav.caldav.datastore.test.test_scheduling -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -15,7 +15,7 @@
 # limitations under the License.
 ##
 from zope.interface.declarations import implements
-from txcaldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObject,\
+from txdav.caldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObject,\
     ICalendarTransaction
 from txdav.idav import IDataStore
 from twisted.python.util import FancyEqMixin

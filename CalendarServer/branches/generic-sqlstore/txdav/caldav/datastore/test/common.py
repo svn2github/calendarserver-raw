@@ -1,4 +1,4 @@
-# -*- test-case-name: txcaldav.calendarstore -*-
+# -*- test-case-name: txdav.caldav.datastore -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -37,7 +37,7 @@ from txdav.common.icommondatastore import NoSuchObjectResourceError
 from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError
 from txdav.common.inotifications import INotificationObject
 
-from txcaldav.icalendarstore import (
+from txdav.caldav.icalendarstore import (
     ICalendarObject, ICalendarHome,
     ICalendar, IAttachment, ICalendarTransaction)
 
@@ -165,7 +165,7 @@ def assertProvides(testCase, interface, provider):
 class CommonTests(object):
     """
     Tests for common functionality of interfaces defined in
-    L{txcaldav.icalendarstore}.
+    L{txdav.caldav.icalendarstore}.
     """
 
     requirements = {

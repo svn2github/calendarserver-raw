@@ -36,9 +36,9 @@ from twisted.python.util import FancyEqMixin
 from twistedcaldav.customxml import NotificationType
 
 from txdav.common.datastore.sql_legacy import PostgresLegacyNotificationsEmulator
-from txcaldav.icalendarstore import ICalendarTransaction
+from txdav.caldav.icalendarstore import ICalendarTransaction
 
-from txcarddav.iaddressbookstore import IAddressBookTransaction
+from txdav.carddav.iaddressbookstore import IAddressBookTransaction
 
 from txdav.common.datastore.sql_tables import CALENDAR_HOME_TABLE,\
     ADDRESSBOOK_HOME_TABLE, NOTIFICATION_HOME_TABLE, _BIND_MODE_OWN,\
@@ -117,8 +117,8 @@ class CommonStoreTransaction(object):
             extraInterfaces.append(IAddressBookTransaction)
         directlyProvides(self, *extraInterfaces)
 
-        from txcaldav.calendarstore.sql import CalendarHome
-        from txcarddav.addressbookstore.sql import AddressBookHome
+        from txdav.caldav.datastore.sql import CalendarHome
+        from txdav.carddav.datastore.sql import AddressBookHome
         CommonStoreTransaction._homeClass[ECALENDARTYPE] = CalendarHome
         CommonStoreTransaction._homeClass[EADDRESSBOOKTYPE] = AddressBookHome
 

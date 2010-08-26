@@ -15,11 +15,11 @@
 ##
 
 """
-Tests for txcaldav.calendarstore.postgres, mostly based on
-L{txcaldav.calendarstore.test.common}.
+Tests for txdav.caldav.datastore.postgres, mostly based on
+L{txdav.caldav.datastore.test.common}.
 """
 
-from txcarddav.addressbookstore.test.common import CommonTests as AddressBookCommonTests
+from txdav.carddav.datastore.test.common import CommonTests as AddressBookCommonTests
 
 from txdav.common.datastore.test.util import SQLStoreBuilder
 

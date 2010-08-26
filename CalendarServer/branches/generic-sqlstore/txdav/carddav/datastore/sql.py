@@ -1,4 +1,4 @@
-# -*- test-case-name: txcarddav.addressbookstore.test.test_sql -*-
+# -*- test-case-name: txdav.carddav.datastore.test.test_sql -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -31,8 +31,8 @@ from txdav.common.datastore.sql_legacy import \
     PostgresLegacyABIndexEmulator, PostgresLegacyABInvitesEmulator,\
     PostgresLegacyABSharesEmulator
 
-from txcarddav.addressbookstore.util import validateAddressBookComponent
-from txcarddav.iaddressbookstore import IAddressBookHome, IAddressBook,\
+from txdav.carddav.datastore.util import validateAddressBookComponent
+from txdav.carddav.iaddressbookstore import IAddressBookHome, IAddressBook,\
     IAddressBookObject
 
 from txdav.common.datastore.sql import CommonHome, CommonHomeChild,\

@@ -1,4 +1,4 @@
-# -*- test-case-name: txcaldav.calendarstore.test.test_file -*-
+# -*- test-case-name: txdav.caldav.datastore.test.test_file -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -110,10 +110,10 @@ class CommonStoreTransaction(DataStoreTransaction):
 
         @type dataStore: L{CommonDataStore}
         """
-        from txcaldav.icalendarstore import ICalendarTransaction
-        from txcarddav.iaddressbookstore import IAddressBookTransaction
-        from txcaldav.calendarstore.file import CalendarHome
-        from txcarddav.addressbookstore.file import AddressBookHome
+        from txdav.caldav.icalendarstore import ICalendarTransaction
+        from txdav.carddav.iaddressbookstore import IAddressBookTransaction
+        from txdav.caldav.datastore.file import CalendarHome
+        from txdav.carddav.datastore.file import AddressBookHome
 
         super(CommonStoreTransaction, self).__init__(dataStore, name)
         self._homes = {}

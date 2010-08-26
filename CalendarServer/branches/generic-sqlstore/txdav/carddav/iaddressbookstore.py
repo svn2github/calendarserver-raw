@@ -1,4 +1,4 @@
-# -*- test-case-name: txcarddav.addressbookstore,txcaldav.calendarstore.test.test_postgres.AddressBookSQLStorageTests -*-
+# -*- test-case-name: txdav.carddav.datastore,txdav.caldav.datastore.test.test_postgres.AddressBookSQLStorageTests -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #

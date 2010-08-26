@@ -1,4 +1,4 @@
-# -*- test-case-name: txcarddav.addressbookstore.test -*-
+# -*- test-case-name: txdav.carddav.datastore.test -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #

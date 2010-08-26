@@ -1,4 +1,4 @@
-# -*- test-case-name: txcarddav.addressbookstore,txcaldav.calendarstore.test.test_postgres.AddressBookSQLStorageTests -*-
+# -*- test-case-name: txdav.carddav.datastore,txdav.caldav.datastore.test.test_postgres.AddressBookSQLStorageTests -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -34,7 +34,7 @@ from txdav.common.icommondatastore import NoSuchHomeChildError
 from txdav.common.icommondatastore import NoSuchObjectResourceError
 from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError
 
-from txcarddav.iaddressbookstore import (
+from txdav.carddav.iaddressbookstore import (
     IAddressBookObject, IAddressBookHome,
     IAddressBook, IAddressBookTransaction
 )
@@ -123,7 +123,7 @@ def assertProvides(testCase, interface, provider):
 class CommonTests(object):
     """
     Tests for common functionality of interfaces defined in
-    L{txcarddav.iaddressbookstore}.
+    L{txdav.carddav.iaddressbookstore}.
     """
 
     requirements = {

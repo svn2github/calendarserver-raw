@@ -1,4 +1,4 @@
-# -*- test-case-name: txcarddav.addressbookstore.test -*-
+# -*- test-case-name: txdav.caldav.datastore.test -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -16,5 +16,5 @@
 ##
 
 """
-AddressBook store tests.
+Calendar store tests.
 """

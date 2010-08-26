@@ -1,4 +1,4 @@
-# -*- test-case-name: txcaldav.calendarstore.test.test_file -*-
+# -*- test-case-name: txdav.caldav.datastore.test.test_file -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -47,11 +47,11 @@ from twistedcaldav.caldavxml import ScheduleCalendarTransp, Opaque
 from twistedcaldav.index import Index as OldIndex, IndexSchedule as OldInboxIndex
 from twistedcaldav.sharing import InvitesDatabase
 
-from txcaldav.icalendarstore import IAttachment
-from txcaldav.icalendarstore import ICalendar, ICalendarObject
-from txcaldav.icalendarstore import ICalendarHome
+from txdav.caldav.icalendarstore import IAttachment
+from txdav.caldav.icalendarstore import ICalendar, ICalendarObject
+from txdav.caldav.icalendarstore import ICalendarHome
 
-from txcaldav.calendarstore.util import (
+from txdav.caldav.datastore.util import (
     validateCalendarComponent, dropboxIDFromCalendarObject
 )
 
