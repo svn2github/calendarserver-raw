@@ -18,9 +18,9 @@
 Property store tests.
 """
 
-from txdav.propertystore.none import PropertyStore
+from txdav.base.propertystore.none import PropertyStore
 
-from txdav.propertystore.test import base
+from txdav.base.propertystore.test import base
 
 class PropertyStoreTest(base.PropertyStoreTest):
     def setUp(self):

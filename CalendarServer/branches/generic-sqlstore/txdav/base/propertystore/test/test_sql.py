@@ -27,16 +27,16 @@ from twisted.internet.defer import Deferred, inlineCallbacks, succeed
 from twisted.internet.task import deferLater
 from twisted.python import log
 
-from txcaldav.calendarstore.postgres import v1_schema
+from txdav.common.datastore.sql import v1_schema
 from txcaldav.calendarstore.test.common import StubNotifierFactory
 
 from txdav.common.datastore.sql import CommonDataStore
-from txdav.datastore.subpostgres import PostgresService
-from txdav.propertystore.base import PropertyName
-from txdav.propertystore.test import base
+from txdav.base.datastore.subpostgres import PostgresService
+from txdav.base.propertystore.base import PropertyName
+from txdav.base.propertystore.test import base
 
 try:
-    from txdav.propertystore.sql import PropertyStore
+    from txdav.base.propertystore.sql import PropertyStore
 except ImportError, e:
     PropertyStore = None
     importErrorMessage = str(e)

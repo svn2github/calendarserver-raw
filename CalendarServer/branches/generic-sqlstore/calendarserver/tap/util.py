@@ -70,7 +70,7 @@ from calendarserver.webcal.resource import WebCalendarResource
 from txdav.common.datastore.sql import CommonDataStore as CommonSQLDataStore
 from txdav.common.datastore.file import CommonDataStore as CommonFileDataStore
 from txdav.common.datastore.sql import v1_schema
-from txdav.datastore.subpostgres import PostgresService
+from txdav.base.datastore.subpostgres import PostgresService
 from twext.python.filepath import CachingFilePath
 
 

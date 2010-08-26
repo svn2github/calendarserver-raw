@@ -40,7 +40,7 @@ from txdav.common.datastore.sql import CommonHome, CommonHomeChild,\
 from txdav.common.datastore.sql_tables import ADDRESSBOOK_TABLE,\
     ADDRESSBOOK_BIND_TABLE, ADDRESSBOOK_OBJECT_REVISIONS_TABLE,\
     ADDRESSBOOK_OBJECT_TABLE
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 from zope.interface.declarations import implements
 

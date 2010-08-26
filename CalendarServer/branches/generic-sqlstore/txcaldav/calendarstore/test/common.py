@@ -27,7 +27,7 @@ from twisted.internet.defer import Deferred, inlineCallbacks
 from twisted.internet.protocol import Protocol
 
 from txdav.idav import IPropertyStore, IDataStore, AlreadyFinishedError
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 from txdav.common.icommondatastore import HomeChildNameAlreadyExistsError, \
     ICommonTransaction

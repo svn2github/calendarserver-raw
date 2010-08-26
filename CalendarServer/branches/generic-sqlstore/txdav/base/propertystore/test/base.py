@@ -32,7 +32,7 @@ from twisted.trial import unittest
 from twext.web2.dav import davxml
 
 from txdav.idav import IPropertyStore
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 
 class PropertyStoreTest(unittest.TestCase):

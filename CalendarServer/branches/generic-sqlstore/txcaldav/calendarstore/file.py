@@ -34,7 +34,7 @@ from errno import ENOENT
 from twisted.internet.interfaces import ITransport
 from twisted.python.failure import Failure
 
-from txdav.propertystore.xattr import PropertyStore
+from txdav.base.propertystore.xattr import PropertyStore
 
 from twext.python.vcomponent import InvalidICalendarDataError
 from twext.python.vcomponent import VComponent
@@ -62,8 +62,8 @@ from txdav.common.datastore.file import (
 
 from txdav.common.icommondatastore import (NoSuchObjectResourceError,
     InternalDataStoreError)
-from txdav.datastore.file import writeOperation, hidden, FileMetaDataMixin
-from txdav.propertystore.base import PropertyName
+from txdav.base.datastore.file import writeOperation, hidden, FileMetaDataMixin
+from txdav.base.propertystore.base import PropertyName
 
 from zope.interface import implements
 

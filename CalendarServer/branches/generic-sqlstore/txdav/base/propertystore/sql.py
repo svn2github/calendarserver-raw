@@ -23,7 +23,7 @@ __all__ = [
     "PropertyStore",
 ]
 
-from txdav.propertystore.base import AbstractPropertyStore, PropertyName,\
+from txdav.base.propertystore.base import AbstractPropertyStore, PropertyName,\
     validKey
 
 from twext.web2.dav.davxml import WebDAVDocument

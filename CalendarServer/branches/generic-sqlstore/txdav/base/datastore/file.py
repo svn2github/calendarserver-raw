@@ -23,7 +23,7 @@ Common utility functions for a file based datastore.
 from twext.python.log import LoggingMixIn
 from txdav.idav import IDataStoreResource
 from txdav.idav import AlreadyFinishedError
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 from twext.web2.dav.element.rfc2518 import GETContentType
 from twext.web2.dav.resource import TwistedGETContentMD5

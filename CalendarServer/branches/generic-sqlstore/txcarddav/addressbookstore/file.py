@@ -43,8 +43,8 @@ from txdav.common.datastore.file import CommonDataStore, CommonHome,\
     CommonStoreTransaction, CommonHomeChild, CommonObjectResource,\
     CommonStubResource
 from txdav.common.icommondatastore import NoSuchObjectResourceError, InternalDataStoreError
-from txdav.datastore.file import hidden, writeOperation
-from txdav.propertystore.base import PropertyName
+from txdav.base.datastore.file import hidden, writeOperation
+from txdav.base.propertystore.base import PropertyName
 
 from twistedcaldav import customxml, carddavxml
 

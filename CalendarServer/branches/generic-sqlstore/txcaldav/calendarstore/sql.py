@@ -49,7 +49,7 @@ from txdav.common.datastore.sql_legacy import \
 from txdav.common.datastore.sql_tables import CALENDAR_TABLE,\
     CALENDAR_BIND_TABLE, CALENDAR_OBJECT_REVISIONS_TABLE, CALENDAR_OBJECT_TABLE,\
     _ATTACHMENTS_MODE_WRITE
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 from vobject.icalendar import utc
 

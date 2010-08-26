@@ -21,12 +21,12 @@ Property store tests.
 
 from twext.python.filepath import CachingFilePath as FilePath
 
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
-from txdav.propertystore.test import base
+from txdav.base.propertystore.test import base
 
 try:
-    from txdav.propertystore.xattr import PropertyStore
+    from txdav.base.propertystore.xattr import PropertyStore
     from xattr import xattr
 except ImportError, e:
     PropertyStore = None

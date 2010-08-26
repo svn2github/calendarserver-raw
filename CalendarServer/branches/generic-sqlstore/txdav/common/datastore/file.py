@@ -38,12 +38,12 @@ from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
     ObjectResourceNameAlreadyExistsError, NoSuchObjectResourceError
 from txdav.common.inotifications import INotificationCollection, \
     INotificationObject
-from txdav.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
+from txdav.base.datastore.file import DataStoreTransaction, DataStore, writeOperation, \
     hidden, isValidName, FileMetaDataMixin
-from txdav.datastore.util import cached
+from txdav.base.datastore.util import cached
 from txdav.idav import IDataStore
-from txdav.propertystore.base import PropertyName
-from txdav.propertystore.xattr import PropertyStore
+from txdav.base.propertystore.base import PropertyName
+from txdav.base.propertystore.xattr import PropertyStore
 
 from errno import EEXIST, ENOENT
 from zope.interface import implements, directlyProvides

@@ -49,11 +49,11 @@ from txdav.common.icommondatastore import HomeChildNameNotAllowedError,\
     NoSuchObjectResourceError
 from txdav.common.inotifications import INotificationCollection,\
     INotificationObject
-from txdav.datastore.sql import memoized
-from txdav.datastore.util import cached
+from txdav.base.datastore.sql import memoized
+from txdav.base.datastore.util import cached
 from txdav.idav import IDataStore, AlreadyFinishedError
-from txdav.propertystore.base import PropertyName
-from txdav.propertystore.sql import PropertyStore
+from txdav.base.propertystore.base import PropertyName
+from txdav.base.propertystore.sql import PropertyStore
 
 from zope.interface.declarations import implements, directlyProvides
 

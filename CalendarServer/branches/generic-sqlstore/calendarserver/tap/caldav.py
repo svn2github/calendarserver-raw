@@ -89,7 +89,7 @@ from calendarserver.tap.util import getRootResource, computeProcessCount
 from calendarserver.tools.util import checkDirectory
 
 from txdav.common.datastore.sql import v1_schema
-from txdav.datastore.subpostgres import PostgresService
+from txdav.base.datastore.subpostgres import PostgresService
 from twext.python.filepath import CachingFilePath
 
 log = Logger()

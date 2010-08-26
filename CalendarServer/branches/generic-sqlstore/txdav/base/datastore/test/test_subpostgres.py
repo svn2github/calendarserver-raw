@@ -15,14 +15,14 @@
 ##
 
 """
-Tests for txdav.datastore.subpostgres.
+Tests for txdav.base.datastore.subpostgres.
 """
 
 from twisted.trial.unittest import TestCase
 
 from twext.python.filepath import CachingFilePath
 
-from txdav.datastore.subpostgres import PostgresService
+from txdav.base.datastore.subpostgres import PostgresService
 from twisted.internet.defer import inlineCallbacks, Deferred
 from twisted.application.service import Service
 

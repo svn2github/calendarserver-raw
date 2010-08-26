@@ -1,4 +1,4 @@
-# -*- test-case-name: txdav.datastore.test.test_subpostgres -*-
+# -*- test-case-name: txdav.base.datastore.test.test_subpostgres -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #

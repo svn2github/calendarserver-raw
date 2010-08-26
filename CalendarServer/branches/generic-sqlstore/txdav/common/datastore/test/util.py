@@ -29,7 +29,7 @@ from twisted.internet.task import deferLater
 from twisted.python import log
 
 from txdav.common.datastore.sql import CommonDataStore, v1_schema
-from txdav.datastore.subpostgres import PostgresService,\
+from txdav.base.datastore.subpostgres import PostgresService,\
     DiagnosticConnectionWrapper
 
 def allInstancesOf(cls):

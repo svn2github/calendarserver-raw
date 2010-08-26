@@ -22,7 +22,7 @@ __all__ = [
     "PropertyStore",
 ]
 
-from txdav.propertystore.base import AbstractPropertyStore, validKey
+from txdav.base.propertystore.base import AbstractPropertyStore, validKey
 
 class PropertyStore(AbstractPropertyStore):
     """

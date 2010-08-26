@@ -24,7 +24,7 @@ from zope.interface.exceptions import (
 )
 
 from txdav.idav import IPropertyStore, IDataStore
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 from txdav.common.icommondatastore import (
     HomeChildNameAlreadyExistsError, ICommonTransaction

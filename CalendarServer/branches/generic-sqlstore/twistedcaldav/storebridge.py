@@ -56,7 +56,7 @@ from twistedcaldav.scheduling.implicit import ImplicitScheduler
 from twistedcaldav.vcard import Component as VCard
 
 from txdav.common.icommondatastore import NoSuchObjectResourceError
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 log = Logger()
 

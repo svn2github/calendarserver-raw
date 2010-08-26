@@ -23,7 +23,7 @@ from zope.interface.verify import verifyObject, BrokenMethodImplementation
 from twisted.trial import unittest
 
 from txdav.idav import IPropertyName
-from txdav.propertystore.base import PropertyName
+from txdav.base.propertystore.base import PropertyName
 
 
 class PropertyNameTest(unittest.TestCase):

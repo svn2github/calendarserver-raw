@@ -1,4 +1,4 @@
-# -*- test-case-name: txdav.propertystore.test.test_xattr,txcaldav.calendarstore,txcarddav.addressbookstore -*-
+# -*- test-case-name: txdav.base.propertystore.test.test_xattr,txcaldav.calendarstore,txcarddav.addressbookstore -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -34,7 +34,7 @@ from xattr import xattr
 
 from twext.web2.dav.davxml import WebDAVDocument
 
-from txdav.propertystore.base import AbstractPropertyStore, PropertyName, validKey
+from txdav.base.propertystore.base import AbstractPropertyStore, PropertyName, validKey
 from txdav.idav import PropertyStoreError
 
 
