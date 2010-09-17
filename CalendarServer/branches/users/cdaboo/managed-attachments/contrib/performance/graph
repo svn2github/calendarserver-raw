@@ -1,3 +1,0 @@
-#!/usr/bin/python
-from graph import main
-main()

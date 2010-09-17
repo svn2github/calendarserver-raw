@@ -1,3 +1,0 @@
-#!/usr/bin/python
-from upload import main
-raise SystemExit(main())

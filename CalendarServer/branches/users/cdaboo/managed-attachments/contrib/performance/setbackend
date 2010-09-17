@@ -1,4 +1,0 @@
-#!/usr/bin/python
-
-from setbackend import main
-raise SystemExit(main())

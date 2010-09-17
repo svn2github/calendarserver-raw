@@ -1,3 +1,0 @@
-#!/usr/bin/python
-from sqlwatch import main
-main()
