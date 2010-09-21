@@ -99,7 +99,11 @@ class Scheduler(object):
 
         if not hasattr(self.request, "extendedLogItems"):
             self.request.extendedLogItems = {}
-        self.request.extendedLogItems["recipients"] = len(self.recipients)
+            
+        if self.calendar.mainType() == "VFREEBUSY":
+            self.request.extendedLogItems["freebusy"] = len(self.recipients)
+        elif self.calendar.isValidMethod():
+            self.request.extendedLogItems["itip.%s" % (self.calendar.propertyValue("METHOD").lower(),)] = len(self.recipients)
         self.request.extendedLogItems["cl"] = str(len(self.calendardata))
     
         # Do some extra authorization checks
