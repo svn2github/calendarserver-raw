@@ -305,13 +305,13 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
     """
     
     # First check the privilege on this collection
-    try:
-        d = waitForDeferred(calresource.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), principal=organizerPrincipal))
-        yield d
-        d.getResult()
-    except AccessDeniedError:
-        yield matchtotal
-        return
+#    try:
+#        d = waitForDeferred(calresource.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), principal=organizerPrincipal))
+#        yield d
+#        d.getResult()
+#    except AccessDeniedError:
+#        yield matchtotal
+#        return
 
     # May need organizer principal
     organizer_principal = calresource.principalForCalendarUserAddress(organizer) if organizer else None
@@ -369,12 +369,12 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
         yield child
         child = child.getResult()
 
-        try:
-            d = waitForDeferred(child.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), inherited_aces=filteredaces, principal=organizerPrincipal))
-            yield d
-            d.getResult()
-        except AccessDeniedError:
-            continue
+#        try:
+#            d = waitForDeferred(child.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), inherited_aces=filteredaces, principal=organizerPrincipal))
+#            yield d
+#            d.getResult()
+#        except AccessDeniedError:
+#            continue
 
         # Short-cut - if an fbtype exists we can use that
         if type == "VEVENT" and aggregated_resources[key][0][3] != '?':
