@@ -26,6 +26,7 @@ from twistedcaldav.ical import Component as iComponent, Property as iProperty
 from twistedcaldav.ical import iCalendarProductID
 from twistedcaldav.resource import isCalendarCollectionResource
 from twistedcaldav.static import CalDAVFile, CalendarHomeFile
+from twistedcaldav.directory import augment
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 
 class UsageError (StandardError):
@@ -247,6 +248,17 @@ _directory = None
 def getDirectory(config):
     global _directory
     if _directory is None:
+	    #
+	    # Setup the Augment Service
+	    #
+	    augmentClass = namedClass(config.AugmentService.type)
+	
+	    try:
+	        augment.AugmentService = augmentClass(**config.AugmentService.params)
+	    except IOError, e:
+	        print "Could not start augment service"
+	        raise
+
         BaseDirectoryService = namedClass(config.DirectoryService["type"])
 
         class MyDirectoryService (BaseDirectoryService):
