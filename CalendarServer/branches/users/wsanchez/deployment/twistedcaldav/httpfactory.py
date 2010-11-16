@@ -59,6 +59,8 @@ class InspectableHTTPChannel(HTTPChannel):
 
     _inspection = None
 
+    maxHeaderLength = config.MaxHTTPHeaderLength
+
     def connectionMade(self):
         if self._inspection:
             self._inspection.add("conn_made")

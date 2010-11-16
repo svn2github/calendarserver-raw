@@ -361,6 +361,8 @@ defaultConfig = {
 
     "MaxAllowedInstances":    3000,
     "LimitFreeBusyAttendees": 30,
+    
+    "MaxHTTPHeaderLength"   : 20480,
 
     #
     # Localization
