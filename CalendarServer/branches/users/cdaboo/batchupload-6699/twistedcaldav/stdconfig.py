@@ -354,6 +354,7 @@ DEFAULT_CONFIG = {
     "EnableDropBox"           : False, # Calendar Drop Box
     "EnablePrivateEvents"     : False, # Private Events
     "EnableTimezoneService"   : False, # Timezone service
+    "EnableBatchUpload"       : False, # POST batch uploads
     
     "Sharing": {
         "Enabled"             : False, # Overall on/off switch

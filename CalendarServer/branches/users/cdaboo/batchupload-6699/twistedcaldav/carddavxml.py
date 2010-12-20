@@ -280,6 +280,8 @@ class AddressData (CardDAVElement):
         else:
             return None
 
+    generateComponent = address
+
     def addressData(self):
         """
         Returns an address component derived from this element.

@@ -15,54 +15,47 @@
 # limitations under the License.
 ##
 
+from twext.python.log import Logger
+from twext.web2 import responsecode
+from twext.web2.dav import davxml
+from twext.web2.dav.element.base import dav_namespace, WebDAVUnknownElement
+from twext.web2.dav.http import ErrorResponse, ResponseQueue, MultiStatusResponse
+from twext.web2.dav.noneprops import NonePropertyStore
+from twext.web2.dav.resource import TwistedACLInheritable, AccessDeniedError
+from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL, davXMLFromStream
+from twext.web2.http import HTTPError, StatusResponse, Response
+from twext.web2.http_headers import ETag, MimeType
+from twext.web2.responsecode import FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED, BAD_REQUEST, OK
+from twext.web2.stream import ProducerStream, readStream, MemoryStream
+from twisted.internet.defer import succeed, inlineCallbacks, returnValue, maybeDeferred
+from twisted.internet.protocol import Protocol
+from twisted.python.hashlib import md5
+from twisted.python.log import err as logDefaultException
+from twisted.python.util import FancyEqMixin
+from twistedcaldav import customxml, carddavxml, caldavxml
+from twistedcaldav.caldavxml import caldav_namespace
+from twistedcaldav.config import config
+from twistedcaldav.ical import Component as VCalendar, Property as VProperty
+from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+from twistedcaldav.method.put_addressbook_common import StoreAddressObjectResource
+from twistedcaldav.method.put_common import StoreCalendarObjectResource
+from twistedcaldav.notifications import NotificationCollectionResource, NotificationResource
+from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource
+from twistedcaldav.schedule import ScheduleInboxResource
+from twistedcaldav.scheduling.implicit import ImplicitScheduler
+from twistedcaldav.vcard import Component as VCard
+from twistedcaldav.vcard import Property as VCardProperty
+from txdav.base.propertystore.base import PropertyName
+from txdav.common.icommondatastore import NoSuchObjectResourceError
+from urlparse import urlsplit
+import time
+
 """
 Wrappers to translate between the APIs in L{txdav.caldav.icalendarstore} and
 L{txdav.carddav.iaddressbookstore} and those in L{twistedcaldav}.
 """
 
-from urlparse import urlsplit
-
-from twisted.internet.defer import succeed, inlineCallbacks, returnValue,\
-    maybeDeferred
-from twisted.internet.protocol import Protocol
-from twisted.python.log import err as logDefaultException
-from twisted.python.util import FancyEqMixin
-
-from twext.python.log import Logger
-
-from twext.web2 import responsecode
-from twext.web2.dav import davxml
-from twext.web2.dav.element.base import dav_namespace
-from twext.web2.dav.http import ErrorResponse, ResponseQueue
-from twext.web2.dav.noneprops import NonePropertyStore
-from twext.web2.dav.resource import TwistedACLInheritable, AccessDeniedError
-from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL, \
-    davXMLFromStream
-from twext.web2.http import HTTPError, StatusResponse, Response
-from twext.web2.http_headers import ETag, MimeType
-from twext.web2.responsecode import (
-    FORBIDDEN, NO_CONTENT, NOT_FOUND, CREATED, CONFLICT, PRECONDITION_FAILED,
-    BAD_REQUEST, OK,
-)
-from twext.web2.stream import ProducerStream, readStream, MemoryStream
-
-from twistedcaldav.caldavxml import caldav_namespace
-from twistedcaldav.config import config
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
-from twistedcaldav.notifications import NotificationCollectionResource, \
-    NotificationResource
-from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource
-from twistedcaldav.schedule import ScheduleInboxResource
-from twistedcaldav.scheduling.implicit import ImplicitScheduler
-from twistedcaldav.ical import Component as VCalendar
-from twistedcaldav.ical import Property as VProperty
-from twistedcaldav.vcard import Component as VCard
-
-from txdav.base.propertystore.base import PropertyName
-from txdav.common.icommondatastore import NoSuchObjectResourceError
-
 log = Logger()
-
 
 class _NewStorePropertiesWrapper(object):
     """
@@ -465,6 +458,384 @@ class _CommonHomeChildCollectionMixin(object):
         yield self._newStoreObject.rename(basename)
         returnValue(NO_CONTENT)
 
+    def liveProperties(self):
+        baseProperties = ()
+        if config.EnableBatchUpload:
+            baseProperties += (
+                customxml.BulkRequests.qname(),
+            )
+        return super(_CommonHomeChildCollectionMixin, self).liveProperties() + baseProperties
+
+    @inlineCallbacks
+    def _readGlobalProperty(self, qname, property, request):
+
+        if config.EnableBatchUpload and qname == customxml.BulkRequests.qname():
+            returnValue(customxml.BulkRequests(
+                customxml.Simple(
+                    customxml.MaxResources.fromString("100"),
+                    customxml.MaxBytes.fromString("%d" % (10*1024*1024,)),
+                ),
+                customxml.CRUD(
+                    customxml.MaxResources.fromString("100"),
+                    customxml.MaxBytes.fromString("%d" % (10*1024*1024,)),
+                ),
+            ))
+        else:
+            result = (yield super(_CommonHomeChildCollectionMixin, self)._readGlobalProperty(qname, property, request))
+            returnValue(result)
+
+    @inlineCallbacks
+    def checkCTagPrecondition(self, request):
+        if request.headers.hasHeader("If"):
+            iffy = request.headers.getRawHeaders("If")[0]
+            prefix = "<%sctag/" % (customxml.mm_namespace,)
+            if prefix in iffy:
+                testctag = iffy[iffy.find(prefix):]
+                testctag = testctag[len(prefix):]
+                testctag = testctag.split(">", 1)[0]
+                ctag = (yield self.getSyncToken())
+                if testctag != ctag:
+                    raise HTTPError(StatusResponse(responsecode.PRECONDITION_FAILED, "CTag pre-condition failure"))
+
+    def checkReturnChanged(self, request):
+        if request.headers.hasHeader("X-MobileMe-DAV-Options"):
+            return_changed = request.headers.getRawHeaders("X-MobileMe-DAV-Options")[0]
+            return ("return-changed-data" in return_changed)
+        else:
+            return False
+
+    @requiresPermissions(davxml.Bind())
+    @inlineCallbacks
+    def simpleBatchPOST(self, request):
+        
+        # If CTag precondition
+        yield self.checkCTagPrecondition(request)
+        
+        # Look for return changed data option
+        return_changed = self.checkReturnChanged(request)
+
+        # Read in all data
+        data = (yield allDataFromStream(request.stream))
+        
+        components = self.componentsFromData(data)
+        
+        # Build response
+        xmlresponses = []
+        for component in components:
+            
+            code = None
+            error = None
+            dataChanged = None
+            try:
+                componentdata = str(component)
+
+                # Create a new name if one was not provided
+                name =  md5(str(componentdata) + str(time.time()) + request.path).hexdigest() + self.resourceSuffix()
+            
+                # Get a resource for the new item
+                newchildURL = joinURL(request.path, name)
+                newchild = (yield request.locateResource(newchildURL))
+                yield self.storeResourceData(request, newchild, newchildURL, componentdata)
+
+                # FIXME: figure out return_changed behavior
+                if return_changed:
+                    pass
+#                    note = component.getProperty("NOTE")
+#                    if note is None:
+#                        component.addProperty(VCardProperty("NOTE", component.resourceUID()))
+#                    else:
+#                        note.setValue(component.resourceUID())
+#                    dataChanged = str(component)
+
+            except HTTPError, e:
+                # Extract the pre-condition
+                code = e.response.code
+                if isinstance(e.response, ErrorResponse):
+                    error = e.response.error
+                    error = (error.namespace, error.name,)
+            except Exception:
+                code = responsecode.BAD_REQUEST
+            
+            if code is None:
+                
+                if not return_changed or not dataChanged:
+                    xmlresponses.append(
+                        davxml.PropertyStatusResponse(
+                            davxml.HRef.fromString(newchildURL),
+                            davxml.PropertyStatus(
+                                davxml.PropertyContainer(
+                                    davxml.GETETag.fromString(newchild.etag().generate()),
+                                    customxml.UID.fromString(component.resourceUID()),
+                                ),
+                                davxml.Status.fromResponseCode(responsecode.OK),
+                            )
+                        )
+                    )
+                else:
+                    xmlresponses.append(
+                        davxml.PropertyStatusResponse(
+                            davxml.HRef.fromString(newchildURL),
+                            davxml.PropertyStatus(
+                                davxml.PropertyContainer(
+                                    davxml.GETETag.fromString(newchild.etag().generate()),
+                                    self.xmlDataElementType().fromAddressData(dataChanged),
+                                ),
+                                davxml.Status.fromResponseCode(responsecode.OK),
+                            )
+                        )
+                    )
+                
+            else:
+                xmlresponses.append(
+                    davxml.StatusResponse(
+                        davxml.HRef.fromString(""),
+                        davxml.Status.fromResponseCode(code),
+                    davxml.Error(
+                        WebDAVUnknownElement.fromQname(*error),
+                        customxml.UID.fromString(component.resourceUID()),
+                    ) if error else None,
+                    )
+                )
+        
+        result = MultiStatusResponse(xmlresponses)
+        
+        newctag = (yield self.getSyncToken())
+        result.headers.setRawHeaders("CTag", (newctag,))
+
+        # Setup some useful logging
+        request.submethod = "Simple batch"
+        if not hasattr(request, "extendedLogItems"):
+            request.extendedLogItems = {}
+        request.extendedLogItems["rcount"] = len(xmlresponses)
+
+        returnValue(result)
+        
+    @inlineCallbacks
+    def crudBatchPOST(self, request, xmlroot):
+        
+        # Need to force some kind of overall authentication on the request
+        yield self.authorize(request, (davxml.Read(), davxml.Write(),))
+
+        # If CTag precondition
+        yield self.checkCTagPrecondition(request)
+        
+        # Look for return changed data option
+        return_changed = self.checkReturnChanged(request)
+
+        # Build response
+        xmlresponses = []
+        checkedBindPrivelege = None
+        checkedUnbindPrivelege = None
+        for xmlchild in xmlroot.children:
+            
+            # Determine the multiput operation: create, update, delete
+            href = xmlchild.childOfType(davxml.HRef.qname())
+            set = xmlchild.childOfType(davxml.Set.qname())
+            xmldata = set.childOfType(self.xmlDataElementType().qname()) if set is not None else None
+            if href is None:
+                
+                # Do privilege check on collection once 
+                if checkedBindPrivelege is None:
+                    try:
+                        yield self.authorize(request, (davxml.Bind(),))
+                        checkedBindPrivelege = True
+                    except HTTPError, e:
+                        checkedBindPrivelege = e
+
+                # Create operations
+                yield self.crudCreate(request, xmldata.generateComponent(), xmlresponses, return_changed, checkedBindPrivelege)
+            else:
+                delete = xmlchild.childOfType(customxml.Delete.qname())
+                ifmatch = xmlchild.childOfType(customxml.IfMatch.qname())
+                if ifmatch:
+                    ifmatch = str(ifmatch.children[0]) if len(ifmatch.children) == 1 else None
+                if delete is None:
+                    yield self.crudUpdate(request, str(href), xmldata.generateComponent(), ifmatch, return_changed, xmlresponses)
+                else:
+                    # Do privilege check on collection once 
+                    if checkedUnbindPrivelege is None:
+                        try:
+                            yield self.authorize(request, (davxml.Unbind(),))
+                            checkedUnbindPrivelege = True
+                        except HTTPError, e:
+                            checkedUnbindPrivelege = e
+
+                    yield self.crudDelete(request, str(href), ifmatch, xmlresponses, checkedUnbindPrivelege);
+        
+        result = MultiStatusResponse(xmlresponses)
+        
+        newctag = (yield self.getSyncToken())
+        result.headers.setRawHeaders("CTag", (newctag,))
+
+        # Setup some useful logging
+        request.submethod = "CRUD batch"
+        if not hasattr(request, "extendedLogItems"):
+            request.extendedLogItems = {}
+        request.extendedLogItems["rcount"] = len(xmlresponses)
+
+        returnValue(result)
+
+    @inlineCallbacks
+    def crudCreate(self, request, component, xmlresponses, return_changed, hasPrivilege):
+        
+        code = None
+        error = None
+        try:
+            componentdata = str(component)
+            if isinstance(hasPrivilege, HTTPError):
+                raise hasPrivilege
+
+            # Create a new name if one was not provided
+            name =  md5(str(componentdata) + str(time.time()) + request.path).hexdigest() + self.resourceSuffix()
+        
+            # Get a resource for the new item
+            newchildURL = joinURL(request.path, name)
+            newchild = (yield request.locateResource(newchildURL))
+            yield self.storeResourceData(request, newchild, newchildURL, componentdata)
+
+            # FIXME: figure out return_changed behavior
+
+        except HTTPError, e:
+            # Extract the pre-condition
+            code = e.response.code
+            if isinstance(e.response, ErrorResponse):
+                error = e.response.error
+                error = (error.namespace, error.name,)
+
+        except Exception:
+            code = responsecode.BAD_REQUEST
+        
+        if code is None:
+            xmlresponses.append(
+                davxml.PropertyStatusResponse(
+                    davxml.HRef.fromString(newchildURL),
+                    davxml.PropertyStatus(
+                        davxml.PropertyContainer(
+                            davxml.GETETag.fromString(newchild.etag().generate()),
+                            customxml.UID.fromString(component.resourceUID()),
+                        ),
+                        davxml.Status.fromResponseCode(responsecode.OK),
+                    )
+                )
+            )
+        else:
+            xmlresponses.append(
+                davxml.StatusResponse(
+                    davxml.HRef.fromString(""),
+                    davxml.Status.fromResponseCode(code),
+                    davxml.Error(
+                        WebDAVUnknownElement.fromQname(*error),
+                        customxml.UID.fromString(component.resourceUID()),
+                    ) if error else None,
+                )
+            )
+
+    @inlineCallbacks
+    def crudUpdate(self, request, href, component, ifmatch, return_changed, xmlresponses):
+        code = None
+        error = None
+        try:
+            componentdata = str(component)
+
+            updateResource = (yield request.locateResource(href))
+            if not updateResource.exists():
+                raise HTTPError(responsecode.NOT_FOUND)
+
+            # Check privilege
+            yield updateResource.authorize(request, (davxml.Write(),))
+
+            # Check if match
+            if ifmatch and ifmatch != updateResource.etag().generate():
+                raise HTTPError(responsecode.PRECONDITION_FAILED)
+            
+            yield self.storeResourceData(request, updateResource, href, componentdata)
+
+            # FIXME: figure out return_changed behavior
+
+        except HTTPError, e:
+            # Extract the pre-condition
+            code = e.response.code
+            if isinstance(e.response, ErrorResponse):
+                error = e.response.error
+                error = (error.namespace, error.name,)
+
+        except Exception:
+            code = responsecode.BAD_REQUEST
+        
+        if code is None:
+            xmlresponses.append(
+                davxml.PropertyStatusResponse(
+                    davxml.HRef.fromString(href),
+                    davxml.PropertyStatus(
+                        davxml.PropertyContainer(
+                            davxml.GETETag.fromString(updateResource.etag().generate()),
+                        ),
+                        davxml.Status.fromResponseCode(responsecode.OK),
+                    )
+                )
+            )
+        else:
+            xmlresponses.append(
+                davxml.StatusResponse(
+                    davxml.HRef.fromString(href),
+                    davxml.Status.fromResponseCode(code),
+                    davxml.Error(
+                        WebDAVUnknownElement.fromQname(*error),
+                    ) if error else None,
+                )
+            )
+
+    @inlineCallbacks
+    def crudDelete(self, request, href, ifmatch, xmlresponses, hasPrivilege):
+        code = None
+        error = None
+        try:
+            if isinstance(hasPrivilege, HTTPError):
+                raise hasPrivilege
+
+            deleteResource = (yield request.locateResource(href))
+            if not deleteResource.exists():
+                raise HTTPError(responsecode.NOT_FOUND)
+
+            # Check if match
+            if ifmatch and ifmatch != deleteResource.etag().generate():
+                raise HTTPError(responsecode.PRECONDITION_FAILED)
+
+            yield deleteResource.storeRemove(
+                request, 
+                True,
+                href,
+            )
+
+        except HTTPError, e:
+            # Extract the pre-condition
+            code = e.response.code
+            if isinstance(e.response, ErrorResponse):
+                error = e.response.error
+                error = (error.namespace, error.name,)
+
+        except Exception:
+            code = responsecode.BAD_REQUEST
+        
+        if code is None:
+            xmlresponses.append(
+                davxml.StatusResponse(
+                    davxml.HRef.fromString(href),
+                    davxml.Status.fromResponseCode(responsecode.OK),
+                )
+            )
+        else:
+            xmlresponses.append(
+                davxml.StatusResponse(
+                    davxml.HRef.fromString(href),
+                    davxml.Status.fromResponseCode(code),
+                    davxml.Error(
+                        WebDAVUnknownElement.fromQname(*error),
+                    ) if error else None,
+                )
+            )
+
+
 class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource):
     """
     Wrapper around a L{txdav.caldav.icalendar.ICalendar}.
@@ -482,6 +853,9 @@ class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource
         self._initializeWithHomeChild(calendar, home)
         self._name = calendar.name() if calendar else name
 
+        if config.EnableBatchUpload:
+            self._postHandlers[("text", "calendar")] = _CommonHomeChildCollectionMixin.simpleBatchPOST
+            self.xmlDocHanders[customxml.Multiput] = _CommonHomeChildCollectionMixin.crudBatchPOST
 
     def __repr__(self):
         return "<Calendar Collection Resource %r:%r %s>" % (
@@ -560,6 +934,29 @@ class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource
 
     createCalendarCollection = _CommonHomeChildCollectionMixin.createCollection
 
+    @classmethod
+    def componentsFromData(cls, data):
+        return VCalendar.allFromString(data)
+
+    @classmethod
+    def resourceSuffix(cls):
+        return ".ics"
+
+    @classmethod
+    def xmlDataElementType(cls):
+        return caldavxml.CalendarData
+
+    @inlineCallbacks
+    def storeResourceData(self, request, newchild, newchildURL, data):
+        storer = StoreCalendarObjectResource(
+            request = request,
+            destination = newchild,
+            destination_uri = newchildURL,
+            destinationcal = True,
+            destinationparent = self,
+            calendar = data,
+        )
+        yield storer.run()
 
     @inlineCallbacks
     def storeRemove(self, request, implicitly, where):
@@ -1358,6 +1755,9 @@ class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResou
         self._initializeWithHomeChild(addressbook, home)
         self._name = addressbook.name() if addressbook else name
 
+        if config.EnableBatchUpload:
+            self._postHandlers[("text", "vcard")] = _CommonHomeChildCollectionMixin.simpleBatchPOST
+            self.xmlDocHanders[customxml.Multiput] = _CommonHomeChildCollectionMixin.crudBatchPOST
 
     def __repr__(self):
         return "<AddressBook Collection Resource %r:%r %s>" % (
@@ -1379,6 +1779,31 @@ class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResou
 
 
     createAddressBookCollection = _CommonHomeChildCollectionMixin.createCollection
+
+    @classmethod
+    def componentsFromData(cls, data):
+        return VCard.allFromString(data)
+
+    @classmethod
+    def resourceSuffix(cls):
+        return ".vcf"
+
+    @classmethod
+    def xmlDataElementType(cls):
+        return carddavxml.AddressData
+
+    @inlineCallbacks
+    def storeResourceData(self, request, newchild, newchildURL, data):
+        storer = StoreAddressObjectResource(
+            request = request,
+            sourceadbk = False,
+            destination = newchild,
+            destination_uri = newchildURL,
+            destinationadbk = True,
+            destinationparent = self,
+            vcard = data,
+        )
+        yield storer.run()
 
 
 class GlobalAddressBookCollectionResource(GlobalAddressBookResource, AddressBookCollectionResource):

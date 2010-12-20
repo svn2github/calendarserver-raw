@@ -433,6 +433,8 @@ class CalendarData (CalDAVElement):
         else:
             return None
 
+    generateComponent = calendar
+
     def calendarData(self):
         """
         Returns the calendar data derived from this element.
