@@ -35,7 +35,8 @@ from twisted.python.util import FancyEqMixin
 from twistedcaldav import customxml, carddavxml, caldavxml
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
-from twistedcaldav.ical import Component as VCalendar, Property as VProperty
+from twistedcaldav.ical import Component as VCalendar, Property as VProperty,\
+    iCalendarProductID
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.method.put_addressbook_common import StoreAddressObjectResource
 from twistedcaldav.method.put_common import StoreCalendarObjectResource
@@ -936,7 +937,49 @@ class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource
 
     @classmethod
     def componentsFromData(cls, data):
-        return VCalendar.allFromString(data)
+        """
+        Need to split a single VCALENDAR into separate ones based on UID with the
+        appropriate VTIEMZONES included.
+        """
+        
+        results = []
+
+        # Split into components by UID and TZID
+        vcal =  VCalendar.fromString(data)
+        by_uid = {}
+        by_tzid = {}
+        for subcomponent in vcal.subcomponents():
+            if subcomponent.name() == "VTIMEZONE":
+                by_tzid[subcomponent.propertyValue("TZID")] = subcomponent
+            else:
+                by_uid.setdefault(subcomponent.propertyValue("UID"), []).append(subcomponent)
+        
+        # Re-constitute as separate VCALENDAR objects
+        for components in by_uid.values():
+            
+            newvcal = VCalendar("VCALENDAR")
+            newvcal.addProperty(VProperty("PRODID", vcal.propertyValue("PRODID")))
+            
+            # Get the set of TZIDs and include them
+            tzids = set()
+            for component in components:
+                tzids.update(component.timezoneIDs())
+            for tzid in tzids:
+                try:
+                    tz = by_tzid[tzid]
+                    newvcal.addComponent(tz)
+                except KeyError:
+                    # We ignore the error and generate invalid ics which someone will
+                    # complain about at some point
+                    pass
+            
+            # Now add each component
+            for component in components:
+                newvcal.addComponent(component)
+ 
+            results.append(newvcal)
+        
+        return results
 
     @classmethod
     def resourceSuffix(cls):
