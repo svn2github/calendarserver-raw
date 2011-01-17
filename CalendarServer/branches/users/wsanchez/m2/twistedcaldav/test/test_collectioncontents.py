@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ from twext.web2.http_headers import MimeType
 from twext.web2.test.test_server import SimpleRequest
 
 from twistedcaldav.ical import Component
-from twistedcaldav.memcachelock import MemcacheLock
+from twext.internet.memcachelock import MemcacheLock
 from twistedcaldav.memcacher import Memcacher
 from twistedcaldav.method.put_common import StoreCalendarObjectResource
 

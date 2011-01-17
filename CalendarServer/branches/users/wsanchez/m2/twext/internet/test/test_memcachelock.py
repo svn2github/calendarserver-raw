@@ -11,7 +11,7 @@ from twisted.test.proto_helpers import StringTransportWithDisconnection
 from twisted.internet.task import Clock
 from twisted.internet.defer import inlineCallbacks
 
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+from twext.internet.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 
 from twistedcaldav.test.util import TestCase
 

@@ -1,6 +1,6 @@
 # -*- test-case-name: twistedcaldav.test.test_wrapping -*-
 ##
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ L{txdav.carddav.iaddressbookstore} and those in L{twistedcaldav}.
 
 from urlparse import urlsplit
 
-from twisted.internet.defer import succeed, inlineCallbacks, returnValue,\
-    maybeDeferred
+from twisted.internet.defer import succeed, maybeDeferred
+from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.protocol import Protocol
 from twisted.python.log import err as logDefaultException
 from twisted.python.util import FancyEqMixin
@@ -36,8 +36,8 @@ from twext.web2.dav.element.base import dav_namespace
 from twext.web2.dav.http import ErrorResponse, ResponseQueue
 from twext.web2.dav.noneprops import NonePropertyStore
 from twext.web2.dav.resource import TwistedACLInheritable, AccessDeniedError
-from twext.web2.dav.util import parentForURL, allDataFromStream, joinURL, \
-    davXMLFromStream
+from twext.web2.dav.util import parentForURL, joinURL
+from twext.web2.dav.util import allDataFromStream, davXMLFromStream
 from twext.web2.http import HTTPError, StatusResponse, Response
 from twext.web2.http_headers import ETag, MimeType
 from twext.web2.responsecode import (
@@ -48,9 +48,9 @@ from twext.web2.stream import ProducerStream, readStream, MemoryStream
 
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
-from twistedcaldav.notifications import NotificationCollectionResource, \
-    NotificationResource
+from twext.internet.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+from twistedcaldav.notifications import NotificationCollectionResource
+from twistedcaldav.notifications import NotificationResource
 from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource
 from twistedcaldav.schedule import ScheduleInboxResource
 from twistedcaldav.scheduling.implicit import ImplicitScheduler

@@ -1,6 +1,6 @@
 # -*- test-case-name: twistedcaldav.test.test_validation -*-
 ##
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,9 +55,9 @@ from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
 
 from twistedcaldav.ical import Component, Property
-from twistedcaldav.instance import TooManyInstancesError,\
-    InvalidOverriddenInstanceError
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+from twistedcaldav.instance import TooManyInstancesError
+from twistedcaldav.instance import InvalidOverriddenInstanceError
+from twext.internet.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.scheduling.implicit import ImplicitScheduler
 
 log = Logger()

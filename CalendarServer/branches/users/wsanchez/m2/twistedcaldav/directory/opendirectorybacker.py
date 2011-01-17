@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
 from twistedcaldav.ical import iCalendarProductID
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+from twext.intenet.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.query import addressbookqueryfilter
 from twistedcaldav.vcard import Component, Property
 
@@ -80,17 +80,17 @@ class OpenDirectoryBackingService(DirectoryService):
         peopleNode = "/Search/Contacts",
         queryUserRecords=True, 
         userNode = "/Search",
-        maxDSQueryRecords = 0,            # maximum number of records requested for any ds query
+        maxDSQueryRecords = 0,             # maximum number of records requested for any ds query
         
-        queryDSLocal = False,              #query in DSLocal -- debug
+        queryDSLocal = False,              # query in DSLocal -- debug
         dsLocalCacheTimeout = 30,
         ignoreSystemRecords = True,
         
-        liveQuery = True,                    # query directory service as needed
-        fakeETag = True,                # eTag is not reliable if True 
+        liveQuery = True,                  # query directory service as needed
+        fakeETag = True,                   # eTag is not reliable if True 
         
         cacheQuery = False,
-        cacheTimeout=30,                # cache timeout            
+        cacheTimeout=30,                   # cache timeout            
         
         addDSAttrXProperties=False,        # add dsattributes to vcards as "X-" attributes
         standardizeSyntheticUIDs = False,  # use simple synthetic UIDs --- good for testing
@@ -103,17 +103,21 @@ class OpenDirectoryBackingService(DirectoryService):
         """
         @queryPeopleRecords: C{True} to query for People records
         @queryUserRecords: C{True} to query for User records
-        @maxDSQueryRecords: maximum number of (unfiltered) ds records retrieved before raising 
-            NumberOfMatchesWithinLimits exception or returning results
+        @maxDSQueryRecords: maximum number of (unfiltered) ds records
+            retrieved before raising NumberOfMatchesWithinLimits
+            exception or returning results
         @dsLocalCacheTimeout: how log to keep cache of DSLocal records
         @liveQuery: C{True} to query the directory as needed
-        @fakeETag: C{True} to use a fake eTag; allows ds queries with partial attributes
+        @fakeETag: C{True} to use a fake eTag; allows ds queries with
+            partial attributes
         @cacheQuery: C{True} to query the directory and cache results
         @cacheTimeout: if caching, the average cache timeout
-        @standardizeSyntheticUIDs: C{True} when creating synthetic UID (==f(Node, Type, Record Name)), 
-            use a standard Node name. This allows testing with the same UID on different hosts
-        @allowedAttributes: list of DSAttributes that are used to create VCards
-
+        @standardizeSyntheticUIDs: C{True} when creating synthetic UID
+            (==f(Node, Type, Record Name)), use a standard Node
+            name. This allows testing with the same UID on different
+            hosts
+        @allowedAttributes: list of DSAttributes that are used to
+            create VCards
         """
         assert directoryBackedAddressBook is not None
         self.directoryBackedAddressBook = directoryBackedAddressBook

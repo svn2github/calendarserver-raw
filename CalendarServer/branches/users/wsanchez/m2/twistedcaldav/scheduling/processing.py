@@ -1,5 +1,5 @@
-#
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+##
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ from twistedcaldav.method import report_common
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 from twistedcaldav.scheduling.itip import iTipProcessing, iTIPRequestStatus
 from twistedcaldav.scheduling.utils import getCalendarObjectForPrincipals
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
+from twext.internet.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 
 __all__ = [
     "ImplicitProcessor",
