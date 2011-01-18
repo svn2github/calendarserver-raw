@@ -93,18 +93,22 @@ class PurgeOldEventsService(Service):
     def __init__(self, store):
         self._store = store
 
+    @inlineCallbacks
     def startService(self):
         try:
             rootResource = getRootResource(config, self._store)
             directory = rootResource.getDirectory()
-            total = (yield purgeOldEvents(directory, rootResource, self.cutoff,
-                verbose=self.verbose, dryrun=self.dryrun))
+            total = (yield purgeOldEvents(self._store, directory, rootResource,
+                self.cutoff, verbose=self.verbose, dryrun=self.dryrun))
             if self.verbose:
-                amount = "%d event%s" % (total, "s" if total > 1 else "")
-                if self.dryrun:
-                    print "Would have deleted %s" % (amount,)
+                if total:
+                    amount = "%d event%s" % (total, "s" if total > 1 else "")
+                    if self.dryrun:
+                        print "Would have deleted %s" % (amount,)
+                    else:
+                        print "Deleted %s" % (amount,)
                 else:
-                    print "Deleted %s" % (amount,)
+                    print "No old events found"
         except Exception, e:
             print "Error:", e
             raise
@@ -287,31 +291,50 @@ def callThenStop(method, *args, **kwds):
 
 
 @inlineCallbacks
-def purgeOldEvents(directory, root, date, verbose=False, dryrun=False):
+def purgeOldEvents(store, directory, root, date, verbose=False, dryrun=False):
 
     if dryrun:
         print "Dry run"
 
-    records = []
-    calendars = root.getChild("calendars")
-    uids = calendars.getChild("__uids__")
-
     if verbose:
-        print "Querying database for old events...",
+        print "Querying database for old events..."
 
-    oldEvents = (yield self._store.eventsOlderThan(date))
+    oldEvents = (yield store.eventsOlderThan(date))
 
     request = FakeRequest(root, None, None)
     request.checkedSACL = True
     eventCount = 0
+    prevHomeName = None
+
     for homeName, calendarName, eventName, maxDate in oldEvents:
+        if homeName != prevHomeName:
+
+            # Retrieve the calendar home
+            record = directory.recordWithGUID(homeName)
+            if record is None:
+                # The user has already been removed from the directory service.  We
+                # need to fashion a temporary, fake record
+
+                # FIXME: probaby want a more elegant way to accomplish this,
+                # since it requires the aggregate directory to examine these first:
+                record = DirectoryRecord(directory, "users", homeName, shortNames=(homeName,),
+                    enabledForCalendaring=True)
+                record.enabled = True
+                directory._tmpRecords["shortNames"][homeName] = record
+                directory._tmpRecords["guids"][homeName] = record
+
+            principalCollection = directory.principalCollection
+            principal = principalCollection.principalForRecord(record)
+            calendarHome = (yield principal.calendarHome(request))
+            prevHomeName = homeName
+
         eventCount += 1
         if verbose:
-            print "%s/%s/%s %s" % (homeName, calendarName, eventName, maxDate)
+            print "%s %s/%s/%s ends: %s" % (record.shortNames[0], homeName,
+                calendarName, eventName, maxDate)
         if not dryrun:
-            calendarHome = uids.getChild(homeName)
-            calendar = calendarHome.getChild(calendarName)
-            event = calendar.getChild(eventName)
+            calendar = (yield calendarHome.getChild(calendarName))
+            event = (yield calendar.getChild(eventName))
             uri = "/calendars/__uids__/%s/%s/%s" % (
                 homeName,
                 calendarName,
@@ -326,10 +349,7 @@ def purgeOldEvents(directory, root, date, verbose=False, dryrun=False):
                 print "Removing %s/%s/%s" % (homeName, calendarName, eventName)
             result = (yield event.storeRemove(request, True, uri))
 
-    if verbose:
-        print "%d old events found" % (eventCount,)
-
-    if not dryrun:
+    if eventCount and not dryrun:
         if verbose:
             print "Committing changes"
         txn = request._newStoreTransaction
@@ -602,5 +622,4 @@ def purgeProxyAssignments(principal):
         (yield subPrincipal.writeProperty(davxml.GroupMemberSet(), None))
 
     returnValue(assignments)
-
 
