@@ -35,6 +35,7 @@ class GenerationTests(TestCase):
         addSQLToSchema(schema=s, schemaData="""
                        create table FOO (BAR integer, BAZ integer);
                        create table BOZ (QUX integer);
+                       create table OTHER (BAR integer, FOO_BAR integer);
                        """)
         self.schema = SchemaSyntax(s)
 
@@ -163,4 +164,22 @@ class GenerationTests(TestCase):
         """
         self.assertRaises(TableMismatch, Select, [self.schema.BOZ.QUX],
                           From=self.schema.FOO)
+
+
+    def test_qualifyNames(self):
+        """
+        When two columns in the FROM clause requested from different tables have
+        the same name, the emitted SQL should explicitly disambiguate them.
+        """
+        self.assertEquals(
+            Select([self.schema.FOO.BAR,
+                    self.schema.OTHER.BAR],
+                   From=self.schema.FOO.join(self.schema.OTHER,
+                                             self.schema.OTHER.FOO_BAR ==
+                                             self.schema.FOO.BAR)).toSQL(),
+            SQLStatement(
+                "select FOO.BAR, OTHER.BAR from FOO "
+                "join OTHER on FOO_BAR == FOO.BAR"
+            )
+        )
 
