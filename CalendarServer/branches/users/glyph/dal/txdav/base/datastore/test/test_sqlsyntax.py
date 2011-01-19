@@ -113,12 +113,26 @@ class GenerationTests(TestCase):
 
     def test_columnSelection(self):
         """
-        If columns are specified by the argument to L{Select}, those will be
+        If a column is specified by the argument to L{Select}, those will be
         output by the SQL statement rather than the all-columns wildcard.
         """
         self.assertEquals(
             Select([self.schema.FOO.BAR],
                    From=self.schema.FOO).toSQL(),
             SQLStatement("select BAR from FOO")
+        )
+
+
+    def test_multiColumnSelection(self):
+        """
+        If multiple columns are specified by the argument to L{Select}, those
+        will be output by the SQL statement rather than the all-columns
+        wildcard.
+        """
+        self.assertEquals(
+            Select([self.schema.FOO.BAZ,
+                    self.schema.FOO.BAR],
+                   From=self.schema.FOO).toSQL(),
+            SQLStatement("select BAZ, BAR from FOO")
         )
 
