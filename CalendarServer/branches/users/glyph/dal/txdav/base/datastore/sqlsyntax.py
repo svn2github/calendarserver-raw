@@ -198,12 +198,19 @@ class CompoundComparison(Comparison):
 
 
 
+class _AllColumns(object):
+    def toSQL(self, placeholder, quote):
+        return SQLStatement('*')
+
+ALL_COLUMNS = _AllColumns()
+
 class Select(object):
     """
     'select' statement.
     """
 
-    def __init__(self, Where=None, From=None):
+    def __init__(self, columns=ALL_COLUMNS, Where=None, From=None):
+        self.columns = columns
         self.From = From
         self.Where = Where
 
