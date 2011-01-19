@@ -15,6 +15,10 @@
 # limitations under the License.
 ##
 
+"""
+Syntax wrappers and generators for SQL.
+"""
+
 from txdav.base.datastore.sqlmodel import Schema, Table, Column
 
 class Syntax(object):
@@ -73,6 +77,14 @@ class TableSyntax(Syntax):
             yield ColumnSyntax(column)
 
 
+def comparison(comparator):
+    def __(self, other):
+        if isinstance(other, ColumnSyntax):
+            return ColumnComparison(self, comparator, other)
+        else:
+            return ConstantComparison(self, comparator, other)
+    return __
+
 
 class ColumnSyntax(Syntax):
     """
@@ -81,11 +93,14 @@ class ColumnSyntax(Syntax):
 
     modelType = Column
 
-    def __eq__(self, other):
-        if isinstance(other, ColumnSyntax):
-            return ColumnComparison(self, '=', other)
-        else:
-            return ConstantComparison(self, '=', other)
+    __eq__ = comparison('=')
+    __ne__ = comparison('!=')
+    __gt__ = comparison('>')
+    __ge__ = comparison('>=')
+    __lt__ = comparison('<')
+    __le__ = comparison('<=')
+    __add__ = comparison("+")
+    __sub__ = comparison("-")
 
 
 
@@ -102,18 +117,46 @@ class Comparison(object):
             "column comparisons should not be tested for truth value")
 
 
+    def booleanOp(self, operand, other):
+        return CompoundComparison(self, operand, other)
+
+
+    def And(self, other):
+        return self.booleanOp('and', other)
+
+
+    def Or(self, other):
+        return self.booleanOp('or', other)
+
 
 
 class ConstantComparison(Comparison):
 
     def toSQL(self, placeholder, quote):
-        return (' '.join([self.a.model.name, self.op, placeholder]), [self.b])
+        return SQLStatement(
+            ' '.join([self.a.model.name, self.op, placeholder]), [self.b])
 
 
 
 class ColumnComparison(Comparison):
+
     def toSQL(self, placeholder, quote):
-        return (' '.join([self.a.model.name, self.op, self.b.model.name]), [])
+        return SQLStatement(
+            ' '.join([self.a.model.name, self.op, self.b.model.name]), [])
+
+
+class CompoundComparison(Comparison):
+    """
+    A compound comparison; two or more constraints, joined by an operation
+    (currently only AND or OR).
+    """
+
+    def toSQL(self, placeholder, quote):
+        stmt = SQLStatement()
+        stmt.append(self.a.toSQL(placeholder, quote))
+        stmt.text += ' %s ' % (self.op,)
+        stmt.append(self.b.toSQL(placeholder, quote))
+        return stmt
 
 
 
@@ -131,11 +174,39 @@ class Select(object):
         """
         @return: a 2-tuple of (sql, args).
         """
-        sql = quote("select * from ") + self.From.model.name
-        args = []
+        stmt = SQLStatement(quote("select * from ") + self.From.model.name)
         if self.Where is not None:
-            moreSQL, moreArgs = self.Where.toSQL(placeholder, quote)
-            sql += (quote(" where ") + moreSQL)
-            args.extend(moreArgs)
-        return (sql, args)
+            wherestmt = self.Where.toSQL(placeholder, quote)
+            stmt.text += quote(" where ")
+            stmt.append(wherestmt)
+        return stmt
 
+
+class SQLStatement(object):
+    """
+    Combination of SQL text and arguments; a statement which may be executed
+    against a database.
+    """
+
+    def __init__(self, text="", parameters=None):
+        self.text = text
+        if parameters is None:
+            parameters = []
+        self.parameters = parameters
+
+
+    def append(self, anotherStatement):
+        self.text += anotherStatement.text
+        self.parameters += anotherStatement.parameters
+
+
+    def __eq__(self, stmt):
+        if not isinstance(stmt, SQLStatement):
+            return NotImplemented
+        return (self.text, self.parameters) == (stmt.text, stmt.parameters)
+
+
+    def __ne__(self, stmt):
+        if not isinstance(stmt, SQLStatement):
+            return NotImplemented
+        return not self.__eq__(stmt)

@@ -17,7 +17,7 @@
 
 from txdav.base.datastore.sqlmodel import Schema
 from txdav.base.datastore.sqlparser import addSQLToSchema
-from txdav.base.datastore.sqlsyntax import SchemaSyntax, Select
+from txdav.base.datastore.sqlsyntax import SchemaSyntax, Select, SQLStatement
 
 from twisted.trial.unittest import TestCase
 
@@ -41,7 +41,7 @@ class GenerationTests(TestCase):
         rows in a table.
         """
         self.assertEquals(Select(From=self.schema.FOO).toSQL(),
-                          ("select * from FOO", []))
+                          SQLStatement("select * from FOO", []))
 
 
     def test_simpleWhereClause(self):
@@ -51,7 +51,7 @@ class GenerationTests(TestCase):
         """
         self.assertEquals(Select(From=self.schema.FOO,
                                  Where=self.schema.FOO.BAR == 1).toSQL(),
-                          ("select * from FOO where BAR = ?", [1]))
+                          SQLStatement("select * from FOO where BAR = ?", [1]))
 
 
     def test_quotingAndPlaceholder(self):
@@ -63,7 +63,7 @@ class GenerationTests(TestCase):
                                  Where=self.schema.FOO.BAR == 1).toSQL(
                                  placeholder="*",
                                  quote=lambda partial: partial.replace("*", "**")),
-                          ("select ** from FOO where BAR = *", [1]))
+                          SQLStatement("select ** from FOO where BAR = *", [1]))
 
 
     def test_columnComparison(self):
@@ -73,7 +73,7 @@ class GenerationTests(TestCase):
         self.assertEquals(Select(From=self.schema.FOO,
                                  Where=self.schema.FOO.BAR ==
                                  self.schema.FOO.BAZ).toSQL(),
-                          ("select * from FOO where BAR = BAZ", []))
+                          SQLStatement("select * from FOO where BAR = BAZ", []))
 
 
     def test_comparisonTestErrorPrevention(self):
@@ -86,5 +86,17 @@ class GenerationTests(TestCase):
             if self.schema.FOO.BAR == self.schema.FOO.BAZ:
                 return 'comparison should not succeed'
         self.assertRaises(ValueError, sampleComparison)
+
+
+
+    def test_compoundWhere(self):
+        """
+        L{Select.And} and L{Select.Or} will return compound columns.
+        """
+        self.assertEquals(
+            Select(From=self.schema.FOO,
+                   Where=(self.schema.FOO.BAR < 2).Or(
+                          self.schema.FOO.BAR > 5)).toSQL(),
+            SQLStatement("select * from FOO where BAR < ? or BAR > ?", [2, 5]))
 
 
