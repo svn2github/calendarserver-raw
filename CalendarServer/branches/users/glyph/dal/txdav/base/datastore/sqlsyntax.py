@@ -21,6 +21,14 @@ Syntax wrappers and generators for SQL.
 
 from txdav.base.datastore.sqlmodel import Schema, Table, Column
 
+
+class TableMismatch(Exception):
+    """
+    A table in a statement did not match with a column.
+    """
+
+
+
 class Syntax(object):
     """
     Base class for syntactic convenience.
@@ -89,6 +97,14 @@ class TableSyntax(Syntax):
     def __iter__(self):
         for column in self.model.columns:
             yield ColumnSyntax(column)
+
+
+    def tables(self):
+        return [self]
+
+
+    def __contains__(self, columnSyntax):
+        return (columnSyntax.model in self.model.columns)
 
 
 
@@ -207,6 +223,7 @@ class _AllColumns(object):
 
 
 
+
 ALL_COLUMNS = _AllColumns()
 
 class Select(object):
@@ -218,6 +235,12 @@ class Select(object):
         if columns is None:
             columns = ALL_COLUMNS
         else:
+            for column in columns:
+                for table in From.tables():
+                    if column in table:
+                        break
+                else:
+                    raise TableMismatch()
             columns = SQLStatement(', '.join([c.model.name for c in columns]))
         self.columns = columns
         self.From = From

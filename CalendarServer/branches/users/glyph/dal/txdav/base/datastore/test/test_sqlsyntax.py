@@ -14,10 +14,14 @@
 # limitations under the License.
 ##
 
+"""
+Tests for L{txdav.base.datastore.sqlsyntax}
+"""
 
 from txdav.base.datastore.sqlmodel import Schema
 from txdav.base.datastore.sqlparser import addSQLToSchema
-from txdav.base.datastore.sqlsyntax import SchemaSyntax, Select, SQLStatement
+from txdav.base.datastore.sqlsyntax import (
+    SchemaSyntax, Select, SQLStatement, TableMismatch)
 
 from twisted.trial.unittest import TestCase
 
@@ -135,4 +139,13 @@ class GenerationTests(TestCase):
                    From=self.schema.FOO).toSQL(),
             SQLStatement("select BAZ, BAR from FOO")
         )
+
+
+    def test_tableMismatch(self):
+        """
+        When a column in the 'columns' argument does not match the table from
+        the 'From' argument, L{Select} raises a L{TableMismatch}.
+        """
+        self.assertRaises(TableMismatch, Select, [self.schema.BOZ.QUX],
+                          From=self.schema.FOO)
 
