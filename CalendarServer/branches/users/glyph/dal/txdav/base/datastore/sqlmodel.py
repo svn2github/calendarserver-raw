@@ -14,6 +14,9 @@
 # limitations under the License.
 ##
 
+"""
+Model classes for SQL.
+"""
 
 class SQLType(object):
 
