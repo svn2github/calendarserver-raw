@@ -1,3 +1,4 @@
+# -*- test-case-name: txdav.base.datastore.test.test_sqlsyntax -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -79,4 +80,44 @@ class ColumnSyntax(Syntax):
     """
 
     modelType = Column
+
+    def __eq__(self, other):
+        return ConstantComparison(self.model.name, '=', other)
+
+
+
+class ConstantComparison(object):
+
+    def __init__(self, a, op, b):
+        self.a = a
+        self.op = op
+        self.b = b
+
+
+    def toSQL(self):
+        return (' '.join([self.a, self.op, '?']), [self.b])
+
+
+
+class Select(object):
+    """
+    'select' statement.
+    """
+
+    def __init__(self, Where=None, From=None):
+        self.From = From
+        self.Where = Where
+
+
+    def toSQL(self):
+        """
+        @return: a 2-tuple of (sql, args).
+        """
+        sql = "select * from " + self.From.model.name
+        args = []
+        if self.Where is not None:
+            moreSQL, moreArgs = self.Where.toSQL()
+            sql += (" where " + moreSQL)
+            args.extend(moreArgs)
+        return (sql, args)
 
