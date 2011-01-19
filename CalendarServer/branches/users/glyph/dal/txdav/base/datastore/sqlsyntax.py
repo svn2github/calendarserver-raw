@@ -111,7 +111,6 @@ class Join(object):
         stmt.append(self.secondTableOrJoin.toSQL(placeholder, quote))
         stmt.text += ' on '
         stmt.append(self.on.toSQL(placeholder, quote))
-
         return stmt
 
 
