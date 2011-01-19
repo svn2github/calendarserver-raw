@@ -14,6 +14,11 @@
 # limitations under the License.
 ##
 
+"""
+Tests for parsing an SQL schema, which cover L{txdav.base.datastore.sqlmodel}
+and L{txdav.base.datastore.sqlparser}.
+"""
+
 from txdav.base.datastore.sqlmodel import Schema
 
 from txdav.base.datastore.sqlparser import addSQLToSchema
@@ -59,15 +64,13 @@ class ParsingExampleTests(TestCase):
         versa.
         """
         s = Schema()
-        addSQLToSchema(
-            s,
-            """
-            create sequence thingy;
-            create table thetable (
-                thecolumn integer default nextval('thingy')
-            );
-            """
-        )
+        addSQLToSchema(s,
+                       """
+                       create sequence thingy;
+                       create table thetable (
+                           thecolumn integer default nextval('thingy')
+                       );
+                       """)
         self.assertEquals(len(s.sequences), 1)
         self.assertEquals(s.sequences[0].name, "thingy")
         self.assertEquals(s.tables[0].columns[0].default, s.sequences[0])
@@ -89,5 +92,21 @@ class ParsingExampleTests(TestCase):
         t = s.tableNamed('alpha')
         self.assertEquals(True, t.columnNamed('beta').canBeNull())
         self.assertEquals(False, t.columnNamed('gamma').canBeNull())
+
+
+    def test_unique(self):
+        """
+        A column with a UNIQUE constraint in SQL will result in the table
+        listing that column as a unique set.
+        """
+        for identicalSchema in [
+                "create table sample (example integer unique);",
+                "create table sample (example integer, unique(example));"]:
+            s = Schema()
+            addSQLToSchema(s, identicalSchema)
+            table = s.tableNamed('sample')
+            column = table.columnNamed('example')
+            self.assertEquals(list(table.uniques()), [set([column])])
+
 
 

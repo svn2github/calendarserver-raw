@@ -47,8 +47,6 @@ class SQLType(object):
 
 
 
-
-
 class Constraint(object):
 
     # Values for 'type' attribute:
@@ -161,6 +159,16 @@ class Table(object):
 
     def addComment(self, comment):
         self.descriptiveComment = comment
+
+
+    def uniques(self):
+        """
+        @return: an iterable of C{set}s of C{Column}s which are unique within
+            this table.
+        """
+        for constraint in self.constraints:
+            if constraint.type is Constraint.UNIQUE:
+                yield set(constraint.affectsColumns)
 
 
 

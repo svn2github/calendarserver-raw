@@ -164,7 +164,11 @@ class _ColumnParser(object):
             expect(self, cls=Parenthesis)
             self.primaryKey = 'MULTI-VALUE-KEY'
         elif constraintType.match(Keyword, 'UNIQUE'):
-            expect(self, cls=Parenthesis)
+            parens = iterSignificant(expect(self, cls=Parenthesis))
+            expect(parens, ttype=Punctuation, value="(")
+            idname = expect(parens, cls=Identifier).get_name()
+            expect(parens, ttype=Punctuation, value=")")
+            self.table.tableConstraint(Constraint.UNIQUE, [idname])
         else:
             raise ViolatedExpectation('PRIMARY or UNIQUE', constraintType)
         return self.checkEnd(self.next())
@@ -199,8 +203,8 @@ class _ColumnParser(object):
                 return self.checkEnd(val)
             else:
                 expected = True
-                def notNull():
-                    self.table.tableConstraint(Constraint.NOT_NULL,
+                def oneConstraint(t):
+                    self.table.tableConstraint(t,
                                                [theColumn.name])
 
                 if val.match(Keyword, 'PRIMARY'):
@@ -209,14 +213,14 @@ class _ColumnParser(object):
                     self.table.primaryKey = theColumn
                 elif val.match(Keyword, 'UNIQUE'):
                     # XXX add UNIQUE constraint
-                    pass
+                    oneConstraint(Constraint.UNIQUE)
                 elif val.match(Keyword, 'NOT'):
                     # possibly not necessary, as 'NOT NULL' is a single keyword
                     # in sqlparse as of 0.1.2
                     expect(self, ttype=Keyword, value='NULL')
-                    notNull()
+                    oneConstraint(Constraint.NOT_NULL)
                 elif val.match(Keyword, 'NOT NULL'):
-                    notNull()
+                    oneConstraint(Constraint.NOT_NULL)
                 elif val.match(Keyword, 'DEFAULT'):
                     theDefault = self.next()
                     if isinstance(theDefault, Function):
