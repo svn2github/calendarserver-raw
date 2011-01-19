@@ -281,8 +281,6 @@ class Select(object):
         self.columns = columns
 
 
-
-
     def toSQL(self, placeholder="?", quote=lambda x: x):
         """
         @return: a 2-tuple of (sql, args).
@@ -313,6 +311,16 @@ class SQLStatement(object):
         self.parameters = parameters
 
 
+    def bind(self, **kw):
+        params = []
+        for parameter in self.parameters:
+            if isinstance(parameter, Parameter):
+                params.append(kw[parameter.name])
+            else:
+                params.append(parameter)
+        return SQLStatement(self.text, params)
+
+
     def append(self, anotherStatement):
         self.text += anotherStatement.text
         self.parameters += anotherStatement.parameters
@@ -338,3 +346,9 @@ class SQLStatement(object):
         return self
 
 
+class Parameter(object):
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return 'Parameter(%r)' % (self.name,)

@@ -21,7 +21,7 @@ Tests for L{txdav.base.datastore.sqlsyntax}
 from txdav.base.datastore.sqlmodel import Schema
 from txdav.base.datastore.sqlparser import addSQLToSchema
 from txdav.base.datastore.sqlsyntax import (
-    SchemaSyntax, Select, SQLStatement, TableMismatch)
+    SchemaSyntax, Select, SQLStatement, TableMismatch, Parameter)
 
 from twisted.trial.unittest import TestCase
 
@@ -183,3 +183,18 @@ class GenerationTests(TestCase):
             )
         )
 
+
+    def test_bindParameters(self):
+        """
+        L{SQLStatement.bind} returns a copy of that L{SQLStatement} with the
+        L{Parameter} objects in its parameter list replaced with the keyword
+        arguments to C{bind}.
+        """
+
+        self.assertEquals(
+            Select(From=self.schema.FOO,
+                   Where=(self.schema.FOO.BAR > Parameter("testing")).And(
+                   self.schema.FOO.BAZ < 7)).toSQL().bind(testing=173),
+            SQLStatement("select * from FOO where BAR > ? and BAZ < ?",
+                         [173, 7])
+        )
