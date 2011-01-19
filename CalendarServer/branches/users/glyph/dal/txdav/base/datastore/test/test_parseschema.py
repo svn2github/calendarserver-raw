@@ -50,3 +50,29 @@ class ParsingExampleTests(TestCase):
         self.assertEquals(s.sequences[0].name, "myseq")
 
 
+    def test_sequenceColumn(self):
+        """
+        Parsing a 'create sequence' statement adds a L{Sequence} to the
+        L{Schema}, and then a table that contains a column which uses the SQL
+        C{nextval()} function to retrieve its default value from that sequence,
+        will cause the L{Column} object to refer to the L{Sequence} and vice
+        versa.
+        """
+        s = Schema()
+        addSQLToSchema(
+            s,
+            """
+            create sequence thingy;
+            create table thetable (
+                thecolumn integer default nextval('thingy')
+            );
+            """
+        )
+        self.assertEquals(len(s.sequences), 1)
+        self.assertEquals(s.sequences[0].name, "thingy")
+        self.assertEquals(s.tables[0].columns[0].default, s.sequences[0])
+        self.assertEquals(s.sequences[0].referringColumns,
+                          [s.tables[0].columns[0]])
+
+
+

@@ -1,3 +1,4 @@
+# -*- test-case-name: txdav.base.datastore.test.test_parseschema -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -157,6 +158,10 @@ class Sequence(object):
     def __init__(self, name):
         self.name = name
         self.referringColumns = []
+
+
+    def __repr__(self):
+        return '<Sequence %r>' % (self.name,)
 
 
 class Schema(object):
