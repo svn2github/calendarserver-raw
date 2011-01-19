@@ -94,8 +94,8 @@ class ConstantComparison(object):
         self.b = b
 
 
-    def toSQL(self):
-        return (' '.join([self.a, self.op, '?']), [self.b])
+    def toSQL(self, placeholder, quote):
+        return (' '.join([self.a, self.op, placeholder]), [self.b])
 
 
 
@@ -109,15 +109,15 @@ class Select(object):
         self.Where = Where
 
 
-    def toSQL(self):
+    def toSQL(self, placeholder="?", quote=lambda x: x):
         """
         @return: a 2-tuple of (sql, args).
         """
-        sql = "select * from " + self.From.model.name
+        sql = quote("select * from ") + self.From.model.name
         args = []
         if self.Where is not None:
-            moreSQL, moreArgs = self.Where.toSQL()
-            sql += (" where " + moreSQL)
+            moreSQL, moreArgs = self.Where.toSQL(placeholder, quote)
+            sql += (quote(" where ") + moreSQL)
             args.extend(moreArgs)
         return (sql, args)
 

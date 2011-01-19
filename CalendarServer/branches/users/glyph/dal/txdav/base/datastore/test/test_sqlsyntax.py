@@ -30,13 +30,14 @@ class GenerationTests(TestCase):
         s = Schema(self.id())
         addSQLToSchema(schema=s, schemaData="""
                        create table FOO (BAR integer);
+                       create table BAZ (QUX integer);
                        """)
         self.schema = SchemaSyntax(s)
 
 
     def test_simplestSelect(self):
         """
-        L{Select} will generate a 'select' statement, by default, asking for all
+        L{Select} generates a 'select' statement, by default, asking for all
         rows in a table.
         """
         self.assertEquals(Select(From=self.schema.FOO).toSQL(),
@@ -45,10 +46,23 @@ class GenerationTests(TestCase):
 
     def test_simpleWhereClause(self):
         """
-        L{Select} will generate a 'select' statement with a 'where' clause
+        L{Select} generates a 'select' statement with a 'where' clause
         containing an expression.
         """
         self.assertEquals(Select(From=self.schema.FOO,
                                  Where=self.schema.FOO.BAR == 1).toSQL(),
                           ("select * from FOO where BAR = ?", [1]))
+
+
+    def test_quotingAndPlaceholder(self):
+        """
+        L{Select} generates a 'select' statement with the specified placeholder
+        syntax and quoting function.
+        """
+
+        self.assertEquals(Select(From=self.schema.FOO,
+                                 Where=self.schema.FOO.BAR == 1).toSQL(
+                                 placeholder="*",
+                                 quote=lambda partial: partial.replace("*", "**")),
+                          ("select ** from FOO where BAR = *", [1]))
 
