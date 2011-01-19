@@ -81,7 +81,7 @@ class TableSyntax(Syntax):
         return Join(self, type, otherTableSyntax, on)
 
 
-    def toSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote):
         """
         For use in a 'from' clause.
         """
@@ -116,17 +116,17 @@ class Join(object):
         self.on = on
 
 
-    def toSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote):
         stmt = SQLStatement()
-        stmt.append(self.firstTable.toSQL(placeholder, quote))
+        stmt.append(self.firstTable.subSQL(placeholder, quote))
         stmt.text += ' '
         if self.type:
             stmt.text += self.type
             stmt.text += ' '
         stmt.text += 'join '
-        stmt.append(self.secondTableOrJoin.toSQL(placeholder, quote))
+        stmt.append(self.secondTableOrJoin.subSQL(placeholder, quote))
         stmt.text += ' on '
-        stmt.append(self.on.toSQL(placeholder, quote))
+        stmt.append(self.on.subSQL(placeholder, quote))
         return stmt
 
 
@@ -191,7 +191,7 @@ class Comparison(object):
 
 class ConstantComparison(Comparison):
 
-    def toSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote):
         return SQLStatement(
             ' '.join([self.a.model.name, self.op, placeholder]), [self.b])
 
@@ -199,7 +199,7 @@ class ConstantComparison(Comparison):
 
 class ColumnComparison(Comparison):
 
-    def toSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote):
         return SQLStatement(
             ' '.join([self.a.model.name, self.op, self.b.model.name]), [])
 
@@ -211,18 +211,18 @@ class CompoundComparison(Comparison):
     (currently only AND or OR).
     """
 
-    def toSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote):
         stmt = SQLStatement()
-        stmt.append(self.a.toSQL(placeholder, quote))
+        stmt.append(self.a.subSQL(placeholder, quote))
         stmt.text += ' %s ' % (self.op,)
-        stmt.append(self.b.toSQL(placeholder, quote))
+        stmt.append(self.b.subSQL(placeholder, quote))
         return stmt
 
 
 
 class _AllColumns(object):
 
-    def toSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote):
         return SQLStatement(quote('*'))
 
 
@@ -236,6 +236,8 @@ class Select(object):
     """
 
     def __init__(self, columns=None, Where=None, From=None):
+        self.From = From
+        self.Where = Where
         if columns is None:
             columns = ALL_COLUMNS
         else:
@@ -245,10 +247,19 @@ class Select(object):
                         break
                 else:
                     raise TableMismatch()
-            columns = SQLStatement(', '.join([c.model.name for c in columns]))
+            columns = SQLStatement(', '.join([self._qualifiedName(c)
+                                              for c in columns]))
         self.columns = columns
-        self.From = From
-        self.Where = Where
+
+
+    def _qualifiedName(self, columnSyntax):
+        for tableSyntax in self.From.tables():
+            if columnSyntax.model.table is not tableSyntax.model:
+                if columnSyntax.model.name in (c.name for c in
+                                               tableSyntax.model.columns):
+                    return (columnSyntax.model.table.name + '.' +
+                            columnSyntax.model.name)
+        return columnSyntax.model.name
 
 
     def toSQL(self, placeholder="?", quote=lambda x: x):
@@ -256,11 +267,11 @@ class Select(object):
         @return: a 2-tuple of (sql, args).
         """
         stmt = SQLStatement(quote("select "))
-        stmt.append(self.columns.toSQL(placeholder, quote))
+        stmt.append(self.columns.subSQL(placeholder, quote))
         stmt.text += quote(" from ")
-        stmt.append(self.From.toSQL(placeholder, quote))
+        stmt.append(self.From.subSQL(placeholder, quote))
         if self.Where is not None:
-            wherestmt = self.Where.toSQL(placeholder, quote)
+            wherestmt = self.Where.subSQL(placeholder, quote)
             stmt.text += quote(" where ")
             stmt.append(wherestmt)
         return stmt
@@ -301,7 +312,7 @@ class SQLStatement(object):
         return 'SQLStatement' + repr((self.text, self.parameters))
 
 
-    def toSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote):
         return self
 
 
