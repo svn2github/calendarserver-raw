@@ -75,4 +75,19 @@ class ParsingExampleTests(TestCase):
                           [s.tables[0].columns[0]])
 
 
+    def test_notNull(self):
+        """
+        A column with a NOT NULL constraint in SQL will be parsed as a
+        constraint which returns False from its C{canBeNull()} method.
+        """
+        s = Schema()
+        addSQLToSchema(s,
+                       """
+                       create table alpha (beta integer,
+                                           gamma integer not null);
+                       """)
+        t = s.tableNamed('alpha')
+        self.assertEquals(True, t.columnNamed('beta').canBeNull())
+        self.assertEquals(False, t.columnNamed('gamma').canBeNull())
+
 

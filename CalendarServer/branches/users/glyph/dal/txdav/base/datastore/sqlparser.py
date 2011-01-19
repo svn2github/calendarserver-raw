@@ -27,6 +27,7 @@ from sqlparse.sql import (Comment, Identifier, Parenthesis, IdentifierList,
                           Function)
 
 from txdav.base.datastore.sqlmodel import Schema, Table, SQLType, ProcedureCall
+from txdav.base.datastore.sqlmodel import Constraint
 from txdav.base.datastore.sqlmodel import Sequence
 
 def _fixKeywords():
@@ -198,6 +199,10 @@ class _ColumnParser(object):
                 return self.checkEnd(val)
             else:
                 expected = True
+                def notNull():
+                    self.table.tableConstraint(Constraint.NOT_NULL,
+                                               [theColumn.name])
+
                 if val.match(Keyword, 'PRIMARY'):
                     expect(self, ttype=Keyword, value='KEY')
                     # XXX check to make sure there's no other primary key yet
@@ -206,11 +211,12 @@ class _ColumnParser(object):
                     # XXX add UNIQUE constraint
                     pass
                 elif val.match(Keyword, 'NOT'):
-                    # no longer necessary
+                    # possibly not necessary, as 'NOT NULL' is a single keyword
+                    # in sqlparse as of 0.1.2
                     expect(self, ttype=Keyword, value='NULL')
+                    notNull()
                 elif val.match(Keyword, 'NOT NULL'):
-                    # XXX add NOT NULL constraint
-                    pass
+                    notNull()
                 elif val.match(Keyword, 'DEFAULT'):
                     theDefault = self.next()
                     if isinstance(theDefault, Function):

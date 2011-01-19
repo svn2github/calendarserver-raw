@@ -47,11 +47,16 @@ class SQLType(object):
 
 
 
+
+
 class Constraint(object):
 
-    def __init__(self, type, affectsColumns, name=None):
+    # Values for 'type' attribute:
+    NOT_NULL = 'NOT NULL'
+    UNIQUE = 'UNIQUE'
+
+    def __init__(self, type, affectsColumns):
         self.affectsColumns = affectsColumns
-        self.name = name
         # XXX: possibly different constraint types should have different
         # classes?
         self.type = type
@@ -89,6 +94,14 @@ class Column(object):
 
     def __repr__(self):
         return '<Column (%s %r)>' % (self.name, self.type)
+
+
+    def canBeNull(self):
+        for constraint in self.table.constraints:
+            if self in constraint.affectsColumns:
+                if constraint.type is Constraint.NOT_NULL:
+                    return False
+        return True
 
 
     def setDefaultValue(self, value):
@@ -136,7 +149,7 @@ class Table(object):
         affectsColumns = []
         for name in columnNames:
             affectsColumns.append(self.columnNamed(name))
-        self.constraints.append(Constraint(constraintType, columnNames))
+        self.constraints.append(Constraint(constraintType, affectsColumns))
 
 
     def insertSchemaRow(self, values):
