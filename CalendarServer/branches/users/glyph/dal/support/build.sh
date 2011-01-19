@@ -98,7 +98,7 @@ init_build () {
 
   svn_uri_base="$(svn info "${caldav}" --xml 2> /dev/null | sed -n 's|^.*<root>\(.*\)</root>.*$|\1|p')";
 
-  conditional_set svn_uri_base "http://svn.calendarserver.org/repository/calendarserver";
+  conditional_set svn_uri_base "https://svn.calendarserver.org/repository/calendarserver";
 }
 
 
