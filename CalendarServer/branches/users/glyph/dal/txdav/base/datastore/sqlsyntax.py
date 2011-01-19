@@ -68,6 +68,19 @@ class TableSyntax(Syntax):
 
     modelType = Table
 
+    def join(self, otherTableSyntax, on, type=''):
+        return Join(self, type, otherTableSyntax, on)
+
+
+    def toSQL(self, placeholder, quote):
+        """
+        For use in a 'from' clause.
+        """
+        # XXX maybe there should be a specific method which is only invoked
+        # from the FROM clause, that only tables and joins would implement?
+        return SQLStatement(self.model.name)
+
+
     def __getattr__(self, attr):
         return ColumnSyntax(self.model.columnNamed(attr))
 
@@ -75,6 +88,31 @@ class TableSyntax(Syntax):
     def __iter__(self):
         for column in self.model.columns:
             yield ColumnSyntax(column)
+
+
+
+class Join(object):
+    def __init__(self, firstTable, type, secondTableOrJoin, on):
+        self.firstTable = firstTable
+        self.type = type
+        self.secondTableOrJoin = secondTableOrJoin
+        self.on = on
+
+
+    def toSQL(self, placeholder, quote):
+        stmt = SQLStatement()
+        stmt.append(self.firstTable.toSQL(placeholder, quote))
+        stmt.text += ' '
+        if self.type:
+            stmt.text += self.type
+            stmt.text += ' '
+        stmt.text += 'join '
+        stmt.append(self.secondTableOrJoin.toSQL(placeholder, quote))
+        stmt.text += ' on '
+        stmt.append(self.on.toSQL(placeholder, quote))
+
+        return stmt
+
 
 
 def comparison(comparator):
@@ -174,7 +212,8 @@ class Select(object):
         """
         @return: a 2-tuple of (sql, args).
         """
-        stmt = SQLStatement(quote("select * from ") + self.From.model.name)
+        stmt = SQLStatement(quote("select * from "))
+        stmt.append(self.From.toSQL(placeholder, quote))
         if self.Where is not None:
             wherestmt = self.Where.toSQL(placeholder, quote)
             stmt.text += quote(" where ")
@@ -210,3 +249,7 @@ class SQLStatement(object):
         if not isinstance(stmt, SQLStatement):
             return NotImplemented
         return not self.__eq__(stmt)
+
+
+    def __repr__(self):
+        return 'SQLStatement' + repr((self.text, self.parameters))

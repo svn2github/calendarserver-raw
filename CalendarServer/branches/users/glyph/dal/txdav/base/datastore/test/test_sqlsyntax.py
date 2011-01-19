@@ -88,7 +88,6 @@ class GenerationTests(TestCase):
         self.assertRaises(ValueError, sampleComparison)
 
 
-
     def test_compoundWhere(self):
         """
         L{Select.And} and L{Select.Or} will return compound columns.
@@ -99,4 +98,15 @@ class GenerationTests(TestCase):
                           self.schema.FOO.BAR > 5)).toSQL(),
             SQLStatement("select * from FOO where BAR < ? or BAR > ?", [2, 5]))
 
+
+    def test_joinClause(self):
+        """
+        A table's .join() method returns a join statement in a SELECT.
+        """
+        self.assertEquals(
+            Select(From=self.schema.FOO.join(
+                self.schema.BOZ, self.schema.FOO.BAR ==
+                self.schema.BOZ.QUX)).toSQL(),
+            SQLStatement("select * from FOO join BOZ on BAR = QUX", [])
+        )
 
