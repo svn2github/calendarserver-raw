@@ -61,15 +61,18 @@ class ProcedureCall(object):
     """
     An invocation of a stored procedure or built-in function.
     """
+
     def __init__(self, name, args):
         self.name = name
         self.args = args
+
 
 
 class NO_DEFAULT(object):
     """
     Placeholder value for not having a default.
     """
+
 
 
 class Column(object):
@@ -146,15 +149,25 @@ class Table(object):
         self.descriptiveComment = comment
 
 
+class Sequence(object):
+    """
+    A sequence object.
+    """
+
+    def __init__(self, name):
+        self.name = name
+        self.referringColumns = []
+
 
 class Schema(object):
     """
-    A schema containing tables, indexes, sequences.
+    A schema containing tables, indexes, and sequences.
     """
 
     def __init__(self, filename='<string>'):
         self.filename = filename
         self.tables = []
+        self.sequences = []
 
 
     def __repr__(self):

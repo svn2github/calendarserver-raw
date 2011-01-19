@@ -1,3 +1,4 @@
+# -*- test-case-name: txdav.base.datastore.test.test_parseschema -*-
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -21,6 +22,7 @@ from sqlparse.sql import (Comment, Identifier, Parenthesis, IdentifierList,
                           Function)
 
 from txdav.base.datastore.sqlmodel import Schema, Table, SQLType, ProcedureCall
+from txdav.base.datastore.sqlmodel import Sequence
 
 def _fixKeywords():
     # In Postgres, 'SEQUENCE' is a keyword, and it behaves like one.
@@ -47,8 +49,13 @@ def tableFromCreateStatement(schema, stmt):
 
 
 def schemaFromPath(path):
-    self = Schema(path.basename())
+    schema = Schema(path.basename())
     schemaData = path.getContent()
+    addSQLToSchema(schema, schemaData)
+    return schema
+
+
+def addSQLToSchema(schema, schemaData):
     parsed = parse(schemaData)
     for stmt in parsed:
         preface = ''
@@ -57,10 +64,12 @@ def schemaFromPath(path):
         if not stmt.tokens:
             continue
         if stmt.get_type() == 'CREATE':
-            createType = stmt.token_next(1, True)
-            if createType.value.upper() == u'TABLE':
-                t = tableFromCreateStatement(self, stmt)
+            createType = stmt.token_next(1, True).value.upper()
+            if createType == u'TABLE':
+                t = tableFromCreateStatement(schema, stmt)
                 t.addComment(preface)
+            elif createType == u'SEQUENCE':
+                schema.sequences.append(Sequence(stmt.token_next(2, True).get_name()))
         elif stmt.get_type() == 'INSERT':
             insertTokens = iterSignificant(stmt)
             expect(insertTokens, ttype=Keyword.DML, value='INSERT')
@@ -80,10 +89,10 @@ def schemaFromPath(path):
                     [ident.ttype](ident.value)
                 )
 
-            self.tableNamed(tableName).insertSchemaRow(rowData)
+            schema.tableNamed(tableName).insertSchemaRow(rowData)
         else:
             print 'unknown type:', stmt.get_type()
-    return self
+    return schema
 
 
 class _ColumnParser(object):
