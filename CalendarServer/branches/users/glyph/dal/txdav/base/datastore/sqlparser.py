@@ -166,9 +166,15 @@ class _ColumnParser(object):
         elif constraintType.match(Keyword, 'UNIQUE'):
             parens = iterSignificant(expect(self, cls=Parenthesis))
             expect(parens, ttype=Punctuation, value="(")
-            idname = expect(parens, cls=Identifier).get_name()
+            idorids = parens.next()
+            if isinstance(idorids, Identifier):
+                idnames = [idorids.get_name()]
+            elif isinstance(idorids, IdentifierList):
+                idnames = [x.get_name() for x in idorids.get_identifiers()]
+            else:
+                raise ViolatedExpectation("identifier or list", repr(idorids))
             expect(parens, ttype=Punctuation, value=")")
-            self.table.tableConstraint(Constraint.UNIQUE, [idname])
+            self.table.tableConstraint(Constraint.UNIQUE, idnames)
         else:
             raise ViolatedExpectation('PRIMARY or UNIQUE', constraintType)
         return self.checkEnd(self.next())

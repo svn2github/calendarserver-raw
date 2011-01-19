@@ -109,4 +109,19 @@ class ParsingExampleTests(TestCase):
             self.assertEquals(list(table.uniques()), [set([column])])
 
 
+    def test_multiUnique(self):
+        """
+        A column with a UNIQUE constraint in SQL will result in the table
+        listing that column as a unique set.
+        """
+        s = Schema()
+        addSQLToSchema(
+            s,
+            "create table a (b integer, c integer, unique(b, c), unique(c));")
+        a = s.tableNamed('a')
+        b = a.columnNamed('b')
+        c = a.columnNamed('c')
+        self.assertEquals(list(a.uniques()),
+                          [set([b, c]), set([c])])
+
 
