@@ -109,6 +109,7 @@ class TableSyntax(Syntax):
 
 
 class Join(object):
+
     def __init__(self, firstTable, type, secondTableOrJoin, on):
         self.firstTable = firstTable
         self.type = type
@@ -175,7 +176,6 @@ class ColumnSyntax(Syntax):
 
 
 
-
 class Comparison(object):
 
     def __init__(self, a, op, b):
@@ -213,7 +213,6 @@ class ConstantComparison(Comparison):
 
 
 
-
 class CompoundComparison(Comparison):
     """
     A compound comparison; two or more constraints, joined by an operation
@@ -226,6 +225,7 @@ class CompoundComparison(Comparison):
         stmt.text += ' %s ' % (self.op,)
         stmt.append(self.b.subSQL(placeholder, quote, allTables))
         return stmt
+
 
 
 class ColumnComparison(CompoundComparison):
@@ -241,11 +241,15 @@ class _AllColumns(object):
     def subSQL(self, placeholder, quote, allTables):
         return SQLStatement(quote('*'))
 
+ALL_COLUMNS = _AllColumns()
+
 
 
 class _SomeColumns(object):
+
     def __init__(self, columns):
         self.columns = columns
+
 
     def subSQL(self, placeholder, quote, allTables):
         first = True
@@ -258,7 +262,7 @@ class _SomeColumns(object):
             cstatement.append(column.subSQL(placeholder, quote, allTables))
         return cstatement
 
-ALL_COLUMNS = _AllColumns()
+
 
 class Select(object):
     """
@@ -346,9 +350,15 @@ class SQLStatement(object):
         return self
 
 
+
 class Parameter(object):
+
     def __init__(self, name):
         self.name = name
 
+
     def __repr__(self):
         return 'Parameter(%r)' % (self.name,)
+
+
+
