@@ -14,6 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+
+"""
+Parser for SQL schema.
+"""
+
 from itertools import chain
 
 from sqlparse import parse, keywords
@@ -34,6 +39,8 @@ def _fixKeywords():
 
 _fixKeywords()
 
+
+
 def tableFromCreateStatement(schema, stmt):
     i = iterSignificant(stmt)
     expect(i, ttype=Keyword.DDL, value='CREATE')
@@ -46,6 +53,7 @@ def tableFromCreateStatement(schema, stmt):
     cp = _ColumnParser(self, iterSignificant(parens), parens)
     cp.parse()
     return self
+
 
 
 def schemaFromPath(path):
@@ -204,13 +212,25 @@ class _ColumnParser(object):
                     # XXX add NOT NULL constraint
                     pass
                 elif val.match(Keyword, 'DEFAULT'):
-                    one = self.next()
-                    two = self.next()
-                    if isinstance(two, Parenthesis):
-                        defaultValue = ProcedureCall(one.value, two)
+                    theDefault = self.next()
+                    if isinstance(theDefault, Function):
+                        thingo = theDefault.tokens[0].get_name()
+                        parens = expectSingle(
+                            theDefault.tokens[-1], cls=Parenthesis
+                        )
+                        pareniter = iterSignificant(parens)
+                        if thingo.upper() == 'NEXTVAL':
+                            expect(pareniter, ttype=Punctuation, value="(")
+                            seqname = _destringify(
+                                expect(pareniter, ttype=String.Single).value)
+                            defaultValue = self.table.schema.sequenceNamed(
+                                seqname
+                            )
+                            defaultValue.referringColumns.append(theColumn)
+                        else:
+                            defaultValue = ProcedureCall(thingo, parens)
                     else:
-                        self.pushback(two)
-                        defaultValue = one.value
+                        raise RuntimeError("not sure what to do")
                     theColumn.setDefaultValue(defaultValue)
                 elif val.match(Keyword, 'REFERENCES'):
                     target = nameOrIdentifier(self.next())
@@ -226,7 +246,6 @@ class _ColumnParser(object):
                     import pprint
                     pprint.pprint(self.parens.tokens)
                     return 0
-
 
 
 
@@ -259,13 +278,13 @@ def expectSingle(nextval, ttype=None, value=None, cls=None):
     if cls is not None:
         if nextval.__class__ != cls:
             raise ViolatedExpectation(cls, repr(nextval))
+    return nextval
 
 
 
 def expect(iterator, **kw):
     nextval = iterator.next()
-    expectSingle(nextval, **kw)
-    return nextval
+    return expectSingle(nextval, **kw)
 
 
 

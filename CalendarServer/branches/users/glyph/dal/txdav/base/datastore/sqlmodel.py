@@ -92,7 +92,7 @@ class Column(object):
 
 
     def setDefaultValue(self, value):
-        self.defaultValue = value
+        self.default = value
 
 
     def doesReferenceName(self, name):
@@ -150,6 +150,7 @@ class Table(object):
         self.descriptiveComment = comment
 
 
+
 class Sequence(object):
     """
     A sequence object.
@@ -162,6 +163,7 @@ class Sequence(object):
 
     def __repr__(self):
         return '<Sequence %r>' % (self.name,)
+
 
 
 class Schema(object):
@@ -184,4 +186,13 @@ class Schema(object):
             if table.name == name:
                 return table
         raise KeyError(name)
+
+
+    def sequenceNamed(self, name):
+        for sequence in self.sequences:
+            if sequence.name == name:
+                return sequence
+        raise KeyError(name)
+
+
 
