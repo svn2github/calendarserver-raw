@@ -141,6 +141,21 @@ class GenerationTests(TestCase):
         )
 
 
+    def test_joinColumnSelection(self):
+        """
+        If multiple columns are specified by the argument to L{Select} that uses
+        a L{TableSyntax.join}, those will be output by the SQL statement.
+        """
+        self.assertEquals(
+            Select([self.schema.FOO.BAZ,
+                    self.schema.BOZ.QUX],
+                   From=self.schema.FOO.join(self.schema.BOZ,
+                                             self.schema.FOO.BAR ==
+                                             self.schema.BOZ.QUX)).toSQL(),
+            SQLStatement("select BAZ, QUX from FOO join BOZ on BAR = QUX")
+        )
+
+
     def test_tableMismatch(self):
         """
         When a column in the 'columns' argument does not match the table from

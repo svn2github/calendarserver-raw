@@ -130,6 +130,10 @@ class Join(object):
         return stmt
 
 
+    def tables(self):
+        return self.firstTable.tables() + self.secondTableOrJoin.tables()
+
+
 
 def comparison(comparator):
     def __(self, other):
