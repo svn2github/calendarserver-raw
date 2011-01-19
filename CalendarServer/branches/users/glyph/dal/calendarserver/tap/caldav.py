@@ -96,7 +96,9 @@ try:
     from calendarserver.version import version
     version
 except ImportError:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "support"))
+    from twisted.python.modules import getModule
+    sys.path.insert(
+        0, getModule(__name__).pathEntry.filePath.child("support").path)
     from version import version as getVersion
     version = "%s (%s*)" % getVersion()
 twext.web2.server.VERSION = "CalendarServer/%s %s" % (
