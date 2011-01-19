@@ -81,7 +81,7 @@ class TableSyntax(Syntax):
         return Join(self, type, otherTableSyntax, on)
 
 
-    def subSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote, allTables):
         """
         For use in a 'from' clause.
         """
@@ -116,17 +116,17 @@ class Join(object):
         self.on = on
 
 
-    def subSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote, allTables):
         stmt = SQLStatement()
-        stmt.append(self.firstTable.subSQL(placeholder, quote))
+        stmt.append(self.firstTable.subSQL(placeholder, quote, allTables))
         stmt.text += ' '
         if self.type:
             stmt.text += self.type
             stmt.text += ' '
         stmt.text += 'join '
-        stmt.append(self.secondTableOrJoin.subSQL(placeholder, quote))
+        stmt.append(self.secondTableOrJoin.subSQL(placeholder, quote, allTables))
         stmt.text += ' on '
-        stmt.append(self.on.subSQL(placeholder, quote))
+        stmt.append(self.on.subSQL(placeholder, quote, allTables))
         return stmt
 
 
@@ -162,6 +162,19 @@ class ColumnSyntax(Syntax):
     __sub__ = comparison("-")
 
 
+    def subSQL(self, placeholder, quote, allTables):
+        # XXX This, and 'model', could in principle conflict with column names.
+        # Maybe do something about that.
+        for tableSyntax in allTables:
+            if self.model.table is not tableSyntax.model:
+                if self.model.name in (c.name for c in
+                                               tableSyntax.model.columns):
+                    return SQLStatement((self.model.table.name + '.' +
+                                         self.model.name))
+        return SQLStatement(self.model.name)
+
+
+
 
 class Comparison(object):
 
@@ -191,17 +204,13 @@ class Comparison(object):
 
 class ConstantComparison(Comparison):
 
-    def subSQL(self, placeholder, quote):
-        return SQLStatement(
-            ' '.join([self.a.model.name, self.op, placeholder]), [self.b])
+    def subSQL(self, placeholder, quote, allTables):
+        sqls = SQLStatement()
+        sqls.append(self.a.subSQL(placeholder, quote, allTables))
+        sqls.append(SQLStatement(' ' + ' '.join([self.op, placeholder]),
+                                 [self.b]))
+        return sqls
 
-
-
-class ColumnComparison(Comparison):
-
-    def subSQL(self, placeholder, quote):
-        return SQLStatement(
-            ' '.join([self.a.model.name, self.op, self.b.model.name]), [])
 
 
 
@@ -211,22 +220,43 @@ class CompoundComparison(Comparison):
     (currently only AND or OR).
     """
 
-    def subSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote, allTables):
         stmt = SQLStatement()
-        stmt.append(self.a.subSQL(placeholder, quote))
+        stmt.append(self.a.subSQL(placeholder, quote, allTables))
         stmt.text += ' %s ' % (self.op,)
-        stmt.append(self.b.subSQL(placeholder, quote))
+        stmt.append(self.b.subSQL(placeholder, quote, allTables))
         return stmt
+
+
+class ColumnComparison(CompoundComparison):
+    """
+    Comparing two columns is the same as comparing any other two expressions,
+    (for now).
+    """
 
 
 
 class _AllColumns(object):
 
-    def subSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote, allTables):
         return SQLStatement(quote('*'))
 
 
 
+class _SomeColumns(object):
+    def __init__(self, columns):
+        self.columns = columns
+
+    def subSQL(self, placeholder, quote, allTables):
+        first = True
+        cstatement = SQLStatement()
+        for column in self.columns:
+            if first:
+                first = False
+            else:
+                cstatement.append(SQLStatement(", "))
+            cstatement.append(column.subSQL(placeholder, quote, allTables))
+        return cstatement
 
 ALL_COLUMNS = _AllColumns()
 
@@ -247,19 +277,10 @@ class Select(object):
                         break
                 else:
                     raise TableMismatch()
-            columns = SQLStatement(', '.join([self._qualifiedName(c)
-                                              for c in columns]))
+            columns = _SomeColumns(columns)
         self.columns = columns
 
 
-    def _qualifiedName(self, columnSyntax):
-        for tableSyntax in self.From.tables():
-            if columnSyntax.model.table is not tableSyntax.model:
-                if columnSyntax.model.name in (c.name for c in
-                                               tableSyntax.model.columns):
-                    return (columnSyntax.model.table.name + '.' +
-                            columnSyntax.model.name)
-        return columnSyntax.model.name
 
 
     def toSQL(self, placeholder="?", quote=lambda x: x):
@@ -267,11 +288,12 @@ class Select(object):
         @return: a 2-tuple of (sql, args).
         """
         stmt = SQLStatement(quote("select "))
-        stmt.append(self.columns.subSQL(placeholder, quote))
+        allTables = self.From.tables()
+        stmt.append(self.columns.subSQL(placeholder, quote, allTables))
         stmt.text += quote(" from ")
-        stmt.append(self.From.subSQL(placeholder, quote))
+        stmt.append(self.From.subSQL(placeholder, quote, allTables))
         if self.Where is not None:
-            wherestmt = self.Where.subSQL(placeholder, quote)
+            wherestmt = self.Where.subSQL(placeholder, quote, allTables)
             stmt.text += quote(" where ")
             stmt.append(wherestmt)
         return stmt
@@ -312,7 +334,7 @@ class SQLStatement(object):
         return 'SQLStatement' + repr((self.text, self.parameters))
 
 
-    def subSQL(self, placeholder, quote):
+    def subSQL(self, placeholder, quote, allTables):
         return self
 
 
