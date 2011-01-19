@@ -179,7 +179,7 @@ class GenerationTests(TestCase):
                                              self.schema.FOO.BAR)).toSQL(),
             SQLStatement(
                 "select FOO.BAR, OTHER.BAR from FOO "
-                "join OTHER on FOO_BAR == FOO.BAR"
+                "join OTHER on FOO_BAR = FOO.BAR"
             )
         )
 
