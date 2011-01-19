@@ -55,6 +55,7 @@ class SchemaSyntax(Syntax):
     def __getattr__(self, attr):
         return TableSyntax(self.model.tableNamed(attr))
 
+
     def __iter__(self):
         for table in self.model.tables:
             yield TableSyntax(table)
@@ -124,6 +125,7 @@ def comparison(comparator):
     return __
 
 
+
 class ColumnSyntax(Syntax):
     """
     Syntactic convenience for L{Column}.
@@ -183,6 +185,7 @@ class ColumnComparison(Comparison):
             ' '.join([self.a.model.name, self.op, self.b.model.name]), [])
 
 
+
 class CompoundComparison(Comparison):
     """
     A compound comparison; two or more constraints, joined by an operation
@@ -199,8 +202,11 @@ class CompoundComparison(Comparison):
 
 
 class _AllColumns(object):
+
     def toSQL(self, placeholder, quote):
-        return SQLStatement('*')
+        return SQLStatement(quote('*'))
+
+
 
 ALL_COLUMNS = _AllColumns()
 
@@ -209,7 +215,11 @@ class Select(object):
     'select' statement.
     """
 
-    def __init__(self, columns=ALL_COLUMNS, Where=None, From=None):
+    def __init__(self, columns=None, Where=None, From=None):
+        if columns is None:
+            columns = ALL_COLUMNS
+        else:
+            columns = SQLStatement(', '.join([c.model.name for c in columns]))
         self.columns = columns
         self.From = From
         self.Where = Where
@@ -219,7 +229,9 @@ class Select(object):
         """
         @return: a 2-tuple of (sql, args).
         """
-        stmt = SQLStatement(quote("select * from "))
+        stmt = SQLStatement(quote("select "))
+        stmt.append(self.columns.toSQL(placeholder, quote))
+        stmt.text += quote(" from ")
         stmt.append(self.From.toSQL(placeholder, quote))
         if self.Where is not None:
             wherestmt = self.Where.toSQL(placeholder, quote)
@@ -261,3 +273,9 @@ class SQLStatement(object):
 
     def __repr__(self):
         return 'SQLStatement' + repr((self.text, self.parameters))
+
+
+    def toSQL(self, placeholder, quote):
+        return self
+
+

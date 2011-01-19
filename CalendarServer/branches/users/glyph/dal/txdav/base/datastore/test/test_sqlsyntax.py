@@ -118,7 +118,7 @@ class GenerationTests(TestCase):
         """
         self.assertEquals(
             Select([self.schema.FOO.BAR],
-                   From=self.schema.FOO),
+                   From=self.schema.FOO).toSQL(),
             SQLStatement("select BAR from FOO")
         )
 

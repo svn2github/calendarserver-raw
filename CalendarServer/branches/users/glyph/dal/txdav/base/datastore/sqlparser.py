@@ -64,6 +64,7 @@ def schemaFromPath(path):
     return schema
 
 
+
 def addSQLToSchema(schema, schemaData):
     parsed = parse(schemaData)
     for stmt in parsed:
@@ -102,6 +103,7 @@ def addSQLToSchema(schema, schemaData):
         else:
             print 'unknown type:', stmt.get_type()
     return schema
+
 
 
 class _ColumnParser(object):
