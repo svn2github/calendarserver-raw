@@ -29,8 +29,8 @@ class GenerationTests(TestCase):
     def setUp(self):
         s = Schema(self.id())
         addSQLToSchema(schema=s, schemaData="""
-                       create table FOO (BAR integer);
-                       create table BAZ (QUX integer);
+                       create table FOO (BAR integer, BAZ integer);
+                       create table BOZ (QUX integer);
                        """)
         self.schema = SchemaSyntax(s)
 
@@ -59,10 +59,32 @@ class GenerationTests(TestCase):
         L{Select} generates a 'select' statement with the specified placeholder
         syntax and quoting function.
         """
-
         self.assertEquals(Select(From=self.schema.FOO,
                                  Where=self.schema.FOO.BAR == 1).toSQL(
                                  placeholder="*",
                                  quote=lambda partial: partial.replace("*", "**")),
                           ("select ** from FOO where BAR = *", [1]))
+
+
+    def test_columnComparison(self):
+        """
+        L{Select} generates a 'select' statement which compares columns.
+        """
+        self.assertEquals(Select(From=self.schema.FOO,
+                                 Where=self.schema.FOO.BAR ==
+                                 self.schema.FOO.BAZ).toSQL(),
+                          ("select * from FOO where BAR = BAZ", []))
+
+
+    def test_comparisonTestErrorPrevention(self):
+        """
+        The comparison object between columns raises an exception when compared
+        for a truth value, so that code will not accidentally test for '==' and
+        always get a true value.
+        """
+        def sampleComparison():
+            if self.schema.FOO.BAR == self.schema.FOO.BAZ:
+                return 'comparison should not succeed'
+        self.assertRaises(ValueError, sampleComparison)
+
 

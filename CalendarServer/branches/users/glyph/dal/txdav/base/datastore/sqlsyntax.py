@@ -82,11 +82,14 @@ class ColumnSyntax(Syntax):
     modelType = Column
 
     def __eq__(self, other):
-        return ConstantComparison(self.model.name, '=', other)
+        if isinstance(other, ColumnSyntax):
+            return ColumnComparison(self, '=', other)
+        else:
+            return ConstantComparison(self, '=', other)
 
 
 
-class ConstantComparison(object):
+class Comparison(object):
 
     def __init__(self, a, op, b):
         self.a = a
@@ -94,8 +97,23 @@ class ConstantComparison(object):
         self.b = b
 
 
+    def __nonzero__(self):
+        raise ValueError(
+            "column comparisons should not be tested for truth value")
+
+
+
+
+class ConstantComparison(Comparison):
+
     def toSQL(self, placeholder, quote):
-        return (' '.join([self.a, self.op, placeholder]), [self.b])
+        return (' '.join([self.a.model.name, self.op, placeholder]), [self.b])
+
+
+
+class ColumnComparison(Comparison):
+    def toSQL(self, placeholder, quote):
+        return (' '.join([self.a.model.name, self.op, self.b.model.name]), [])
 
 
 
