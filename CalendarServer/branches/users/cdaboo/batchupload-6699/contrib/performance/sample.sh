@@ -20,11 +20,12 @@
 
 sudo -v # Force up to date sudo token before the user walks away
 
-REV=$1
-SOURCE_DIR=$2
-RESULTS=$3
+REV_SPEC="$1"
+SOURCE_DIR="$2"
+RESULTS="$3"
 
-update_and_build $REV
+update_and_build "$REV_SPEC"
+REV="$(./svn-revno "$SOURCE_DIR")"
 
 if [ "$HOSTS_COUNT" != "" ]; then
     CONCURRENT="--hosts-count $HOSTS_COUNT --host-index $HOST_INDEX"
@@ -40,13 +41,12 @@ for backend in $BACKENDS; do
   rm -rf data/
   start 2
   popd
-  sudo ./run.sh ./benchmark $CONCURRENT --label r$REV-$backend --source-directory $SOURCE_DIR $BENCHMARKS
+  sudo ./run.sh ./benchmark $CONCURRENT --label r$REV-$backend --source-directory $SOURCE_DIR $SCALE_PARAMETERS $BENCHMARKS
   data=`echo -n r$REV-$backend*`
   ./run.sh ./massupload \
       --url $ADDURL --revision $REV \
       --revision-date "$DATE" --environment nmosbuilder \
       --backend $backend \
-      --parameters "1 9 81" \
       --statistics "${STATISTICS[*]}" \
       $data
   mv $data $RESULTS

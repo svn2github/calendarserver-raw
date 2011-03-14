@@ -1,6 +1,6 @@
 # -*- test-case-name: txdav.caldav.datastore.test.test_file -*-
 ##
-# Copyright (c) 2010 Apple Inc. All rights reserved.
+# Copyright (c) 2010-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ from twext.python.vcomponent import VComponent
 from twext.web2.dav import davxml
 from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
 from twext.web2.dav.resource import TwistedGETContentMD5
-from twext.web2.http_headers import generateContentType
+from twext.web2.http_headers import generateContentType, MimeType
 
 from twistedcaldav import caldavxml, customxml
 from twistedcaldav.caldavxml import ScheduleCalendarTransp, Opaque
@@ -85,8 +85,8 @@ class CalendarHome(CommonHome):
     _topPath = "calendars"
     _notifierPrefix = "CalDAV"
 
-    def __init__(self, uid, path, calendarStore, transaction, notifier):
-        super(CalendarHome, self).__init__(uid, path, calendarStore, transaction, notifier)
+    def __init__(self, uid, path, calendarStore, transaction, notifiers):
+        super(CalendarHome, self).__init__(uid, path, calendarStore, transaction, notifiers)
 
         self._childClass = Calendar
 
@@ -128,6 +128,30 @@ class CalendarHome(CommonHome):
 
 
     @inlineCallbacks
+    def hasCalendarResourceUIDSomewhereElse(self, uid, ok_object, type):
+        
+        objectResources = (yield self.objectResourcesWithUID(uid, ("inbox",)))
+        for objectResource in objectResources:
+            if ok_object and objectResource._path == ok_object._path:
+                continue
+            matched_type = "schedule" if objectResource.isScheduleObject else "calendar"
+            if type == "schedule" or matched_type == "schedule":
+                returnValue(True)
+            
+        returnValue(False)
+
+    @inlineCallbacks
+    def getCalendarResourcesForUID(self, uid, allow_shared=False):
+        
+        results = []
+        objectResources = (yield self.objectResourcesWithUID(uid, ("inbox",)))
+        for objectResource in objectResources:
+            if allow_shared or objectResource._parentCollection._owned:
+                results.append(objectResource)
+            
+        returnValue(results)
+
+    @inlineCallbacks
     def calendarObjectWithDropboxID(self, dropboxID):
         """
         Implement lookup with brute-force scanning.
@@ -136,6 +160,19 @@ class CalendarHome(CommonHome):
             for calendarObject in calendar.calendarObjects():
                 if dropboxID == (yield calendarObject.dropboxID()):
                     returnValue(calendarObject)
+
+
+    @inlineCallbacks
+    def getAllDropboxIDs(self):
+        dropboxIDs = []
+        for calendar in self.calendars():
+            for calendarObject in calendar.calendarObjects():
+                component = calendarObject.component()
+                if (component.hasPropertyInAnyComponent("X-APPLE-DROPBOX") or
+                    component.hasPropertyInAnyComponent("ATTACH")):
+                    dropboxID = (yield calendarObject.dropboxID())
+                    dropboxIDs.append(dropboxID)
+        returnValue(dropboxIDs)
 
 
     @property
@@ -158,7 +195,7 @@ class Calendar(CommonHomeChild):
     """
     implements(ICalendar)
 
-    def __init__(self, name, calendarHome, realName=None):
+    def __init__(self, name, calendarHome, owned, realName=None):
         """
         Initialize a calendar pointing at a path on disk.
 
@@ -173,7 +210,7 @@ class Calendar(CommonHomeChild):
         will eventually have on disk.
         @type realName: C{str}
         """
-        super(Calendar, self).__init__(name, calendarHome, realName=realName)
+        super(Calendar, self).__init__(name, calendarHome, owned, realName=realName)
 
         self._index = Index(self)
         self._invites = Invites(self)
@@ -217,6 +254,12 @@ class Calendar(CommonHomeChild):
             ),
         )
 
+    def contentType(self):
+        """
+        The content type of Calendar objects is text/calendar.
+        """
+        return MimeType.fromString("text/calendar; charset=utf-8")
+
 
 
 class CalendarObject(CommonObjectResource):
@@ -231,13 +274,12 @@ class CalendarObject(CommonObjectResource):
         super(CalendarObject, self).__init__(name, calendar)
         self._attachments = {}
         
-        if metadata is None:
-            metadata = {}
-        self.accessMode = metadata.get("accessMode", "")
-        self.isScheduleObject = metadata.get("isScheduleObject", False)
-        self.scheduleTag = metadata.get("scheduleTag", "")
-        self.scheduleEtags = metadata.get("scheduleEtags", "")
-        self.hasPrivateComment = metadata.get("hasPrivateComment", False)
+        if metadata is not None:
+            self.accessMode = metadata.get("accessMode", "")
+            self.isScheduleObject = metadata.get("isScheduleObject", False)
+            self.scheduleTag = metadata.get("scheduleTag", "")
+            self.scheduleEtags = metadata.get("scheduleEtags", "")
+            self.hasPrivateComment = metadata.get("hasPrivateComment", False)
 
 
     @property
@@ -251,8 +293,6 @@ class CalendarObject(CommonObjectResource):
 
     @writeOperation
     def setComponent(self, component, inserting=False):
-
-        old_size = 0 if inserting else self.size()
 
         validateCalendarComponent(self, self._calendar, component, inserting)
 
@@ -288,16 +328,11 @@ class CalendarObject(CommonObjectResource):
             # Now re-write the original properties on the updated file
             self.properties().flush()
 
-            # Adjust quota
-            quota_adjustment = self.size() - old_size
-            self._calendar._home.adjustQuotaUsedBytes(quota_adjustment)
-
             def undo():
                 if backup:
                     backup.moveTo(self._path)
                 else:
                     self._path.remove()
-                self._calendar._home.adjustQuotaUsedBytes(-quota_adjustment)
             return undo
         self._transaction.addOperation(do, "set calendar component %r" % (self.name(),))
 
@@ -311,6 +346,8 @@ class CalendarObject(CommonObjectResource):
 
         try:
             component = VComponent.fromString(text)
+            # Fix any bogus data we can
+            component.validateComponentsForCalDAV(False, fix=True)
         except InvalidICalendarDataError, e:
             raise InternalDataStoreError(
                 "File corruption detected (%s) in file: %s"
@@ -367,6 +404,15 @@ class CalendarObject(CommonObjectResource):
 
     def organizer(self):
         return self.component().getOrganizer()
+
+    def getMetadata(self):
+        metadata = {}
+        metadata["accessMode"] = self.accessMode 
+        metadata["isScheduleObject"] = self.isScheduleObject
+        metadata["scheduleTag"] = self.scheduleTag
+        metadata["scheduleEtags"] = self.scheduleEtags
+        metadata["hasPrivateComment"] = self.hasPrivateComment
+        return metadata
 
     def _get_accessMode(self):
         return str(self.properties().get(PropertyName.fromElement(customxml.TwistedCalendarAccessProperty), ""))
@@ -432,7 +478,7 @@ class CalendarObject(CommonObjectResource):
     hasPrivateComment = property(_get_hasPrivateComment, _set_hasPrivateComment)
 
     @inlineCallbacks
-    def createAttachmentWithName(self, name, contentType):
+    def createAttachmentWithName(self, name):
         """
         Implement L{ICalendarObject.removeAttachmentWithName}.
         """
@@ -440,7 +486,7 @@ class CalendarObject(CommonObjectResource):
         dropboxPath = yield self._dropboxPath()
         attachment = Attachment(self, name, dropboxPath)
         self._attachments[name] = attachment
-        returnValue(attachment.store(contentType))
+        returnValue(attachment)
 
 
     @inlineCallbacks
@@ -479,9 +525,8 @@ class CalendarObject(CommonObjectResource):
             returnValue(None)
 
 
-    @inlineCallbacks
     def attendeesCanManageAttachments(self):
-        returnValue((yield self.component()).hasPropertyInAnyComponent("X-APPLE-DROPBOX"))
+        return self.component().hasPropertyInAnyComponent("X-APPLE-DROPBOX")
 
 
     def dropboxID(self):
@@ -525,6 +570,13 @@ class CalendarObject(CommonObjectResource):
                 PropertyName.fromElement(customxml.ScheduleChanges),
             ),
         )
+
+    # IDataStoreObject
+    def contentType(self):
+        """
+        The content type of Calendar objects is text/calendar.
+        """
+        return MimeType.fromString("text/calendar; charset=utf-8")
 
 
 

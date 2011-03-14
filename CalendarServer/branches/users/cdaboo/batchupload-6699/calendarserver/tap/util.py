@@ -53,7 +53,7 @@ from twistedcaldav.directory.internal import InternalDirectoryService
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.sudo import SudoDirectoryService
 from twistedcaldav.directory.wiki import WikiDirectoryService
-from twistedcaldav.notify import NotifierFactory
+from twistedcaldav.notify import NotifierFactory, getPubSubConfiguration
 from twistedcaldav.directorybackedaddressbook import DirectoryBackedAddressBookResource
 from twistedcaldav.resource import CalDAVResource, AuthenticationWrapper
 from twistedcaldav.schedule import IScheduleInboxResource
@@ -67,7 +67,11 @@ try:
     NegotiateCredentialFactory  # pacify pyflakes
 except ImportError:
     NegotiateCredentialFactory = None
-from txdav.base.datastore.asyncsqlpool import ConnectionPoolClient
+
+from twext.enterprise.adbapi2 import ConnectionPoolClient
+from txdav.base.datastore.dbapiclient import DBAPIConnector, OracleConnector
+from txdav.base.datastore.dbapiclient import postgresPreflight
+from txdav.base.datastore.subpostgres import PostgresService
 
 from calendarserver.accesslog import DirectoryLogWrapperResource
 from calendarserver.provision.root import RootResource
@@ -77,7 +81,6 @@ from calendarserver.webcal.resource import WebCalendarResource
 from txdav.common.datastore.sql import CommonDataStore as CommonSQLDataStore
 from txdav.common.datastore.file import CommonDataStore as CommonFileDataStore
 from txdav.common.datastore.sql import v1_schema
-from txdav.base.datastore.subpostgres import PostgresService
 from twext.python.filepath import CachingFilePath
 from urllib import quote
 
@@ -119,6 +122,24 @@ def pgServiceFromConfig(config, subServiceFactory, uid=None, gid=None):
     )
 
 
+
+def pgConnectorFromConfig(config):
+    """
+    Create a postgres DB-API connector from the given configuration.
+    """
+    import pgdb
+    return DBAPIConnector(pgdb, postgresPreflight, config.DSN).connect
+
+
+
+def oracleConnectorFromConfig(config):
+    """
+    Create a postgres DB-API connector from the given configuration.
+    """
+    return OracleConnector(config.DSN).connect
+
+
+
 class ConnectionWithPeer(Connection):
 
     connected = True
@@ -126,8 +147,10 @@ class ConnectionWithPeer(Connection):
     def getPeer(self):
         return "<peer: %r %r>" % (self.socket.fileno(), id(self))
 
+
     def getHost(self):
         return "<host: %r %r>" % (self.socket.fileno(), id(self))
+
 
 
 def transactionFactoryFromFD(dbampfd):
@@ -143,7 +166,6 @@ def transactionFactoryFromFD(dbampfd):
     return protocol.newTransaction
 
 
-# txnFacSub(int(config.DBAMPFD))
 
 def storeFromConfig(config, txnFactory):
     """
@@ -160,6 +182,7 @@ def storeFromConfig(config, txnFactory):
         notifierFactory = NotifierFactory(
             config.Notifications.InternalNotificationHost,
             config.Notifications.InternalNotificationPort,
+            pubSubConfig=getPubSubConfiguration(config)
         )
     else:
         notifierFactory = None

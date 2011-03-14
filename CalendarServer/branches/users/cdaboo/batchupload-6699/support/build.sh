@@ -2,7 +2,7 @@
 # -*- sh-basic-offset: 2 -*-
 
 ##
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -181,23 +181,82 @@ www_get () {
     if [ -n "${cache_deps}" ] && [ -n "${hash}" ]; then
       mkdir -p "${cache_deps}";
 
-      cache_file="${cache_deps}/${name}-$(echo "${url}" | hash)-$(basename "${url}")";
+      local cache_basename="${name}-$(echo "${url}" | hash)-$(basename "${url}")";
+      local cache_file="${cache_deps}/${cache_basename}";
+
+      check_hash () {
+        local file="$1"; shift;
+
+        if [ "${hash}" == "md5" ]; then
+          local sum="$(hash "${file}" | perl -pe 's|^.*([0-9a-f]{32}).*$|\1|')";
+          if [ -n "${md5}" ]; then
+            echo "Checking MD5 sum for ${name}...";
+            if [ "${md5}" != "${sum}" ]; then
+              echo "ERROR: MD5 sum for downloaded file is wrong: ${sum} != ${md5}";
+              return 1;
+            fi;
+          else
+            echo "MD5 sum for ${name} is ${sum}";
+          fi;
+        fi;
+      }
 
       if [ ! -f "${cache_file}" ]; then
         echo "Downloading ${name}...";
-        curl -L "${url}" -o "${cache_file}";
-      fi;
 
-      if [ "${hash}" == "md5" ]; then
-        local sum="$(hash "${cache_file}" | perl -pe 's|^.*([0-9a-f]{32}).*$|\1|')";
-        if [ -n "${md5}" ]; then
-          echo "Checking MD5 sum for ${name}...";
-          if [ "${md5}" != "${sum}" ]; then
-            echo "ERROR: MD5 sum for cache file ${cache_file} ${sum} != ${md5}. Corrupt file?";
+        local pkg_host="static.calendarserver.org";
+        local pkg_path="/pkg";
+
+        #
+        # Try getting a copy from calendarserver.org.
+        #
+        local tmp="$(mktemp "/tmp/${cache_basename}.XXXXX")";
+        curl -L "http://${pkg_host}${pkg_path}/${cache_basename}" -o "${tmp}";
+        echo "";
+        if [ ! -s "${tmp}" ] || grep '<title>404 Not Found</title>' "${tmp}" > /dev/null; then
+          rm -f "${tmp}";
+          echo "${name} is not available from calendarserver.org; trying upstream source.";
+        elif ! check_hash "${tmp}"; then
+          rm -f "${tmp}";
+          echo "${name} from calendarserver.org is invalid; trying upstream source.";
+        fi;
+
+        #
+        # That didn't work. Try getting a copy from the upstream source.
+        #
+        if [ ! -f "${tmp}" ]; then
+          curl -L "${url}" -o "${tmp}";
+          echo "";
+
+          if [ ! -s "${tmp}" ] || grep '<title>404 Not Found</title>' "${tmp}" > /dev/null; then
+            rm -f "${tmp}";
+            echo "${name} is not available from upstream source: ${url}";
+            exit 1;
+          elif ! check_hash "${tmp}"; then
+            rm -f "${tmp}";
+            echo "${name} from upstream source is invalid: ${url}";
             exit 1;
           fi;
-        else
-          echo "MD5 sum for ${name} is ${sum}";
+
+          if egrep '^${pkg_host} ' "${HOME}/.ssh/known_hosts" > /dev/null 2>&1; then
+            echo "Copying cache file up to ${pkg_host}.";
+            if ! scp "${tmp}" "${pkg_host}:/www/hosts/${pkg_host}${pkg_path}/${cache_basename}"; then
+              echo "Failed to copy cache file up to ${pkg_host}.";
+            fi;
+            echo ""
+          fi;
+        fi;
+
+        #
+        # OK, we should be good
+        #
+        mv "${tmp}" "${cache_file}";
+      else
+        #
+        # We have the file cached, just verify hash
+        #
+        if ! check_hash "${cache_file}"; then
+          exit 1;
         fi;
       fi;
 
@@ -493,9 +552,9 @@ dependencies () {
   fi;
 
   if ! type postgres > /dev/null 2>&1; then
-    local pgv="9.0.1";
+    local pgv="9.0.3";
     local pg="postgresql-${pgv}";
-    c_dependency -m "5093c321bc47af2ea9afa726605ff1ce" \
+    c_dependency -m "56386ded2d5dcd8a4ceef0da81c3d22c" \
       "PostgreSQL" "${pg}" \
       "ftp://ftp5.us.postgresql.org/pub/PostgreSQL/source/v${pgv}/${pg}.tar.gz" \
       --with-python;
@@ -515,10 +574,11 @@ dependencies () {
     "Zope Interface" "zope.interface" "${zi}" \
     "http://www.zope.org/Products/ZopeInterface/3.3.0/zope.interface-3.3.0.tar.gz";
 
-  local px="PyXML-0.8.4";
-  py_dependency -m "1f7655050cebbb664db976405fdba209" \
+  local pv="0.8.4";
+  local px="PyXML-${pv}";
+  py_dependency -v "${pv}" -m "1f7655050cebbb664db976405fdba209" \
     "PyXML" "xml.dom.ext" "${px}" \
-    "http://static.calendarserver.org/${px}.tar.gz";
+    "http://superb-sea2.dl.sourceforge.net/project/pyxml/pyxml/${pv}/${px}.tar.gz";
 
   local po="pyOpenSSL-0.10";
   py_dependency -v 0.9 -m "34db8056ec53ce80c7f5fc58bee9f093" \
@@ -531,25 +591,27 @@ dependencies () {
       "${svn_uri_base}/PyKerberos/trunk";
   fi;
 
-  #if [ "$(uname -s)" == "Darwin" ]; then
+  if [ "$(uname -s)" == "Darwin" ]; then
     py_dependency -r 6656 \
       "PyOpenDirectory" "opendirectory" "PyOpenDirectory" \
       "${svn_uri_base}/PyOpenDirectory/trunk";
-  #fi;
+  fi;
 
   py_dependency -v 0.5 -r 1038 \
     "xattr" "xattr" "xattr" \
     "http://svn.red-bean.com/bob/xattr/releases/xattr-0.6.1/";
 
   if [ "${py_version}" != "${py_version##2.5}" ] && ! py_have_module select26; then
+    local s26="select26-0.1a3";
     py_dependency -m "01b8929e7cfc4a8deb777b92e3115c15" \
-      "select26" "select26" "select26-0.1a3" \
-      "http://pypi.python.org/packages/source/s/select26/select26-0.1a3.tar.gz";
+      "select26" "select26" "${s26}" \
+      "http://pypi.python.org/packages/source/s/select26/${s26}.tar.gz";
   fi;
 
+  local pg="PyGreSQL-4.0";
   py_dependency -v 4.0 -m "1aca50e59ff4cc56abe9452a9a49c5ff" -o \
-    "PyGreSQL" "pgdb" "PyGreSQL-4.0" \
-    "http://pypi.python.org/packages/source/P/PyGreSQL/PyGreSQL-4.0.tar.gz";
+    "PyGreSQL" "pgdb" "${pg}" \
+    "http://pypi.python.org/packages/source/P/PyGreSQL/${pg}.tar.gz";
 
   py_dependency -v 10.1 -r 30159 \
     "Twisted" "twisted" "Twisted" \
@@ -560,9 +622,14 @@ dependencies () {
     "dateutil" "dateutil" "${du}" \
     "http://www.labix.org/download/python-dateutil/${du}.tar.gz";
 
+  local ld="python-ldap-2.3.13";
+  py_dependency -v "2.3.13" -m "895223d32fa10bbc29aa349bfad59175" \
+    "python-ldap" "python-ldap" "${ld}" \
+    "http://pypi.python.org/packages/source/p/python-ldap/${ld}.tar.gz";
+
   # XXX actually vObject should be imported in-place.
   py_dependency -fie -r 219 \
-    "vObject" "vobject" "vobject" \
+    "vobject" "vobject" "vobject" \
     "http://svn.osafoundation.org/vobject/trunk";
 
   #
@@ -570,13 +637,17 @@ dependencies () {
   # they are useful to developers.
   #
 
-  py_dependency -v 0.1.1 -m "000053e0352f5bf19c2f8d5242329ea4" \
-    "SQLParse" "sqlparse" "sqlparse-0.1.1" \
-    "http://python-sqlparse.googlecode.com/files/sqlparse-0.1.1.tar.gz";
+  py_dependency -v 0.1.2 -m "aa9852ad81822723adcd9f96838de14e" \
+    "SQLParse" "sqlparse" "sqlparse-0.1.2" \
+    "http://python-sqlparse.googlecode.com/files/sqlparse-0.1.2.tar.gz";
+
+  py_dependency -v 0.4.0 -m "630a72510aae8758f48cf60e4fa17176" \
+    "Pyflakes" "pyflakes" "pyflakes-0.4.0" \
+    "http://pypi.python.org/packages/source/p/pyflakes/pyflakes-0.4.0.tar.gz";
 
   svn_get "CalDAVTester" "${top}/CalDAVTester" "${svn_uri_base}/CalDAVTester/trunk" HEAD;
 
-  svn_get "Pyflakes" "${top}/Pyflakes" http://divmod.org/svn/Divmod/trunk/Pyflakes HEAD;
+  svn_get "CalDAVClientLibrary" "${top}/CalDAVClientLibrary" "${svn_uri_base}/CalDAVClientLibrary/trunk" HEAD;
 
   local pd="pydoctor-0.3";
   py_dependency -m "b000aa1fb458fe25952dadf26049ae68" \

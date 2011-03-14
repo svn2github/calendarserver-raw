@@ -58,16 +58,18 @@ def http_MKCOL(self, request):
                 % (self,))
         raise HTTPError(ErrorResponse(
             responsecode.FORBIDDEN,
-            (davxml.dav_namespace, "resource-must-be-null"))
-        )
+            (davxml.dav_namespace, "resource-must-be-null"),
+            "Resource already exists",
+        ))
 
     if not parent.isCollection():
         log.err("Attempt to create collection with non-collection parent: %s"
                 % (self,))
         raise HTTPError(ErrorResponse(
             responsecode.CONFLICT,
-            (davxml.dav_namespace, "collection-location-ok"))
-        )
+            (davxml.dav_namespace, "collection-location-ok"),
+            "Cannot create calendar inside another calendar",
+        ))
 
     #
     # Don't allow DAV collections in a calendar or address book collection

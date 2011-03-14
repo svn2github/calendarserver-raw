@@ -26,6 +26,9 @@ from getopt import getopt, GetoptError
 masterNodeName = "/LDAPv3/127.0.0.1"
 localNodeName = "/Local/Default"
 
+saclGroupNodeName = "/Local/Default"
+saclGroupNames = ("com.apple.access_calendar", "com.apple.access_addressbook")
+
 masterUsers = [
     (
         "odtestamanda",
@@ -87,15 +90,49 @@ masterUsers = [
             dsattributes.kDS1AttrPrimaryGroupID : ["20"],
         },
     ),
+    (
+        "odtestat@sign",
+        {
+            dsattributes.kDS1AttrFirstName : ["AtSign"],
+            dsattributes.kDS1AttrLastName  : ["Test"],
+            dsattributes.kDS1AttrDistinguishedName : ["At Sign Test"],
+            dsattributes.kDSNAttrEMailAddress : ["attsign@example.com"],
+            dsattributes.kDS1AttrGeneratedUID : ["71646A3A-1CEF-4744-AB1D-0AC855E25DC8"],
+            dsattributes.kDS1AttrUniqueID : ["33305"],
+            dsattributes.kDS1AttrPrimaryGroupID : ["20"],
+        },
+    ),
+    (
+        "odtestsatou",
+        {
+            dsattributes.kDS1AttrFirstName : ["\xe4\xbd\x90\xe8\x97\xa4\xe4\xbd\x90\xe8\x97\xa4\xe4\xbd\x90\xe8\x97\xa4".decode("utf-8")],
+            dsattributes.kDS1AttrLastName  : ["Test \xe4\xbd\x90\xe8\x97\xa4".decode("utf-8")],
+            dsattributes.kDS1AttrDistinguishedName : ["\xe4\xbd\x90\xe8\x97\xa4\xe4\xbd\x90\xe8\x97\xa4\xe4\xbd\x90\xe8\x97\xa4 Test \xe4\xbd\x90\xe8\x97\xa4".decode("utf-8")],
+            dsattributes.kDSNAttrEMailAddress : ["satou@example.com"],
+            dsattributes.kDS1AttrGeneratedUID : ["C662F833-75AD-4589-9879-5FF102943CEF"],
+            dsattributes.kDS1AttrUniqueID : ["33306"],
+            dsattributes.kDS1AttrPrimaryGroupID : ["20"],
+        },
+    ),
 ]
 
 masterGroups = [
+    (
+        "odtestsubgroupb",
+        {
+            dsattributes.kDS1AttrGeneratedUID : ["6C6CD282-E6E3-11DF-9492-0800200C9A66"],
+            dsattributes.kDS1AttrDistinguishedName : ["OD Test Subgroup B"],
+            dsattributes.kDSNAttrGroupMembers : ["9DC04A72-E6DD-11DF-9492-0800200C9A66"],
+            dsattributes.kDS1AttrPrimaryGroupID : ["33401"],
+        },
+    ),
     (
         "odtestgrouptop",
         {
             dsattributes.kDS1AttrGeneratedUID : ["6C6CD280-E6E3-11DF-9492-0800200C9A66"],
             dsattributes.kDS1AttrDistinguishedName : ["OD Test Group Top"],
             dsattributes.kDSNAttrGroupMembers : ["9DC04A70-E6DD-11DF-9492-0800200C9A66", "9DC04A71-E6DD-11DF-9492-0800200C9A66"],
+            dsattributes.kDSNAttrNestedGroups : ["6C6CD282-E6E3-11DF-9492-0800200C9A66"],
             dsattributes.kDS1AttrPrimaryGroupID : ["33400"],
         },
     ),
@@ -159,7 +196,7 @@ localGroups = [
             dsattributes.kDS1AttrGeneratedUID : ["6C6CD281-E6E3-11DF-9492-0800200C9A66"],
             dsattributes.kDS1AttrDistinguishedName : ["OD Test Subgroup A"],
             dsattributes.kDSNAttrGroupMembers : ["9DC04A74-E6DD-11DF-9492-0800200C9A66", "9DC04A75-E6DD-11DF-9492-0800200C9A66"],
-            dsattributes.kDS1AttrPrimaryGroupID : ["33400"],
+            dsattributes.kDS1AttrPrimaryGroupID : ["33402"],
         },
     ),
 ]
@@ -245,7 +282,9 @@ def main():
     }
 
 
+
     session = odframework.ODSession.defaultSession()
+    userRecords = []
 
     for nodeName, info in userInfo.iteritems():
 
@@ -290,6 +329,9 @@ def main():
             else:
                 print "User %s already exists" % (recordName,)
 
+            if record is not None:
+                userRecords.append(record)
+
         print "Creating groups within %s:" % (nodeName,)
         for recordName, attrs in groups:
             record = lookupRecordName(node, dsattributes.kDSStdRecordTypeGroups, recordName)
@@ -305,7 +347,30 @@ def main():
 
         print
 
+    # Populate SACL groups
+    node, error = odframework.ODNode.nodeWithSession_name_error_(session, saclGroupNodeName, None)
+    result, error = node.setCredentialsWithRecordType_recordName_password_error_(
+        dsattributes.kDSStdRecordTypeUsers,
+        userInfo[saclGroupNodeName]["user"],
+        userInfo[saclGroupNodeName]["password"],
+        None
+    )
+    if not error:
+        for saclGroupName in saclGroupNames:
+            saclGroupRecord = lookupRecordName(node, dsattributes.kDSStdRecordTypeGroups, saclGroupName)
+            if saclGroupRecord:
+                print "Populating %s SACL group:" % (saclGroupName,)
+                for userRecord in userRecords:
+                    details, error = userRecord.recordDetailsForAttributes_error_(None, None)
+                    recordName = details.get(dsattributes.kDSNAttrRecordName, [None])[0]
+                    result, error = saclGroupRecord.isMemberRecord_error_(userRecord, None)
+                    if result:
+                        print "%s is already in the %s SACL group" % (recordName, saclGroupName)
+                    else:
+                        result, error = saclGroupRecord.addMemberRecord_error_(userRecord, None)
+                        print "Adding %s to the %s SACL group" % (recordName, saclGroupName)
 
+            print
 
 class ODError(Exception):
     def __init__(self, error):

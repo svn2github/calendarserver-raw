@@ -1,6 +1,6 @@
 # -*- test-case-name: twistedcaldav.test.test_stdconfig -*-
 ##
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,13 +43,75 @@ DEFAULT_SERVICE_PARAMS = {
     "twistedcaldav.directory.xmlfile.XMLDirectoryService": {
         "xmlFile": "accounts.xml",
         "recordTypes": ("users", "groups"),
+        "statSeconds" : 15,
     },
     "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
         "node": "/Search",
-        "cacheTimeout": 30,
+        "cacheTimeout": 1,
+        "negativeCaching": False,
         "restrictEnabledRecords": False,
         "restrictToGroup": "",
         "recordTypes": ("users", "groups"),
+    },
+    "twistedcaldav.directory.ldapdirectory.LdapDirectoryService": {
+        "cacheTimeout": 1,
+        "negativeCaching": False,
+        "restrictEnabledRecords": False,
+        "restrictToGroup": "",
+        "recordTypes": ("users", "groups"),
+        "uri": "ldap://localhost/",
+        "tls": False,
+        "tlsCACertFile": None,
+        "tlsCACertDir": None,
+        "tlsRequireCert": None, # never, allow, try, demand, hard
+        "credentials": {
+            "dn": None,
+            "password": None,
+        },
+        "authMethod": "LDAP",
+        "rdnSchema": {
+            "base": "dc=example,dc=com",
+            "guidAttr": None,
+            "users": {
+                "rdn": "ou=People",
+                "attr": "uid", # used only to synthesize email address
+                "emailSuffix": None, # used only to synthesize email address
+                "filter": None, # additional filter for this type
+                "recordName": "userid", # uniquely identifies user records
+            },
+            "groups": {
+                "rdn": "ou=Group",
+                "attr": "cn", # used only to synthesize email address
+                "emailSuffix": None, # used only to synthesize email address
+                "filter": None, # additional filter for this type
+                "recordName": "cn", # uniquely identifies group records
+            },
+            "locations": {
+                "rdn": "ou=Locations",
+                "attr": "cn", # used only to synthesize email address
+                "emailSuffix": None, # used only to synthesize email address
+                "filter": None, # additional filter for this type
+                "recordName": "cn", # uniquely identifies location records
+            },
+            "resources": {
+                "rdn": "ou=Resources",
+                "attr": "cn", # used only to synthesize email address
+                "emailSuffix": None, # used only to synthesize email address
+                "filter": None, # additional filter for this type
+                "recordName": "cn", # uniquely identifies resource records
+            },
+        },
+        "groupSchema": {
+            "membersAttr": "member", # how members are specified
+            "nestedGroupsAttr": None, # how nested groups are specified
+            "memberIdAttr": None, # which attribute the above refer to
+        },
+        "attributeMapping": { # maps internal record names to LDAP
+            "fullName" : "cn",
+            "emailAddresses" : "mail",
+            "firstName" : "givenName",
+            "lastName" : "sn",
+        },
     },
 }
 
@@ -63,6 +125,7 @@ DEFAULT_RESOURCE_PARAMS = {
 DEFAULT_AUGMENT_PARAMS = {
     "twistedcaldav.directory.augment.AugmentXMLDB": {
         "xmlFiles": ["augments.xml",],
+        "statSeconds" : 15,
     },
     "twistedcaldav.directory.augment.AugmentSqliteDB": {
         "dbpath": "augments.sqlite",
@@ -168,7 +231,11 @@ DEFAULT_CONFIG = {
     "DBAMPFD"      : 0,    # Internally used by database to tell slave
                            # processes to inherit a file descriptor and use it
                            # as an AMP connection over a UNIX socket; see
-                           # txdav.base.datastore.asyncsqlpool.
+                           # twext.enterprise.adbapi2.ConnectionPoolConnection
+
+    "SharedConnectionPool" : False, # Use a shared database connection pool in
+                                    # the master process, rather than having
+                                    # each client make its connections directly.
 
     #
     # Types of service provided
@@ -187,11 +254,26 @@ DEFAULT_CONFIG = {
     "ConfigRoot"              : "/etc/caldavd",
     "LogRoot"                 : "/var/log/caldavd",
     "RunRoot"                 : "/var/run/caldavd",
-    "UserQuota"               : 104857600, # User quota (in bytes)
-    "MaximumAttachmentSize"   :   1048576, # Attachment size limit (in bytes)
-    "MaxAttendeesPerInstance" :       100, # Maximum number of unique attendees
-    "MaxInstancesForRRULE"    :       400, # Maximum number of instances for an RRULE
     "WebCalendarRoot"         : "/usr/share/collabd",
+    
+    #
+    # Quotas
+    #
+    
+    # Attachments
+    "UserQuota"                 : 104857600, # User attachment quota (in bytes)
+    
+    # Resource data
+    "MaxCollectionsPerHome"     :      50, # Maximum number of calendars/address books allowed in a home
+    "MaxResourcesPerCollection" :   10000, # Maximum number of resources in a calendar/address book
+    "MaxResourceSize"           : 1048576, # Maximum resource size (in bytes)
+    "MaxAttendeesPerInstance"   :     100, # Maximum number of unique attendees
+    "MaxInstancesForRRULE"      :     400, # Maximum number of instances for an RRULE
+
+    # Set to URL path of wiki authentication service, e.g. "/auth", in order
+    # to use javascript authentication dialog.  Empty string indicates standard
+    # browser authentication dialog should be used.
+    "WebCalendarAuthPath"     : "",
 
     "Aliases": {},
 
@@ -274,7 +356,7 @@ DEFAULT_CONFIG = {
         },
         "Wiki": {
             "Enabled": False,
-            "Cookie": "_authserver_session",
+            "Cookie": "apple_webauth_token",
             "URL": "http://127.0.0.1:8089/RPC2",
             "UserMethod": "userForSession",
             "WikiMethod": "accessLevelForUserWikiCalendar",
@@ -585,13 +667,19 @@ DEFAULT_CONFIG = {
                     "Default",
                 ]
             },
-#            "ProxyDB": {
+#            "Shared": {
 #                "ClientEnabled": True,
 #                "ServerEnabled": True,
 #                "BindAddress": "127.0.0.1",
 #                "Port": 11211,
 #                "HandleCacheTypes": [
-#                    "ProxyDB", "PrincipalToken",
+#                    "ProxyDB",
+#                    "PrincipalToken",
+#                    "FBCache",
+#                    "ScheduleAddressMapper",
+#                    "SQL.props",
+#                    "SQL.calhome",
+#                    "SQL.adbkhome",
 #                ]
 #            },
         },
@@ -613,12 +701,23 @@ DEFAULT_CONFIG = {
 
     "EnableKeepAlive": True,
 
+    "EnableResponseCache":  True,
+    "ResponseCacheTimeout": 30, # Minutes
+
+    "EnableFreeBusyCache":          True,
+    "FreeBusyCacheDaysBack":        7,
+    "FreeBusyCacheDaysForward":     12 * 7,
+
+    "FreeBusyIndexExpandAheadDays": 365,
+    "FreeBusyIndexExpandMaxDays":   5 * 365,
+    "FreeBusyIndexDelayedExpand":   True,
+
     # Specify which opendirectory module to use:
     # "opendirectory" is PyOpenDirectory (the old one which uses
     # DirectoryService.framework)
-    # "calendarserver.platform.darwin.od.opendirectory" is the new PyObjC version which uses
-    # OpenDirectory.framework
-    "OpenDirectoryModule": "calendarserver.platform.darwin.od.opendirectory",
+    # "calendarserver.platform.darwin.od.opendirectory" is the new PyObjC
+    # version which uses OpenDirectory.framework
+    "OpenDirectoryModule": "opendirectory",
 
     # Used in the command line utilities to specify which service class to
     # use to carry out work.
@@ -701,6 +800,13 @@ def _updateDataStore(configDict):
     Post-update configuration hook for making all configured paths relative to
     their respective root directories rather than the current working directory.
     """
+
+    # Remove possible trailing slash from ServerRoot
+    try:
+        configDict["ServerRoot"] = configDict["ServerRoot"].rstrip("/")
+    except KeyError:
+        pass
+
     for root, relativePath in RELATIVE_PATHS:
         if root in configDict:
             if isinstance(relativePath, str):
@@ -1017,9 +1123,6 @@ def _updatePartitions(configDict):
         partitions.clear()
 
 def _updateCompliance(configDict):
-
-    if not (configDict.EnableCalDAV or configDict.EnableCardDAV):
-        log.warn("Neither 'EnableCalDAV' nor 'EnableCardDAV' are set to True")
 
     if configDict.EnableCalDAV:
         if configDict.Scheduling.CalDAV.OldDraftCompatibility:

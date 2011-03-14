@@ -144,7 +144,11 @@ class TimezoneServiceResource (ReadOnlyNoCopyResourceMixIn, DAVResourceWithoutCh
     
             method = request.args.get("method", ("",))
             if len(method) != 1:
-                raise HTTPError(ErrorResponse(responsecode.BAD_REQUEST, (calendarserver_namespace, "valid-method")))
+                raise HTTPError(ErrorResponse(
+                    responsecode.BAD_REQUEST,
+                    (calendarserver_namespace, "valid-method"),
+                    "Invalid method query parameter",
+                ))
             method = method[0]
                 
             action = {
@@ -154,7 +158,11 @@ class TimezoneServiceResource (ReadOnlyNoCopyResourceMixIn, DAVResourceWithoutCh
             }.get(method, None)
             
             if action is None:
-                raise HTTPError(ErrorResponse(responsecode.BAD_REQUEST, (calendarserver_namespace, "supported-method")))
+                raise HTTPError(ErrorResponse(
+                    responsecode.BAD_REQUEST,
+                    (calendarserver_namespace, "supported-method"),
+                    "Unknown method query parameter",
+                ))
     
             return action(request)
             
@@ -179,13 +187,21 @@ class TimezoneServiceResource (ReadOnlyNoCopyResourceMixIn, DAVResourceWithoutCh
         
         tzid = request.args.get("tzid", ())
         if len(tzid) != 1:
-            raise HTTPError(ErrorResponse(responsecode.BAD_REQUEST, (calendarserver_namespace, "valid-timezone")))
+            raise HTTPError(ErrorResponse(
+                responsecode.BAD_REQUEST,
+                (calendarserver_namespace, "valid-timezone"),
+                "Invalid tzid query parameter",
+            ))
         tzid = tzid[0]
 
         try:
             tzdata = readTZ(tzid)
         except TimezoneException:
-            raise HTTPError(ErrorResponse(responsecode.NOT_FOUND, (calendarserver_namespace, "timezone-available")))
+            raise HTTPError(ErrorResponse(
+                responsecode.NOT_FOUND,
+                (calendarserver_namespace, "timezone-available"),
+                "Timezone not found",
+            ))
 
         response = Response()
         response.stream = MemoryStream(tzdata)
@@ -199,12 +215,20 @@ class TimezoneServiceResource (ReadOnlyNoCopyResourceMixIn, DAVResourceWithoutCh
 
         tzid = request.args.get("tzid", ())
         if len(tzid) != 1:
-            raise HTTPError(ErrorResponse(responsecode.BAD_REQUEST, (calendarserver_namespace, "valid-timezone")))
+            raise HTTPError(ErrorResponse(
+                responsecode.BAD_REQUEST,
+                (calendarserver_namespace, "valid-timezone"),
+                "Invalid tzid query parameter",
+            ))
         tzid = tzid[0]
         try:
             tzdata = readTZ(tzid)
         except TimezoneException:
-            raise HTTPError(ErrorResponse(responsecode.NOT_FOUND, (calendarserver_namespace, "timezone-available")))
+            raise HTTPError(ErrorResponse(
+                responsecode.NOT_FOUND,
+                (calendarserver_namespace, "timezone-available"),
+                "Timezone not found",
+            ))
 
         try:
             start = request.args.get("start", ())
@@ -212,7 +236,11 @@ class TimezoneServiceResource (ReadOnlyNoCopyResourceMixIn, DAVResourceWithoutCh
                 raise ValueError()
             start = parse_date_or_datetime(start[0])
         except ValueError:
-            raise HTTPError(ErrorResponse(responsecode.BAD_REQUEST, (calendarserver_namespace, "valid-start-date")))
+            raise HTTPError(ErrorResponse(
+                responsecode.BAD_REQUEST,
+                (calendarserver_namespace, "valid-start-date"),
+                "Invalid start query parameter",
+            ))
 
         try:
             end = request.args.get("end", ())
@@ -222,7 +250,11 @@ class TimezoneServiceResource (ReadOnlyNoCopyResourceMixIn, DAVResourceWithoutCh
             if end <= start:
                 raise ValueError()
         except ValueError:
-            raise HTTPError(ErrorResponse(responsecode.BAD_REQUEST, (calendarserver_namespace, "valid-end-date")))
+            raise HTTPError(ErrorResponse(
+                responsecode.BAD_REQUEST,
+                (calendarserver_namespace, "valid-end-date"),
+                "Invalid end query parameter",
+            ))
 
         # Now do the expansion (but use a cache to avoid re-calculating TZs)
         observances = self.cache.get((tzid, start, end), None)

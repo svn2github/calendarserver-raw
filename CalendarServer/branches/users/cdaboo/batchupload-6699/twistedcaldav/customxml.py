@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ from vobject.icalendar import dateTimeToString
 import datetime
 
 calendarserver_namespace = "http://calendarserver.org/ns/"
-mobileme_namespace = "http://cal.me.com/_namespace/"
 
 calendarserver_proxy_compliance = (
     "calendar-proxy",
@@ -225,6 +224,24 @@ class CalendarAvailability (davxml.WebDAVTextElement):
 
         return found
 
+class MaxCollections (davxml.WebDAVTextElement):
+    """
+    Maximum number of child collections in a home collection
+    """
+    namespace = calendarserver_namespace
+    name = "max-collections"
+    hidden = True
+    protected = True
+
+class MaxResources (davxml.WebDAVTextElement):
+    """
+    Maximum number of child resources in a collection
+    """
+    namespace = calendarserver_namespace
+    name = "max-resources"
+    hidden = True
+    protected = True
+
 class Timezones (davxml.WebDAVEmptyElement):
     """
     Denotes a timezone service resource.
@@ -304,7 +321,7 @@ class PubSubTransportProperty (davxml.WebDAVTextElement):
     }
     allowed_children = {
         (calendarserver_namespace, "subscription-url") : (1, 1),
-        (mobileme_namespace, "apsbundleid") : (1, 1),
+        (calendarserver_namespace, "apsbundleid") : (1, 1),
         (calendarserver_namespace, "xmpp-server") : (1, 1),
         (calendarserver_namespace, "xmpp-uri") : (1, 1),
     }
@@ -317,7 +334,7 @@ class PubSubSubscriptionProperty (davxml.WebDAVTextElement):
     allowed_children = { (davxml.dav_namespace, "href"): (0, 1) }
 
 class PubSubAPSBundleIDProperty (davxml.WebDAVTextElement):
-    namespace = mobileme_namespace
+    namespace = calendarserver_namespace
     name = "apsbundleid"
     protected = True
     hidden = True

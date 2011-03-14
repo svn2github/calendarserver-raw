@@ -37,7 +37,6 @@ from twisted.internet.defer import succeed, DeferredList, maybeDeferred
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.cred.error import LoginFailed, UnauthorizedLogin
 
-import twext.web2.server
 from twext.web2 import responsecode, server
 from twext.web2.auth.wrapper import UnauthorizedResponse
 from twext.web2.http import HTTPError, Response, RedirectResponse
@@ -58,7 +57,6 @@ from twext.web2.dav.method.report import max_number_of_matches
 
 from twext.python.log import Logger, LoggingMixIn
 
-import twistedcaldav
 from twistedcaldav import customxml
 from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.util import Alternator
@@ -336,7 +334,7 @@ class DirectoryPrincipalPropertySearchMixIn(object):
                     log.warn(msg)
                     raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, msg))
                 caseless = (caseless == "yes")
-                matchType = match.attributes.get("match-type", "contains")
+                matchType = match.attributes.get("match-type", u"contains").encode("utf-8")
                 if matchType not in ("starts-with", "contains", "equals"):
                     msg = "Bad XML: unknown value for match-type attribute: %s" % (matchType,)
                     log.warn(msg)
@@ -682,6 +680,24 @@ class DirectoryRenderingMixIn(object):
          ))
 
 
+def updateCacheTokenOnCallback(f):
+    def wrapper(self, *args, **kwargs):
+        if hasattr(self, "cacheNotifier"):
+            def updateToken(response):
+                d = self.cacheNotifier.changed()
+                d.addCallback(lambda _: response)
+                return d
+
+            d = maybeDeferred(f, self, *args, **kwargs)
+
+            if hasattr(self, "cacheNotifier"):
+                d.addCallback(updateToken)
+
+            return d
+        else:
+            return f(self, *args, **kwargs)
+
+    return wrapper
 
 class DAVResource (DirectoryPrincipalPropertySearchMixIn,
                    SudoersMixin, SuperDAVResource, LoggingMixIn,
@@ -692,6 +708,22 @@ class DAVResource (DirectoryPrincipalPropertySearchMixIn,
     Note we add StaticRenderMixin as a base class because we need all the etag etc behavior
     that is currently in static.py but is actually applicable to any type of resource.
     """
+
+    @updateCacheTokenOnCallback
+    def http_PROPPATCH(self, request):
+        return super(DAVResource, self).http_PROPPATCH(request)
+
+
+    @updateCacheTokenOnCallback
+    def http_DELETE(self, request):
+        return super(DAVResource, self).http_DELETE(request)
+
+
+    @updateCacheTokenOnCallback
+    def http_ACL(self, request):
+        return super(DAVResource, self).http_ACL(request)
+
+    
     http_REPORT = http_REPORT
 
     def davComplianceClasses(self):

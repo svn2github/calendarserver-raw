@@ -21,7 +21,7 @@ Calendar store interfaces
 
 from txdav.common.icommondatastore import ICommonTransaction, \
     IShareableCollection
-from txdav.idav import IDataStoreResource, IDataStore
+from txdav.idav import IDataStoreObject, IDataStore
 
 from txdav.idav import INotifier
 
@@ -83,7 +83,7 @@ class ICalendarStore(IDataStore):
 # Interfaces
 #
 
-class ICalendarHome(INotifier, IDataStoreResource):
+class ICalendarHome(INotifier, IDataStoreObject):
     """
     An L{ICalendarHome} is a collection of calendars which belongs to a
     specific principal and contains the calendars which that principal has
@@ -162,7 +162,31 @@ class ICalendarHome(INotifier, IDataStoreResource):
         """
 
 
-class ICalendar(INotifier, IShareableCollection, IDataStoreResource):
+    def getAllDropboxIDs():
+        """
+        Retrieve all of the dropbox IDs of events in this home for calendar
+        objects which either allow attendee write access to their dropboxes,
+        have attachments to read, or both.
+
+        @return: a L{Deferred} which fires with a C{list} of all dropbox IDs (as
+            unicode strings)
+        """
+
+
+    def quotaUsedBytes():
+        """
+        The number of bytes counted towards the user's quota.
+        """
+
+
+    def adjustQuotaUsedBytes(delta):
+        """
+        Increase the number of bytes that count towards the user's quota.
+        """
+
+
+
+class ICalendar(INotifier, IShareableCollection, IDataStoreObject):
     """
     Calendar
 
@@ -282,7 +306,14 @@ class ICalendar(INotifier, IShareableCollection, IDataStoreResource):
         """
 
 
-class ICalendarObject(IDataStoreResource):
+    def resourceNamesSinceToken(revision):
+        """
+        Low-level query to gather names for calendarObjectsSinceToken.
+        """
+
+
+
+class ICalendarObject(IDataStoreObject):
     """
     Calendar object
 
@@ -359,7 +390,7 @@ class ICalendarObject(IDataStoreResource):
         """
 
 
-    def createAttachmentWithName(name, contentType):
+    def createAttachmentWithName(name):
         """
         Add an attachment to this calendar object.
 
@@ -368,11 +399,7 @@ class ICalendarObject(IDataStoreResource):
 
         @type name: C{str}
 
-        @param contentType: The content-type of the data to store.
-
-        @type contentType: L{twext.web2.http_headers.MimeType}
-
-        @return: the same type as L{IAttachment.store} returns.
+        @return: the L{IAttachment}.
         """
 
 
@@ -415,7 +442,7 @@ class ICalendarObject(IDataStoreResource):
 
 
 
-class IAttachment(IDataStoreResource):
+class IAttachment(IDataStoreObject):
     """
     Information associated with an attachment to a calendar object.
     """

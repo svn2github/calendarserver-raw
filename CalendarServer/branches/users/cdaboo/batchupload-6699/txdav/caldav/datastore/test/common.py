@@ -23,9 +23,16 @@ from twisted.internet.defer import Deferred, inlineCallbacks, returnValue,\
     maybeDeferred
 from twisted.internet.protocol import Protocol
 
-from txdav.idav import IPropertyStore, IDataStore, AlreadyFinishedError
-from txdav.base.propertystore.base import PropertyName
+from twext.enterprise.ienterprise import AlreadyFinishedError
 
+from twext.python.filepath import CachingFilePath as FilePath
+from twext.web2.dav import davxml
+from twext.web2.http_headers import MimeType
+from twext.web2.dav.element.base import WebDAVUnknownElement
+from twext.python.vcomponent import VComponent
+
+from txdav.idav import IPropertyStore, IDataStore
+from txdav.base.propertystore.base import PropertyName
 from txdav.common.icommondatastore import HomeChildNameAlreadyExistsError, \
     ICommonTransaction
 from txdav.common.icommondatastore import InvalidObjectResourceError
@@ -39,11 +46,6 @@ from txdav.caldav.icalendarstore import (
     ICalendarObject, ICalendarHome,
     ICalendar, IAttachment, ICalendarTransaction)
 
-from twext.python.filepath import CachingFilePath as FilePath
-from twext.web2.dav import davxml
-from twext.web2.http_headers import MimeType
-from twext.web2.dav.element.base import WebDAVUnknownElement
-from twext.python.vcomponent import VComponent
 
 from twistedcaldav.customxml import InviteNotification, InviteSummary
 from twistedcaldav.ical import Component
@@ -150,12 +152,34 @@ class CommonTests(CommonCommonTests):
     L{txdav.caldav.icalendarstore}.
     """
 
+    metadata1 = {
+        "accessMode": "PUBLIC",
+        "isScheduleObject": True,
+        "scheduleTag": "abc",
+        "scheduleEtags": (),
+        "hasPrivateComment": False,
+    }
+    metadata2 = {
+        "accessMode": "PRIVATE",
+        "isScheduleObject": False,
+        "scheduleTag": "",
+        "scheduleEtags": (),
+        "hasPrivateComment": False,
+    }
+    metadata3 = {
+        "accessMode": "PUBLIC",
+        "isScheduleObject": True,
+        "scheduleTag": "abc",
+        "scheduleEtags": (),
+        "hasPrivateComment": True,
+    }
+
     requirements = {
         "home1": {
             "calendar_1": {
-                "1.ics": cal1Root.child("1.ics").getContent(),
-                "2.ics": cal1Root.child("2.ics").getContent(),
-                "3.ics": cal1Root.child("3.ics").getContent()
+                "1.ics": (cal1Root.child("1.ics").getContent(), metadata1,),
+                "2.ics": (cal1Root.child("2.ics").getContent(), metadata2,),
+                "3.ics": (cal1Root.child("3.ics").getContent(), metadata3,),
             },
             "calendar_2": {},
             "calendar_empty": {},
@@ -163,6 +187,7 @@ class CommonTests(CommonCommonTests):
         },
         "not_a_home": None
     }
+
 
     def storeUnderTest(self):
         """
@@ -277,6 +302,30 @@ class CommonTests(CommonCommonTests):
 
 
     @inlineCallbacks
+    def test_notificationSyncToken(self):
+        """
+        L{ICalendar.resourceNamesSinceToken} will return the names of calendar
+        objects changed or deleted since 
+        """
+        txn = self.transactionUnderTest()
+        coll = yield txn.notificationsWithUID("home1")
+        invite1 = InviteNotification()
+        yield coll.writeNotificationObject("1", invite1, invite1.toxml())
+        st = yield coll.syncToken()
+        yield coll.writeNotificationObject("2", invite1, invite1.toxml())
+        rev = self.token2revision(st)
+        yield coll.removeNotificationObjectWithUID("1")
+        st2 = yield coll.syncToken()
+        rev2 = self.token2revision(st2)
+        changed, deleted = yield coll.resourceNamesSinceToken(rev)
+        self.assertEquals(set(changed), set(["2.xml"]))
+        self.assertEquals(set(deleted), set(["1.xml"]))
+        changed, deleted = yield coll.resourceNamesSinceToken(rev2)
+        self.assertEquals(set(changed), set([]))
+        self.assertEquals(set(deleted), set([]))
+
+
+    @inlineCallbacks
     def test_replaceNotification(self):
         """
         L{INotificationCollection.writeNotificationObject} will silently
@@ -294,13 +343,13 @@ class CommonTests(CommonCommonTests):
         abc = yield notifications.notificationObjectWithUID("abc")
         self.assertEquals((yield abc.xmldata()), inviteNotification2.toxml())
 
+
     @inlineCallbacks
     def test_addRemoveNotification(self):
         """
         L{INotificationCollection.writeNotificationObject} will silently
         overwrite the notification object.
         """
-        
         # Prime the home collection first
         yield self.transactionUnderTest().notificationsWithUID(
             "home1"
@@ -343,6 +392,7 @@ class CommonTests(CommonCommonTests):
             ]
         )
 
+
     @inlineCallbacks
     def test_loadAllNotifications(self):
         """
@@ -365,7 +415,9 @@ class CommonTests(CommonCommonTests):
             "home1"
         )
         allObjects = yield notifications.notificationObjects()
-        self.assertEqual([obj.uid() for obj in allObjects], ["abc", "def"])
+        self.assertEqual(set([obj.uid() for obj in allObjects]),
+                         set(["abc", "def"]))
+
 
     @inlineCallbacks
     def test_notificationObjectMetaData(self):
@@ -400,6 +452,20 @@ class CommonTests(CommonCommonTests):
         self.assertEquals(calendar.notifierID(), "CalDAV|home1")
         self.assertEquals(calendar.notifierID(label="collection"), "CalDAV|home1/calendar_1")
 
+    @inlineCallbacks
+    def test_nodeNameSuccess(self):
+        home = yield self.homeUnderTest()
+        name = yield home.nodeName()
+        self.assertEquals(name, "/CalDAV/example.com/home1/")
+
+    @inlineCallbacks
+    def test_nodeNameFailure(self):
+        # The StubNodeCacher is set up to fail when the node name has the
+        # word "fail" in it, for testing the failure mode:
+        home = yield self.transactionUnderTest().calendarHomeWithUID("fail",
+            create=True)
+        name = yield home.nodeName()
+        self.assertEquals(name, None)
 
     @inlineCallbacks
     def test_calendarHomeWithUID_exists(self):
@@ -715,6 +781,38 @@ class CommonTests(CommonCommonTests):
 
 
     @inlineCallbacks
+    def test_hasCalendarResourceUIDSomewhereElse(self):
+        """
+        L{ICalendar.calendarObjects} will enumerate the calendar objects present
+        in the filesystem, in name order, but skip those with hidden names.
+        """
+        home = yield self.homeUnderTest()
+        object = yield self.calendarObjectUnderTest()
+        result = (yield home.hasCalendarResourceUIDSomewhereElse("123", object, "schedule"))
+        self.assertFalse(result)
+
+        result = (yield home.hasCalendarResourceUIDSomewhereElse("uid1", object, "schedule"))
+        self.assertFalse(result)
+
+        result = (yield home.hasCalendarResourceUIDSomewhereElse("uid2", object, "schedule"))
+        self.assertTrue(result)
+
+
+    @inlineCallbacks
+    def test_getCalendarResourcesForUID(self):
+        """
+        L{ICalendar.calendarObjects} will enumerate the calendar objects present
+        in the filesystem, in name order, but skip those with hidden names.
+        """
+        home = yield self.homeUnderTest()
+        calendarObjects = (yield home.getCalendarResourcesForUID("123"))
+        self.assertEquals(len(calendarObjects), 0)
+
+        calendarObjects = (yield home.getCalendarResourcesForUID("uid1"))
+        self.assertEquals(len(calendarObjects), 1)
+
+
+    @inlineCallbacks
     def test_calendarObjectName(self):
         """
         L{ICalendarObject.name} reflects the name of the calendar object.
@@ -728,8 +826,8 @@ class CommonTests(CommonCommonTests):
     @inlineCallbacks
     def test_calendarObjectMetaData(self):
         """
-        The objects retrieved from the calendar have a variou
-        methods which return metadata values.
+        The objects retrieved from the calendar have a various methods which
+        return metadata values.
         """
         calendar = yield self.calendarObjectUnderTest()
         self.assertIsInstance(calendar.name(), basestring)
@@ -742,21 +840,39 @@ class CommonTests(CommonCommonTests):
         self.assertIsInstance(calendar.size(), int)
         self.assertIsInstance(calendar.created(), int)
         self.assertIsInstance(calendar.modified(), int)
-        
-        self.assertEqual(calendar.accessMode, "")
-        self.assertEqual(calendar.isScheduleObject, False)
-        self.assertEqual(calendar.scheduleEtags, ())
-        self.assertEqual(calendar.hasPrivateComment, False)
-        
+
+        self.assertEqual(calendar.accessMode, CommonTests.metadata1["accessMode"])
+        self.assertEqual(calendar.isScheduleObject, CommonTests.metadata1["isScheduleObject"])
+        self.assertEqual(calendar.scheduleEtags, CommonTests.metadata1["scheduleEtags"])
+        self.assertEqual(calendar.hasPrivateComment, CommonTests.metadata1["hasPrivateComment"])
+
         calendar.accessMode = Component.ACCESS_PRIVATE
         calendar.isScheduleObject = True
         calendar.scheduleEtags = ("1234", "5678",)
         calendar.hasPrivateComment = True
-        
+
         self.assertEqual(calendar.accessMode, Component.ACCESS_PRIVATE)
         self.assertEqual(calendar.isScheduleObject, True)
         self.assertEqual(calendar.scheduleEtags, ("1234", "5678",))
         self.assertEqual(calendar.hasPrivateComment, True)
+
+
+    @inlineCallbacks
+    def test_usedQuotaAdjustment(self):
+        """
+        Adjust used quota on the calendar home and then verify that it's used.
+        """
+        home = yield self.homeUnderTest()
+        initialQuota = yield home.quotaUsedBytes()
+        yield home.adjustQuotaUsedBytes(30)
+        yield self.commit()
+        home2 = yield self.homeUnderTest()
+        afterQuota = yield home2.quotaUsedBytes()
+        self.assertEqual(afterQuota - initialQuota, 30)
+        yield home2.adjustQuotaUsedBytes(-100000)
+        yield self.commit()
+        home3 = yield self.homeUnderTest()
+        self.assertEqual((yield home3.quotaUsedBytes()), 0)
 
 
     @inlineCallbacks
@@ -899,10 +1015,18 @@ class CommonTests(CommonCommonTests):
             (yield calendar1.calendarObjectWithName(name)), None
         )
         component = VComponent.fromString(event4_text)
-        yield calendar1.createCalendarObjectWithName(name, component)
+        metadata = {
+            "accessMode": "PUBLIC",
+            "isScheduleObject": True,
+            "scheduleTag": "abc",
+            "scheduleEtags": (),
+            "hasPrivateComment": False,
+        }
+        yield calendar1.createCalendarObjectWithName(name, component, metadata=metadata)
 
         calendarObject = yield calendar1.calendarObjectWithName(name)
         self.assertEquals((yield calendarObject.component()), component)
+        self.assertEquals((yield calendarObject.getMetadata()), metadata)
 
         yield self.commit()
 
@@ -1093,32 +1217,34 @@ class CommonTests(CommonCommonTests):
         propertyContent.name = propertyName.name
         propertyContent.namespace = propertyName.namespace
 
-        (yield self.calendarObjectUnderTest()).properties()[
-            propertyName] = propertyContent
-        yield self.commit()
-        # Sanity check; are properties even readable in a separate transaction?
-        # Should probably be a separate test.
-        self.assertEquals(
-            (yield self.calendarObjectUnderTest()).properties()[propertyName],
-            propertyContent)
-        obj = yield self.calendarObjectUnderTest()
-        event1_text = yield obj.iCalendarText()
-        event1_text_withDifferentSubject = event1_text.replace(
-            "SUMMARY:CalDAV protocol updates",
-            "SUMMARY:Changed"
-        )
-        # Sanity check; make sure the test has the right idea of the subject.
-        self.assertNotEquals(event1_text, event1_text_withDifferentSubject)
-        newComponent = VComponent.fromString(event1_text_withDifferentSubject)
-        yield obj.setComponent(newComponent)
-
-        # Putting everything into a separate transaction to account for any
-        # caching that may take place.
-        yield self.commit()
-        self.assertEquals(
-            (yield self.calendarObjectUnderTest()).properties()[propertyName],
-            propertyContent
-        )
+        calobject = (yield self.calendarObjectUnderTest())
+        if calobject._parentCollection.objectResourcesHaveProperties():
+            (yield self.calendarObjectUnderTest()).properties()[
+                propertyName] = propertyContent
+            yield self.commit()
+            # Sanity check; are properties even readable in a separate transaction?
+            # Should probably be a separate test.
+            self.assertEquals(
+                (yield self.calendarObjectUnderTest()).properties()[propertyName],
+                propertyContent)
+            obj = yield self.calendarObjectUnderTest()
+            event1_text = yield obj.iCalendarText()
+            event1_text_withDifferentSubject = event1_text.replace(
+                "SUMMARY:CalDAV protocol updates",
+                "SUMMARY:Changed"
+            )
+            # Sanity check; make sure the test has the right idea of the subject.
+            self.assertNotEquals(event1_text, event1_text_withDifferentSubject)
+            newComponent = VComponent.fromString(event1_text_withDifferentSubject)
+            yield obj.setComponent(newComponent)
+    
+            # Putting everything into a separate transaction to account for any
+            # caching that may take place.
+            yield self.commit()
+            self.assertEquals(
+                (yield self.calendarObjectUnderTest()).properties()[propertyName],
+                propertyContent
+            )
 
 
     eventWithDropbox = "\r\n".join("""
@@ -1175,6 +1301,96 @@ END:VCALENDAR
         self.assertEquals((yield obj.dropboxID()), "some-dropbox-id")
 
 
+    def token2revision(self, token):
+        """
+        FIXME: the API names for L{syncToken}() and L{resourceNamesSinceToken}()
+        are slightly inaccurate; one doesn't produce input for the other.
+        Actually it should be resource names since I{revision} and you need to
+        understand the structure of the tokens to extract the revision.  Right
+        now that logic lives in the protocol layer, so this testing method
+        replicates it.
+        """
+        uuid, rev = token.split("#", 1)
+        rev = int(rev)
+        return rev
+
+
+    @inlineCallbacks
+    def test_simpleHomeSyncToken(self):
+        """
+        L{ICalendarHome.resourceNamesSinceToken} will return the names of
+        calendar objects created since L{ICalendarHome.syncToken} last returned
+        a particular value.
+        """
+        home = yield self.homeUnderTest()
+        cal = yield self.calendarUnderTest()
+        st = yield home.syncToken()
+        yield cal.createCalendarObjectWithName("new.ics", VComponent.fromString(
+                self.eventWithDropbox
+            )
+        )
+
+        yield cal.removeCalendarObjectWithName("2.ics")
+        yield home.createCalendarWithName("other-calendar")
+        st2 = yield home.syncToken()
+        self.failIfEquals(st, st2)
+
+        home = yield self.homeUnderTest()
+
+        changed, deleted = yield home.resourceNamesSinceToken(
+            self.token2revision(st), "depth_is_ignored")
+
+        self.assertEquals(set(changed), set(["calendar_1/new.ics",
+                                             "calendar_1/2.ics",
+                                             "other-calendar/"]))
+        self.assertEquals(set(deleted), set(["calendar_1/2.ics"]))
+
+        changed, deleted = yield home.resourceNamesSinceToken(
+            self.token2revision(st2), "depth_is_ignored")
+        self.assertEquals(changed, [])
+        self.assertEquals(deleted, [])
+
+
+    @inlineCallbacks
+    def test_collectionSyncToken(self):
+        """
+        L{ICalendar.resourceNamesSinceToken} will return the names of calendar
+        objects changed or deleted since 
+        """
+        cal = yield self.calendarUnderTest()
+        st = yield cal.syncToken()
+        rev = self.token2revision(st)
+        yield cal.createCalendarObjectWithName("new.ics", VComponent.fromString(
+                self.eventWithDropbox
+            )
+        )
+        yield cal.removeCalendarObjectWithName("2.ics")
+        st2 = yield cal.syncToken()
+        rev2 = self.token2revision(st2)
+        changed, deleted = yield cal.resourceNamesSinceToken(rev)
+        self.assertEquals(set(changed), set(["new.ics"]))
+        self.assertEquals(set(deleted), set(["2.ics"]))
+        changed, deleted = yield cal.resourceNamesSinceToken(rev2)
+        self.assertEquals(set(changed), set([]))
+        self.assertEquals(set(deleted), set([]))
+
+
+    @inlineCallbacks
+    def test_dropboxIDs(self):
+        """
+        L{ICalendarObject.getAllDropboxIDs} returns a L{Deferred} that fires
+        with a C{list} of all Dropbox IDs.
+        """
+        home = yield self.homeUnderTest()
+        # The only item in the home which has an ATTACH or X-APPLE-DROPBOX
+        # property.
+        allDropboxIDs = set([
+            u'FE5CDC6F-7776-4607-83A9-B90FF7ACC8D0.dropbox',
+        ])
+        self.assertEquals(set((yield home.getAllDropboxIDs())),
+                          allDropboxIDs)
+
+
     @inlineCallbacks
     def test_indexByDropboxProperty(self):
         """
@@ -1203,9 +1419,10 @@ END:VCALENDAR
         Common logic for attachment-creation tests.
         """
         obj = yield self.calendarObjectUnderTest()
-        t = yield obj.createAttachmentWithName(
-            "new.attachment", MimeType("text", "x-fixture")
+        attachment = yield obj.createAttachmentWithName(
+            "new.attachment",
         )
+        t = attachment.store(MimeType("text", "x-fixture"))
         t.write("new attachment")
         t.write(" text")
         yield t.loseConnection()
@@ -1294,9 +1511,10 @@ END:VCALENDAR
         L{ICalendarHome.calendarWithName} or L{ICalendarHome.calendars}.
         """
         obj = yield self.calendarObjectUnderTest()
-        t = yield obj.createAttachmentWithName(
-            "new.attachment", MimeType("text", "plain")
+        attachment = yield obj.createAttachmentWithName(
+            "new.attachment",
         )
+        t = attachment.store(MimeType("text", "plain"))
         t.write("new attachment text")
         yield t.loseConnection()
         yield self.commit()

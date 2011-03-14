@@ -107,6 +107,12 @@ class ImplicitCalendarHome(
         else:
             returnValue(None)
 
+    def hasCalendarResourceUIDSomewhereElse(self, uid, ok_object, type):
+        return self._calendarHome.hasCalendarResourceUIDSomewhereElse(uid, ok_object, type)
+
+    def getCalendarResourcesForUID(self, uid, allow_shared=False):
+        return self._calendarHome.getCalendarResourcesForUID(uid, allow_shared)
+
 
 
 class ImplicitCalendarObject(object):
@@ -124,7 +130,10 @@ class ImplicitCalendarObject(object):
 class ImplicitCalendar(FancyEqMixin,
                        proxyForInterface(ICalendar, "_subCalendar")):
 
-    compareAttributes = ['_subCalendar', '_parentHome']
+    compareAttributes = (
+        "_subCalendar",
+        "_parentHome",
+    )
 
     def __init__(self, parentHome, subCalendar):
         self._parentHome = parentHome

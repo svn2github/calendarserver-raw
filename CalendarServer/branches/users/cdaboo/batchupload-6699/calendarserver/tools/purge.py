@@ -16,31 +16,40 @@
 # limitations under the License.
 ##
 
-from calendarserver.tap.caldav import CalDAVServiceMaker, CalDAVOptions
-from twisted.application.service import Service
-from calendarserver.tap.util import FakeRequest
-from calendarserver.tap.util import getRootResource
-from calendarserver.tools.principals import removeProxy
-from calendarserver.tools.util import loadConfig
+import os
+import sys
+from errno import ENOENT, EACCES
+
 from datetime import date, timedelta, datetime
 from getopt import getopt, GetoptError
-from twext.python.log import Logger
-from twext.web2.dav import davxml
+
+from vobject.icalendar import utc
+
+from twisted.application.service import Service
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twistedcaldav import caldavxml
 from twistedcaldav.caldavxml import TimeRange
 from twistedcaldav.config import config, ConfigurationError
+from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
 from twistedcaldav.directory.directory import DirectoryRecord
-from twistedcaldav.method.delete_common import DeleteResource
 from twistedcaldav.method.put_common import StoreCalendarObjectResource
 from twistedcaldav.query import calendarqueryfilter
-from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
-from vobject.icalendar import utc
-import os
-import sys
+
+from twext.python.log import Logger
+from twext.web2.dav import davxml
+from twext.web2.responsecode import NO_CONTENT
+
+from calendarserver.tap.caldav import CalDAVServiceMaker, CalDAVOptions
+from calendarserver.tap.util import FakeRequest
+from calendarserver.tap.util import getRootResource
+from calendarserver.tools.principals import removeProxy
+from calendarserver.tools.util import loadConfig
 
 log = Logger()
+
+DEFAULT_BATCH_SIZE = 100
+DEFAULT_RETAIN_DAYS = 365
 
 def usage_purge_events(e=None):
 
@@ -50,10 +59,32 @@ def usage_purge_events(e=None):
     print "  Remove old events from the calendar server"
     print ""
     print "options:"
-    print "  -d --days <number>: specify how many days in the past to retain (default=365)"
-    print "  -f --config <path>: Specify caldavd.plist configuration path"
     print "  -h --help: print this help and exit"
-    print "  -n --dry-run: only calculate how many events to purge"
+    print "  -f --config <path>: Specify caldavd.plist configuration path"
+    print "  -d --days <number>: specify how many days in the past to retain (default=%d)" % (DEFAULT_RETAIN_DAYS,)
+   #print "  -b --batch <number>: number of events to remove in each transaction (default=%d)" % (DEFAULT_BATCH_SIZE,)
+    print "  -n --dry-run: calculate how many events to purge, but do not purge data"
+    print "  -v --verbose: print progress information"
+    print ""
+
+    if e:
+        sys.stderr.write("%s\n" % (e,))
+        sys.exit(64)
+    else:
+        sys.exit(0)
+
+def usage_purge_orphaned_attachments(e=None):
+
+    name = os.path.basename(sys.argv[0])
+    print "usage: %s [options]" % (name,)
+    print ""
+    print "  Remove orphaned attachments from the calendar server"
+    print ""
+    print "options:"
+    print "  -h --help: print this help and exit"
+    print "  -f --config <path>: Specify caldavd.plist configuration path"
+   #print "  -b --batch <number>: number of attachments to remove in each transaction (default=%d)" % (DEFAULT_BATCH_SIZE,)
+    print "  -n --dry-run: calculate how many attachments to purge, but do not purge data"
     print "  -v --verbose: print progress information"
     print ""
 
@@ -68,12 +99,12 @@ def usage_purge_principal(e=None):
     name = os.path.basename(sys.argv[0])
     print "usage: %s [options]" % (name,)
     print ""
-    print "  Remove a principal's events from the calendar server"
+    print "  Remove a principal's events and contacts from the calendar server"
     print ""
     print "options:"
-    print "  -f --config <path>: Specify caldavd.plist configuration path"
     print "  -h --help: print this help and exit"
-    print "  -n --dry-run: only calculate how many events to purge"
+    print "  -f --config <path>: Specify caldavd.plist configuration path"
+    print "  -n --dry-run: calculate how many events and contacts to purge, but do not purge data"
     print "  -v --verbose: print progress information"
     print ""
 
@@ -84,46 +115,96 @@ def usage_purge_principal(e=None):
         sys.exit(0)
 
 
-class PurgeOldEventsService(Service):
+class WorkerService(Service):
 
     def __init__(self, store):
         self._store = store
 
-    def startService(self):
+    def rootResource(self):
         try:
             rootResource = getRootResource(config, self._store)
-            directory = rootResource.getDirectory()
+        except OSError, e:
+            if e.errno == ENOENT:
+                # Trying to re-write resources.xml but its parent directory does
+                # not exist.  The server's never been started, so we're missing
+                # state required to do any work.  (Plus, what would be the point
+                # of purging stuff from a server that's completely empty?)
+                raise ConfigurationError(
+                    "It appears that the server has never been started.\n"
+                    "Please start it at least once before purging anything.")
+            elif e.errno == EACCES:
+                # Trying to re-write resources.xml but it is not writable by the
+                # current user.  This most likely means we're in a system
+                # configuration and the user doesn't have sufficient privileges
+                # to do the other things the tool might need to do either.
+                raise ConfigurationError("You must run this tool as root.")
+            else:
+                raise
+        return rootResource
+
+
+    @inlineCallbacks
+    def startService(self):
+        try:
+            yield self.doWork()
+        except ConfigurationError, ce:
+            sys.stderr.write("Error: %s\n" % (str(ce),))
+        except Exception, e:
+            sys.stderr.write("Error: %s\n" % (e,))
+            raise
         finally:
             reactor.stop()
 
 
-class PurgePrincipalService(Service):
+
+class PurgeOldEventsService(WorkerService):
+
+    cutoff = None
+    batchSize = None
+    dryrun = False
+    verbose = False
+
+    def doWork(self):
+        rootResource = self.rootResource()
+        directory = rootResource.getDirectory()
+        return purgeOldEvents(self._store, directory, rootResource,
+            self.cutoff, self.batchSize, verbose=self.verbose,
+            dryrun=self.dryrun)
+
+
+
+class PurgeOrphanedAttachmentsService(WorkerService):
+
+    batchSize = None
+    dryrun = False
+    verbose = False
+
+    def doWork(self):
+        return purgeOrphanedAttachments(
+            self._store, self.batchSize,
+            verbose=self.verbose, dryrun=self.dryrun)
+
+
+
+class PurgePrincipalService(WorkerService):
 
     guids = None
     dryrun = False
     verbose = False
 
-    def __init__(self, store):
-        self._store = store
-
     @inlineCallbacks
-    def startService(self):
-        try:
-            rootResource = getRootResource(config, self._store)
-            directory = rootResource.getDirectory()
-            total = (yield purgeGUIDs(directory, rootResource, self.guids,
-                verbose=self.verbose, dryrun=self.dryrun))
-            if self.verbose:
-                amount = "%d event%s" % (total, "s" if total > 1 else "")
-                if self.dryrun:
-                    print "Would have modified or deleted %s" % (amount,)
-                else:
-                    print "Modified or deleted %s" % (amount,)
-        except Exception, e:
-            print "Error:", e
-            raise
-        finally:
-            reactor.stop()
+    def doWork(self):
+        rootResource = self.rootResource()
+        directory = rootResource.getDirectory()
+        total = (yield purgeGUIDs(directory, rootResource, self.guids,
+            verbose=self.verbose, dryrun=self.dryrun))
+        if self.verbose:
+            amount = "%d event%s" % (total, "s" if total > 1 else "")
+            if self.dryrun:
+                print "Would have modified or deleted %s" % (amount,)
+            else:
+                print "Modified or deleted %s" % (amount,)
+
 
 
 def shared_main(configFileName, serviceClass):
@@ -142,7 +223,7 @@ def shared_main(configFileName, serviceClass):
         reactor.addSystemEventTrigger("before", "shutdown", service.stopService)
 
     except ConfigurationError, e:
-        print "Error: %s" % (e,)
+        sys.stderr.write("Error: %s\n" % (e,))
         return
 
     reactor.run()
@@ -151,8 +232,9 @@ def main_purge_events():
 
     try:
         (optargs, args) = getopt(
-            sys.argv[1:], "d:f:hnv", [
+            sys.argv[1:], "d:b:f:hnv", [
                 "days=",
+                "batch=",
                 "dry-run",
                 "config=",
                 "help",
@@ -166,7 +248,8 @@ def main_purge_events():
     # Get configuration
     #
     configFileName = None
-    days = 365
+    days = DEFAULT_RETAIN_DAYS
+    batchSize = DEFAULT_BATCH_SIZE
     dryrun = False
     verbose = False
 
@@ -179,6 +262,13 @@ def main_purge_events():
                 days = int(arg)
             except ValueError, e:
                 print "Invalid value for --days: %s" % (arg,)
+                usage_purge_events(e)
+
+        elif opt in ("-b", "--batch"):
+            try:
+                batchSize = int(arg)
+            except ValueError, e:
+                print "Invalid value for --batch: %s" % (arg,)
                 usage_purge_events(e)
 
         elif opt in ("-v", "--verbose"):
@@ -196,14 +286,80 @@ def main_purge_events():
     if args:
         usage_purge_events("Too many arguments: %s" % (args,))
 
+    if dryrun:
+        verbose = True
+
     cutoff = (date.today()-timedelta(days=days)).strftime("%Y%m%dT000000Z")
+    PurgeOldEventsService.cutoff = cutoff
+    PurgeOldEventsService.batchSize = batchSize
+    PurgeOldEventsService.dryrun = dryrun
+    PurgeOldEventsService.verbose = verbose
 
     shared_main(
         configFileName,
         PurgeOldEventsService,
-        cutoff,
-        verbose=verbose,
-        dryrun=dryrun,
+    )
+
+
+def main_purge_orphaned_attachments():
+
+    try:
+        (optargs, args) = getopt(
+            sys.argv[1:], "d:b:f:hnv", [
+                "batch=",
+                "dry-run",
+                "config=",
+                "help",
+                "verbose",
+            ],
+        )
+    except GetoptError, e:
+        usage_purge_orphaned_attachments(e)
+
+    #
+    # Get configuration
+    #
+    configFileName = None
+    batchSize = DEFAULT_BATCH_SIZE
+    dryrun = False
+    verbose = False
+
+    for opt, arg in optargs:
+        if opt in ("-h", "--help"):
+            usage_purge_orphaned_attachments()
+
+        elif opt in ("-b", "--batch"):
+            try:
+                batchSize = int(arg)
+            except ValueError, e:
+                print "Invalid value for --batch: %s" % (arg,)
+                usage_purge_orphaned_attachments(e)
+
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+
+        elif opt in ("-n", "--dry-run"):
+            dryrun = True
+
+        elif opt in ("-f", "--config"):
+            configFileName = arg
+
+        else:
+            raise NotImplementedError(opt)
+
+    if args:
+        usage_purge_orphaned_attachments("Too many arguments: %s" % (args,))
+
+    if dryrun:
+        verbose = True
+
+    PurgeOrphanedAttachmentsService.batchSize = batchSize
+    PurgeOrphanedAttachmentsService.dryrun = dryrun
+    PurgeOrphanedAttachmentsService.verbose = verbose
+
+    shared_main(
+        configFileName,
+        PurgeOrphanedAttachmentsService,
     )
 
 
@@ -257,125 +413,96 @@ def main_purge_principals():
 
 
 @inlineCallbacks
-def callThenStop(method, *args, **kwds):
-    try:
-        count = (yield method(*args, **kwds))
-        if kwds.get("dryrun", False):
-            print "Would have purged %d events" % (count,)
+def purgeOldEvents(store, directory, root, date, batchSize, verbose=False,
+    dryrun=False):
+
+    if dryrun:
+        if verbose:
+            print "(Dry run) Searching for old events..."
+        txn = store.newTransaction(label="Find old events")
+        oldEvents = (yield txn.eventsOlderThan(date))
+        eventCount = len(oldEvents)
+        if verbose:
+            if eventCount == 0:
+                print "No events are older than %s" % (date,)
+            elif eventCount == 1:
+                print "1 event is older than %s" % (date,)
+            else:
+                print "%d events are older than %s" % (eventCount, date)
+        returnValue(eventCount)
+
+    if verbose:
+        print "Removing events older than %s..." % (date,)
+
+    numEventsRemoved = -1
+    totalRemoved = 0
+    while numEventsRemoved:
+        txn = store.newTransaction(label="Remove old events")
+        numEventsRemoved = (yield txn.removeOldEvents(date, batchSize=batchSize))
+        (yield txn.commit())
+        if numEventsRemoved:
+            totalRemoved += numEventsRemoved
+            if verbose:
+                print "%d," % (totalRemoved,),
+
+    if verbose:
+        print
+        if totalRemoved == 0:
+            print "No events were removed"
+        elif totalRemoved == 1:
+            print "1 event was removed in total"
         else:
-            print "Purged %d events" % (count,)
-    except Exception, e:
-        print "Error: %s" % (e,)
-    finally:
-        reactor.stop()
+            print "%d events were removed in total" % (totalRemoved,)
+
+    returnValue(totalRemoved)
+
 
 
 @inlineCallbacks
-def purgeOldEvents(directory, root, date, verbose=False, dryrun=False):
-
-    calendars = root.getChild("calendars")
-    uidsFPath = calendars.fp.child("__uids__")
+def purgeOrphanedAttachments(store, batchSize, verbose=False, dryrun=False):
 
     if dryrun:
-        print "Dry run"
+        if verbose:
+            print "(Dry run) Searching for orphaned attachments..."
+        txn = store.newTransaction(label="Find orphaned attachments")
+        orphans = (yield txn.orphanedAttachments())
+        orphanCount = len(orphans)
+        if verbose:
+            if orphanCount == 0:
+                print "No orphaned attachments"
+            elif orphanCount == 1:
+                print "1 orphaned attachment"
+            else:
+                print "%d orphaned attachments" % (orphanCount,)
+        returnValue(orphanCount)
 
     if verbose:
-        print "Scanning calendar homes ...",
+        print "Removing orphaned attachments..."
 
-    records = []
-    calendars = root.getChild("calendars")
-    uidsFPath = calendars.fp.child("__uids__")
-
-    if uidsFPath.exists():
-        for firstFPath in uidsFPath.children():
-            if len(firstFPath.basename()) == 2:
-                for secondFPath in firstFPath.children():
-                    if len(secondFPath.basename()) == 2:
-                        for homeFPath in secondFPath.children():
-                            uid = homeFPath.basename()
-                            record = directory.recordWithUID(uid)
-                            if record is not None:
-                                records.append(record)
+    numOrphansRemoved = -1
+    totalRemoved = 0
+    while numOrphansRemoved:
+        txn = store.newTransaction(label="Remove orphaned attachments")
+        numOrphansRemoved = (yield txn.removeOrphanedAttachments(batchSize=batchSize))
+        (yield txn.commit())
+        if numOrphansRemoved:
+            totalRemoved += numOrphansRemoved
+            if verbose:
+                print "%d," % (totalRemoved,),
 
     if verbose:
-        print "%d calendar homes found" % (len(records),)
+        print
+        if totalRemoved == 0:
+            print "No orphaned attachments were removed"
+        elif totalRemoved == 1:
+            print "1 orphaned attachment was removed in total"
+        else:
+            print "%d orphaned attachments were removed in total" % (totalRemoved,)
 
-    log.info("Purging events from %d calendar homes" % (len(records),))
-
-    filter =  caldavxml.Filter(
-        caldavxml.ComponentFilter(
-            caldavxml.ComponentFilter(
-                TimeRange(start=date,),
-                name=("VEVENT", "VFREEBUSY", "VAVAILABILITY"),
-            ),
-            name="VCALENDAR",
-        )
-    )
-    filter = calendarqueryfilter.Filter(filter)
-
-    eventCount = 0
-    for record in records:
-        # Get the calendar home
-        principalCollection = directory.principalCollection
-        principal = principalCollection.principalForRecord(record)
-        calendarHome = yield principal.calendarHome()
-
-        if verbose:
-            print "%s %-15s :" % (record.uid, record.shortNames[0]),
-
-        homeEventCount = 0
-        # For each collection in calendar home...
-        for collName in calendarHome.listChildren():
-            collection = calendarHome.getChild(collName)
-            if collection.isCalendarCollection():
-                # ...use their indexes to figure out which events to purge.
-
-                # First, get the list of all child resources...
-                resources = set(collection.listChildren())
-
-                # ...and ignore those that appear *after* the given cutoff
-                for name, uid, type in collection.index().indexedSearch(filter):
-                    if isinstance(name, unicode):
-                        name = name.encode("utf-8")
-                    if name in resources:
-                        resources.remove(name)
-
-                for name in resources:
-                    resource = collection.getChild(name)
-                    uri = "/calendars/__uids__/%s/%s/%s" % (
-                        record.uid,
-                        collName,
-                        name
-                    )
-                    try:
-                        if not dryrun:
-                            (yield deleteResource(root, collection, resource,
-                                uri, record.guid))
-                        eventCount += 1
-                        homeEventCount += 1
-                    except Exception, e:
-                        log.error("Failed to purge old event: %s (%s)" %
-                            (uri, e))
-
-        if verbose:
-            print "%d events" % (homeEventCount,)
-
-    returnValue(eventCount)
+    returnValue(totalRemoved)
 
 
-def deleteResource(root, collection, resource, uri, guid, implicit=False):
-    request = FakeRequest(root, "DELETE", uri)
-    request.authnUser = request.authzUser = davxml.Principal(
-        davxml.HRef.fromString("/principals/__uids__/%s/" % (guid,))
-    )
 
-    # TODO: this seems hacky, even for a stub request:
-    request._rememberResource(resource, uri)
-
-    # Cyrus says to use resource.storeRemove( ) -- see twistedcaldav/method/delete_common.py
-    deleter = DeleteResource(request, resource, uri,
-        collection, "infinity", allowImplicitSchedule=implicit)
-    return deleter.run()
 
 
 @inlineCallbacks
@@ -514,9 +641,11 @@ def cancelEvent(event, when, cua):
 
 
 @inlineCallbacks
-def purgeGUID(guid, directory, root, verbose=False, dryrun=False):
+def purgeGUID(guid, directory, root, verbose=False, dryrun=False, proxies=True,
+    when=None):
 
-    when = datetime.now(tz=utc)
+    if when is None:
+        when = datetime.now(tz=utc)
     # when = datetime(2010, 12, 6, 12, 0, 0, 0, utc)
 
     # Does the record exist?
@@ -572,9 +701,7 @@ def purgeGUID(guid, directory, root, verbose=False, dryrun=False):
                 childResource = (yield collection.getChild(childName))
                 event = (yield childResource.iCalendar())
                 event = perUserFilter.filter(event)
-                # print "BEFORE CANCEL", event
                 action = cancelEvent(event, when, cua)
-                # print "AFTER CANCEL", action, event
 
                 uri = "/calendars/__uids__/%s/%s/%s" % (guid, collName, childName)
                 request.path = uri
@@ -607,12 +734,36 @@ def purgeGUID(guid, directory, root, verbose=False, dryrun=False):
                             print "Deleting: %s" % (uri,)
                     if not dryrun:
                         result = (yield childResource.storeRemove(request, True, uri))
+                        if result != NO_CONTENT:
+                            print "Error deleting %s/%s/%s: %s" % (guid,
+                                collName, childName, result)
+
+
+    txn = request._newStoreTransaction
+
+    # Remove VCards
+    abHome = (yield txn.addressbookHomeWithUID(guid))
+    if abHome is not None:
+        for abColl in list( (yield abHome.addressbooks()) ):
+            for card in list( (yield abColl.addressbookObjects()) ):
+                cardName = card.name()
+                if verbose:
+                    uri = "/addressbooks/__uids__/%s/%s/%s" % (guid, abColl.name(), cardName)
+                    if dryrun:
+                        print "Would delete: %s" % (uri,)
+                    else:
+                        print "Deleting: %s" % (uri,)
+                if not dryrun:
+                    (yield abColl.removeObjectResourceWithName(cardName))
+                count += 1
+            if not dryrun:
+                # Also remove the addressbook collection itself
+                (yield abHome.removeChildWithName(abColl.name()))
 
     # Commit
-    txn = request._newStoreTransaction
     (yield txn.commit())
 
-    if not dryrun:
+    if proxies and not dryrun:
         if verbose:
             print "Deleting any proxy assignments"
         assignments = (yield purgeProxyAssignments(principal))
@@ -640,5 +791,4 @@ def purgeProxyAssignments(principal):
         (yield subPrincipal.writeProperty(davxml.GroupMemberSet(), None))
 
     returnValue(assignments)
-
 

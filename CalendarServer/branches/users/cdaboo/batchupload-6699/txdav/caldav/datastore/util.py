@@ -1,6 +1,6 @@
 # -*- test-case-name: txdav.caldav.datastore.test.test_util -*-
 ##
-# Copyright (c) 2010 Apple Inc. All rights reserved.
+# Copyright (c) 2010-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ def dropboxIDFromCalendarObject(calendarObject):
     dropboxProperty = (yield calendarObject.component(
         )).getFirstPropertyInAnyComponent("X-APPLE-DROPBOX")
     if dropboxProperty is not None:
-        componentDropboxID = dropboxProperty.value().split("/")[-1]
+        componentDropboxID = dropboxProperty.value().rstrip("/").split("/")[-1]
         returnValue(componentDropboxID)
 
     # Now look at each ATTACH property and see if it might be a dropbox item
@@ -125,21 +125,31 @@ def _migrateCalendar(inCalendar, outCalendar, getComponent):
     for calendarObject in (yield inCalendar.calendarObjects()):
         
         try:
+            # Must account for metadata
+            
             yield outCalendar.createCalendarObjectWithName(
                 calendarObject.name(),
-                (yield calendarObject.component())) # XXX WRONG SHOULD CALL getComponent
+                (yield calendarObject.component()), # XXX WRONG SHOULD CALL getComponent
+                metadata=calendarObject.getMetadata(),
+            )
 
             # Only the owner's properties are migrated, since previous releases of
             # calendar server didn't have per-user properties.
             outObject = yield outCalendar.calendarObjectWithName(
                 calendarObject.name())
-            outObject.properties().update(calendarObject.properties())
+            if outCalendar.objectResourcesHaveProperties():
+                outObject.properties().update(calendarObject.properties())
     
+            if inCalendar.name() == "inbox":
+                # Because of 9023803, skip attachment processing within inboxes
+                continue
+
             # Migrate attachments.
             for attachment in (yield calendarObject.attachments()):
                 name = attachment.name()
                 ctype = attachment.contentType()
-                transport = yield outObject.createAttachmentWithName(name, ctype)
+                newattachment = yield outObject.createAttachmentWithName(name)
+                transport = newattachment.store(ctype)
                 proto =_AttachmentMigrationProto(transport)
                 attachment.retrieve(proto)
                 yield proto.done

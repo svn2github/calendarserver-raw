@@ -69,12 +69,14 @@ class XMLDirectoryService(DirectoryService):
                 self.recordType_resources,
             ),
             'realmName' : '/Search',
+            'statSeconds' : 15,
         }
         ignored = None
         params = self.getParams(params, defaults, ignored)
 
         self._recordTypes = params['recordTypes']
         self.realmName = params['realmName']
+        self.statSeconds = params['statSeconds']
 
         super(XMLDirectoryService, self).__init__()
 
@@ -138,15 +140,15 @@ class XMLDirectoryService(DirectoryService):
         XMLAccountRecords as returned by XMLAccountsParser, returns a list
         of XMLAccountRecords.
 
-        The XML file is only stat'ed at most every 60 seconds, and is only
-        reparsed if it's been modified.
+        The XML file is only stat'ed at most every self.statSeconds, and is
+        only reparsed if it's been modified.
 
         FIXME: don't return XMLAccountRecords, and have any code in this module
         which currently does work with XMLAccountRecords, modify such code to
         use XMLDirectoryRecords instead.
         """
         currentTime = time()
-        if self._alwaysStat or currentTime - self._lastCheck > 60:
+        if self._alwaysStat or currentTime - self._lastCheck > self.statSeconds:
             self.xmlFile.restat()
             self._lastCheck = currentTime
             fileInfo = (self.xmlFile.getmtime(), self.xmlFile.getsize())
@@ -356,7 +358,7 @@ class XMLDirectoryService(DirectoryService):
 
         element = addSubElement(parent, xmlType)
         for value in principal.shortNames:
-            addSubElement(element, "uid", text=value)
+            addSubElement(element, "uid", text=value.decode("utf-8"))
         addSubElement(element, "guid", text=principal.guid)
         if principal.fullName is not None:
             addSubElement(element, "name", text=principal.fullName.decode("utf-8"))
@@ -365,11 +367,11 @@ class XMLDirectoryService(DirectoryService):
         if principal.lastName is not None:
             addSubElement(element, "last-name", text=principal.lastName.decode("utf-8"))
         for value in principal.emailAddresses:
-            addSubElement(element, "email-address", text=value)
+            addSubElement(element, "email-address", text=value.decode("utf-8"))
         if principal.extras:
             extrasElement = addSubElement(element, "extras")
             for key, value in principal.extras.iteritems():
-                addSubElement(extrasElement, key, text=value)
+                addSubElement(extrasElement, key, text=value.decode("utf-8"))
 
         return element
 
@@ -394,6 +396,24 @@ class XMLDirectoryService(DirectoryService):
         indent(element)
 
         self.xmlFile.setContent(elementToXML(element))
+
+        # Fix up the file ownership because setContent doesn't maintain it
+        uid = -1
+        if config.UserName:
+            try:
+                uid = pwd.getpwnam(config.UserName).pw_uid
+            except KeyError:
+                self.log_error("User not found: %s" % (config.UserName,))
+
+        gid = -1
+        if config.GroupName:
+            try:
+                gid = grp.getgrnam(config.GroupName).gr_gid
+            except KeyError:
+                self.log_error("Group not found: %s" % (config.GroupName,))
+
+        if uid != -1 and gid != -1:
+            os.chown(self.xmlFile.path, uid, gid)
 
 
     def createRecord(self, recordType, guid=None, shortNames=(), authIDs=set(),

@@ -19,10 +19,12 @@ try:
 except ImportError:
     pass
 else:
-    import twext.web2.auth.digest
+    from twisted.trial.unittest import SkipTest
+    from twisted.internet.defer import inlineCallbacks
+    from twisted.python.runtime import platform
+    from twext.web2.auth.digest import DigestedCredentials
     import twistedcaldav.directory.test.util
     from twistedcaldav.directory import augment
-    from twisted.internet.defer import inlineCallbacks
     from twistedcaldav.directory.directory import DirectoryService
     from twistedcaldav.directory.appleopendirectory import OpenDirectoryRecord
     from calendarserver.platform.darwin.od import dsattributes
@@ -42,6 +44,8 @@ else:
         """
         Test Open Directory directory implementation.
         """
+        if not platform.isMacOSX():
+            skip = "Currently, OpenDirectory backend only works on MacOS X."
         recordTypes = set((
             DirectoryService.recordType_users,
             DirectoryService.recordType_groups,
@@ -52,11 +56,10 @@ else:
         def setUp(self):
             super(OpenDirectory, self).setUp()
             augment.AugmentService = augment.AugmentXMLDB(xmlFiles=())
-            self._service = OpenDirectoryService({'node' : "/Search"}, dosetup=False)
-
-        def tearDown(self):
-            for call in self._service._delayedCalls:
-                call.cancel()
+            try:
+                self._service = OpenDirectoryService({"node" : "/Search"})
+            except ImportError, e:
+                raise SkipTest("OpenDirectory module is not available: %s" % (e,))
 
         def service(self):
             return self._service
@@ -93,7 +96,7 @@ else:
             )
 
             digestFields = {}
-            digested = twext.web2.auth.digest.DigestedCredentials("user", "GET", "example.com", digestFields, None)
+            digested = DigestedCredentials("user", "GET", "example.com", digestFields, None)
 
             self.assertFalse(record.verifyCredentials(digested))
 
@@ -132,7 +135,7 @@ else:
 
             record.digestcache = {}
             record.digestcache["/"] = response
-            digested = twext.web2.auth.digest.DigestedCredentials("user", "GET", "example.com", digestFields, None)
+            digested = DigestedCredentials("user", "GET", "example.com", digestFields, None)
 
             self.assertTrue(record.verifyCredentials(digested))
 
@@ -355,15 +358,17 @@ else:
             # OR
             #
             fields = [
-                ('fullName', 'mor', True, u'starts-with'),
-                ('emailAddresses', 'mor', True, u'starts-with'),
-                ('firstName', 'mor', True, u'starts-with'),
-                ('lastName', 'mor', True, u'starts-with')
+                ("fullName", "mor", True, u"starts-with"),
+                ("emailAddresses", "mor", True, u"starts-with"),
+                ("firstName", "mor", True, u"starts-with"),
+                ("lastName", "mor", True, u"starts-with"),
             ]
 
             # any record type
-            results = (yield self.service().recordsMatchingFields(fields,
-                lookupMethod=lookupMethod))
+            results = (yield self.service().recordsMatchingFields(
+                fields,
+                lookupMethod=lookupMethod
+            ))
             results = list(results)
             self.assertEquals(len(results), 4)
             for record in results:
@@ -388,8 +393,8 @@ else:
             # AND
             #
             fields = [
-                ('firstName', 'morgen', True, u'equals'),
-                ('lastName', 'age', True, u'contains')
+                ("firstName", "morgen", True, u"equals"),
+                ("lastName", "age", True, u"contains")
             ]
             results = (yield self.service().recordsMatchingFields(fields,
                 operand="and", lookupMethod=lookupMethod))
@@ -400,7 +405,7 @@ else:
             # case sensitivity
             #
             fields = [
-                ('firstName', 'morgen', False, u'equals'),
+                ("firstName", "morgen", False, u"equals"),
             ]
             results = (yield self.service().recordsMatchingFields(fields,
                 lookupMethod=lookupMethod))
@@ -408,10 +413,12 @@ else:
             self.assertEquals(len(results), 0)
 
             fields = [
-                ('firstName', 'morgen', True, u'equals'),
+                ("firstName", "morgen", True, u"equals"),
             ]
-            results = (yield self.service().recordsMatchingFields(fields,
-                lookupMethod=lookupMethod))
+            results = (yield self.service().recordsMatchingFields(
+                fields,
+                lookupMethod=lookupMethod
+            ))
             results = list(results)
             self.assertEquals(len(results), 1)
 
@@ -419,11 +426,14 @@ else:
             # no matches
             #
             fields = [
-                ('firstName', 'xyzzy', True, u'starts-with'),
-                ('lastName', 'plugh', True, u'contains')
+                ("firstName", "xyzzy", True, u"starts-with"),
+                ("lastName", "plugh", True, u"contains")
             ]
-            results = (yield self.service().recordsMatchingFields(fields,
-                operand="and", lookupMethod=lookupMethod))
+            results = (yield self.service().recordsMatchingFields(
+                fields,
+                operand="and",
+                lookupMethod=lookupMethod
+            ))
             results = list(results)
             self.assertEquals(len(results), 0)
 
@@ -440,4 +450,9 @@ else:
         def setUp(self):
             super(OpenDirectorySubset, self).setUp()
             augment.AugmentService = augment.AugmentXMLDB(xmlFiles=())
-            self._service = OpenDirectoryService({'node' : "/Search", 'recordTypes' : (DirectoryService.recordType_users, DirectoryService.recordType_groups)}, dosetup=False)
+            self._service = OpenDirectoryService(
+                {
+                    "node" : "/Search",
+                    "recordTypes" : (DirectoryService.recordType_users, DirectoryService.recordType_groups),
+                }
+            )

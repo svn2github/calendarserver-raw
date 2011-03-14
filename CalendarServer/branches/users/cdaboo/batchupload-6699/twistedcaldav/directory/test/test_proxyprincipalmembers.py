@@ -20,7 +20,8 @@ from twext.web2.dav import davxml
 
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.test.util import xmlFile, augmentsFile, proxiesFile
-from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
+from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource,\
+    DirectoryPrincipalResource
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 
 import twistedcaldav.test.util
@@ -300,6 +301,36 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
             set(["5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1",
                  "8B4288F6-CC82-491D-8EF9-642EF4F3E7D0"]))
 
+    @inlineCallbacks
+    def test_setGroupMemberSetNotifiesPrincipalCaches(self):
+        class StubCacheNotifier(object):
+            changedCount = 0
+            def changed(self):
+                self.changedCount += 1
+                return succeed(None)
+
+        user = self._getPrincipalByShortName(self.directoryService.recordType_users, "cdaboo")
+
+        proxyGroup = user.getChild("calendar-proxy-write")
+
+        notifier = StubCacheNotifier()
+
+        oldCacheNotifier = DirectoryPrincipalResource.cacheNotifierFactory
+
+        try:
+            DirectoryPrincipalResource.cacheNotifierFactory = (lambda _1, _2, **kwargs: notifier)
+
+            self.assertEquals(notifier.changedCount, 0)
+
+            yield proxyGroup.setGroupMemberSet(
+                davxml.GroupMemberSet(
+                    davxml.HRef.fromString(
+                        "/XMLDirectoryService/__uids__/5FF60DAD-0BDE-4508-8C77-15F0CA5C8DD1/")),
+                None)
+
+            self.assertEquals(notifier.changedCount, 1)
+        finally:
+            DirectoryPrincipalResource.cacheNotifierFactory = oldCacheNotifier
 
     def test_proxyFor(self):
 
@@ -516,3 +547,25 @@ class ProxyPrincipals (twistedcaldav.test.util.TestCase):
 
                 yield self._clearProxy(principal, proxyType)
                 yield self._clearProxy(fakePrincipal, proxyType)
+
+
+    @inlineCallbacks
+    def test_NonAsciiProxy(self):
+        """
+        Ensure that principalURLs with non-ascii don't cause problems
+        within CalendarUserProxyPrincipalResource
+        """
+
+        recordType = DirectoryService.recordType_users
+        proxyType = "calendar-proxy-read"
+
+        record = self.directoryService.recordWithGUID("320B73A1-46E2-4180-9563-782DFDBE1F63")
+        provisioningResource = self.principalRootResources[self.directoryService.__class__.__name__]
+        principal =  provisioningResource.principalForRecord(record)
+        proxyPrincipal = provisioningResource.principalForShortName(recordType,
+            "wsanchez")
+
+        yield self._addProxy(principal, proxyType, proxyPrincipal)
+        memberships = yield proxyPrincipal._calendar_user_proxy_index().getMemberships(proxyPrincipal.principalUID())
+        for uid in memberships:
+            subPrincipal = provisioningResource.principalForUID(uid)

@@ -1,3 +1,21 @@
+-- -*- test-case-name: txdav.caldav.datastore.test.test_sql,txdav.carddav.datastore.test.test_sql -*-
+
+----
+-- Copyright (c) 2010-2011 Apple Inc. All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+-- http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+----
+
 -----------------
 -- Resource ID --
 -----------------
@@ -14,6 +32,7 @@ create table CALENDAR_HOME (
   OWNER_UID        varchar(255) not null unique
 );
 
+create index CALENDAR_HOME_OWNER_UID on CALENDAR_HOME(OWNER_UID);
 
 ----------------------------
 -- Calendar Home Metadata --
@@ -24,6 +43,8 @@ create table CALENDAR_HOME_METADATA (
   QUOTA_USED_BYTES integer      default 0 not null
 );
 
+create index CALENDAR_HOME_METADATA_RESOURCE_ID
+    on CALENDAR_HOME_METADATA(RESOURCE_ID);
 
 --------------
 -- Calendar --
@@ -48,6 +69,9 @@ create table INVITE (
     RESOURCE_ID        integer      not null
 );
 
+create index INVITE_INVITE_UID on INVITE(INVITE_UID);
+create index INVITE_RESOURCE_ID on INVITE(INVITE_UID);
+create index INVITE_HOME_RESOURCE_ID on INVITE(INVITE_UID);
 
 ---------------------------
 -- Sharing Notifications --
@@ -58,13 +82,15 @@ create table NOTIFICATION_HOME (
   OWNER_UID   varchar(255) not null unique
 );
 
+create index NOTIFICATION_HOME_OWNER_UID on NOTIFICATION_HOME(OWNER_UID);
+
 
 create table NOTIFICATION (
   RESOURCE_ID                   integer      primary key default nextval('RESOURCE_ID_SEQ'),
   NOTIFICATION_HOME_RESOURCE_ID integer      not null references NOTIFICATION_HOME,
   NOTIFICATION_UID              varchar(255) not null,
-  XML_TYPE                      varchar      not null,
-  XML_DATA                      varchar      not null,
+  XML_TYPE                      varchar(255) not null,
+  XML_DATA                      text         not null,
   MD5                           char(32)     not null,
   CREATED                       timestamp default timezone('UTC', CURRENT_TIMESTAMP),
   MODIFIED                      timestamp default timezone('UTC', CURRENT_TIMESTAMP),
@@ -72,6 +98,10 @@ create table NOTIFICATION (
   unique(NOTIFICATION_UID, NOTIFICATION_HOME_RESOURCE_ID)
 );
 
+create index NOTIFICATION_NOTIFICATION_HOME_RESOURCE_ID on
+  NOTIFICATION(NOTIFICATION_HOME_RESOURCE_ID);
+
+create index NOTIFICATION_NOTIFICATION_UID on NOTIFICATION(NOTIFICATION_UID);
 
 -------------------
 -- Calendar Bind --
@@ -96,6 +126,11 @@ create table CALENDAR_BIND (
   primary key(CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_ID),
   unique(CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_NAME)
 );
+
+create index CALENDAR_BIND_HOME_RESOURCE_ID on
+  CALENDAR_BIND(CALENDAR_HOME_RESOURCE_ID);
+create index CALENDAR_BIND_RESOURCE_ID on
+  CALENDAR_BIND(CALENDAR_RESOURCE_ID);
 
 -- Enumeration of calendar bind modes
 
@@ -133,7 +168,8 @@ create table CALENDAR_OBJECT (
   ICALENDAR_TEXT       text         not null,
   ICALENDAR_UID        varchar(255) not null,
   ICALENDAR_TYPE       varchar(255) not null,
-  ATTACHMENTS_MODE     integer      not null, -- enum CALENDAR_OBJECT_ATTACHMENTS_MODE
+  ATTACHMENTS_MODE     integer      default 0 not null, -- enum CALENDAR_OBJECT_ATTACHMENTS_MODE
+  DROPBOX_ID           varchar(255),
   ORGANIZER            varchar(255),
   ORGANIZER_OBJECT     integer      references CALENDAR_OBJECT,
   RECURRANCE_MAX       date,        -- maximum date that recurrences have been expanded to.
@@ -155,6 +191,21 @@ create table CALENDAR_OBJECT (
   -- unique(CALENDAR_RESOURCE_ID, ICALENDAR_UID)
 );
 
+create index CALENDAR_OBJECT_CALENDAR_RESOURCE_ID on
+  CALENDAR_OBJECT(CALENDAR_RESOURCE_ID);
+
+create index CALENDAR_OBJECT_CALENDAR_RESOURCE_ID_AND_ICALENDAR_UID on
+  CALENDAR_OBJECT(CALENDAR_RESOURCE_ID, ICALENDAR_UID);
+ 
+create index CALENDAR_OBJECT_CALENDAR_RESOURCE_ID_RECURRANCE_MAX on
+  CALENDAR_OBJECT(CALENDAR_RESOURCE_ID, RECURRANCE_MAX);
+
+create index CALENDAR_OBJECT_ORGANIZER_OBJECT on
+  CALENDAR_OBJECT(ORGANIZER_OBJECT);
+
+create index CALENDAR_OBJECT_DROPBOX_ID on
+  CALENDAR_OBJECT(DROPBOX_ID);
+
 -- Enumeration of attachment modes
 
 create table CALENDAR_OBJECT_ATTACHMENTS_MODE (
@@ -162,8 +213,9 @@ create table CALENDAR_OBJECT_ATTACHMENTS_MODE (
   DESCRIPTION varchar(16) not null unique
 );
 
-insert into CALENDAR_OBJECT_ATTACHMENTS_MODE values (0, 'read' );
-insert into CALENDAR_OBJECT_ATTACHMENTS_MODE values (1, 'write');
+insert into CALENDAR_OBJECT_ATTACHMENTS_MODE values (0, 'none' );
+insert into CALENDAR_OBJECT_ATTACHMENTS_MODE values (1, 'read' );
+insert into CALENDAR_OBJECT_ATTACHMENTS_MODE values (2, 'write');
 
 
 -- Enumeration of calendar access types
@@ -201,6 +253,12 @@ create table TIME_RANGE (
   TRANSPARENT                 boolean        not null
 );
 
+create index TIME_RANGE_CALENDAR_RESOURCE_ID on
+  TIME_RANGE(CALENDAR_RESOURCE_ID);
+create index TIME_RANGE_CALENDAR_OBJECT_RESOURCE_ID on
+  TIME_RANGE(CALENDAR_OBJECT_RESOURCE_ID);
+
+
 -- Enumeration of free/busy types
 
 create table FREE_BUSY_TYPE (
@@ -225,13 +283,16 @@ create table TRANSPARENCY (
   TRANSPARENT                 boolean      not null
 );
 
+create index TRANSPARENCY_TIME_RANGE_INSTANCE_ID on
+  TRANSPARENCY(TIME_RANGE_INSTANCE_ID);
 
 ----------------
 -- Attachment --
 ----------------
 
 create table ATTACHMENT (
-  CALENDAR_OBJECT_RESOURCE_ID integer       not null references CALENDAR_OBJECT on delete cascade,
+  CALENDAR_HOME_RESOURCE_ID   integer       not null references CALENDAR_HOME,
+  DROPBOX_ID                  varchar(255)  not null,
   CONTENT_TYPE                varchar(255)  not null,
   SIZE                        integer       not null,
   MD5                         char(32)      not null,
@@ -239,21 +300,10 @@ create table ATTACHMENT (
   MODIFIED                    timestamp default timezone('UTC', CURRENT_TIMESTAMP),
   PATH                        varchar(1024) not null,
 
-  unique(CALENDAR_OBJECT_RESOURCE_ID, PATH)
+  unique(DROPBOX_ID, PATH)
 );
 
-
-------------------
--- iTIP Message --
-------------------
-
-create table ITIP_MESSAGE (
-  CALENDAR_RESOURCE_ID integer      not null references CALENDAR,
-  ICALENDAR_TEXT       text         not null,
-  ICALENDAR_UID        varchar(255) not null,
-  MD5                  char(32)     not null,
-  CHANGES              text         not null
-);
+create index ATTACHMENT_DROPBOX_ID on ATTACHMENT(DROPBOX_ID);
 
 
 -----------------------
@@ -279,6 +329,7 @@ create table ADDRESSBOOK_HOME (
   OWNER_UID        varchar(255) not null unique
 );
 
+create index ADDRESSBOOK_HOME_OWNER_UID on ADDRESSBOOK_HOME(OWNER_UID);
 
 --------------------------------
 -- AddressBook Home Meta-data --
@@ -289,6 +340,8 @@ create table ADDRESSBOOK_HOME_METADATA (
   QUOTA_USED_BYTES integer      default 0 not null
 );
 
+create index ADDRESSBOOK_HOME_METADATA_RESOURCE_ID
+    on ADDRESSBOOK_HOME_METADATA(RESOURCE_ID);
 
 -----------------
 -- AddressBook --
@@ -325,6 +378,10 @@ create table ADDRESSBOOK_BIND (
   unique(ADDRESSBOOK_HOME_RESOURCE_ID, ADDRESSBOOK_RESOURCE_NAME)
 );
 
+create index ADDRESSBOOK_BIND_HOME_RESOURCE_ID on
+  ADDRESSBOOK_BIND(ADDRESSBOOK_HOME_RESOURCE_ID);
+create index ADDRESSBOOK_BIND_RESOURCE_ID on
+  ADDRESSBOOK_BIND(ADDRESSBOOK_RESOURCE_ID);
 
 create table ADDRESSBOOK_OBJECT (
   RESOURCE_ID             integer      primary key default nextval('RESOURCE_ID_SEQ'),
@@ -339,6 +396,9 @@ create table ADDRESSBOOK_OBJECT (
   unique(ADDRESSBOOK_RESOURCE_ID, RESOURCE_NAME),
   unique(ADDRESSBOOK_RESOURCE_ID, VCARD_UID)
 );
+
+create index ADDRESSBOOK_OBJECT_ADDRESSBOOK_RESOURCE_ID on
+  ADDRESSBOOK_OBJECT(ADDRESSBOOK_RESOURCE_ID);
 
 ---------------
 -- Revisions --
@@ -356,11 +416,18 @@ create table CALENDAR_OBJECT_REVISIONS (
   CALENDAR_RESOURCE_ID      integer      references CALENDAR,
   CALENDAR_NAME             varchar(255) default null,
   RESOURCE_NAME             varchar(255),
-  REVISION                  integer      not null,
+  REVISION                  integer      default nextval('REVISION_SEQ') not null,
   DELETED                   boolean      not null,
 
   unique(CALENDAR_RESOURCE_ID, RESOURCE_NAME)
 );
+
+
+create index CALENDAR_OBJECT_REVISIONS_HOME_RESOURCE_ID
+  on CALENDAR_OBJECT_REVISIONS(CALENDAR_HOME_RESOURCE_ID);
+
+create index CALENDAR_OBJECT_REVISIONS_RESOURCE_ID
+  on CALENDAR_OBJECT_REVISIONS(CALENDAR_RESOURCE_ID);
 
 
 -------------------------------
@@ -372,12 +439,17 @@ create table ADDRESSBOOK_OBJECT_REVISIONS (
   ADDRESSBOOK_RESOURCE_ID      integer      references ADDRESSBOOK,
   ADDRESSBOOK_NAME             varchar(255) default null,
   RESOURCE_NAME                varchar(255),
-  REVISION                     integer      not null,
+  REVISION                     integer      default nextval('REVISION_SEQ') not null,
   DELETED                      boolean      not null,
 
   unique(ADDRESSBOOK_RESOURCE_ID, RESOURCE_NAME)
 );
 
+create index ADDRESSBOOK_OBJECT_REVISIONS_HOME_RESOURCE_ID
+  on ADDRESSBOOK_OBJECT_REVISIONS(ADDRESSBOOK_HOME_RESOURCE_ID);
+
+create index ADDRESSBOOK_OBJECT_REVISIONS_RESOURCE_ID
+  on ADDRESSBOOK_OBJECT_REVISIONS(ADDRESSBOOK_RESOURCE_ID);
 
 -----------------------------------
 -- Notification Object Revisions --
@@ -386,10 +458,26 @@ create table ADDRESSBOOK_OBJECT_REVISIONS (
 create table NOTIFICATION_OBJECT_REVISIONS (
   NOTIFICATION_HOME_RESOURCE_ID integer      not null references NOTIFICATION_HOME on delete cascade,
   RESOURCE_NAME                 varchar(255),
-  REVISION                      integer      not null,
+  REVISION                      integer      default nextval('REVISION_SEQ') not null,
   DELETED                       boolean      not null,
 
   unique(NOTIFICATION_HOME_RESOURCE_ID, RESOURCE_NAME)
 );
 
+
+create index NOTIFICATION_OBJECT_REVISIONS_HOME_RESOURCE_ID
+  on NOTIFICATION_OBJECT_REVISIONS(NOTIFICATION_HOME_RESOURCE_ID);
+
+
+--------------------
+-- Schema Version --
+--------------------
+
+create table CALENDARSERVER (
+  NAME                          varchar(255),
+  VALUE                         varchar(255),
+  unique(NAME)
+);
+
+insert into CALENDARSERVER values ('VERSION', '3');
 

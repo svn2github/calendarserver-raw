@@ -115,7 +115,7 @@ class SharedCollectionMixin(object):
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (customxml.calendarserver_namespace, "valid-request"),
-                "invalid share",
+                "Invalid share",
             ))
             
         record = yield self.invitesDB().recordForInviteUID(inviteUID)
@@ -123,7 +123,7 @@ class SharedCollectionMixin(object):
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (customxml.calendarserver_namespace, "valid-request"),
-                "invalid invitation uid: %s" % (inviteUID,),
+                "Invalid invitation uid: %s" % (inviteUID,),
             ))
         
         # Only certain states are sharer controlled
@@ -652,7 +652,7 @@ class SharedCollectionMixin(object):
                 raise HTTPError(ErrorResponse(
                     responsecode.FORBIDDEN,
                     (customxml.calendarserver_namespace, "valid-request"),
-                    "missing href: %s" % (inviteremove,),
+                    "Missing href: %s" % (inviteremove,),
                 ))
             if len(access) == 0:
                 access = None
@@ -745,7 +745,11 @@ class SharedCollectionMixin(object):
             doc = davxml.WebDAVDocument.fromString(xmldata)
         except ValueError, e:
             self.log_error("Error parsing doc (%s) Doc:\n %s" % (str(e), xmldata,))
-            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (customxml.calendarserver_namespace, "valid-request")))
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (customxml.calendarserver_namespace, "valid-request"),
+                "Invalid XML",
+            ))
 
         root = doc.root_element
         if type(root) in self.xmlDocHanders:
@@ -753,7 +757,11 @@ class SharedCollectionMixin(object):
             returnValue(result)
         else:
             self.log_error("Unsupported XML (%s)" % (root,))
-            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (customxml.calendarserver_namespace, "valid-request")))
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (customxml.calendarserver_namespace, "valid-request"),
+                "Unsupported XML",
+            ))
 
     xmlDocHanders = {
         customxml.InviteShare: _xmlHandleInvite,
@@ -1096,7 +1104,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (customxml.calendarserver_namespace, "valid-request"),
-                "invalid shared collection",
+                "Invalid shared collection",
             ))
             
         # Change the record
@@ -1157,7 +1165,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (customxml.calendarserver_namespace, "valid-request"),
-                "missing required XML elements",
+                "Missing required XML elements",
             ))
         if accepted:
             return self.acceptInviteShare(request, hostUrl, replytoUID, displayname=summary)

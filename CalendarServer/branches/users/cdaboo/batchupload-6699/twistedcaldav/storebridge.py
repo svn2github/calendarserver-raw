@@ -1,6 +1,6 @@
 # -*- test-case-name: twistedcaldav.test.test_wrapping -*-
 ##
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,10 +33,11 @@ from twisted.python.hashlib import md5
 from twisted.python.log import err as logDefaultException
 from twisted.python.util import FancyEqMixin
 from twistedcaldav import customxml, carddavxml, caldavxml
+from twistedcaldav.cache import CacheStoreNotifier, ResponseCacheMixin,\
+    DisabledCacheNotifier
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
-from twistedcaldav.ical import Component as VCalendar, Property as VProperty,\
-    iCalendarProductID
+from twistedcaldav.ical import Component as VCalendar, Property as VProperty
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.method.put_addressbook_common import StoreAddressObjectResource
 from twistedcaldav.method.put_common import StoreCalendarObjectResource
@@ -45,11 +46,11 @@ from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource
 from twistedcaldav.schedule import ScheduleInboxResource
 from twistedcaldav.scheduling.implicit import ImplicitScheduler
 from twistedcaldav.vcard import Component as VCard
-from twistedcaldav.vcard import Property as VCardProperty
 from txdav.base.propertystore.base import PropertyName
 from txdav.common.icommondatastore import NoSuchObjectResourceError
 from urlparse import urlsplit
 import time
+from txdav.idav import PropertyChangeNotAllowedError
 
 """
 Wrappers to translate between the APIs in L{txdav.caldav.icalendarstore} and
@@ -82,42 +83,40 @@ class _NewStorePropertiesWrapper(object):
 
     # FIXME 'uid' here should be verifying something.
     def get(self, qname, uid=None):
-        """
-        
-        """
         try:
             return self._newPropertyStore[self._convertKey(qname)]
         except KeyError:
             raise HTTPError(StatusResponse(
-                    NOT_FOUND,
-                    "No such property: {%s}%s" % qname))
+                NOT_FOUND,
+                "No such property: {%s}%s" % qname
+            ))
 
 
     def set(self, property, uid=None):
-        """
-        
-        """
-        self._newPropertyStore[self._convertKey(property.qname())] = property
+        try:
+            self._newPropertyStore[self._convertKey(property.qname())] = property
+        except PropertyChangeNotAllowedError:
+            raise HTTPError(StatusResponse(
+                FORBIDDEN,
+                "Property cannot be changed: {%s}%s" % property.qname(),
+            ))
+            
 
 
     def delete(self, qname, uid=None):
-        """
-        
-        """
-        del self._newPropertyStore[self._convertKey(qname)]
+        try:
+            del self._newPropertyStore[self._convertKey(qname)]
+        except KeyError:
+            # RFC 2518 Section 12.13.1 says that removal of
+            # non-existing property is not an error.
+            pass
 
 
     def contains(self, qname, uid=None, cache=True):
-        """
-        
-        """
         return (self._convertKey(qname) in self._newPropertyStore)
 
 
     def list(self, uid=None, filterByUID=True, cache=True):
-        """
-        
-        """
         return [(pname.namespace, pname.name) for pname in
                 self._newPropertyStore.keys()]
 
@@ -186,12 +185,13 @@ class _NewStoreFileMetaDataHelper(object):
 
 
 
-class _CommonHomeChildCollectionMixin(object):
+class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
     """
     Methods for things which are like calendars.
     """
 
     _childClass = None
+    cacheNotifierFactory = DisabledCacheNotifier
 
     def _initializeWithHomeChild(self, child, home):
         """
@@ -204,11 +204,39 @@ class _CommonHomeChildCollectionMixin(object):
         @type home: L{txdav.common._.CommonHome}
         """
         self._newStoreObject = child
-        self._newStoreParentHome = home
+        self._newStoreParentHome = home._newStoreHome
+        self._parentResource = home
         self._dead_properties = _NewStorePropertiesWrapper(
             self._newStoreObject.properties()
         ) if self._newStoreObject else NonePropertyStore(self)
+        if self._newStoreObject:
+            self.cacheNotifier = self.cacheNotifierFactory(self)
+            self._newStoreObject.addNotifier(CacheStoreNotifier(self))
 
+
+    def liveProperties(self):
+
+        props = super(_CommonHomeChildCollectionMixin, self).liveProperties()
+        
+        if config.MaxResourcesPerCollection:
+            props += (customxml.MaxResources.qname(),)
+
+        return props
+
+    @inlineCallbacks
+    def readProperty(self, property, request):
+        if type(property) is tuple:
+            qname = property
+        else:
+            qname = property.qname()
+
+        if qname == customxml.MaxResources.qname() and config.MaxResourcesPerCollection:
+            returnValue(customxml.MaxResources.fromString(config.MaxResourcesPerCollection))
+
+        returnValue((yield super(_CommonHomeChildCollectionMixin, self).readProperty(property, request)))
+
+    def url(self):
+        return joinURL(self._parentResource.url(), self._name, "/")
 
     def index(self):
         """
@@ -315,7 +343,7 @@ class _CommonHomeChildCollectionMixin(object):
         self._newStoreObject = (yield self._newStoreParentHome.createChildWithName(self._name))
         
         # Re-initialize to get stuff setup again now we have a "real" object
-        self._initializeWithHomeChild(self._newStoreObject, self._newStoreParentHome)
+        self._initializeWithHomeChild(self._newStoreObject, self._parentResource)
 
         returnValue(CREATED)
 
@@ -409,7 +437,7 @@ class _CommonHomeChildCollectionMixin(object):
         yield self._newStoreObject.remove()
         
         # Re-initialize to get stuff setup again now we have no object
-        self._initializeWithHomeChild(None, self._newStoreParentHome)
+        self._initializeWithHomeChild(None, self._parentResource)
 
         # FIXME: handle exceptions, possibly like this:
 
@@ -837,6 +865,12 @@ class _CommonHomeChildCollectionMixin(object):
             )
 
 
+    def notifierID(self, label="default"):
+        self._newStoreObject.notifierID(label)
+
+    def notifyChanged(self):
+        self._newStoreObject.notifyChanged()
+
 class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource):
     """
     Wrapper around a L{txdav.caldav.icalendar.ICalendar}.
@@ -1034,11 +1068,17 @@ class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource
         default = (yield self.isDefaultCalendar(request))
         if default:
             log.err("Cannot DELETE default calendar: %s" % (self,))
-            raise HTTPError(ErrorResponse(FORBIDDEN,
-                            (caldav_namespace,
-                             "default-calendar-delete-allowed",)))
+            raise HTTPError(ErrorResponse(
+                FORBIDDEN,
+                (caldav_namespace, "default-calendar-delete-allowed",),
+                "Cannot delete default calendar",
+            ))
 
-        response = (yield super(CalendarCollectionResource, self).storeRemove(request, implicitly, where))
+        response = (
+            yield super(CalendarCollectionResource, self).storeRemove(
+                request, implicitly, where
+            )
+        )
 
         if response == NO_CONTENT:
             # Do some clean up
@@ -1089,7 +1129,7 @@ class StoreScheduleInboxResource(_CommonHomeChildCollectionMixin, ScheduleInboxR
             storage = yield home.calendarWithName("inbox")
         self._initializeWithHomeChild(
             storage,
-            self.parent._newStoreHome
+            self.parent
         )
         self._name = storage.name()
         returnValue(self)
@@ -1182,13 +1222,8 @@ class DropboxCollection(_GetChildHelper):
         return davxml.ResourceType.dropboxhome #@UndefinedVariable
 
 
-    @inlineCallbacks
     def listChildren(self):
-        l = []
-        for everyCalendar in (yield self._newStoreHome.calendars()):
-            for everyObject in (yield everyCalendar.calendarObjects()):
-                l.append((yield everyObject.dropboxID()))
-        returnValue(l)
+        return self._newStoreHome.getAllDropboxIDs()
 
 
 
@@ -1328,9 +1363,7 @@ class CalendarObjectDropbox(_GetChildHelper):
                 ),
             )
 
-        othersCanWrite = (
-            yield self._newStoreCalendarObject.attendeesCanManageAttachments()
-        )
+        othersCanWrite = self._newStoreCalendarObject.attendeesCanManageAttachments()
         cuas = (yield self._newStoreCalendarObject.component()).getAttendees()
         newACEs = []
         for calendarUserAddress in cuas:
@@ -1373,8 +1406,66 @@ class CalendarObjectDropbox(_GetChildHelper):
                 TwistedACLInheritable(),
             ))
 
+        # Now also need invitees
+        newACEs.extend((yield self.sharedDropboxACEs()))
+
         returnValue(davxml.ACL(*tuple(originalACEs + newACEs)))
 
+    @inlineCallbacks
+    def sharedDropboxACEs(self):
+
+        aces = ()
+        records = yield self._newStoreCalendarObject._parentCollection.retrieveOldInvites().allRecords()
+        for record in records:
+            # Invite shares use access mode from the invite
+            if record.state != "ACCEPTED":
+                continue
+            
+            userprivs = [
+            ]
+            if record.access in ("read-only", "read-write", "read-write-schedule",):
+                userprivs.append(davxml.Privilege(davxml.Read()))
+                userprivs.append(davxml.Privilege(davxml.ReadACL()))
+                userprivs.append(davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()))
+            if record.access in ("read-only",):
+                userprivs.append(davxml.Privilege(davxml.WriteProperties()))
+            if record.access in ("read-write", "read-write-schedule",):
+                userprivs.append(davxml.Privilege(davxml.Write()))
+            proxyprivs = list(userprivs)
+            proxyprivs.remove(davxml.Privilege(davxml.ReadACL()))
+
+            aces += (
+                # Inheritable specific access for the resource's associated principal.
+                davxml.ACE(
+                    davxml.Principal(davxml.HRef(record.principalURL)),
+                    davxml.Grant(*userprivs),
+                    davxml.Protected(),
+                    TwistedACLInheritable(),
+                ),
+            )
+
+            if config.EnableProxyPrincipals:
+                aces += (
+                    # DAV:read/DAV:read-current-user-privilege-set access for this principal's calendar-proxy-read users.
+                    davxml.ACE(
+                        davxml.Principal(davxml.HRef(joinURL(record.principalURL, "calendar-proxy-read/"))),
+                        davxml.Grant(
+                            davxml.Privilege(davxml.Read()),
+                            davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
+                        ),
+                        davxml.Protected(),
+                        TwistedACLInheritable(),
+                    ),
+                    # DAV:read/DAV:read-current-user-privilege-set/DAV:write access for this principal's calendar-proxy-write users.
+                    davxml.ACE(
+                        davxml.Principal(davxml.HRef(joinURL(record.principalURL, "calendar-proxy-write/"))),
+                        davxml.Grant(*proxyprivs),
+                        davxml.Protected(),
+                        TwistedACLInheritable(),
+                    ),
+                )
+
+        returnValue(aces)
 
 
 class CalendarAttachment(_NewStoreFileMetaDataHelper, _GetChildHelper):
@@ -1383,6 +1474,7 @@ class CalendarAttachment(_NewStoreFileMetaDataHelper, _GetChildHelper):
         super(CalendarAttachment, self).__init__(**kw)
         self._newStoreCalendarObject = calendarObject
         self._newStoreAttachment = self._newStoreObject = attachment
+        self._dead_properties = NonePropertyStore(self)
         self.attachmentName = attachmentName
 
 
@@ -1400,22 +1492,15 @@ class CalendarAttachment(_NewStoreFileMetaDataHelper, _GetChildHelper):
         if content_type is None:
             content_type = MimeType("application", "octet-stream")
 
-        if self._newStoreAttachment:
-            t = self._newStoreAttachment.store(content_type)
-            yield readStream(request.stream, t.write)
-            yield t.loseConnection()
-            returnValue(NO_CONTENT)
-        else:
-            t = yield self._newStoreCalendarObject.createAttachmentWithName(
+        creating = (self._newStoreAttachment is None)
+        if creating:
+            self._newStoreAttachment = self._newStoreObject =  (yield self._newStoreCalendarObject.createAttachmentWithName(
                 self.attachmentName,
-                content_type,
-            )
-            yield readStream(request.stream, t.write)
-            self._newStoreAttachment = self._newStoreObject = yield self._newStoreCalendarObject.attachmentWithName(
-                self.attachmentName
-            )
-            yield t.loseConnection()
-            returnValue(CREATED)
+            ))
+        t = self._newStoreAttachment.store(content_type)
+        yield readStream(request.stream, t.write)
+        yield t.loseConnection()
+        returnValue(CREATED if creating else NO_CONTENT)
 
 
     @requiresPermissions(davxml.Read())
@@ -1431,7 +1516,12 @@ class CalendarAttachment(_NewStoreFileMetaDataHelper, _GetChildHelper):
                 stream.write(data)
             def connectionLost(self, reason):
                 stream.finish()
-        self._newStoreAttachment.retrieve(StreamProtocol())
+        try:
+            self._newStoreAttachment.retrieve(StreamProtocol())
+        except IOError, e:
+            log.error("Unable to read attachment: %s, due to: %s" % (self, e,))
+            raise HTTPError(responsecode.NOT_FOUND)
+            
         return Response(OK, {"content-type":self.contentType()}, stream)
 
 
@@ -1452,18 +1542,19 @@ class CalendarAttachment(_NewStoreFileMetaDataHelper, _GetChildHelper):
     http_MKCOL = None
     http_MKCALENDAR = None
 
+    def http_PROPPATCH(self, request):
+        """
+        No dead properties allowed on attachments. 
+        """
+        return FORBIDDEN
+
     def isCollection(self):
         return False
-
-
-
-
 
 
 class NoParent(CalDAVResource):
     def http_MKCALENDAR(self, request):
         return CONFLICT
-
 
     def http_PUT(self, request):
         return CONFLICT
@@ -1493,7 +1584,7 @@ class _CommonObjectResource(_NewStoreFileMetaDataHelper, CalDAVResource, FancyEq
         self._newStoreObject = storeObject
         self._dead_properties = _NewStorePropertiesWrapper(
             self._newStoreObject.properties()
-        ) if self._newStoreObject else NonePropertyStore(self)
+        ) if self._newStoreObject and self._newStoreParent.objectResourcesHaveProperties() else NonePropertyStore(self)
 
 
     def isCollection(self):
@@ -1534,6 +1625,14 @@ class _CommonObjectResource(_NewStoreFileMetaDataHelper, CalDAVResource, FancyEq
 
         return self.storeRemove(request, True, request.uri)
 
+    def http_PROPPATCH(self, request):
+        """
+        No dead properties allowed on object resources. 
+        """
+        if self._newStoreParent.objectResourcesHaveProperties():
+            return super(_CommonObjectResource, self).http_PROPPATCH(request)
+        else:
+            return FORBIDDEN
 
     @inlineCallbacks
     def storeStream(self, stream):
@@ -1652,7 +1751,9 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
     A resource wrapping a calendar object.
     """
 
-    compareAttributes = '_newStoreObject'.split()
+    compareAttributes = (
+        "_newStoreObject",
+    )
 
     _componentFromStream = VCalendar.fromString
 
@@ -1860,7 +1961,9 @@ class AddressBookObjectResource(_CommonObjectResource):
     A resource wrapping a addressbook object.
     """
 
-    compareAttributes = '_newStoreObject'.split()
+    compareAttributes = (
+        "_newStoreObject",
+    )
 
     _componentFromStream = VCard.fromString
 
@@ -2012,10 +2115,26 @@ class StoreNotificationObjectFile(_NewStoreFileMetaDataHelper, NotificationResou
 
     def _initializeWithObject(self, notificationObject):
         self._newStoreObject = notificationObject
-        self._dead_properties = _NewStorePropertiesWrapper(
-            self._newStoreObject.properties()
-        ) if self._newStoreObject else NonePropertyStore(self)
+        self._dead_properties = NonePropertyStore(self)
 
+
+    def liveProperties(self):
+
+        props = super(StoreNotificationObjectFile, self).liveProperties()
+        props += (customxml.NotificationType.qname(),)
+        return props
+
+    @inlineCallbacks
+    def readProperty(self, property, request):
+        if type(property) is tuple:
+            qname = property
+        else:
+            qname = property.qname()
+
+        if qname == customxml.NotificationType.qname():
+            returnValue(self._newStoreObject.xmlType())
+
+        returnValue((yield super(StoreNotificationObjectFile, self).readProperty(property, request)))
 
     def isCollection(self):
         return False
@@ -2054,6 +2173,11 @@ class StoreNotificationObjectFile(_NewStoreFileMetaDataHelper, NotificationResou
 
         return self.storeRemove(request, request.uri)
 
+    def http_PROPPATCH(self, request):
+        """
+        No dead properties allowed on notification objects. 
+        """
+        return FORBIDDEN
 
     @inlineCallbacks
     def storeRemove(self, request, where):

@@ -1,6 +1,6 @@
 # -*- test-case-name: twistedcaldav.test.test_resource,twistedcaldav.test.test_wrapping -*-
 ##
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,6 +59,8 @@ from twext.web2.stream import MemoryStream
 
 from twistedcaldav import caldavxml, customxml
 from twistedcaldav import carddavxml
+from twistedcaldav.cache import PropfindCacheMixin, DisabledCacheNotifier,\
+    CacheStoreNotifier
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.carddavxml import carddav_namespace
 from twistedcaldav.config import config
@@ -73,9 +75,10 @@ from twistedcaldav.ical import Component
 from twistedcaldav.ical import allowedComponents
 from twistedcaldav.icaldav import ICalDAVResource, ICalendarPrincipalResource
 from twistedcaldav.linkresource import LinkResource
-from twistedcaldav.notify import (getPubSubConfiguration, getPubSubPath,
-    getPubSubXMPPURI, getPubSubHeartbeatURI, getPubSubAPSConfiguration,
-    getNodeCacher, NodeCreationException)
+from twistedcaldav.notify import (
+    getPubSubConfiguration, getPubSubXMPPURI, getPubSubHeartbeatURI,
+    getPubSubAPSConfiguration,
+)
 from twistedcaldav.sharing import SharedCollectionMixin, SharedHomeMixin
 from twistedcaldav.vcard import Component as vComponent
 
@@ -127,7 +130,8 @@ class ReadOnlyResourceMixIn (object):
     def http_MKCALENDAR(self, request):
         return ErrorResponse(
             responsecode.FORBIDDEN,
-            (caldav_namespace, "calendar-collection-location-ok")
+            (caldav_namespace, "calendar-collection-location-ok"),
+            "Resource is read-only",
         )
 
 class ReadOnlyNoCopyResourceMixIn (ReadOnlyResourceMixIn):
@@ -175,6 +179,22 @@ def _calendarPrivilegeSet ():
     return davxml.SupportedPrivilegeSet(*top_supported_privileges)
 
 calendarPrivilegeSet = _calendarPrivilegeSet()
+
+def updateCacheTokenOnCallback(f):
+    def fun(self, *args, **kwargs):
+        def _updateToken(response):
+            return self.cacheNotifier.changed().addCallback(
+                lambda _: response)
+
+        d = maybeDeferred(f, self, *args, **kwargs)
+
+        if hasattr(self, 'cacheNotifier'):
+            d.addCallback(_updateToken)
+
+        return d
+
+    return fun
+
 
 class CalDAVResource (
         CalDAVComplianceMixIn, SharedCollectionMixin,
@@ -343,6 +363,18 @@ class CalDAVResource (
 
     # End transitional new-store interface 
 
+    @updateCacheTokenOnCallback
+    def http_PROPPATCH(self, request):
+        return super(CalDAVResource, self).http_PROPPATCH(request)
+
+    @updateCacheTokenOnCallback
+    def http_DELETE(self, request):
+        return super(CalDAVResource, self).http_DELETE(request)
+
+    @updateCacheTokenOnCallback
+    def http_ACL(self, request):
+        return super(CalDAVResource, self).http_ACL(request)
+
     ##
     # WebDAV
     ##
@@ -358,7 +390,7 @@ class CalDAVResource (
                 caldavxml.SupportedCalendarData.qname(),
                 customxml.GETCTag.qname(),
             )
-            if config.MaximumAttachmentSize:
+            if config.MaxResourceSize:
                 baseProperties += (
                     caldavxml.MaxResourceSize.qname(),
                 )
@@ -380,7 +412,7 @@ class CalDAVResource (
                 customxml.GETCTag.qname(),
                 customxml.PubSubXMPPPushKeyProperty.qname(),
             )
-            if config.MaximumAttachmentSize:
+            if config.MaxResourceSize:
                 baseProperties += (
                     carddavxml.MaxResourceSize.qname(),
                 )
@@ -506,10 +538,8 @@ class CalDAVResource (
                     dataObject = getattr(self, "_newStoreObject")
                 if dataObject:
                     label = "collection" if isvirt else "default"
-                    notifierID = dataObject.notifierID(label=label)
-                    if notifierID is not None and config.Notifications.Services.XMPPNotifier.Enabled:
-                        pubSubConfiguration = getPubSubConfiguration(config)
-                        nodeName = getPubSubPath(notifierID, pubSubConfiguration)
+                    nodeName = (yield dataObject.nodeName(label=label))
+                    if nodeName:
                         propVal = customxml.PubSubXMPPPushKeyProperty(nodeName)
                         returnValue(propVal)
 
@@ -579,9 +609,9 @@ class CalDAVResource (
 
         elif qname == caldavxml.MaxResourceSize.qname():
             # CalDAV-access-15, section 5.2.5
-            if config.MaximumAttachmentSize:
+            if config.MaxResourceSize:
                 returnValue(caldavxml.MaxResourceSize.fromString(
-                    str(config.MaximumAttachmentSize)
+                    str(config.MaxResourceSize)
                 ))
 
         elif qname == caldavxml.MaxAttendeesPerInstance.qname():
@@ -620,9 +650,9 @@ class CalDAVResource (
 
         elif qname == carddavxml.MaxResourceSize.qname():
             # CardDAV, section 6.2.3
-            if config.MaximumAttachmentSize:
+            if config.MaxResourceSize:
                 returnValue(carddavxml.MaxResourceSize.fromString(
-                    str(config.MaximumAttachmentSize)
+                    str(config.MaxResourceSize)
                 ))
 
         elif qname == customxml.Invite.qname():
@@ -1315,14 +1345,22 @@ class CalDAVResource (
                 if revision > current_revision:
                     raise ValueError
             except ValueError:
-                raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "valid-sync-token")))
+                raise HTTPError(ErrorResponse(
+                    responsecode.FORBIDDEN,
+                    (dav_namespace, "valid-sync-token"),
+                    "Sync token is invalid",
+                ))
         else:
             revision = 0
 
         try:
             changed, removed, notallowed = yield self._indexWhatChanged(revision, depth)
         except SyncTokenValidException:
-            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (dav_namespace, "valid-sync-token")))
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (dav_namespace, "valid-sync-token"),
+                "Sync token not recognized",
+            ))
 
         returnValue((changed, removed, notallowed, current_token))
 
@@ -1385,6 +1423,7 @@ class CalDAVResource (
 
         return super(CalDAVResource, self).checkPreconditions(request)
 
+    @inlineCallbacks
     def createCalendar(self, request):
         """
         External API for creating a calendar.  Verify that the parent is a
@@ -1412,19 +1451,28 @@ class CalDAVResource (
         # Verify that no parent collection is a calendar also
         #
 
-        def _defer(parent):
-            if parent is not None:
-                self.log_error("Cannot create a calendar collection within a calendar collection %s" % (parent,))
+        parent = (yield self._checkParents(request, isPseudoCalendarCollectionResource))
+
+        if parent is not None:
+            self.log_error("Cannot create a calendar collection within a calendar collection %s" % (parent,))
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (caldavxml.caldav_namespace, "calendar-collection-location-ok"),
+                "Cannot create a calendar collection inside another calendar collection",
+            ))
+
+        # Check for any quota limits
+        if config.MaxCollectionsPerHome:
+            parent = (yield self.locateParent(request, request.urlForResource(self)))
+            if (yield parent.countOwnedChildren()) >= config.MaxCollectionsPerHome: # NB this ignores shares
+                self.log_error("Cannot create a calendar collection because there are too many already present in %s" % (parent,))
                 raise HTTPError(ErrorResponse(
                     responsecode.FORBIDDEN,
-                    (caldavxml.caldav_namespace, "calendar-collection-location-ok")
+                    customxml.MaxCollections(),
+                    "Too many calendar collections",
                 ))
-
-            return self.createCalendarCollection()
-
-        parent = self._checkParents(request, isPseudoCalendarCollectionResource)
-        parent.addCallback(_defer)
-        return parent
+                
+        returnValue((yield self.createCalendarCollection()))
 
 
     def createCalendarCollection(self):
@@ -1466,6 +1514,7 @@ class CalDAVResource (
         raise NotImplementedError()
 
 
+    @inlineCallbacks
     def createAddressBook(self, request):
         """
         External API for creating an addressbook.  Verify that the parent is a
@@ -1498,19 +1547,27 @@ class CalDAVResource (
         # Verify that no parent collection is a calendar also
         #
 
-        def _defer(parent):
-            if parent is not None:
-                self.log_error("Cannot create an address book collection within an address book collection %s" % (parent,))
+        parent = (yield self._checkParents(request, isAddressBookCollectionResource))
+        if parent is not None:
+            self.log_error("Cannot create an address book collection within an address book collection %s" % (parent,))
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (carddavxml.carddav_namespace, "addressbook-collection-location-ok"),
+                "Cannot create an address book collection inside of an address book collection",
+            ))
+
+        # Check for any quota limits
+        if config.MaxCollectionsPerHome:
+            parent = (yield self.locateParent(request, request.urlForResource(self)))
+            if (yield parent.countOwnedChildren()) >= config.MaxCollectionsPerHome: # NB this ignores shares
+                self.log_error("Cannot create a calendar collection because there are too many already present in %s" % (parent,))
                 raise HTTPError(ErrorResponse(
                     responsecode.FORBIDDEN,
-                    (carddavxml.carddav_namespace, "addressbook-collection-location-ok")
+                    customxml.MaxCollections(),
+                    "Too many address book collections",
                 ))
-
-            return self.createAddressBookCollection()
-
-        parent = self._checkParents(request, isAddressBookCollectionResource)
-        parent.addCallback(_defer)
-        return parent
+                
+        returnValue((yield self.createAddressBookCollection()))
 
     def createAddressBookCollection(self):
         """
@@ -1724,7 +1781,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
         
         baseProperties = ()
         
-        if config.EnableCalDAV:
+        if self.calendarsEnabled():
             baseProperties += (
                 (caldav_namespace, "calendar-home-set"        ),
                 (caldav_namespace, "calendar-user-address-set"),
@@ -1736,7 +1793,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
                 (calendarserver_namespace, "auto-schedule" ),
             )
         
-        if config.EnableCardDAV:
+        if self.addressBooksEnabled():
             baseProperties += (carddavxml.AddressBookHomeSet.qname(),)
             if config.DirectoryAddressBook.Enabled:
                 baseProperties += (carddavxml.DirectoryGateway.qname(),)
@@ -1752,6 +1809,12 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
     def isCollection(self):
         return True
 
+    def calendarsEnabled(self):
+        return config.EnableCalDAV
+    
+    def addressBooksEnabled(self):
+        return config.EnableCardDAV
+    
     @inlineCallbacks
     def readProperty(self, property, request):
         if type(property) is tuple:
@@ -1761,7 +1824,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
 
         namespace, name = qname
 
-        if namespace == caldav_namespace:
+        if namespace == caldav_namespace and self.calendarsEnabled():
             if name == "calendar-home-set":
                 returnValue(caldavxml.CalendarHomeSet(
                     *[davxml.HRef(url) for url in self.calendarHomeURLs()]
@@ -1804,23 +1867,23 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
                 else:
                     returnValue(customxml.NotificationURL(davxml.HRef(url)))
 
-            elif name == "calendar-proxy-read-for":
+            elif name == "calendar-proxy-read-for" and self.calendarsEnabled():
                 results = (yield self.proxyFor(False))
                 returnValue(customxml.CalendarProxyReadFor(
                     *[davxml.HRef(principal.principalURL()) for principal in results]
                 ))
 
-            elif name == "calendar-proxy-write-for":
+            elif name == "calendar-proxy-write-for" and self.calendarsEnabled():
                 results = (yield self.proxyFor(True))
                 returnValue(customxml.CalendarProxyWriteFor(
                     *[davxml.HRef(principal.principalURL()) for principal in results]
                 ))
 
-            elif name == "auto-schedule":
+            elif name == "auto-schedule" and self.calendarsEnabled():
                 autoSchedule = self.getAutoSchedule()
                 returnValue(customxml.AutoSchedule("true" if autoSchedule else "false"))
 
-        elif config.EnableCardDAV and namespace == carddav_namespace:
+        elif namespace == carddav_namespace and self.addressBooksEnabled():
             if name == "addressbook-home-set":
                 returnValue(carddavxml.AddressBookHomeSet(
                     *[davxml.HRef(url) for url in self.addressBookHomeURLs()]
@@ -1832,21 +1895,6 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
 
         result = (yield super(CalendarPrincipalResource, self).readProperty(property, request))
         returnValue(result)
-
-    def calendarHomeURLs(self):
-        if self.hasDeadProperty((caldav_namespace, "calendar-home-set")):
-            home_set = self.readDeadProperty((caldav_namespace, "calendar-home-set"))
-            return [str(h) for h in home_set.children]
-        else:
-            return ()
-
-    def calendarUserAddresses(self):
-        if self.hasDeadProperty((caldav_namespace, "calendar-user-address-set")):
-            addresses = self.readDeadProperty((caldav_namespace, "calendar-user-address-set"))
-            return [str(h) for h in addresses.children]
-        else:
-            # Must have a valid address of some kind so use the principal uri
-            return (self.principalURL(),)
 
     def calendarFreeBusyURIs(self, request):
         def gotInbox(inbox):
@@ -1878,47 +1926,6 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
         """
         return request.locateResource(self.scheduleInboxURL())
 
-    def scheduleInboxURL(self):
-        if self.hasDeadProperty((caldav_namespace, "schedule-inbox-URL")):
-            inbox = self.readDeadProperty((caldav_namespace, "schedule-inbox-URL"))
-            return str(inbox.children[0])
-        else:
-            return None
-
-    def scheduleOutboxURL(self):
-        """
-        @return: the schedule outbox URL for this principal.
-        """
-        if self.hasDeadProperty((caldav_namespace, "schedule-outbox-URL")):
-            outbox = self.readDeadProperty((caldav_namespace, "schedule-outbox-URL"))
-            return str(outbox.children[0])
-        else:
-            return None
-
-    def dropboxURL(self):
-        """
-        @return: the drop box home collection URL for this principal.
-        """
-        if self.hasDeadProperty((calendarserver_namespace, "dropbox-home-URL")):
-            inbox = self.readDeadProperty((caldav_namespace, "dropbox-home-URL"))
-            return str(inbox.children[0])
-        else:
-            return None
-
-    def notificationURL(self, request=None):
-        if self.hasDeadProperty((calendarserver_namespace, "notification-URL")):
-            notification = self.readDeadProperty((calendarserver_namespace, "notification-URL"))
-            return succeed(str(notification.children[0]))
-        else:
-            return succeed(None)
-
-    def addressBookHomeURLs(self):
-        if self.hasDeadProperty((carddav_namespace, "addressbook-home-set")):
-            home_set = self.readDeadProperty((carddav_namespace, "addressbook-home-set"))
-            return [str(h) for h in home_set.children]
-        else:
-            return ()
-
     ##
     # Quota
     ##
@@ -1935,10 +1942,12 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
         """
         return None
 
-class CommonHomeResource(SharedHomeMixin, CalDAVResource):
+class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
     """
     Logic common to Calendar and Addressbook home resources.
     """
+    cacheNotifierFactory = DisabledCacheNotifier
+
     def __init__(self, parent, name, transaction, home):
         self.parent = parent
         self.name = name
@@ -1947,6 +1956,8 @@ class CommonHomeResource(SharedHomeMixin, CalDAVResource):
         self._provisionedLinks = {}
         self._setupProvisions()
         self._newStoreHome = home
+        self.cacheNotifier = self.cacheNotifierFactory(self)
+        self._newStoreHome.addNotifier(CacheStoreNotifier(self))
         CalDAVResource.__init__(self)
 
         from twistedcaldav.storebridge import _NewStorePropertiesWrapper
@@ -1987,10 +1998,15 @@ class CommonHomeResource(SharedHomeMixin, CalDAVResource):
 
     def liveProperties(self):
 
-        return super(CommonHomeResource, self).liveProperties() + (
+        props = super(CommonHomeResource, self).liveProperties() + (
             (customxml.calendarserver_namespace, "push-transports"),
             (customxml.calendarserver_namespace, "pushkey"),
         )
+        
+        if config.MaxCollectionsPerHome:
+            props += (customxml.MaxCollections.qname(),)
+
+        return props
 
     def sharesDB(self):
         """
@@ -2100,14 +2116,16 @@ class CommonHomeResource(SharedHomeMixin, CalDAVResource):
             self.putChild(name, child)
             returnValue(child)
 
-        # Try shares next
-        if self.canShare():
-            child = yield self.provisionShare(name)
-            if child:
-                returnValue(child)
+        # Try normal child type
+        child = (yield self.makeRegularChild(name))
 
-        # Do normal child types
-        returnValue((yield self.makeRegularChild(name)))
+        # Try shares next if child does not exist
+        if not child.exists() and self.canShare():
+            sharedchild = yield self.provisionShare(name)
+            if sharedchild:
+                returnValue(sharedchild)
+
+        returnValue(child)
 
 
     @inlineCallbacks
@@ -2142,94 +2160,89 @@ class CommonHomeResource(SharedHomeMixin, CalDAVResource):
 
 
     @inlineCallbacks
+    def countOwnedChildren(self):
+        """
+        @return: the number of children (not shared ones).
+        """
+        returnValue(len(list((yield self._newStoreHome.listChildren()))))
+
+
+    @inlineCallbacks
     def readProperty(self, property, request):
         if type(property) is tuple:
             qname = property
         else:
             qname = property.qname()
 
-        if qname == (customxml.calendarserver_namespace, "push-transports"):
-            notifierID = self._newStoreHome.notifierID()
-            if notifierID is not None and config.Notifications.Services.XMPPNotifier.Enabled:
-                children = []
+        if qname == customxml.MaxCollections.qname() and config.MaxCollectionsPerHome:
+            returnValue(customxml.MaxCollections.fromString(config.MaxCollectionsPerHome))
+            
+        elif qname == (customxml.calendarserver_namespace, "push-transports"):
+            if config.Notifications.Services.XMPPNotifier.Enabled:
+                nodeName = (yield self._newStoreHome.nodeName())
+                if nodeName:
+                    notifierID = self._newStoreHome.notifierID()
+                    if notifierID:
+                        children = []
 
-                apsConfiguration = getPubSubAPSConfiguration(notifierID, config)
-                if apsConfiguration:
-                    children.append(
-                        customxml.PubSubTransportProperty(
-                            customxml.PubSubSubscriptionProperty(
-                                davxml.HRef(
-                                    apsConfiguration["SubscriptionURL"]
-                                ),
-                            ),
-                            customxml.PubSubAPSBundleIDProperty(
-                                apsConfiguration["APSBundleID"]
-                            ),
-                            type="APSD",
-                        )
-                    )
+                        apsConfiguration = getPubSubAPSConfiguration(notifierID, config)
+                        if apsConfiguration:
+                            children.append(
+                                customxml.PubSubTransportProperty(
+                                    customxml.PubSubSubscriptionProperty(
+                                        davxml.HRef(
+                                            apsConfiguration["SubscriptionURL"]
+                                        ),
+                                    ),
+                                    customxml.PubSubAPSBundleIDProperty(
+                                        apsConfiguration["APSBundleID"]
+                                    ),
+                                    type="APSD",
+                                )
+                            )
 
-                pubSubConfiguration = getPubSubConfiguration(config)
-                if pubSubConfiguration['xmpp-server']:
-                    children.append(
-                        customxml.PubSubTransportProperty(
-                            customxml.PubSubXMPPServerProperty(
-                                pubSubConfiguration['xmpp-server']
-                            ),
-                            customxml.PubSubXMPPURIProperty(
-                                getPubSubXMPPURI(notifierID, pubSubConfiguration)
-                            ),
-                            type="XMPP",
-                        )
-                    )
+                        pubSubConfiguration = getPubSubConfiguration(config)
+                        if pubSubConfiguration['xmpp-server']:
+                            children.append(
+                                customxml.PubSubTransportProperty(
+                                    customxml.PubSubXMPPServerProperty(
+                                        pubSubConfiguration['xmpp-server']
+                                    ),
+                                    customxml.PubSubXMPPURIProperty(
+                                        getPubSubXMPPURI(notifierID, pubSubConfiguration)
+                                    ),
+                                    type="XMPP",
+                                )
+                            )
 
-                returnValue(customxml.PubSubPushTransportsProperty(*children))
-
-
-            else:
-                returnValue(customxml.PubSubPushTransportsProperty())
-
-        if qname == (customxml.calendarserver_namespace, "pushkey"):
-            notifierID = self._newStoreHome.notifierID()
-            if notifierID is not None and config.Notifications.Services.XMPPNotifier.Enabled:
-                pubSubConfiguration = getPubSubConfiguration(config)
-                nodeName = getPubSubPath(notifierID, pubSubConfiguration)
-
-                # Create the pubsub node so client has something to subscribe
-                # to
-                try:
-                    (yield getNodeCacher().waitForNode(
-                        self._newStoreHome._notifier, nodeName))
-                except NodeCreationException, e:
-                    self.log_warn(e)
-
-                returnValue(customxml.PubSubXMPPPushKeyProperty(nodeName))
-            else:
-                returnValue(customxml.PubSubXMPPPushKeyProperty())
+                        returnValue(customxml.PubSubPushTransportsProperty(*children))
 
 
-        if qname == (customxml.calendarserver_namespace, "xmpp-uri"):
-            notifierID = self._newStoreHome.notifierID()
-            if notifierID is not None and config.Notifications.Services.XMPPNotifier.Enabled:
-                pubSubConfiguration = getPubSubConfiguration(config)
+            returnValue(customxml.PubSubPushTransportsProperty())
 
-                # Create the pubsub node so client has something to subscribe
-                # to
-                nodeName = getPubSubPath(notifierID, pubSubConfiguration)
-                try:
-                    (yield getNodeCacher().waitForNode(
-                        self._newStoreHome._notifier, nodeName))
-                except NodeCreationException, e:
-                    self.log_warn(e)
+        elif qname == (customxml.calendarserver_namespace, "pushkey"):
+            if config.Notifications.Services.XMPPNotifier.Enabled:
+                nodeName = (yield self._newStoreHome.nodeName())
+                if nodeName:
+                    returnValue(customxml.PubSubXMPPPushKeyProperty(nodeName))
+            returnValue(customxml.PubSubXMPPPushKeyProperty())
 
-                returnValue(customxml.PubSubXMPPURIProperty(
-                    getPubSubXMPPURI(notifierID, pubSubConfiguration)))
-            else:
-                returnValue(customxml.PubSubXMPPURIProperty())
+
+        elif qname == (customxml.calendarserver_namespace, "xmpp-uri"):
+            if config.Notifications.Services.XMPPNotifier.Enabled:
+                nodeName = (yield self._newStoreHome.nodeName())
+                if nodeName:
+                    notifierID = self._newStoreHome.notifierID()
+                    if notifierID:
+                        pubSubConfiguration = getPubSubConfiguration(config)
+                        returnValue(customxml.PubSubXMPPURIProperty(
+                            getPubSubXMPPURI(notifierID, pubSubConfiguration)))
+
+            returnValue(customxml.PubSubXMPPURIProperty())
 
         elif qname == (customxml.calendarserver_namespace, "xmpp-heartbeat-uri"):
-            pubSubConfiguration = getPubSubConfiguration(config)
-            if pubSubConfiguration['enabled']:
+            if config.Notifications.Services.XMPPNotifier.Enabled:
+                pubSubConfiguration = getPubSubConfiguration(config)
                 returnValue(
                     customxml.PubSubHeartbeatProperty(
                         customxml.PubSubHeartbeatURIProperty(
@@ -2240,16 +2253,14 @@ class CommonHomeResource(SharedHomeMixin, CalDAVResource):
                         )
                     )
                 )
-            else:
-                returnValue(customxml.PubSubHeartbeatURIProperty())
+            returnValue(customxml.PubSubHeartbeatURIProperty())
 
         elif qname == (customxml.calendarserver_namespace, "xmpp-server"):
-            pubSubConfiguration = getPubSubConfiguration(config)
-            if pubSubConfiguration['enabled']:
+            if config.Notifications.Services.XMPPNotifier.Enabled:
+                pubSubConfiguration = getPubSubConfiguration(config)
                 returnValue(customxml.PubSubXMPPServerProperty(
                     pubSubConfiguration['xmpp-server']))
-            else:
-                returnValue(customxml.PubSubXMPPServerProperty())
+            returnValue(customxml.PubSubXMPPServerProperty())
 
         returnValue((yield super(CommonHomeResource, self).readProperty(property, request)))
 
@@ -2296,6 +2307,9 @@ class CommonHomeResource(SharedHomeMixin, CalDAVResource):
 
     def principalForRecord(self):
         raise NotImplementedError("Subclass must implement principalForRecord()")
+
+    def notifierID(self, label="default"):
+        self._newStoreHome.notifierID(label)
 
     def notifyChanged(self):
         self._newStoreHome.notifyChanged()
@@ -2364,12 +2378,28 @@ class CalendarHomeResource(CommonHomeResource):
         newCalendar = yield self._newStoreHome.calendarWithName(name)
         from twistedcaldav.storebridge import CalendarCollectionResource
         similar = CalendarCollectionResource(
-            newCalendar, self._newStoreHome, name=name,
+            newCalendar, self, name=name,
             principalCollections=self.principalCollections()
         )
         self.propagateTransaction(similar)
         returnValue(similar)
 
+
+    def hasCalendarResourceUIDSomewhereElse(self, uid, ok_object, type):
+        """
+        Test if there are other child object resources with the specified UID.
+        
+        Pass through direct to store.
+        """
+        return self._newStoreHome.hasCalendarResourceUIDSomewhereElse(uid, ok_object._newStoreObject, type)
+
+    def getCalendarResourcesForUID(self, uid, allow_shared=False):
+        """
+        Return all child object resources with the specified UID.
+        
+        Pass through direct to store.
+        """
+        return self._newStoreHome.getCalendarResourcesForUID(uid, allow_shared)
 
     def defaultAccessControlList(self):
         myPrincipal = self.principalForRecord()
@@ -2527,7 +2557,7 @@ class AddressBookHomeResource (CommonHomeResource):
 
         newAddressBook = yield self._newStoreHome.addressbookWithName(name)
         similar = mainCls(
-            newAddressBook, self._newStoreHome, name,
+            newAddressBook, self, name,
             principalCollections=self.principalCollections()
         )
         self.propagateTransaction(similar)

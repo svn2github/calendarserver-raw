@@ -14,23 +14,14 @@
 # limitations under the License.
 ##
 
-import _event_change
+from _event_create import SUMMARY
+from _event_change import measure as _measure
 
-from event import makeAttendees
+def replaceSummary(event, i):
+    return event.replace(SUMMARY, 'Replacement summary %d' % (i,))
 
 
 def measure(host, port, dtrace, attendeeCount, samples):
-    attendees = makeAttendees(attendeeCount)
-
-    def addAttendees(event, i):
-        """
-        Add C{i} new attendees to the given event.
-        """
-        # Find the last CREATED line
-        created = event.rfind('CREATED')
-        # Insert the attendees before it.
-        return event[:created] + attendees + event[created:]
-
-    return _event_change.measure(
-        host, port, dtrace, 0, samples, "add-attendee",
-        addAttendees, eventPerSample=True)
+    return _measure(
+        host, port, dtrace, attendeeCount, samples, "change-summary",
+        replaceSummary)

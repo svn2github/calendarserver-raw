@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ __all__ = ["StoreAddressObjectResource"]
 import types
 
 from twisted.internet import reactor
-from twisted.python.failure import Failure
 
 from txdav.common.icommondatastore import ReservationError
 
@@ -31,16 +30,15 @@ from twisted.internet.defer import Deferred, inlineCallbacks
 from twisted.internet.defer import returnValue
 from twext.web2 import responsecode
 from twext.web2.dav import davxml
-from twext.web2.dav.element.base import dav_namespace
 from twext.web2.dav.http import ErrorResponse
 from twext.web2.dav.util import joinURL, parentForURL
 from twext.web2.http import HTTPError
 from twext.web2.http import StatusResponse
-from twext.web2.http_headers import MimeType, generateContentType
 from twext.web2.stream import MemoryStream
 
 from twistedcaldav.config import config
 from twistedcaldav.carddavxml import NoUIDConflict, carddav_namespace
+from twistedcaldav import customxml
 from twistedcaldav.vcard import Component
 from twext.python.log import Logger
 
@@ -162,13 +160,27 @@ class StoreAddressObjectResource(object):
                 log.err(message)
                 raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Resource name not allowed"))
 
+            # Valid collection size check on the destination parent resource
+            result, message = (yield self.validCollectionSize())
+            if not result:
+                log.err(message)
+                raise HTTPError(ErrorResponse(
+                    responsecode.FORBIDDEN,
+                    customxml.MaxResources(),
+                    message,
+                ))
+
             if not self.sourceadbk:
                 # Valid content type check on the source resource if its not in a vcard collection
                 if self.source is not None:
                     result, message = self.validContentType()
                     if not result:
                         log.err(message)
-                        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "supported-address-data")))
+                        raise HTTPError(ErrorResponse(
+                            responsecode.FORBIDDEN,
+                            (carddav_namespace, "supported-address-data"),
+                            "Invalid content-type",
+                        ))
                 
                     # At this point we need the calendar data to do more tests
                     self.vcard = (yield self.source.vCard())
@@ -179,13 +191,21 @@ class StoreAddressObjectResource(object):
                             self.vcard = Component.fromString(self.vcard)
                     except ValueError, e:
                         log.err(str(e))
-                        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "valid-address-data")))
+                        raise HTTPError(ErrorResponse(
+                            responsecode.FORBIDDEN,
+                            (carddav_namespace, "valid-address-data"),
+                            "Could not parse vCard",
+                        ))
                         
                 # Valid vcard data for CalDAV check
                 result, message = self.validAddressDataCheck()
                 if not result:
                     log.err(message)
-                    raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "valid-addressbook-object-resource")))
+                    raise HTTPError(ErrorResponse(
+                        responsecode.FORBIDDEN,
+                        (carddav_namespace, "valid-addressbook-object-resource"),
+                        "Invalid vCard data",
+                    ))
 
                 # Must have a valid UID at this point
                 self.uid = self.vcard.resourceUID()
@@ -195,7 +215,11 @@ class StoreAddressObjectResource(object):
                 self.uid = yield self.source_index.resourceUIDForName(self.source.name())
                 if self.uid is None:
                     log.err("Source vcard does not have a UID: %s" % self.source.name())
-                    raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "valid-addressbook-object-resource")))
+                    raise HTTPError(ErrorResponse(
+                        responsecode.FORBIDDEN,
+                        (carddav_namespace, "valid-addressbook-object-resource"),
+                        "Missing UID in vCard",
+                    ))
 
                 # FIXME: We need this here because we have to re-index the destination. Ideally it
                 # would be better to copy the index entries from the source and add to the destination.
@@ -205,7 +229,11 @@ class StoreAddressObjectResource(object):
             result, message = self.validSizeCheck()
             if not result:
                 log.err(message)
-                raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "max-resource-size")))
+                raise HTTPError(ErrorResponse(
+                    responsecode.FORBIDDEN,
+                    (carddav_namespace, "max-resource-size"),
+                    "Address data too large",
+                ))
 
             # Check access
             returnValue(None)
@@ -237,6 +265,21 @@ class StoreAddressObjectResource(object):
 
         return result, message
         
+    @inlineCallbacks
+    def validCollectionSize(self):
+        """
+        Make sure that any limits on the number of resources in a collection are enforced.
+        """
+        result = True
+        message = ""
+        if not self.destination.exists() and \
+            config.MaxResourcesPerCollection and \
+            len((yield self.destinationparent.listChildren())) >= config.MaxResourcesPerCollection:
+                result = False
+                message = "Too many resources in collection %s" % (self.destinationparent,)
+
+        returnValue((result, message,))
+        
     def validAddressDataCheck(self):
         """
         Check that the vcard data is valid vCard.
@@ -264,11 +307,11 @@ class StoreAddressObjectResource(object):
         """
         result = True
         message = ""
-        if config.MaximumAttachmentSize:
+        if config.MaxResourceSize:
             vcardsize = len(str(self.vcard))
-            if vcardsize > config.MaximumAttachmentSize:
+            if vcardsize > config.MaxResourceSize:
                 result = False
-                message = "Data size %d bytes is larger than allowed limit %d bytes" % (vcardsize, config.MaximumAttachmentSize)
+                message = "Data size %d bytes is larger than allowed limit %d bytes" % (vcardsize, config.MaxResourceSize)
 
         return result, message
 
@@ -358,16 +401,6 @@ class StoreAddressObjectResource(object):
         returnValue(None)
 
     @inlineCallbacks
-    def doDestinationQuotaCheck(self):
-        """
-        Look at current quota after changes and see if we have gone over the top.
-        """
-        quota = (yield self.destination.quota(self.request))
-        if quota[0] < 0:
-            log.err("Over quota by %d" % (-quota[0],))
-            raise HTTPError(ErrorResponse(responsecode.INSUFFICIENT_STORAGE_SPACE, (dav_namespace, "quota-not-exceeded")))
-
-    @inlineCallbacks
     def run(self):
         """
         Function that does common PUT/COPY/MOVE behavior.
@@ -396,46 +429,30 @@ class StoreAddressObjectResource(object):
                 result, message, rname = yield self.noUIDConflict(self.uid)
                 if not result:
                     log.err(message)
-                    raise HTTPError(ErrorResponse(responsecode.FORBIDDEN,
-                        NoUIDConflict(davxml.HRef.fromString(joinURL(parentForURL(self.destination_uri), rname.encode("utf-8"))))
+                    raise HTTPError(ErrorResponse(
+                        responsecode.FORBIDDEN,
+                        NoUIDConflict(
+                            davxml.HRef.fromString(
+                                joinURL(
+                                    parentForURL(self.destination_uri),
+                                    rname.encode("utf-8")
+                                )
+                            )
+                        ),
+                        "UID already used in another resource",
                     ))
             
             # Do the actual put or copy
             response = (yield self.doStore())
             
-            # Remember the resource's content-type.
-            if self.destinationadbk:
-                content_type = self.request.headers.getHeader("content-type")
-                if content_type is None:
-                    content_type = MimeType("text", "vcard",
-                                            params={"charset":"utf-8"})
-                self.destination.writeDeadProperty(
-                    davxml.GETContentType.fromString(generateContentType(content_type))
-                )
-
-            # Do quota check on destination
-            yield self.doDestinationQuotaCheck()
-    
             if reservation:
                 yield reservation.unreserve()
     
             returnValue(response)
     
         except Exception, err:
-            # Preserve the real traceback to display later, since the error-
-            # handling here yields out of the generator and thereby shreds the
-            # stack.
-            f = Failure()
 
             if reservation:
                 yield reservation.unreserve()
-    
-            # FIXME: transaction needs to be rolled back.
-
-            # Display the traceback.  Unfortunately this will usually be
-            # duplicated by the higher-level exception handler that captures
-            # the thing that raises here, but it's better than losing the
-            # information.
-            f.printTraceback()
 
             raise err

@@ -36,6 +36,7 @@ from twext.web2.dav.davxml import WebDAVDocument
 
 from txdav.base.propertystore.base import AbstractPropertyStore, PropertyName, validKey
 from txdav.idav import PropertyStoreError
+from twisted.python.reflect import namedAny
 
 
 #
@@ -61,15 +62,11 @@ class PropertyStore(AbstractPropertyStore):
 
         http://undefined.org/python/#xattr
     """
-    #
-    # Dead properties are stored as extended attributes on disk.  In order to
-    # avoid conflicts with other attributes, prefix dead property names.
-    #
-    deadPropertyXattrPrefix = "WebDAV:"
 
-    # Linux seems to require that attribute names use a "user." prefix.
-    if sys.platform == "linux2":
-        deadPropertyXattrPrefix = "user." + deadPropertyXattrPrefix
+    # Mimic old xattr-prefix behavior by importing it directly.
+    deadPropertyXattrPrefix = namedAny(
+        "twext.web2.dav.xattrprops.xattrPropertyStore.deadPropertyXattrPrefix"
+    )
 
     # There is a 127 character limit for xattr keys so we need to compress/expand
     # overly long namespaces to help stay under that limit now that GUIDs are also
@@ -114,7 +111,7 @@ class PropertyStore(AbstractPropertyStore):
         qname, uid = effective
         namespace = self._namespaceCompress.get(qname.namespace, qname.namespace) if compressNamespace else qname.namespace
         result = urllib.quote("{%s}%s" % (namespace, qname.name), safe="{}:")
-        if uid and uid != self._defaultuser:
+        if uid and uid != self._defaultUser:
             result = uid + result
         r = self.deadPropertyXattrPrefix + result
         return r
@@ -129,7 +126,7 @@ class PropertyStore(AbstractPropertyStore):
         if (index1 is - 1 or index2 is - 1 or not len(name) > index2):
             raise ValueError("Invalid encoded name: %r" % (name,))
         if index1 == 0:
-            uid = self._defaultuser
+            uid = self._defaultUser
         else:
             uid = name[:index1]
         propnamespace = name[index1 + 1:index2]
@@ -259,6 +256,11 @@ class PropertyStore(AbstractPropertyStore):
         for effectivekey in self.modified:
             if effectivekey[1] == uid and effectivekey not in seen:
                 yield effectivekey[0]
+
+    def _removeResource(self):
+        # xattrs are removed when the underlying file is deleted so just clear out cached changes
+        self.removed.clear()
+        self.modified.clear()
 
     #
     # I/O

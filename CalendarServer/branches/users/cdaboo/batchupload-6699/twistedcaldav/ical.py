@@ -1310,9 +1310,10 @@ class Component (object):
 
         self.validateComponentsForCalDAV(False)
 
-    def validateComponentsForCalDAV(self, method):
+    def validateComponentsForCalDAV(self, method, fix=False):
         """
         @param method:     True if METHOD property is allowed, False otherwise.
+        @param fix:        True to try and fix bogus data
         @raise InvalidICalendarDataError: if the given calendar component is not valid for
             use as a X{CalDAV} resource.
         """
@@ -1405,18 +1406,30 @@ class Component (object):
                 # If they're not both date or both date-time, raise error
                 if (subcomponent.hasProperty("DTSTART") and
                     subcomponent.hasProperty("RRULE")):
-                    dtType = type(subcomponent.getProperty("DTSTART").value())
+                    dtValue = subcomponent.propertyNativeValue("DTSTART")
+                    dtType = type(dtValue)
+                    # Using properties("RRULE") rather than getRRuleSet() here
+                    # because the dateutil rrule's _until values are datetime
+                    # even if the UNTIL is a date (and therefore we can't
+                    # check validity without doing the following):
                     for rrule in subcomponent.properties("RRULE"):
                         indexedTokens = {}
                         indexedTokens.update([valuePart.split("=")
                             for valuePart in rrule.value().split(";")])
-                        until = indexedTokens.get('UNTIL', None)
+                        until = indexedTokens.get("UNTIL", None)
                         if until:
                             untilType = datetime.date if len(until) == 8 else datetime.datetime
                             if untilType is not dtType:
                                 msg = "Calendar resources must have matching type for DTSTART and UNTIL"
                                 log.debug(msg)
-                                raise InvalidICalendarDataError(msg)
+                                if fix:
+                                    rrules = subcomponent.getRRuleSet()
+                                    if rrules:
+                                        log.debug("Fixing mismatch")
+                                        # vobject fixes DTSTART/UNTIL mismatches
+                                        subcomponent.setRRuleSet(rrules)
+                                else:
+                                    raise InvalidICalendarDataError(msg)
 
                 timezone_refs.update(subcomponent.timezoneIDs())
         

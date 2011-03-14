@@ -1,3 +1,4 @@
+
 ##
 # Copyright (c) 2010 Apple Inc. All rights reserved.
 #
@@ -5,7 +6,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,15 +15,6 @@
 # limitations under the License.
 ##
 
-from event import SUMMARY
-
-import _event_change
-
-def replaceSummary(event, i):
-    return event.replace(SUMMARY, 'Replacement summary %d' % (i,))
-
-
-def measure(host, port, dtrace, attendeeCount, samples):
-    return _event_change.measure(
-        host, port, dtrace, attendeeCount, samples, "change-summary",
-        replaceSummary)
+"""
+Tests for L{twext.enterprise}.
+"""

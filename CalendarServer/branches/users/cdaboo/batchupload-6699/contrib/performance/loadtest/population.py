@@ -22,20 +22,58 @@ certain usage parameters.
 
 from itertools import izip
 
+from twisted.python.util import FancyEqMixin
+from twisted.python.log import msg, err
+
 from stats import mean, median, stddev, mad
-from loadtest.ical import SnowLeopard
+from loadtest.ical import SnowLeopard, RequestLogger
+from loadtest.profiles import Eventer, Inviter, Accepter
 
 
-class PopulationParameters(object):
+class ClientType(object, FancyEqMixin):
+    """
+    @ivar clientType: An L{ICalendarClient} implementation
+    @ivar profileTypes: A list of L{ICalendarUserProfile} implementations
+    """
+    compareAttributes = ("clientType", "profileTypes")
+
+    def __init__(self, clientType, profileTypes):
+        self.clientType = clientType
+        self.profileTypes = profileTypes
+
+
+
+class PopulationParameters(object, FancyEqMixin):
     """
     Descriptive statistics about a population of Calendar Server users.
     """
+    compareAttributes = ("clients",)
+
+    def __init__(self):
+        self.clients = []
+
+
+    def addClient(self, weight, clientType):
+        """
+        Add another type of client to these parameters.
+
+        @param weight: A C{int} giving the weight of this client type.
+            The higher the weight, the more frequently a client of
+            this type will show up in the population described by
+            these parameters.
+
+        @param clientType: A L{ClientType} instance describing the
+            type of client to add.
+        """
+        self.clients.append((weight, clientType))
+
+
     def clientTypes(self):
         """
         Return a list of two-tuples giving the weights and types of
         clients in the population.
         """
-        return [(1, SnowLeopard)]
+        return self.clients
 
 
 
@@ -66,7 +104,7 @@ class Populator(object):
         population with the given parameters.
         
         @type parameters: L{PopulationParameters}
-        @rtype: generator of L{ICalendarClient} providers
+        @rtype: generator of L{ClientType} instances
         """
         for (clientType,) in izip(self._cycle(parameters.clientTypes())):
             yield clientType
@@ -83,14 +121,19 @@ class CalendarClientSimulator(object):
         self._user = 1
 
 
-    def _nextUser(self):
-        from urllib2 import HTTPDigestAuthHandler
-        user = "user%02d" % (self._user,)
+    def _nextUserNumber(self):
+        result = self._user
         self._user += 1
+        return result
+
+
+    def _createUser(self, number):
+        from urllib2 import HTTPDigestAuthHandler
+        user = "user%02d" % (number,)
         auth = HTTPDigestAuthHandler()
         auth.add_password(
             realm="Test Realm",
-            uri="http://127.0.0.1:8008/",
+            uri="http://%s:%d/" % (self.host, self.port),
             user=user,
             passwd=user)
         return user, auth
@@ -98,28 +141,125 @@ class CalendarClientSimulator(object):
 
     def add(self, numClients):
         for n in range(numClients):
-            user, auth = self._nextUser()
-            client = self._pop.next()(self.reactor, self.host, self.port, user, auth)
-            client.run()
-        print 'Now running', self._user, 'clients.'
+            number = self._nextUserNumber()
+            user, auth = self._createUser(number)
+
+            clientType = self._pop.next()
+            client = clientType.clientType(
+                self.reactor, self.host, self.port, user, auth)
+            d = client.run()
+            d.addCallbacks(self._clientSuccess, self._clientFailure)
+
+            for profileType in clientType.profileTypes:
+                profileType(self.reactor, client, number).run()
+        msg(type="status", clientCount=self._user - 1)
+
+
+    def _clientSuccess(self, result):
+        pass
+
+
+    def _clientFailure(self, reason):
+        err(reason, "Client stopped with error")
 
 
 
-class Statistics(object):
+class SmoothRampUp(object):
+    def __init__(self, reactor, groups, groupSize, interval):
+        self.reactor = reactor
+        self.groups = groups
+        self.groupSize = groupSize
+        self.interval = interval
+
+
+    def run(self, simulator):
+        for i in range(self.groups):
+            self.reactor.callLater(
+                self.interval * i, simulator.add, self.groupSize)
+
+
+
+class StatisticsBase(object):
+    def observe(self, event):
+        if event.get('type') == 'response':
+            self.eventReceived(event)
+
+
+    def report(self):
+        pass
+
+
+
+class SimpleStatistics(StatisticsBase):
     def __init__(self):
         self._times = []
 
-    def observe(self, event):
-        if event.get('type') == 'request':
-            self._times.append(event['duration'])
-            if len(self._times) == 200:
-                print 'mean:', mean(self._times)
-                print 'median:', median(self._times)
-                print 'stddev:', stddev(self._times)
-                print 'mad:', mad(self._times)
-                del self._times[:100]
 
-    
+    def eventReceived(self, event):
+        self._times.append(event['duration'])
+        if len(self._times) == 200:
+            print 'mean:', mean(self._times)
+            print 'median:', median(self._times)
+            print 'stddev:', stddev(self._times)
+            print 'mad:', mad(self._times)
+            del self._times[:100]
+
+
+
+class ReportStatistics(StatisticsBase):
+    _fields = [
+        ('operation', 10, '%10s'),
+        ('count', 8, '%8s'),
+        ('failed', 8, '%8s'),
+        ('>3sec', 8, '%8s'),
+        ('mean', 8, '%8.4f'),
+        ('median', 8, '%8.4f'),
+        ]
+
+    def __init__(self):
+        self._perMethodTimes = {}
+
+
+    def eventReceived(self, event):
+        dataset = self._perMethodTimes.setdefault(event['method'], [])
+        dataset.append((event['success'], event['duration']))
+
+
+    def _printHeader(self):
+        format = []
+        labels = []
+        for (label, width, fmt) in self._fields:
+            format.append('%%%ds' % (width,))
+            labels.append(label)
+        print ''.join(format) % tuple(labels)
+
+
+    def _summarizeData(self, method, data):
+        failed = 0
+        threesec = 0
+        durations = []
+        for (success, duration) in data:
+            if not success:
+                failed += 1
+            if duration > 3:
+                threesec += 1
+            durations.append(duration)
+
+        return method, len(data), failed, threesec, mean(durations), median(durations)
+
+
+    def _printData(self, *values):
+        format = ''.join(fmt for (label, width, fmt) in self._fields)
+        print format % values
+
+
+    def report(self):
+        print
+        self._printHeader()
+        for method, data in self._perMethodTimes.iteritems():
+            self._printData(*self._summarizeData(method, data))
+
+
 def main():
     import random
 
@@ -127,21 +267,28 @@ def main():
     from twisted.internet.task import LoopingCall
     from twisted.python.log import addObserver
 
-    addObserver(Statistics().observe)
+    from twisted.python.failure import startDebugMode
+    startDebugMode()
+
+    report = ReportStatistics()
+    addObserver(SimpleStatistics().observe)
+    addObserver(report.observe)
+    addObserver(RequestLogger().observe)
 
     r = random.Random()
     r.seed(100)
     populator = Populator(r)
     parameters = PopulationParameters()
+    parameters.addClient(
+        1, ClientType(SnowLeopard, [Eventer, Inviter, Accepter]))
     simulator = CalendarClientSimulator(
         populator, parameters, reactor, '127.0.0.1', 8008)
 
-    # Add some clients.
-    call = LoopingCall(simulator.add, 1)
-    call.start(3)
-    reactor.callLater(3 * 90, call.stop)
+    arrivalPolicy = SmoothRampUp(groups=10, groupSize=1, interval=3)
+    arrivalPolicy.run(reactor, simulator)
 
     reactor.run()
+    report.report()
 
 if __name__ == '__main__':
     main()

@@ -26,7 +26,7 @@ try:
 
     directory = opendirectory.odInit("/Search")
 
-    results = list(opendirectory.queryRecordsWithAttribute_list(
+    results = opendirectory.queryRecordsWithAttribute_list(
         directory,
         dsattributes.kDS1AttrGeneratedUID,
         "9DC04A74-E6DD-11DF-9492-0800200C9A66",
@@ -35,7 +35,7 @@ try:
         dsattributes.kDSStdRecordTypeUsers,
         None,
         count=0
-    ))
+    )
     recordNames = [x[0] for x in results]
     # Local user:
     if "odtestalbert" in recordNames:
@@ -126,12 +126,12 @@ if runTests:
         def test_listAllRecordsWithAttributes_list_master(self):
 
             directory = opendirectory.odInit("/LDAPv3/127.0.0.1")
-            results = list(opendirectory.listAllRecordsWithAttributes_list(
+            results = opendirectory.listAllRecordsWithAttributes_list(
                 directory,
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.masterUsers:
                 self.assertTrue(recordName in recordNames)
@@ -139,12 +139,12 @@ if runTests:
         def test_listAllRecordsWithAttributes_list_local(self):
 
             directory = opendirectory.odInit("/Local/Default")
-            results = list(opendirectory.listAllRecordsWithAttributes_list(
+            results = opendirectory.listAllRecordsWithAttributes_list(
                 directory,
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.localUsers:
                 self.assertTrue(recordName in recordNames)
@@ -154,7 +154,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrFirstName,
                 "betty",
@@ -163,7 +163,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestbetty" in recordNames)
 
@@ -171,7 +171,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrFirstName,
                 "betty",
@@ -185,7 +185,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestbetty" in recordNames)
 
@@ -193,7 +193,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrFirstName,
                 "Amand",
@@ -202,7 +202,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestamanda" in recordNames)
 
@@ -210,7 +210,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrFirstName,
                 "Amand",
@@ -224,7 +224,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestamanda" in recordNames)
 
@@ -232,7 +232,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrFirstName,
                 "mand",
@@ -241,7 +241,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestamanda" in recordNames)
 
@@ -249,7 +249,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrFirstName,
                 "mand",
@@ -263,7 +263,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestamanda" in recordNames)
 
@@ -271,7 +271,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrLastName,
                 "test",
@@ -280,18 +280,20 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.masterUsers:
-                self.assertTrue(recordName in recordNames)
+                if info[dsattributes.kDS1AttrLastName] == "Test":
+                    self.assertTrue(recordName in recordNames)
             for recordName, info in setup_directory.localUsers:
-                self.assertTrue(recordName in recordNames)
+                if info[dsattributes.kDS1AttrLastName] == "Test":
+                    self.assertTrue(recordName in recordNames)
 
         def test_queryRecordsWithAttribute_list_lastname_exact_insensitive_match_multitype(self):
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrLastName,
                 "test",
@@ -305,18 +307,20 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.masterUsers:
-                self.assertTrue(recordName in recordNames)
+                if info[dsattributes.kDS1AttrLastName] == "Test":
+                    self.assertTrue(recordName in recordNames)
             for recordName, info in setup_directory.localUsers:
-                self.assertTrue(recordName in recordNames)
+                if info[dsattributes.kDS1AttrLastName] == "Test":
+                    self.assertTrue(recordName in recordNames)
 
         def test_queryRecordsWithAttribute_list_lastname_begins_insensitive_match(self):
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrLastName,
                 "tes",
@@ -325,7 +329,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.masterUsers:
                 self.assertTrue(recordName in recordNames)
@@ -336,7 +340,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrLastName,
                 "tes",
@@ -350,7 +354,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.masterUsers:
                 self.assertTrue(recordName in recordNames)
@@ -361,7 +365,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrLastName,
                 "es",
@@ -370,7 +374,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.masterUsers:
                 self.assertTrue(recordName in recordNames)
@@ -381,7 +385,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrLastName,
                 "es",
@@ -395,7 +399,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             for recordName, info in setup_directory.masterUsers:
                 self.assertTrue(recordName in recordNames)
@@ -407,7 +411,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDSNAttrEMailAddress,
                 "aman",
@@ -416,7 +420,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestamanda" in recordNames)
 
@@ -426,7 +430,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDSNAttrEMailAddress,
                 "aman",
@@ -440,7 +444,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestamanda" in recordNames)
 
@@ -450,7 +454,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrGeneratedUID,
                 "9DC04A70-E6DD-11DF-9492-0800200C9A66",
@@ -459,7 +463,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             # OD Master user:
             self.assertTrue("odtestamanda" in recordNames)
@@ -468,7 +472,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrGeneratedUID,
                 "9DC04A70-E6DD-11DF-9492-0800200C9A66",
@@ -482,7 +486,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             # OD Master user:
             self.assertTrue("odtestamanda" in recordNames)
@@ -492,7 +496,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrGeneratedUID,
                 "9DC04A74-E6DD-11DF-9492-0800200C9A66",
@@ -501,7 +505,7 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             # Local user:
             self.assertTrue("odtestalbert" in recordNames)
@@ -511,7 +515,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrGeneratedUID,
                 "9DC04A74-E6DD-11DF-9492-0800200C9A66",
@@ -525,7 +529,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             # Local user:
             self.assertTrue("odtestalbert" in recordNames)
@@ -536,7 +540,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDSNAttrRecordName,
                 "odtestgrouptop",
@@ -548,20 +552,20 @@ if runTests:
                     dsattributes.kDSNAttrNestedGroups,
                 ],
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestgrouptop" in recordNames)
             groupMembers = results[0][1][dsattributes.kDSNAttrGroupMembers]
             self.assertEquals(
                 groupMembers,
-                setup_directory.masterGroups[0][1][dsattributes.kDSNAttrGroupMembers]
+                setup_directory.masterGroups[1][1][dsattributes.kDSNAttrGroupMembers]
             )
 
         def test_queryRecordsWithAttribute_list_groupMembers_recordName_local(self):
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDSNAttrRecordName,
                 "odtestsubgroupa",
@@ -573,7 +577,7 @@ if runTests:
                     dsattributes.kDSNAttrNestedGroups,
                 ],
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestsubgroupa" in recordNames)
             groupMembers = results[0][1][dsattributes.kDSNAttrGroupMembers]
@@ -587,7 +591,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrGeneratedUID,
                 "6C6CD280-E6E3-11DF-9492-0800200C9A66",
@@ -599,20 +603,20 @@ if runTests:
                     dsattributes.kDSNAttrNestedGroups,
                 ],
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestgrouptop" in recordNames)
             groupMembers = results[0][1][dsattributes.kDSNAttrGroupMembers]
             self.assertEquals(
                 groupMembers,
-                setup_directory.masterGroups[0][1][dsattributes.kDSNAttrGroupMembers]
+                setup_directory.masterGroups[1][1][dsattributes.kDSNAttrGroupMembers]
             )
 
         def test_queryRecordsWithAttribute_list_groupMembers_guid_local(self):
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrGeneratedUID,
                 "6C6CD281-E6E3-11DF-9492-0800200C9A66",
@@ -624,7 +628,7 @@ if runTests:
                     dsattributes.kDSNAttrNestedGroups,
                 ],
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestsubgroupa" in recordNames)
             groupMembers = results[0][1][dsattributes.kDSNAttrGroupMembers]
@@ -638,7 +642,7 @@ if runTests:
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDSNAttrGroupMembers,
                 "9DC04A70-E6DD-11DF-9492-0800200C9A66",
@@ -649,12 +653,12 @@ if runTests:
                     dsattributes.kDS1AttrGeneratedUID,
                 ],
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertTrue("odtestgrouptop" in recordNames)
 
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDSNAttrNestedGroups,
                 "9DC04A70-E6DD-11DF-9492-0800200C9A66",
@@ -665,7 +669,7 @@ if runTests:
                     dsattributes.kDS1AttrGeneratedUID,
                 ],
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             self.assertEquals([], recordNames)
 
@@ -682,7 +686,7 @@ if runTests:
 
             compound = dsquery.expression(dsquery.expression.OR, expressions).generate()
 
-            results = list(opendirectory.queryRecordsWithAttributes_list(
+            results = opendirectory.queryRecordsWithAttributes_list(
                 directory,
                 compound,
                 True,
@@ -694,7 +698,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             # Master user:
             self.assertTrue("odtestamanda" in recordNames)
@@ -712,7 +716,7 @@ if runTests:
 
             compound = dsquery.expression(dsquery.expression.OR, expressions).generate()
 
-            results = list(opendirectory.queryRecordsWithAttributes_list(
+            results = opendirectory.queryRecordsWithAttributes_list(
                 directory,
                 compound,
                 True,
@@ -724,7 +728,7 @@ if runTests:
                 ],
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             recordNames = [x[0] for x in results]
             # Local user:
             self.assertTrue("odtestbill" in recordNames)
@@ -768,6 +772,38 @@ if runTests:
                 user, challenge, response, method)
             self.assertTrue(result)
 
+        def test_digestAuth_master_wrong_password(self):
+            directory = opendirectory.odInit("/Search")
+
+            user = "odtestamanda"
+            password = "wrong"
+            node = "/LDAPv3/127.0.0.1"
+            uri = "principals/users/odtestamanda"
+            method = "PROPFIND"
+
+            challenge, response = getChallengeResponse(user, password, node,
+                uri, method)
+
+            self.assertRaises(opendirectory.ODError,
+                opendirectory.authenticateUserDigest,
+                directory, node, user, challenge, response, method)
+
+        def test_digestAuth_master_missing_record(self):
+            directory = opendirectory.odInit("/Search")
+
+            user = "missingperson"
+            password = "wrong"
+            node = "/LDAPv3/127.0.0.1"
+            uri = "principals/users/odtestamanda"
+            method = "PROPFIND"
+
+            challenge, response = getChallengeResponse(user, password, node,
+                uri, method)
+
+            self.assertRaises(opendirectory.ODError,
+                opendirectory.authenticateUserDigest,
+                directory, node, user, challenge, response, method)
+
         def test_digestAuth_local(self):
             directory = opendirectory.odInit("/Search")
 
@@ -795,11 +831,11 @@ if runTests:
                 else:
                     self.assertTrue(type(value) is str)
 
-        def test_nonascii_record(self):
+        def test_nonascii_record_by_guid(self):
 
             directory = opendirectory.odInit("/Search")
 
-            results = list(opendirectory.queryRecordsWithAttribute_list(
+            results = opendirectory.queryRecordsWithAttribute_list(
                 directory,
                 dsattributes.kDS1AttrGeneratedUID,
                 "CA795296-D77A-4E09-A72F-869920A3D284",
@@ -808,9 +844,45 @@ if runTests:
                 dsattributes.kDSStdRecordTypeUsers,
                 USER_ATTRIBUTES,
                 count=0
-            ))
+            )
             result = results[0][1]
             self.assertEquals(
                 result[dsattributes.kDS1AttrDistinguishedName],
                 "Unicode Test \xc3\x90"
+            )
+
+        def test_nonascii_record_by_name(self):
+
+            directory = opendirectory.odInit("/Search")
+
+            results = opendirectory.queryRecordsWithAttribute_list(
+                directory,
+                dsattributes.kDS1AttrDistinguishedName,
+                "Unicode Test \xc3\x90",
+                dsattributes.eDSExact,
+                False,
+                dsattributes.kDSStdRecordTypeUsers,
+                USER_ATTRIBUTES,
+                count=0
+            )
+            result = results[0][1]
+            self.assertEquals(
+                result[dsattributes.kDS1AttrGeneratedUID],
+                "CA795296-D77A-4E09-A72F-869920A3D284"
+            )
+
+            results = opendirectory.queryRecordsWithAttribute_list(
+                directory,
+                dsattributes.kDS1AttrFirstName,
+                "\xe4\xbd\x90\xe8\x97\xa4",
+                dsattributes.eDSStartsWith,
+                False,
+                dsattributes.kDSStdRecordTypeUsers,
+                USER_ATTRIBUTES,
+                count=0
+            )
+            result = results[0][1]
+            self.assertEquals(
+                result[dsattributes.kDS1AttrGeneratedUID],
+                "C662F833-75AD-4589-9879-5FF102943CEF"
             )

@@ -1,6 +1,6 @@
 # -*- test-case-name: txdav.carddav.datastore.test.test_file -*-
 ##
-# Copyright (c) 2010 Apple Inc. All rights reserved.
+# Copyright (c) 2010-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ from errno import ENOENT
 
 from twext.web2.dav.element.rfc2518 import ResourceType, GETContentType
 from twext.web2.dav.resource import TwistedGETContentMD5
+from twext.web2.http_headers import MimeType
 
 from twisted.python import hashlib
 
@@ -67,8 +68,8 @@ class AddressBookHome(CommonHome):
     _topPath = "addressbooks"
     _notifierPrefix = "CardDAV"
 
-    def __init__(self, uid, path, addressbookStore, transaction, notifier):
-        super(AddressBookHome, self).__init__(uid, path, addressbookStore, transaction, notifier)
+    def __init__(self, uid, path, addressbookStore, transaction, notifiers):
+        super(AddressBookHome, self).__init__(uid, path, addressbookStore, transaction, notifiers)
 
         self._childClass = AddressBook
 
@@ -92,7 +93,7 @@ class AddressBook(CommonHomeChild):
     """
     implements(IAddressBook)
 
-    def __init__(self, name, addressbookHome, realName=None):
+    def __init__(self, name, addressbookHome, owned, realName=None):
         """
         Initialize an addressbook pointing at a path on disk.
 
@@ -108,7 +109,7 @@ class AddressBook(CommonHomeChild):
         @type realName: C{str}
         """
         
-        super(AddressBook, self).__init__(name, addressbookHome, realName=realName)
+        super(AddressBook, self).__init__(name, addressbookHome, owned, realName=realName)
 
         self._index = Index(self)
         self._invites = Invites(self)
@@ -146,6 +147,11 @@ class AddressBook(CommonHomeChild):
     def _doValidate(self, component):
         component.validForCardDAV()
 
+    def contentType(self):
+        """
+        The content type of Addresbook objects is text/vcard.
+        """
+        return MimeType.fromString("text/vcard; charset=utf-8")
 
 class AddressBookObject(CommonObjectResource):
     """
@@ -168,8 +174,6 @@ class AddressBookObject(CommonObjectResource):
 
     @writeOperation
     def setComponent(self, component, inserting=False):
-
-        old_size = 0 if inserting else self.size()
 
         validateAddressBookComponent(self, self._addressbook, component, inserting)
 
@@ -205,16 +209,11 @@ class AddressBookObject(CommonObjectResource):
             # Now re-write the original properties on the updated file
             self.properties().flush()
 
-            # Adjust quota
-            quota_adjustment = self.size() - old_size
-            self._addressbook._home.adjustQuotaUsedBytes(quota_adjustment)
-
             def undo():
                 if backup:
                     backup.moveTo(self._path)
                 else:
                     self._path.remove()
-                self._addressbook._home.adjustQuotaUsedBytes(-quota_adjustment)
             return undo
         self._transaction.addOperation(do, "set addressbook component %r" % (self.name(),))
 
@@ -269,6 +268,12 @@ class AddressBookObject(CommonObjectResource):
             self._uid = self.component().resourceUID()
         return self._uid
 
+    # IDataStoreObject
+    def contentType(self):
+        """
+        The content type of Addressbook objects is text/x-vcard.
+        """
+        return MimeType.fromString("text/vcard; charset=utf-8")
 
 class AddressBookStubResource(CommonStubResource):
     """

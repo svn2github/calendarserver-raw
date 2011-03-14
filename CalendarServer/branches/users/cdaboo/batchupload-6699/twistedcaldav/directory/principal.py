@@ -35,8 +35,6 @@ from cgi import escape
 from urllib import unquote
 from urlparse import urlparse
 
-from weakref import WeakValueDictionary
-
 from twisted.cred.credentials import UsernamePassword
 from twisted.python.failure import Failure
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -52,6 +50,7 @@ from twext.python.log import Logger
 
 from twistedcaldav.authkerb import NegotiateCredentials
 from twistedcaldav.config import config
+from twistedcaldav.cache import DisabledCacheNotifier, PropfindCacheMixin
 from twistedcaldav.directory import calendaruserproxy
 from twistedcaldav.directory import augment
 from twistedcaldav.directory.calendaruserproxy import CalendarUserProxyPrincipalResource
@@ -316,12 +315,12 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
         # First see if the address is a principal URI
         principal = self._principalForURI(address)
         if principal:
-            if isinstance(principal, DirectoryCalendarPrincipalResource):
+            if isinstance(principal, DirectoryCalendarPrincipalResource) and principal.record.enabledForCalendaring:
                 return principal
         else:
             # Next try looking it up in the directory
             record = self.directory.recordWithCalendarUserAddress(address)
-            if record is not None and record.enabled:
+            if record is not None and record.enabled and record.enabledForCalendaring:
                 return self.principalForRecord(record)
 
         log.debug("No principal for calendar user address: %r" % (address,))
@@ -436,7 +435,6 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
         )
 
         self.parent = parent
-        self._principalResourceCache = WeakValueDictionary()
 
     def principalForUID(self, uid):
         return self.parent.principalForUID(uid)
@@ -448,15 +446,12 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
         if record is None:
             return None
 
-        if record in self._principalResourceCache:
-            return self._principalResourceCache[record]
         if record.enabledForCalendaring or record.enabledForAddressBooks:
             # XXX these are different features and one should not automatically
             # imply the other...
             principal = DirectoryCalendarPrincipalResource(self, record)
         else:
             principal = DirectoryPrincipalResource(self, record)
-        self._principalResourceCache[record] = principal
         return principal
 
     ##
@@ -500,7 +495,7 @@ class DirectoryPrincipalUIDProvisioningResource (DirectoryProvisioningResource):
     def principalCollections(self):
         return self.parent.principalCollections()
 
-class DirectoryPrincipalResource (PermissionsMixIn, DAVPrincipalResource):
+class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrincipalResource):
     """
     Directory principal resource.
     """
@@ -514,12 +509,16 @@ class DirectoryPrincipalResource (PermissionsMixIn, DAVPrincipalResource):
             davxml.ResourceID.qname(),
         )
 
+    cacheNotifierFactory = DisabledCacheNotifier
+
     def __init__(self, parent, record):
         """
         @param parent: the parent of this resource.
         @param record: the L{IDirectoryRecord} that this resource represents.
         """
         super(DirectoryPrincipalResource, self).__init__()
+
+        self.cacheNotifier = self.cacheNotifierFactory(self, cacheHandle="PrincipalToken")
 
         if self.isCollection():
             slash = "/"
@@ -820,6 +819,12 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
     def liveProperties(self):
         return DirectoryPrincipalResource.liveProperties(self) + CalendarPrincipalResource.liveProperties(self)
 
+    def calendarsEnabled(self):
+        return config.EnableCalDAV and self.record.enabledForCalendaring
+    
+    def addressBooksEnabled(self):
+        return config.EnableCardDAV and self.record.enabledForAddressBooks
+    
     @inlineCallbacks
     def readProperty(self, property, request):
         # Ouch, multiple inheritance.
@@ -829,17 +834,28 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         returnValue(result)
 
     def extraDirectoryBodyItems(self, request):
-        return "".join((
-            """\nCalendar homes:\n"""          , format_list(format_link(u) for u in self.calendarHomeURLs()),
-            """\nCalendar user addresses:\n""" , format_list(format_link(a) for a in self.calendarUserAddresses()),
-            """\nAddress Book homes:\n"""       , format_list(format_link(u) for u in self.addressBookHomeURLs()),
-        ))
+        extra = ""
+        if self.record.enabledForCalendaring:
+            extra += "".join((
+                """\nCalendar homes:\n"""          , format_list(format_link(u) for u in self.calendarHomeURLs()),
+                """\nCalendar user addresses:\n""" , format_list(format_link(a) for a in self.calendarUserAddresses()),
+            ))
+        if self.record.enabledForAddressBooks:
+            extra += "".join((
+                """\nAddress Book homes:\n"""       , format_list(format_link(u) for u in self.addressBookHomeURLs()),
+            ))
+        return extra
 
     ##
     # CalDAV
     ##
 
     def calendarUserAddresses(self):
+
+        # No CUAs if not enabledForCalendaring.
+        if not self.record.enabledForCalendaring:
+            return set()
+
         # Get any CUAs defined by the directory implementation.
         addresses = set(self.record.calendarUserAddresses)
 
@@ -888,7 +904,10 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
         returnValue(notification)
 
     def calendarHomeURLs(self):
-        homeURL = self._homeChildURL(None)
+        if self.record.enabledForCalendaring:
+            homeURL = self._homeChildURL(None)
+        else:
+            homeURL = ""
         return (homeURL,) if homeURL else ()
 
     def scheduleInboxURL(self):
@@ -910,7 +929,10 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             return None
 
     def addressBookHomeURLs(self):
-        homeURL = self._addressBookHomeChildURL(None)
+        if self.record.enabledForAddressBooks:
+            homeURL = self._addressBookHomeChildURL(None)
+        else:
+            homeURL = ""
         return (homeURL,) if homeURL else ()
 
     def _homeChildURL(self, name):
@@ -921,7 +943,7 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
                 self.record.service.calendarHomesCollection.url(),
                 uidsResourceName,
                 self.record.uid
-            )
+            ) + "/"
         url = self.calendarHomeURL
         if url is None:
             return None
@@ -946,7 +968,7 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
                 self.record.service.addressBookHomesCollection.url(),
                 uidsResourceName,
                 self.record.uid
-            )
+            ) + "/"
         url = self.addressBookHomeURL
         if url is None:
             return None
@@ -970,7 +992,8 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             return self
 
         if config.EnableProxyPrincipals and name in ("calendar-proxy-read", "calendar-proxy-write"):
-            return CalendarUserProxyPrincipalResource(self, name)
+            # name is required to be str
+            return CalendarUserProxyPrincipalResource(self, str(name))
         else:
             return None
 

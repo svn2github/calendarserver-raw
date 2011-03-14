@@ -81,7 +81,11 @@ def report_urn_ietf_params_xml_ns_carddav_addressbook_query(self, request, addre
         result, message, generate_address_data = report_common.validPropertyListAddressDataTypeVersion(query)
         if not result:
             log.err(message)
-            raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "supported-address-data")))
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (carddav_namespace, "supported-address-data"),
+                "Invalid address-data",
+            ))
         
     else:
         raise AssertionError("We shouldn't be here")
@@ -89,7 +93,11 @@ def report_urn_ietf_params_xml_ns_carddav_addressbook_query(self, request, addre
     # Verify that the filter element is valid
     if (filter is None) or not filter.valid():
         log.err("Invalid filter element: %r" % (filter,))
-        raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (carddav_namespace, "valid-filter")))
+        raise HTTPError(ErrorResponse(
+            responsecode.FORBIDDEN,
+            (carddav_namespace, "valid-filter"),
+            "Invalid filter element",
+        ))
 
     matchcount = [0,]
     max_number_of_results = [config.MaxQueryWithDataResults if generate_address_data else None,]

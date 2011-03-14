@@ -238,7 +238,7 @@ class CalendarServerLogAnalyzer(object):
                 self.parseLine(line)
         
                 # Filter method
-                if self.ignoreNonHTTPMethods and self.currentLine.method not in httpMethods:
+                if self.ignoreNonHTTPMethods and not self.currentLine.method.startswith("REPORT(") and self.currentLine.method not in httpMethods:
                     self.currentLine.method = "???"
 
                 # Do hour ranges
@@ -692,7 +692,7 @@ class CalendarServerLogAnalyzer(object):
     def summarizeUserInteraction(self, adjustedMethod):
         summary = {}
         otherData = self.otherUserCalendarRequests.get(adjustedMethod, {})
-        for user, others in otherData.iteritems():
+        for _ignore_user, others in otherData.iteritems():
             bucket = self.getCountBucket(len(others), userInteractionCountBuckets)
             summary[bucket] = summary.get(bucket, 0) + 1
         return summary
@@ -1229,7 +1229,7 @@ class CalendarServerLogAnalyzer(object):
         total = sum(summary.values())
         for k, v in sorted(summary.iteritems()):
             # Chop off the "(a):" part.
-            table.addRow((k[4:], v, 100.0 * float(v) / total))
+            table.addRow((k[4:], v, safePercent(float(v), total)))
         table.printTabDelimitedData() if doTabs else table.printTable()
         print ""
 

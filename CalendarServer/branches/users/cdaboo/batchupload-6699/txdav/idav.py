@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2010 Apple Inc. All rights reserved.
+# Copyright (c) 2010-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,11 +21,12 @@ WebDAV interfaces
 __all__ = [
     "PropertyStoreError",
     "PropertyChangeNotAllowedError",
-    "AlreadyFinishedError",
     "IPropertyName",
     "IPropertyStore",
     "IDataStore",
-    "IDataStoreResource",
+    "IDataStoreObject",
+    "ITransaction",
+    "INotifier",
 ]
 
 from zope.interface import Attribute, Interface
@@ -40,8 +41,6 @@ class PropertyStoreError(RuntimeError):
     Property store error.
     """
 
-
-
 class PropertyChangeNotAllowedError(PropertyStoreError):
     """
     Property cannot be edited.
@@ -50,13 +49,6 @@ class PropertyChangeNotAllowedError(PropertyStoreError):
         PropertyStoreError.__init__(self, message)
         self.keys = keys
 
-
-
-class AlreadyFinishedError(Exception):
-    """
-    The transaction was already completed via an C{abort} or C{commit} and
-    cannot be aborted or committed again.
-    """
 
 
 #
@@ -92,6 +84,17 @@ class IPropertyStore(IMapping):
     # FIXME: the type for values isn't quite right, there should be some more
     # specific interface for that.
 
+    def flush():
+        """
+        Flush the property store.
+        @return: C{None}
+        """
+
+    def abort():
+        """
+        Abort changes to the property store.
+        @return: C{None}
+        """
 
 
 class IDataStore(Interface):
@@ -114,9 +117,9 @@ class IDataStore(Interface):
         """
 
 
-class IDataStoreResource(Interface):
+class IDataStoreObject(Interface):
     """
-    An L{IDataStoreResource} are the objects stored in an L{IDataStore}.
+    An L{IDataStoreObject} are the objects stored in an L{IDataStore}.
     """
 
     def name():
@@ -133,7 +136,6 @@ class IDataStoreResource(Interface):
 
         @rtype: L{MimeType}
         """
-
 
     def md5():
         """
@@ -168,53 +170,6 @@ class IDataStoreResource(Interface):
         Retrieve the property store for this object.
 
         @return: an L{IPropertyStore}.
-        """
-
-
-
-class IAsyncTransaction(Interface):
-    """
-    Asynchronous execution of SQL.
-
-    Note that there is no {begin()} method; if an L{IAsyncTransaction} exists,
-    it is assumed to have been started.
-    """
-
-    def execSQL(sql, args=(), raiseOnZeroRowCount=None):
-        """
-        Execute some SQL.
-
-        @param sql: an SQL string.
-
-        @type sql: C{str}
-
-        @param args: C{list} of arguments to interpolate into C{sql}.
-
-        @param raiseOnZeroRowCount: a 0-argument callable which returns an
-            exception to raise if the executed SQL does not affect any rows.
-
-        @return: L{Deferred} which fires C{list} of C{tuple}
-
-        @raise: C{raiseOnZeroRowCount} if it was specified and no rows were
-            affected.
-        """
-
-
-    def commit():
-        """
-        Commit changes caused by this transaction.
-
-        @return: L{Deferred} which fires with C{None} upon successful
-            completion of this transaction.
-        """
-
-
-    def abort():
-        """
-        Roll back changes caused by this transaction.
-
-        @return: L{Deferred} which fires with C{None} upon successful
-            rollback of this transaction.
         """
 
 
@@ -289,4 +244,26 @@ class INotifier(Interface):
         for the collection itself (what a subscriber sees).
 
         @return: a string (or None if notifications are disabled)
+        """
+
+    def nodeName(label):
+        """
+        Returns a pubsub node path.
+
+        A pubsub node path is comprised of the following values:
+
+        /<protocol>/<hostname>/<notifierID>/
+
+        <protocol> is either CalDAV or CardDAV
+        <hostname> is the name of the calendar server
+        <notifierID> is a unique string representing the resource
+
+        This method builds this string based on pubsub configuration
+        that was passed to the NotifierFactory, and it also attempts
+        to create and configure the node in the pubsub server.  If that
+        fails, a value of None will be returned. This is used when a client
+        requests push-related DAV properties.
+
+        @return: a deferred to a string (or None if notifications are disabled
+        or the node could not be created)
         """

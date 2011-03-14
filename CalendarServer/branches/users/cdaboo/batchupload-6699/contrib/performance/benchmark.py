@@ -31,6 +31,7 @@ from twisted.internet.defer import (
     Deferred, inlineCallbacks, gatherResults)
 from twisted.internet import reactor
 from twisted.python.log import msg
+from twisted.python.modules import getModule
 
 from stats import SQLDuration, Bytes
 
@@ -321,18 +322,23 @@ class DTraceCollector(object):
 
 
 @inlineCallbacks
-def benchmark(host, port, pids, label, benchmarks):
-    parameters = [1, 9, 81]
-    samples = 200
+def benchmark(host, port, pids, label, scalingParameters, benchmarks):
+    # Collect samples for 2 minutes.  This should give plenty of data
+    # for quick benchmarks.  It will leave lots of error (due to small
+    # sample size) for very slow benchmarks, but the error isn't as
+    # interesting as the fact that a single operation takes
+    # double-digit seconds or longer to complete.
+    sampleTime = 60 * 2
 
     statistics = {}
 
     for (name, measure) in benchmarks:
         statistics[name] = {}
+        parameters = scalingParameters.get(name, [1, 9, 81])
         for p in parameters:
             print '%s, parameter=%s' % (name, p)
             dtrace = DTraceCollector("io_measure.d", pids)
-            data = yield measure(host, port, dtrace, p, samples)
+            data = yield measure(host, port, dtrace, p, sampleTime)
             statistics[name][p] = data
 
     fObj = file(
@@ -368,6 +374,11 @@ class BenchmarkOptions(Options):
         ('debug', None, 'Enable various debugging helpers'),
         ]
 
+    def __init__(self):
+        Options.__init__(self)
+        self['parameters'] = {}
+
+
     def _selectBenchmarks(self, benchmarks):
         """
         Select the benchmarks to run, based on those named and on the
@@ -392,10 +403,24 @@ class BenchmarkOptions(Options):
         return benchmarks
 
 
+    def opt_parameters(self, which):
+        """
+        Specify the scaling parameters for a particular benchmark.
+        The format of the value is <benchmark>:<value>,...,<value>.
+        The given benchmark will be run with a scaling parameter set
+        to each of the given values.  This option may be specified
+        multiple times to specify parameters for multiple benchmarks.
+        """
+        benchmark, values = which.split(':')
+        values = map(int, values.split(','))
+        self['parameters'][benchmark] = values
+
+
     def parseArgs(self, *benchmarks):
         if not benchmarks:
             raise UsageError("Specify at least one benchmark")
         self['benchmarks'] = self._selectBenchmarks(list(benchmarks))
+
 
 
 def whichPIDs(source, conf):
@@ -405,6 +430,14 @@ def whichPIDs(source, conf):
     run = source.preauthChild(conf['ServerRoot']).preauthChild(conf['RunRoot'])
     return [run.child(conf['PIDFile']).getContent()] + [
         pid.getContent() for pid in run.globChildren('*instance*')]
+
+
+_benchmarks = getModule("benchmarks")
+def resolveBenchmark(name):
+    for module in _benchmarks.iterModules():
+        if module.name == ".".join((_benchmarks.name, name)):
+            return module.load()
+    raise ValueError("Unknown benchmark: %r" % (name,))
 
 
 def main():
@@ -433,7 +466,8 @@ def main():
 
     d = benchmark(
         options['host'], options['port'], pids, options['label'],
-        [(arg, namedAny(arg).measure) for arg in options['benchmarks']])
-    d.addErrback(err)
+        options['parameters'],
+        [(arg, resolveBenchmark(arg).measure) for arg in options['benchmarks']])
+    d.addErrback(err, "Failure at benchmark runner top-level")
     reactor.callWhenRunning(d.addCallback, lambda ign: reactor.stop())
     reactor.run()

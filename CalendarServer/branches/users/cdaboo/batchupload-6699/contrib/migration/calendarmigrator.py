@@ -26,6 +26,7 @@ import optparse
 import os
 import pwd
 import shutil
+import subprocess
 import sys
 
 from plistlib import readPlist, writePlist
@@ -42,6 +43,8 @@ CALDAVD_PLIST = "caldavd.plist"
 CARDDAVD_PLIST = "carddavd.plist"
 NEW_SERVER_ROOT = "/Library/Server/Calendar and Contacts"
 RESOURCE_MIGRATION_TRIGGER = "trigger_resource_migration"
+SERVER_ADMIN = "/usr/sbin/serveradmin"
+LAUNCHCTL = "/bin/launchctl"
 
 
 verbatimKeys = """
@@ -110,7 +113,6 @@ Profiling
 ProxyDBService
 ProxyLoadFromFile
 ReadPrincipals
-RedirectHTTPToHTTPS
 RejectClients
 ResourceService
 ResponseCompression
@@ -149,6 +151,8 @@ DocumentRoot
 ErrorLogFile
 MaxAddressBookMultigetHrefs
 MaxAddressBookQueryResults
+RedirectHTTPToHTTPS
+SSLPort
 """.split()
 
 ignoredKkeys = """
@@ -160,7 +164,6 @@ PIDFile
 PythonDirector
 ResponseCacheTimeout
 SSLPassPhraseDialog
-SSLPort
 ServerStatsFile
 Verbose
 """.split()
@@ -201,10 +204,19 @@ def main():
     if options.sourceRoot:
 
         if os.path.exists(options.sourceRoot):
-            newServerRootValue = migrateData(options)
+
+            # If calendar service was running on previous system
+            # turn it off while we process configuration.  There
+            # is no need to turn off addressbook because it no longer
+            # has its own launchd plist.
             enableCalDAV, enableCardDAV = examineRunState(options)
+            if enableCalDAV:
+                unloadService(options, CALDAV_LAUNCHD_KEY)
+
+            newServerRootValue = migrateData(options)
             migrateConfiguration(options, newServerRootValue, enableCalDAV,
                 enableCardDAV)
+
             setRunState(options, enableCalDAV, enableCardDAV)
             triggerResourceMigration(newServerRootValue)
 
@@ -248,14 +260,24 @@ def examineRunState(options):
 
 def setRunState(options, enableCalDAV, enableCardDAV):
     """
-    Modify the launchd settings in the new system.
+    Use serveradmin to launch the service if needed.
     """
 
-    # Lion has no separate addressbook service, so just worry about caldav:
     if enableCalDAV or enableCardDAV:
-        setServiceStateDisabled(options.targetRoot, CALDAV_LAUNCHD_KEY, False)
-    else:
-        setServiceStateDisabled(options.targetRoot, CALDAV_LAUNCHD_KEY, True)
+        log("Starting service via serveradmin")
+        ret = subprocess.call([SERVER_ADMIN, "start", "calendar"])
+        log("serveradmin exited with %d" % (ret,))
+
+
+def unloadService(options, service):
+    """
+    Use launchctl to unload a service
+    """
+    path = os.path.join(options.targetRoot, LAUNCHD_PREFS_DIR,
+                        "%s.plist" % (service,))
+    log("Unloading %s via launchctl" % (path,))
+    ret = subprocess.call([LAUNCHCTL, "unload", "-w", path])
+    log("launchctl exited with %d" % (ret,))
 
 
 def triggerResourceMigration(newServerRootValue):
@@ -361,27 +383,68 @@ def migrateConfiguration(options, newServerRootValue, enableCalDAV, enableCardDA
     writePlist(newCalDAVDPlist, newCalDAVDPlistPath)
 
 
-def mergePlist(oldCalDAVDPlist, oldCardDAVDPlist, newCalDAVDPlist):
+def mergePlist(caldav, carddav, combined):
 
     # These keys are copied verbatim:
     for key in verbatimKeys:
-        if key in oldCardDAVDPlist:
-            newCalDAVDPlist[key] = oldCardDAVDPlist[key]
-        if key in oldCalDAVDPlist:
-            newCalDAVDPlist[key] = oldCalDAVDPlist[key]
+        if key in carddav:
+            combined[key] = carddav[key]
+        if key in caldav:
+            combined[key] = caldav[key]
 
     # "Wiki" is a new authentication in v2.x; copy all "Authentication" sub-keys    # over, and "Wiki" will be picked up from the new plist:
-    if "Authentication" in oldCalDAVDPlist:
-        for key in oldCalDAVDPlist["Authentication"]:
-            newCalDAVDPlist["Authentication"][key] = oldCalDAVDPlist["Authentication"][key]
+    if "Authentication" in caldav:
+        for key in caldav["Authentication"]:
+            combined["Authentication"][key] = caldav["Authentication"][key]
 
     # Strip out any unknown params from the DirectoryService:
-    if "DirectoryService" in oldCalDAVDPlist:
-        newCalDAVDPlist["DirectoryService"] = oldCalDAVDPlist["DirectoryService"]
-        for key in newCalDAVDPlist["DirectoryService"]["params"].keys():
+    if "DirectoryService" in caldav:
+        combined["DirectoryService"] = caldav["DirectoryService"]
+        for key in combined["DirectoryService"]["params"].keys():
             if key not in ("node", "cacheTimeout", "xmlFile"):
-                del newCalDAVDPlist["DirectoryService"]["params"][key]
+                del combined["DirectoryService"]["params"][key]
 
+    # Merge ports
+    if not caldav.get("HTTPPort", 0):
+        caldav["HTTPPort"] = 8008
+    if not carddav.get("HTTPPort", 0):
+        carddav["HTTPPort"] = 8800
+    if not caldav.get("SSLPort", 0):
+        caldav["SSLPort"] = 8443
+    if not carddav.get("SSLPort", 0):
+        carddav["SSLPort"] = 8843
+
+    for portType in ["HTTPPort", "SSLPort"]:
+        bindPorts = list(set(caldav.get("Bind%ss" % (portType,), [])).union(set(carddav.get("Bind%ss" % (portType,), []))))
+        for prev in (carddav, caldav):
+            port = prev.get(portType, 0)
+            if port and port not in bindPorts:
+                bindPorts.append(port)
+        bindPorts.sort()
+        combined["Bind%ss" % (portType,)] = bindPorts
+
+    combined["HTTPPort"] = caldav["HTTPPort"]
+    combined["SSLPort"] = caldav["SSLPort"]
+
+    # Was SSL enabled?
+    sslAuthorityChain = ""
+    sslCertificate = ""
+    sslPrivateKey = ""
+    enableSSL = False
+    for prev in (carddav, caldav):
+        if (prev["SSLPort"] and prev.get("SSLCertificate", "")):
+            sslAuthorityChain = prev.get("SSLAuthorityChain", "")
+            sslCertificate = prev.get("SSLCertificate", "")
+            sslPrivateKey = prev.get("SSLPrivateKey", "")
+            enableSSL = True
+
+    combined["SSLAuthorityChain"] = sslAuthorityChain
+    combined["SSLCertificate"] = sslCertificate
+    combined["SSLPrivateKey"] = sslPrivateKey
+    combined["EnableSSL"] = enableSSL
+
+    # If SSL is enabled, redirect HTTP to HTTPS.
+    combined["RedirectHTTPToHTTPS"] = enableSSL
 
 
 def isServiceDisabled(source, service):
@@ -412,7 +475,6 @@ def isServiceDisabled(source, service):
 
     raise ServiceStateError("Neither %s nor %s exist" %
         (overridesPath, prefsPath))
-
 
 def setServiceStateDisabled(target, service, disabled):
     """

@@ -18,11 +18,10 @@ import pickle
 from time import time
 
 from twisted.internet.defer import (
-    DeferredSemaphore, inlineCallbacks, returnValue, gatherResults)
-# from twisted.internet.task import deferLater
+    FirstError, DeferredList, inlineCallbacks, returnValue)
 from twisted.web.http_headers import Headers
-# from twisted.internet import reactor
 from twisted.python.log import msg
+from twisted.web.http import NO_CONTENT, NOT_FOUND
 
 from stats import Duration
 from httpclient import StringProducer, readBody
@@ -38,19 +37,32 @@ class CalDAVAccount(object):
         self.principal = principal
 
 
-    def deleteResource(self, url):
-        return self.agent.request('DELETE', 'http://%s%s' % (self.netloc, url))
+    def _makeURL(self, path):
+        if not path.startswith('/'):
+            raise ValueError("Pass a relative URL with an absolute path")
+        return 'http://%s%s' % (self.netloc, path)
 
 
-    def makeCalendar(self, url):
-        return self.agent.request(
-            'MKCALENDAR', 'http://%s%s' % (self.netloc, url))
+    def deleteResource(self, path):
+        url = self._makeURL(path)
+        d = self.agent.request('DELETE', url)
+        def deleted(response):
+            if response.code not in (NO_CONTENT, NOT_FOUND):
+                raise Exception(
+                    "Unexpected response to DELETE %s: %d" % (
+                        url, response.code))
+        d.addCallback(deleted)
+        return d
 
 
-    def writeData(self, url, data, contentType):
+    def makeCalendar(self, path):
+        return self.agent.request('MKCALENDAR', self._makeURL(path))
+
+
+    def writeData(self, path, data, contentType):
         return self.agent.request(
             'PUT',
-            'http://%s%s' % (self.netloc, url),
+            self._makeURL(path),
             Headers({'content-type': [contentType]}),
             StringProducer(data))
 
@@ -81,21 +93,33 @@ def initialize(agent, host, port, user, password, root, principal, calendar):
     return d
 
 
-@inlineCallbacks
-def sample(dtrace, samples, agent, paramgen, responseCode, concurrency=1):
-    sem = DeferredSemaphore(concurrency)
 
+def firstResult(deferreds):
+    """
+    Return a L{Deferred} which fires when the first L{Deferred} from
+    C{deferreds} fires.
+
+    @param deferreds: A sequence of Deferreds to wait on.
+    """
+    
+    
+
+
+@inlineCallbacks
+def sample(dtrace, sampleTime, agent, paramgen, responseCode, concurrency=1):
     urlopen = Duration('HTTP')
     data = {urlopen: []}
 
     def once():
         msg('emitting request')
         before = time()
-        d = agent.request(*paramgen())
+        params = paramgen()
+        d = agent.request(*params)
         def cbResponse(response):
             if response.code != responseCode:
                 raise Exception(
-                    "Unexpected response code received: %d" % (response.code,))
+                    "Request %r received unexpected response code: %d" % (
+                        params, response.code))
 
             d = readBody(response)
             def cbBody(ignored):
@@ -132,11 +156,30 @@ def sample(dtrace, samples, agent, paramgen, responseCode, concurrency=1):
     msg('starting dtrace')
     yield dtrace.start()
     msg('dtrace started')
-    l = []
-    for i in range(samples):
-        l.append(sem.run(once))
-    yield gatherResults(l)
 
+    start = time()
+    l = []
+    for i in range(concurrency):
+        l.append(once())
+
+    while True:
+        try:
+            result, index = yield DeferredList(l, fireOnOneCallback=True, fireOnOneErrback=True)
+        except FirstError, e:
+            e.subFailure.raiseException()
+
+        # Get rid of the completed Deferred
+        del l[index]
+
+        if time() > start + sampleTime:
+            # Wait for the rest of the outstanding requests to keep things tidy
+            yield DeferredList(l)
+            # And then move on
+            break
+        else:
+            # And start a new operation to replace it
+            l.append(once())
+    
     msg('stopping dtrace')
     leftOver = yield dtrace.stop()
     msg('dtrace stopped')

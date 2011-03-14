@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2010 Apple Inc. All rights reserved.
+# Copyright (c) 2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,23 +15,23 @@
 ##
 
 """
-Benchmark a server's handling of event creation.
+Various helpers for event-creation benchmarks.
 """
 
-from itertools import count
-from urllib2 import HTTPDigestAuthHandler
 from uuid import uuid4
+from urllib2 import HTTPDigestAuthHandler
 from datetime import datetime, timedelta
 
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet import reactor
-from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
 from twisted.web.http import CREATED
+from twisted.web.client import Agent
+from twisted.internet import reactor
 
 from httpauth import AuthHandlerAgent
-from httpclient import StringProducer
 from benchlib import initialize, sample
+from httpclient import StringProducer
+
 
 # XXX Represent these as vobjects?  Would make it easier to add more vevents.
 event = """\
@@ -60,6 +60,24 @@ END:VTIMEZONE
 END:VCALENDAR
 """
 
+SUMMARY = "Some random thing"
+
+vevent = """\
+BEGIN:VEVENT
+UID:%(UID)s
+DTSTART;TZID=America/Los_Angeles:%(START)s
+DTEND;TZID=America/Los_Angeles:%(END)s
+%(RRULE)s\
+CREATED:20100729T193912Z
+DTSTAMP:20100729T195557Z
+%(ORGANIZER)s\
+%(ATTENDEES)s\
+SEQUENCE:0
+SUMMARY:%(SUMMARY)s
+TRANSP:OPAQUE
+END:VEVENT
+"""
+
 attendee = """\
 ATTENDEE;CN=User %(SEQUENCE)02d;CUTYPE=INDIVIDUAL;EMAIL=user%(SEQUENCE)02d@example.com;PARTSTAT=NE
  EDS-ACTION;ROLE=REQ-PARTICIPANT;RSVP=TRUE:urn:uuid:user%(SEQUENCE)02d
@@ -71,57 +89,58 @@ ATTENDEE;CN=User %(SEQUENCE)02d;EMAIL=user%(SEQUENCE)02d@example.com;PARTSTAT=AC
  D:urn:uuid:user%(SEQUENCE)02d
 """
 
-def makeOrganizer(sequence):
-    return organizer % {'SEQUENCE': sequence}
-
-def makeAttendees(count):
-    return ''.join([
-            attendee % {'SEQUENCE': n} for n in range(2, count + 2)])
-
-
 def formatDate(d):
     return ''.join(filter(str.isalnum, d.isoformat()))
 
 
-SUMMARY = "STUFF IS THINGS"
+def makeOrganizer(sequence):
+    return organizer % {'SEQUENCE': sequence}
 
-def makeEvent(i, organizerSequence, attendeeCount):
-    s = """\
-BEGIN:VEVENT
-UID:%(UID)s
-DTSTART;TZID=America/Los_Angeles:%(START)s
-DTEND;TZID=America/Los_Angeles:%(END)s
-CREATED:20100729T193912Z
-DTSTAMP:20100729T195557Z
-%(ORGANIZER)s\
-%(ATTENDEES)s\
-SEQUENCE:0
-SUMMARY:%(summary)s
-TRANSP:OPAQUE
-END:VEVENT
-"""
-    base = datetime(2010, 7, 30, 11, 15, 00)
-    interval = timedelta(0, 5)
-    duration = timedelta(0, 3)
+
+def makeAttendees(count):
+    return [
+        attendee % {'SEQUENCE': n} for n in range(2, count + 2)]
+
+
+def makeVCalendar(uid, start, end, recurrence, organizerSequence, attendees):
+    if recurrence is None:
+        rrule = ""
+    else:
+        rrule = recurrence + "\n"
     return event % {
-        'VEVENTS': s % {
-            'UID': uuid4(),
-            'START': formatDate(base + i * interval),
-            'END': formatDate(base + i * interval + duration),
+        'VEVENTS': vevent % {
+            'UID': uid,
+            'START': formatDate(start),
+            'END': formatDate(end),
+            'SUMMARY': SUMMARY,
             'ORGANIZER': makeOrganizer(organizerSequence),
-            'ATTENDEES': makeAttendees(attendeeCount),
-            'summary': SUMMARY,
+            'ATTENDEES': ''.join(attendees),
+            'RRULE': rrule,
             },
         }
 
 
+def makeEvent(i, organizerSequence, attendeeCount):
+    base = datetime(2010, 7, 30, 11, 15, 00)
+    interval = timedelta(0, 5)
+    duration = timedelta(0, 3)
+    return makeVCalendar(
+        uuid4(), 
+        base + i * interval,
+        base + i * interval + duration,
+        None,
+        organizerSequence,
+        makeAttendees(attendeeCount))
+
+
 @inlineCallbacks
-def measure(host, port, dtrace, attendeeCount, samples):
-    organizerSequence = 1
+def measure(calendar, organizerSequence, events, host, port, dtrace, samples):
+    """
+    Benchmark event creation.
+    """
     user = password = "user%02d" % (organizerSequence,)
     root = "/"
     principal = "/"
-    calendar = "event-creation-benchmark"
 
     authinfo = HTTPDigestAuthHandler()
     authinfo.add_password(
@@ -139,9 +158,6 @@ def measure(host, port, dtrace, attendeeCount, samples):
         host, port, user, calendar)
     headers = Headers({"content-type": ["text/calendar"]})
 
-    # An infinite stream of VEVENTs to PUT to the server.
-    events = ((i, makeEvent(i, organizerSequence, attendeeCount)) for i in count(2))
-
     # Sample it a bunch of times
     samples = yield sample(
         dtrace, samples, 
@@ -150,4 +166,3 @@ def measure(host, port, dtrace, attendeeCount, samples):
                 in events).next,
         CREATED)
     returnValue(samples)
-

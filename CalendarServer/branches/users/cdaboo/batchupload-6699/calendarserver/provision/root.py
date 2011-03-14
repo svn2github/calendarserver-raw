@@ -1,6 +1,6 @@
 # -*- test-case-name: calendarserver.provision.test.test_root -*-
 ##
-# Copyright (c) 2005-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,16 +23,24 @@ from twext.python.log import Logger
 from twext.web2 import responsecode
 from twext.web2.auth.wrapper import UnauthorizedResponse
 from twext.web2.dav import davxml
-from twext.web2.http import HTTPError, StatusResponse
+from twext.web2.http import HTTPError, StatusResponse, RedirectResponse
 
+from twisted.cred.error import LoginFailed, UnauthorizedLogin
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.web.xmlrpc import Proxy
 
+from twistedcaldav.cache import _CachedResponseResource
+from twistedcaldav.cache import MemcacheResponseCache, MemcacheChangeNotifier
+from twistedcaldav.cache import DisabledCache
 from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile, CachingPropertyStore
 from twistedcaldav.extensions import DirectoryPrincipalPropertySearchMixIn
 from twistedcaldav.extensions import ReadOnlyResourceMixIn
 from twistedcaldav.resource import CalDAVComplianceMixIn
+from twistedcaldav.resource import CalendarHomeResource, AddressBookHomeResource
+from twistedcaldav.directory.principal import DirectoryPrincipalResource
+from twistedcaldav.storebridge import CalendarCollectionResource,\
+    AddressBookCollectionResource
 
 log = Logger()
 
@@ -56,6 +64,12 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
         "webcal" : ("calendar",),
     }
 
+    # If a top-level resource path starts with any of these, an unauthenticated
+    # request is redirected to the auth url (config.WebCalendarAuthPath)
+    authServiceMap = {
+        "webcal" : True,
+    }
+
     def __init__(self, path, *args, **kwargs):
         super(RootResource, self).__init__(path, *args, **kwargs)
 
@@ -66,6 +80,18 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
                 log.warn("SACLs are enabled, but SACLs are not supported.")
 
         self.contentFilters = []
+
+        if config.EnableResponseCache and config.Memcached.Pools.Default.ClientEnabled:
+            self.responseCache = MemcacheResponseCache(self.fp)
+
+            # These class attributes need to be setup with our memcache notifier
+            CalendarHomeResource.cacheNotifierFactory = MemcacheChangeNotifier
+            AddressBookHomeResource.cacheNotifierFactory = MemcacheChangeNotifier
+            DirectoryPrincipalResource.cacheNotifierFactory = MemcacheChangeNotifier
+            CalendarCollectionResource.cacheNotifierFactory = MemcacheChangeNotifier
+            AddressBookCollectionResource.cacheNotifierFactory = MemcacheChangeNotifier
+        else:
+            self.responseCache = DisabledCache()
 
         if config.ResponseCompression:
             from twext.web2.filter import gzip
@@ -244,6 +270,35 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
                                 davxml.HRef.fromString("/principals/__uids__/%s/" % (record.guid,))
                             )
 
+        if not hasattr(request, "authzUser") and config.WebCalendarAuthPath:
+            topLevel = request.path.strip("/").split("/")[0]
+            if self.authServiceMap.get(topLevel, False):
+                # We've not been authenticated and the auth service is enabled
+                # for this resource, so redirect.
+
+                # Use config.ServerHostName if no x-forwarded-host header,
+                # otherwise use the final hostname in x-forwarded-host.
+                host = request.headers.getRawHeaders("x-forwarded-host",
+                    [config.ServerHostName])[-1].split(",")[-1].strip()
+                port = 443 if config.EnableSSL else 80
+                scheme = "https" if config.EnableSSL else "http"
+
+                response = RedirectResponse(
+                        request.unparseURL(
+                            host=host,
+                            port=port,
+                            scheme=scheme,
+                            path=config.WebCalendarAuthPath,
+                            querystring="redirect=%s://%s%s" % (
+                                scheme,
+                                host,
+                                request.path
+                            )
+                        )
+                    )
+                raise HTTPError(response)
+
+
         # We don't want the /inbox resource to pay attention to SACLs because
         # we just want it to use the hard-coded ACL for the imip reply user.
         # The /timezones resource is used by the wiki web calendar, so open
@@ -296,6 +351,30 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
                 if not hasattr(request, "extendedLogItems"):
                     request.extendedLogItems = {}
                 request.extendedLogItems["xff"] = remote_ip[0]
+
+        if request.method == "PROPFIND" and not getattr(request, "notInCache", False) and len(segments) > 1:
+            try:
+                authnUser, authzUser = (yield self.authenticate(request))
+                request.authnUser = authnUser
+                request.authzUser = authzUser
+            except (UnauthorizedLogin, LoginFailed):
+                response = (yield UnauthorizedResponse.makeResponse(
+                    request.credentialFactories,
+                    request.remoteAddr
+                ))
+                raise HTTPError(response)
+
+            try:
+                if not getattr(request, "checkingCache", False):
+                    request.checkingCache = True
+                    response = (yield self.responseCache.getResponseForRequest(request))
+                    if response is None:
+                        request.notInCache = True
+                        raise KeyError("Not found in cache.")
+        
+                    returnValue((_CachedResponseResource(response), []))
+            except KeyError:
+                pass
 
         child = (yield super(RootResource, self).locateChild(request, segments))
         returnValue(child)

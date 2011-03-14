@@ -1,6 +1,6 @@
 # -*- test-case-name: txdav.carddav.datastore.test.test_sql -*-
 ##
-# Copyright (c) 2010 Apple Inc. All rights reserved.
+# Copyright (c) 2010-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ from twext.web2.dav.element.rfc2518 import ResourceType
 from twext.web2.http_headers import MimeType
 
 from twistedcaldav import carddavxml, customxml
+from twistedcaldav.memcacher import Memcacher
 from twistedcaldav.vcard import Component as VCard
 
 from txdav.common.datastore.sql_legacy import \
@@ -46,11 +47,15 @@ from txdav.carddav.iaddressbookstore import IAddressBookHome, IAddressBook,\
 
 from txdav.common.datastore.sql import CommonHome, CommonHomeChild,\
     CommonObjectResource
+from twext.enterprise.dal.syntax import Insert
+from twext.enterprise.dal.syntax import Update
+from twext.enterprise.dal.syntax import utcNowSQL
 from txdav.common.datastore.sql_tables import ADDRESSBOOK_TABLE,\
     ADDRESSBOOK_BIND_TABLE, ADDRESSBOOK_OBJECT_REVISIONS_TABLE,\
     ADDRESSBOOK_OBJECT_TABLE, ADDRESSBOOK_HOME_TABLE,\
     ADDRESSBOOK_HOME_METADATA_TABLE, ADDRESSBOOK_AND_ADDRESSBOOK_BIND,\
-    ADDRESSBOOK_OBJECT_REVISIONS_AND_BIND_TABLE
+    ADDRESSBOOK_OBJECT_AND_BIND_TABLE, \
+    ADDRESSBOOK_OBJECT_REVISIONS_AND_BIND_TABLE, schema
 from txdav.base.propertystore.base import PropertyName
 
 
@@ -59,17 +64,28 @@ class AddressBookHome(CommonHome):
 
     implements(IAddressBookHome)
 
+    # structured tables.  (new, preferred)
+    _homeSchema = schema.ADDRESSBOOK_HOME
+    _bindSchema = schema.ADDRESSBOOK_BIND
+    _homeMetaDataSchema = schema.ADDRESSBOOK_HOME_METADATA
+    _revisionsSchema = schema.ADDRESSBOOK_OBJECT_REVISIONS
+    _objectSchema = schema.ADDRESSBOOK_OBJECT
+
+    # string mappings (old, removing)
     _homeTable = ADDRESSBOOK_HOME_TABLE
     _homeMetaDataTable = ADDRESSBOOK_HOME_METADATA_TABLE
     _childTable = ADDRESSBOOK_TABLE
     _bindTable = ADDRESSBOOK_BIND_TABLE
+    _objectBindTable = ADDRESSBOOK_OBJECT_AND_BIND_TABLE
     _notifierPrefix = "CardDAV"
     _revisionsTable = ADDRESSBOOK_OBJECT_REVISIONS_TABLE
 
-    def __init__(self, transaction, ownerUID, notifier):
+    _cacher = Memcacher("SQL.adbkhome", pickle=True, key_normalization=False)
+
+    def __init__(self, transaction, ownerUID, notifiers):
 
         self._childClass = AddressBook
-        super(AddressBookHome, self).__init__(transaction, ownerUID, notifier)
+        super(AddressBookHome, self).__init__(transaction, ownerUID, notifiers)
         self._shares = SQLLegacyAddressBookShares(self)
 
 
@@ -92,6 +108,13 @@ class AddressBook(CommonHomeChild):
     """
     implements(IAddressBook)
 
+    # structured tables.  (new, preferred)
+    _bindSchema = schema.ADDRESSBOOK_BIND
+    _homeChildSchema = schema.ADDRESSBOOK
+    _revisionsSchema = schema.ADDRESSBOOK_OBJECT_REVISIONS
+    _objectSchema = schema.ADDRESSBOOK_OBJECT
+
+    # string mappings (old, removing)
     _bindTable = ADDRESSBOOK_BIND_TABLE
     _homeChildTable = ADDRESSBOOK_TABLE
     _homeChildBindTable = ADDRESSBOOK_AND_ADDRESSBOOK_BIND
@@ -99,7 +122,7 @@ class AddressBook(CommonHomeChild):
     _revisionsBindTable = ADDRESSBOOK_OBJECT_REVISIONS_AND_BIND_TABLE
     _objectTable = ADDRESSBOOK_OBJECT_TABLE
 
-    def __init__(self, home, name, resourceID):
+    def __init__(self, home, name, resourceID, owned):
         """
         Initialize an addressbook pointing at a path on disk.
 
@@ -115,7 +138,7 @@ class AddressBook(CommonHomeChild):
         @type realName: C{str}
         """
 
-        super(AddressBook, self).__init__(home, name, resourceID)
+        super(AddressBook, self).__init__(home, name, resourceID, owned)
 
         self._index = PostgresLegacyABIndexEmulator(self)
         self._invites = SQLLegacyAddressBookInvites(self)
@@ -171,10 +194,11 @@ class AddressBookObject(CommonObjectResource):
     implements(IAddressBookObject)
 
     _objectTable = ADDRESSBOOK_OBJECT_TABLE
+    _objectSchema = schema.ADDRESSBOOK_OBJECT
 
-    def __init__(self, addressbook, name, uid, metadata=None):
+    def __init__(self, addressbook, name, uid, resourceID=None, metadata=None):
 
-        super(AddressBookObject, self).__init__(addressbook, name, uid)
+        super(AddressBookObject, self).__init__(addressbook, name, uid, resourceID)
 
 
     @property
@@ -189,8 +213,6 @@ class AddressBookObject(CommonObjectResource):
     @inlineCallbacks
     def setComponent(self, component, inserting=False):
 
-        old_size = 0 if inserting else self.size()
-
         validateAddressBookComponent(self, self._addressbook, component, inserting)
 
         yield self.updateDatabase(component, inserting=inserting)
@@ -199,20 +221,20 @@ class AddressBookObject(CommonObjectResource):
         else:
             yield self._addressbook._updateRevision(self._name)
 
-        # Adjust quota
-        yield self._addressbook._home.adjustQuotaUsedBytes(self.size() - old_size)
-
         self._addressbook.notifyChanged()
 
 
     @inlineCallbacks
-    def updateDatabase(self, component, expand_until=None, reCreate=False, inserting=False):
+    def updateDatabase(self, component, expand_until=None, reCreate=False,
+                       inserting=False):
         """
         Update the database tables for the new data being written.
 
         @param component: addressbook data to store
         @type component: L{Component}
         """
+
+        ao = schema.ADDRESSBOOK_OBJECT
 
         componentText = str(component)
         self._objectText = componentText
@@ -222,42 +244,24 @@ class AddressBookObject(CommonObjectResource):
         self._size = len(componentText)
         if inserting:
             self._resourceID, self._created, self._modified = (
-                yield self._txn.execSQL(
-                """
-                insert into ADDRESSBOOK_OBJECT
-                (ADDRESSBOOK_RESOURCE_ID, RESOURCE_NAME, VCARD_TEXT, VCARD_UID, MD5)
-                 values
-                (%s, %s, %s, %s, %s)
-                returning
-                 RESOURCE_ID,
-                 CREATED,
-                 MODIFIED
-                """,
-                [
-                    self._addressbook._resourceID,
-                    self._name,
-                    componentText,
-                    component.resourceUID(),
-                    self._md5,
-                ]
-            ))[0]
+                yield Insert(
+                    {ao.ADDRESSBOOK_RESOURCE_ID: self._addressbook._resourceID,
+                     ao.RESOURCE_NAME: self._name,
+                     ao.VCARD_TEXT: componentText,
+                     ao.VCARD_UID: component.resourceUID(),
+                     ao.MD5: self._md5},
+                    Return=(ao.RESOURCE_ID,
+                            ao.CREATED,
+                            ao.MODIFIED)
+                ).on(self._txn))[0]
         else:
-            yield self._txn.execSQL(
-                """
-                update ADDRESSBOOK_OBJECT set
-                (VCARD_TEXT, VCARD_UID, MD5, MODIFIED)
-                 =
-                (%s, %s, %s, timezone('UTC', CURRENT_TIMESTAMP))
-                where RESOURCE_ID = %s
-                returning MODIFIED
-                """,
-                [
-                    componentText,
-                    component.resourceUID(),
-                    self._md5,
-                    self._resourceID,
-                ]
-            )
+            self._modified = (yield Update(
+                {ao.VCARD_TEXT: componentText,
+                 ao.VCARD_UID: component.resourceUID(),
+                 ao.MD5: self._md5,
+                 ao.MODIFIED: utcNowSQL},
+                Where=ao.RESOURCE_ID == self._resourceID,
+                Return=ao.MODIFIED).on(self._txn))[0][0]
 
 
     @inlineCallbacks
@@ -268,9 +272,12 @@ class AddressBookObject(CommonObjectResource):
     vCardText = CommonObjectResource.text
 
 
-    # IDataStoreResource
+    # IDataStoreObject
     def contentType(self):
         """
         The content type of Addressbook objects is text/x-vcard.
         """
         return MimeType.fromString("text/vcard; charset=utf-8")
+
+
+

@@ -54,6 +54,21 @@ def normalizeForIndex(dt):
     else:
         return datetime.datetime.fromordinal(dt.toordinal())
 
+def normalizeToUTC(dt):
+    """
+    Normalize a L{datetime.date} or L{datetime.datetime} object to UTC.
+    """
+    if not isinstance(dt, datetime.date):
+        raise TypeError("%r is not a datetime.date instance" % (dt,))
+    
+    if isinstance(dt, datetime.datetime):
+        if dt.tzinfo is not None:
+            return dt.astimezone(utc)
+        else:
+            return dt.replace(tzinfo=utc)
+    else:
+        return datetime.datetime.fromordinal(dt.toordinal()).replace(tzinfo=utc)
+
 def floatoffset(dt, tzinfo):
     """
     Apply the timezone offset to the supplied time, then force tz to utc. This gives the local
@@ -223,12 +238,20 @@ def clipPeriod(period, clipPeriod):
             return (start, end - start)
         else:
             return (start, end)
- 
+
+SQL_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
+
+def parseSQLTimestamp(ts):
+    # Handle case where fraction seconds may not be present
+    if len(ts) < 20:
+        ts += ".0"
+    return datetime.datetime.strptime(ts, SQL_TIMESTAMP_FORMAT)
+
 def datetimeMktime(dt):
 
     assert isinstance(dt, datetime.date)
-    
+
     if dt.tzinfo is None:
         dt.replace(tzinfo=utc)
     return calendar.timegm(dt.utctimetuple())
-    
+

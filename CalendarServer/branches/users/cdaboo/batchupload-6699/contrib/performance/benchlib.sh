@@ -29,7 +29,12 @@ SOURCE=~/Projects/CalendarServer/trunk
 CONF=$SOURCE/conf/caldavd-dev.plist
 
 # Names of benchmarks we can run.
-BENCHMARKS="find_calendars find_events event_move event_delete_attendee event_add_attendee event_change_date event_change_summary event_delete vfreebusy event"
+BENCHMARKS="find_calendars find_events event_move event_delete_attendee event_add_attendee event_change_date event_change_summary event_delete vfreebusy event bounded_recurrence unbounded_recurrence event_autoaccept bounded_recurrence_autoaccept unbounded_recurrence_autoaccept"
+
+# Custom scaling parameters for benchmarks that merit it.  Be careful
+# not to exceed the 99 user limit for benchmarks where the scaling
+# parameter represents a number of users!
+SCALE_PARAMETERS="--parameters find_events:1,10,100,1000,10000"
 
 # Names of metrics we can collect.
 STATISTICS=(HTTP SQL read write pagein pageout)
@@ -63,7 +68,7 @@ function start() {
   PIDDIR=$SOURCE/$($EXTRACT $CONF ServerRoot)/$($EXTRACT $CONF RunRoot)
 
   shift
-  ./run -d -n $*
+  ./run -d $*
   while sleep 2; do
     instances=($PIDDIR/*instance*)
     if [ "${#instances[*]}" -eq "$NUM_INSTANCES" ]; then

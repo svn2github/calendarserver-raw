@@ -38,7 +38,9 @@ from twext.web2.dav.resource import TwistedACLInheritable
 from twistedcaldav.config import config
 from twistedcaldav.extensions import DAVFile, ReadOnlyResourceMixIn
 
+
 class WebCalendarResource (ReadOnlyResourceMixIn, DAVFile):
+
     def defaultAccessControlList(self):
         return davxml.ACL(
             davxml.ACE(

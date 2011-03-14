@@ -15,6 +15,10 @@
 #
 ##
 
+from vobject import readComponents
+from vobject.base import Component, ContentLine
+
+from twisted.internet.defer import Deferred
 from twisted.trial.unittest import TestCase
 
 from protocol.url import URL
@@ -22,7 +26,74 @@ from protocol.webdav.definitions import davxml
 from protocol.caldav.definitions import caldavxml
 from protocol.caldav.definitions import csxml
 
-from ical import SnowLeopard
+from loadtest.ical import Event, Calendar, SnowLeopard
+from httpclient import MemoryConsumer
+
+EVENT_UID = 'D94F247D-7433-43AF-B84B-ADD684D023B0'
+
+EVENT = """\
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Apple Inc.//iCal 4.0.3//EN
+CALSCALE:GREGORIAN
+BEGIN:VTIMEZONE
+TZID:America/New_York
+BEGIN:DAYLIGHT
+TZOFFSETFROM:-0500
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+DTSTART:20070311T020000
+TZNAME:EDT
+TZOFFSETTO:-0400
+END:DAYLIGHT
+BEGIN:STANDARD
+TZOFFSETFROM:-0400
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+DTSTART:20071104T020000
+TZNAME:EST
+TZOFFSETTO:-0500
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+CREATED:20101018T155454Z
+UID:%(UID)s
+DTEND;TZID=America/New_York:20101028T130000
+ATTENDEE;CN="User 03";CUTYPE=INDIVIDUAL;EMAIL="user03@example.com";PARTS
+ TAT=NEEDS-ACTION;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:user03@example.co
+ m
+ATTENDEE;CN="User 01";CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:mailto:user01@
+ example.com
+TRANSP:OPAQUE
+SUMMARY:Attended Event
+DTSTART;TZID=America/New_York:20101028T120000
+DTSTAMP:20101018T155513Z
+ORGANIZER;CN="User 01":mailto:user01@example.com
+SEQUENCE:3
+END:VEVENT
+END:VCALENDAR
+""" % {'UID': EVENT_UID}
+
+
+class EventTests(TestCase):
+    """
+    Tests for L{Event}.
+    """
+    def test_uid(self):
+        """
+        When the C{vevent} attribute of an L{Event} instance is set,
+        L{Event.getUID} returns the UID value from it.
+        """
+        event = Event(u'/foo/bar', u'etag', list(readComponents(EVENT))[0])
+        self.assertEquals(event.getUID(), EVENT_UID)
+
+
+    def test_withoutUID(self):
+        """
+        When an L{Event} has a C{vevent} attribute set to C{None},
+        L{Event.getUID} returns C{None}.
+        """
+        event = Event(u'/bar/baz', u'etag')
+        self.assertIdentical(event.getUID(), None)
+
 
 
 PRINCIPAL_PROPFIND_RESPONSE = """\
@@ -719,9 +790,6 @@ END:VCALENDAR
 </multistatus>
 """
 
-
-
-
 class SnowLeopardTests(TestCase):
     """
     Tests for L{SnowLeopard}.
@@ -801,3 +869,142 @@ class SnowLeopardTests(TestCase):
         self.assertEquals(outbox.name, None)
         self.assertEquals(outbox.url, "/calendars/__uids__/user01/outbox/")
         self.assertEquals(outbox.ctag, None)
+
+
+    def test_changeEventAttendee(self):
+        """
+        SnowLeopard.changeEventAttendee removes one attendee from an
+        existing event and appends another.
+        """
+        requests = []
+        def request(*args):
+            result = Deferred()
+            requests.append((result, args))
+            return result
+        self.client._request = request
+
+        vevent = list(readComponents(EVENT))[0]
+        attendees = vevent.contents[u'vevent'][0].contents[u'attendee']
+        old = attendees[0]
+        new = ContentLine.duplicate(old)
+        new.params[u'CN'] = [u'Some Other Guy']
+        event = Event(u'/some/calendar/1234.ics', None, vevent)
+        self.client._events[event.url] = event
+        self.client.changeEventAttendee(event.url, old, new)
+
+        result, req = requests.pop(0)
+
+        # iCal PUTs the new VCALENDAR object.
+        expectedResponseCode, method, url, headers, body = req
+        self.assertEquals(method, 'PUT')
+        self.assertEquals(url, 'http://127.0.0.1:80' + event.url)
+        self.assertIsInstance(url, str)
+        self.assertEquals(headers.getRawHeaders('content-type'), ['text/calendar'])
+
+        consumer = MemoryConsumer()
+        finished = body.startProducing(consumer)
+        def cbFinished(ignored):
+            vevent = list(readComponents(consumer.value()))[0]
+            attendees = vevent.contents[u'vevent'][0].contents[u'attendee']
+            self.assertEquals(len(attendees), 2)
+            self.assertEquals(attendees[0].params[u'CN'], [u'User 01'])
+            self.assertEquals(attendees[1].params[u'CN'], [u'Some Other Guy'])
+        finished.addCallback(cbFinished)
+        return finished
+
+
+    def test_addEvent(self):
+        """
+        L{SnowLeopard.addEvent} PUTs the event passed to it to the
+        server and updates local state to reflect its existence.
+        """
+        requests = []
+        def request(*args):
+            result = Deferred()
+            requests.append((result, args))
+            return result
+        self.client._request = request
+
+        vcalendar = list(readComponents(EVENT))[0]
+        d = self.client.addEvent(u'/mumble/frotz.ics', vcalendar)
+
+        result, req = requests.pop(0)
+
+        # iCal PUTs the new VCALENDAR object.
+        expectedResponseCode, method, url, headers, body = req
+        self.assertEquals(method, 'PUT')
+        self.assertEquals(url, 'http://127.0.0.1:80/mumble/frotz.ics')
+        self.assertIsInstance(url, str)
+        self.assertEquals(headers.getRawHeaders('content-type'), ['text/calendar'])
+
+        consumer = MemoryConsumer()
+        finished = body.startProducing(consumer)
+        def cbFinished(ignored):
+            self.assertComponentsEqual(
+                list(readComponents(consumer.value()))[0],
+                vcalendar)
+        finished.addCallback(cbFinished)
+        return finished
+
+
+    def test_deleteEvent(self):
+        """
+        L{SnowLeopard.deleteEvent} DELETEs the event at the relative
+        URL passed to it and updates local state to reflect its
+        removal.
+        """
+        requests = []
+        def request(*args):
+            result = Deferred()
+            requests.append((result, args))
+            return result
+        self.client._request = request
+
+        calendar = Calendar(caldavxml.calendar, u'calendar', u'/foo/', None)
+        event = Event(calendar.url + u'bar.ics', None)
+        self.client._calendars[calendar.url] = calendar
+        self.client._setEvent(event.url, event)
+
+        d = self.client.deleteEvent(event.url)
+
+        result, req = requests.pop()
+
+        expectedResponseCode, method, url = req
+        self.assertEquals(method, 'DELETE')
+        self.assertEquals(url, 'http://127.0.0.1:80' + event.url)
+        self.assertIsInstance(url, str)
+
+        self.assertNotIn(event.url, self.client._events)
+        self.assertNotIn(u'bar.ics', calendar.events)
+
+
+    def assertComponentsEqual(self, first, second):
+        self.assertEquals(first.name, second.name, "Component names not equal")
+        self.assertEquals(first.behavior, second.behavior, "Component behaviors not equal")
+
+        for k in first.contents:
+            if k not in second.contents:
+                self.fail("Content %r present in first but not second" % (k,))
+            self.assertEquals(
+                len(first.contents[k]), len(second.contents[k]), "Different length content %r" % (k,))
+            for (a, b) in zip(first.contents[k], second.contents[k]):
+                if isinstance(a, ContentLine):
+                    f = self.assertContentLinesEqual
+                elif isinstance(a, Component):
+                    f = self.assertComponentsEqual
+                else:
+                    f = self.assertEquals
+                f(a, b)
+        for k in second.contents:
+            if k not in first.contents:
+                self.fail("Content %r present in second but not first" % (k,))
+
+
+    def assertContentLinesEqual(self, first, second):
+        self.assertEquals(first.name, second.name, "ContentLine names not equal")
+        self.assertEquals(first.behavior, second.behavior, "ContentLine behaviors not equal")
+        self.assertEquals(first.value, second.value, "ContentLine values not equal")
+        self.assertEquals(first.params, second.params, "ContentLine params not equal")
+        self.assertEquals(
+            first.singletonparams, second.singletonparams,
+            "ContentLine singletonparams not equal")

@@ -1,3 +1,4 @@
+# -*- test-case-name: twistedcaldav.directory.test.test_opendirectory -*-
 ##
 # Copyright (c) 2006-2010 Apple Inc. All rights reserved.
 #
@@ -54,7 +55,7 @@ class OpenDirectoryService(CachingDirectoryService):
         return "<%s %r: %r>" % (self.__class__.__name__, self.realmName, self.node)
 
 
-    def __init__(self, params, dosetup=True):
+    def __init__(self, params):
         """
         @param params: a dictionary containing the following keys:
             node: an OpenDirectory node name to bind to.
@@ -64,15 +65,14 @@ class OpenDirectoryService(CachingDirectoryService):
             restrictToGroup: C{str} guid or name of group used to
               restrict enabled users.
             cacheTimeout: C{int} number of minutes before cache is invalidated.
-        @param dosetup: if C{True} then the directory records are initialized,
-                        if C{False} they are not.
-                        This should only be set to C{False} when doing unit tests.
+            negativeCache: C{False} cache the fact that a record wasn't found
         """
         defaults = {
             'node' : '/Search',
             'restrictEnabledRecords' : False,
             'restrictToGroup' : '',
-            'cacheTimeout' : 30,
+            'cacheTimeout' : 1,
+            'negativeCaching' : False,
             'recordTypes' : (
                 self.recordType_users,
                 self.recordType_groups,
@@ -83,7 +83,8 @@ class OpenDirectoryService(CachingDirectoryService):
 
         self._recordTypes = params['recordTypes']
 
-        super(OpenDirectoryService, self).__init__(params['cacheTimeout'])
+        super(OpenDirectoryService, self).__init__(params['cacheTimeout'],
+                                                   params['negativeCaching'])
 
         self.odModule = namedModule(config.OpenDirectoryModule)
 
@@ -105,8 +106,6 @@ class OpenDirectoryService(CachingDirectoryService):
         else:
             self.restrictToGUID = True
         self.restrictedTimestamp = 0
-        self._records = {}
-        self._delayedCalls = set()
 
     @property
     def restrictedGUIDs(self):
@@ -632,8 +631,7 @@ class OpenDirectoryService(CachingDirectoryService):
                         listRecordTypes,
                         attrs,
                     ))
-                    results.extend(
-                        lookupMethod(
+                    lookedUp = lookupMethod(
                             self.directory,
                             queryattr,
                             indexKey,
@@ -642,7 +640,7 @@ class OpenDirectoryService(CachingDirectoryService):
                             listRecordTypes,
                             attrs,
                         )
-                    )
+                    results.extend(lookedUp)
 
                 except self.odModule.ODError, ex:
                     if ex.message[1] == -14987:
@@ -747,6 +745,8 @@ class OpenDirectoryService(CachingDirectoryService):
                 self.log_debug("%s is not enabled because it's not a member of group: %s" % (recordGUID, self.restrictToGroup))
                 record.enabledForCalendaring = False
                 record.enabledForAddressBooks = False
+
+            record.applySACLs()
 
             if record.enabledForCalendaring:
                 enabledRecords.append(record)

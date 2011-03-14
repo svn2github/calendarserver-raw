@@ -39,7 +39,7 @@ from twisted.python.logfile import LogFile
 from twisted.python.usage import Options, UsageError
 from twisted.python.reflect import namedClass
 from twisted.plugin import IPlugin
-from twisted.internet.defer import gatherResults
+from twisted.internet.defer import gatherResults, Deferred
 from twisted.internet import reactor as _reactor
 from twisted.internet.reactor import addSystemEventTrigger
 from twisted.internet.process import ProcessExitedAlready
@@ -72,11 +72,11 @@ from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
 from twistedcaldav.upgrade import upgradeData
 
 from calendarserver.tap.util import pgServiceFromConfig
-from txdav.base.datastore.asyncsqlpool import ConnectionPool
 
-from txdav.base.datastore.asyncsqlpool import ConnectionPoolConnection
-from txdav.base.datastore.dbapiclient import DBAPIConnector
-from txdav.base.datastore.dbapiclient import postgresPreflight
+from twext.enterprise.ienterprise import POSTGRES_DIALECT
+from twext.enterprise.ienterprise import ORACLE_DIALECT
+from twext.enterprise.adbapi2 import ConnectionPool
+from twext.enterprise.adbapi2 import ConnectionPoolConnection
 
 try:
     from twistedcaldav.authkerb import NegotiateCredentialFactory
@@ -91,13 +91,17 @@ from calendarserver.tap.util import getRootResource, computeProcessCount
 from calendarserver.tap.util import ConnectionWithPeer
 from calendarserver.tap.util import storeFromConfig
 from calendarserver.tap.util import transactionFactoryFromFD
+from calendarserver.tap.util import pgConnectorFromConfig
+from calendarserver.tap.util import oracleConnectorFromConfig
 from calendarserver.tools.util import checkDirectory
 
 try:
     from calendarserver.version import version
     version
 except ImportError:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "support"))
+    from twisted.python.modules import getModule
+    sys.path.insert(
+        0, getModule(__name__).pathEntry.filePath.child("support").path)
     from version import version as getVersion
     version = "%s (%s*)" % getVersion()
 twext.web2.server.VERSION = "CalendarServer/%s %s" % (
@@ -281,6 +285,13 @@ class CalDAVOptions (Options, LoggingMixIn):
         checkDirectory(dirpath, description, access=access, create=create)
 
     def checkConfiguration(self):
+
+        # Having CalDAV *and* CardDAV both disabled is an illegal configuration
+        # for a running server (but is fine for command-line utilities)
+        if not config.EnableCalDAV and not config.EnableCardDAV:
+            print "Neither EnableCalDAV nor EnableCardDAV are set to True."
+            sys.exit(1)
+
         uid, gid = None, None
 
         if self.parent["uid"] or self.parent["gid"]:
@@ -627,16 +638,40 @@ class CalDAVServiceMaker (LoggingMixIn):
         L{makeService_Combined}, which does the work of actually handling
         CalDAV and CardDAV requests.
         """
+        pool = None
         if config.DBAMPFD:
             txnFactory = transactionFactoryFromFD(int(config.DBAMPFD))
         elif not config.UseDatabase:
             txnFactory = None
+        elif not config.SharedConnectionPool:
+            dialect = POSTGRES_DIALECT
+            paramstyle = 'pyformat'
+            if config.DBType == '':
+                # get a PostgresService to tell us what the local connection
+                # info is, but *don't* start it (that would start one postgres
+                # master per slave, resulting in all kinds of mayhem...)
+                connectionFactory = pgServiceFromConfig(
+                    config, None).produceConnection
+            elif config.DBType == 'postgres':
+                connectionFactory = pgConnectorFromConfig(config)
+            elif config.DBType == 'oracle':
+                dialect = ORACLE_DIALECT
+                paramstyle = 'numeric'
+                connectionFactory = oracleConnectorFromConfig(config)
+            else:
+                raise UsageError("unknown DB type: %r" % (config.DBType,))
+            pool = ConnectionPool(connectionFactory, dialect=dialect,
+                                  paramstyle=paramstyle)
+            txnFactory = pool.connection
         else:
             raise UsageError(
                 "trying to use DB in slave, but no connection info from parent"
             )
         store = storeFromConfig(config, txnFactory)
-        return self.requestProcessingService(options, store)
+        result = self.requestProcessingService(options, store)
+        if pool is not None:
+            pool.setServiceParent(result)
+        return result
 
 
     def requestProcessingService(self, options, store):
@@ -860,6 +895,7 @@ class CalDAVServiceMaker (LoggingMixIn):
 
         return self.storageService(toolServiceCreator)
 
+
     def storageService(self, createMainService, uid=None, gid=None):
         """
         If necessary, create a service to be started used for storage; for
@@ -911,11 +947,15 @@ class CalDAVServiceMaker (LoggingMixIn):
                 return pgserv
             elif config.DBType == 'postgres':
                 # Connect to a postgres database that is already running.
-                import pgdb
                 return self.subServiceFactoryFactory(createMainService,
                     uid=overrideUID, gid=overrideGID)(
-                    DBAPIConnector(
-                        pgdb, postgresPreflight, config.DSN).connect)
+                            pgConnectorFromConfig(config))
+            elif config.DBType == 'oracle':
+                # Connect to an Oracle database that is already running.
+                return self.subServiceFactoryFactory(createMainService,
+                    uid=overrideUID, gid=overrideGID,
+                    dialect=ORACLE_DIALECT, paramstyle='numeric')(
+                            oracleConnectorFromConfig(config))
             else:
                 raise UsageError("Unknown database type %r" (config.DBType,))
         else:
@@ -923,11 +963,13 @@ class CalDAVServiceMaker (LoggingMixIn):
             return createMainService(None, store)
 
 
-    def subServiceFactoryFactory(self, createMainService,
-                                 uid=None, gid=None):
+    def subServiceFactoryFactory(self, createMainService, uid=None, gid=None,
+                                 dialect=POSTGRES_DIALECT,
+                                 paramstyle='pyformat'):
         def subServiceFactory(connectionFactory):
             ms = MultiService()
-            cp = ConnectionPool(connectionFactory)
+            cp = ConnectionPool(connectionFactory, dialect=dialect,
+                                paramstyle=paramstyle)
             cp.setServiceParent(ms)
             store = storeFromConfig(config, cp.connection)
             mainService = createMainService(cp, store)
@@ -1083,7 +1125,8 @@ class CalDAVServiceMaker (LoggingMixIn):
         # filesystem to the database (if that's necessary, and there is
         # filesystem data in need of upgrading).
         def spawnerSvcCreator(pool, store):
-            if pool is not None:
+            if pool is not None and config.SharedConnectionPool:
+                self.log_warn("Using Shared Connection Pool")
                 dispenser = ConnectionDispenser(pool)
             else:
                 dispenser = None
@@ -1411,6 +1454,8 @@ class DelayedStartupProcessMonitor(Service, object):
         """
         self.stopping = True
         self.deferreds = {}
+        for name in self.processes:
+            self.deferreds[name] = Deferred()
         super(DelayedStartupProcessMonitor, self).stopService()
 
         # Cancel any outstanding restarts
@@ -1486,7 +1531,7 @@ class DelayedStartupProcessMonitor(Service, object):
                                                          self.startProcess,
                                                          name)
         if self.stopping:
-            deferred = self.deferreds.get(name, None)
+            deferred = self.deferreds.pop(name, None)
             if deferred is not None:
                 deferred.callback(None)
 
