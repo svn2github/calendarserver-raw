@@ -1063,11 +1063,11 @@ class CRUD (davxml.WebDAVElement):
         (mm_namespace, "max-bytes")       : (1, 1),
     }
 
-class MaxResources (davxml.WebDAVTextElement):
+class MaxBulkResources (davxml.WebDAVTextElement):
     namespace = mm_namespace
     name = "max-resources"
 
-class MaxBytes (davxml.WebDAVTextElement):
+class MaxBulkBytes (davxml.WebDAVTextElement):
     namespace = mm_namespace
     name = "max-bytes"
 

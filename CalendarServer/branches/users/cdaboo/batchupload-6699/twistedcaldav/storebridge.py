@@ -37,7 +37,8 @@ from twistedcaldav.cache import CacheStoreNotifier, ResponseCacheMixin,\
     DisabledCacheNotifier
 from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
-from twistedcaldav.ical import Component as VCalendar, Property as VProperty
+from twistedcaldav.ical import Component as VCalendar, Property as VProperty,\
+    InvalidICalendarDataError
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.method.put_addressbook_common import StoreAddressObjectResource
 from twistedcaldav.method.put_common import StoreCalendarObjectResource
@@ -45,7 +46,7 @@ from twistedcaldav.notifications import NotificationCollectionResource, Notifica
 from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource
 from twistedcaldav.schedule import ScheduleInboxResource
 from twistedcaldav.scheduling.implicit import ImplicitScheduler
-from twistedcaldav.vcard import Component as VCard
+from twistedcaldav.vcard import Component as VCard, InvalidVCardDataError
 from txdav.base.propertystore.base import PropertyName
 from txdav.common.icommondatastore import NoSuchObjectResourceError
 from urlparse import urlsplit
@@ -220,6 +221,9 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         
         if config.MaxResourcesPerCollection:
             props += (customxml.MaxResources.qname(),)
+
+        if config.EnableBatchUpload:
+            props += (customxml.BulkRequests.qname(),)
 
         return props
 
@@ -487,26 +491,18 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         yield self._newStoreObject.rename(basename)
         returnValue(NO_CONTENT)
 
-    def liveProperties(self):
-        baseProperties = ()
-        if config.EnableBatchUpload:
-            baseProperties += (
-                customxml.BulkRequests.qname(),
-            )
-        return super(_CommonHomeChildCollectionMixin, self).liveProperties() + baseProperties
-
     @inlineCallbacks
     def _readGlobalProperty(self, qname, property, request):
 
         if config.EnableBatchUpload and qname == customxml.BulkRequests.qname():
             returnValue(customxml.BulkRequests(
                 customxml.Simple(
-                    customxml.MaxResources.fromString("100"),
-                    customxml.MaxBytes.fromString("%d" % (10*1024*1024,)),
+                    customxml.MaxBulkResources.fromString(str(config.MaxResourcesBatchUpload)),
+                    customxml.MaxBulkBytes.fromString(str(config.MaxBytesBatchUpload)),
                 ),
                 customxml.CRUD(
-                    customxml.MaxResources.fromString("100"),
-                    customxml.MaxBytes.fromString("%d" % (10*1024*1024,)),
+                    customxml.MaxBulkResources.fromString(str(config.MaxResourcesBatchUpload)),
+                    customxml.MaxBulkBytes.fromString(str(config.MaxBytesBatchUpload)),
                 ),
             ))
         else:
@@ -547,6 +543,8 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         data = (yield allDataFromStream(request.stream))
         
         components = self.componentsFromData(data)
+        if components is None:
+            raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, "Could not parse valid data from request body"))
         
         # Build response
         xmlresponses = []
@@ -564,17 +562,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                 # Get a resource for the new item
                 newchildURL = joinURL(request.path, name)
                 newchild = (yield request.locateResource(newchildURL))
-                yield self.storeResourceData(request, newchild, newchildURL, componentdata)
-
-                # FIXME: figure out return_changed behavior
-                if return_changed:
-                    pass
-#                    note = component.getProperty("NOTE")
-#                    if note is None:
-#                        component.addProperty(VCardProperty("NOTE", component.resourceUID()))
-#                    else:
-#                        note.setValue(component.resourceUID())
-#                    dataChanged = str(component)
+                dataChanged = (yield self.storeResourceData(request, newchild, newchildURL, componentdata))
 
             except HTTPError, e:
                 # Extract the pre-condition
@@ -587,7 +575,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
             
             if code is None:
                 
-                if not return_changed or not dataChanged:
+                if not return_changed or dataChanged is None:
                     xmlresponses.append(
                         davxml.PropertyStatusResponse(
                             davxml.HRef.fromString(newchildURL),
@@ -607,7 +595,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                             davxml.PropertyStatus(
                                 davxml.PropertyContainer(
                                     davxml.GETETag.fromString(newchild.etag().generate()),
-                                    self.xmlDataElementType().fromAddressData(dataChanged),
+                                    self.xmlDataElementType().fromTextData(dataChanged),
                                 ),
                                 davxml.Status.fromResponseCode(responsecode.OK),
                             )
@@ -660,8 +648,13 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
             # Determine the multiput operation: create, update, delete
             href = xmlchild.childOfType(davxml.HRef.qname())
             set = xmlchild.childOfType(davxml.Set.qname())
-            xmldata = set.childOfType(self.xmlDataElementType().qname()) if set is not None else None
+            prop = set.childOfType(davxml.PropertyContainer.qname()) if set is not None else None
+            xmldata_root = prop if prop else set
+            xmldata = xmldata_root.childOfType(self.xmlDataElementType().qname()) if xmldata_root is not None else None
             if href is None:
+                
+                if xmldata is None:
+                    raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, "Could not parse valid data from request body without a DAV:Href present"))
                 
                 # Do privilege check on collection once 
                 if checkedBindPrivelege is None:
@@ -679,6 +672,10 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                 if ifmatch:
                     ifmatch = str(ifmatch.children[0]) if len(ifmatch.children) == 1 else None
                 if delete is None:
+                    if set is None:
+                        raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, "Could not parse valid data from request body - no set of delete operation"))
+                    if xmldata is None:
+                        raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, "Could not parse valid data from request body for set operation"))
                     yield self.crudUpdate(request, str(href), xmldata.generateComponent(), ifmatch, return_changed, xmlresponses)
                 else:
                     # Do privilege check on collection once 
@@ -979,7 +976,11 @@ class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource
         results = []
 
         # Split into components by UID and TZID
-        vcal =  VCalendar.fromString(data)
+        try:
+            vcal =  VCalendar.fromString(data)
+        except InvalidICalendarDataError:
+            return None
+
         by_uid = {}
         by_tzid = {}
         for subcomponent in vcal.subcomponents():
@@ -1034,6 +1035,9 @@ class CalendarCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource
             calendar = data,
         )
         yield storer.run()
+        
+        returnValue(storer.returndata if hasattr(storer, "returndata") else None)
+            
 
     @inlineCallbacks
     def storeRemove(self, request, implicitly, where):
@@ -1926,7 +1930,10 @@ class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResou
 
     @classmethod
     def componentsFromData(cls, data):
-        return VCard.allFromString(data)
+        try:
+            return VCard.allFromString(data)
+        except InvalidVCardDataError:
+            return None
 
     @classmethod
     def resourceSuffix(cls):
@@ -1948,7 +1955,8 @@ class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResou
             vcard = data,
         )
         yield storer.run()
-
+        
+        returnValue(storer.returndata if hasattr(storer, "returndata") else None)
 
 class GlobalAddressBookCollectionResource(GlobalAddressBookResource, AddressBookCollectionResource):
     """
