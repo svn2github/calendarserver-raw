@@ -45,7 +45,7 @@ class Property (object):
     """
     vCard Property
     """
-    def __init__(self, name, value, params={}, group=None, encoded=False, **kwargs):
+    def __init__(self, name, value, params={}, group=None, **kwargs):
         """
         @param name: the property's name
         @param value: the property's value
@@ -63,9 +63,13 @@ class Property (object):
 
             self._pycard = pyobj
         else:
-            # Convert params dictionary to list of lists format used by vobject
-            self._pycard = pyProperty(name, value)
+            # Convert params dictionary to list of lists format used by pycalendar
+            if isinstance(value, unicode):
+                value = value.encode("utf-8")
+            self._pycard = pyProperty(group=group, name=name, value=value)
             for attrname, attrvalue in params.items():
+                if isinstance(attrvalue, unicode):
+                    attrvalue = attrvalue.encode("utf-8")
                 self._pycard.addAttribute(PyCalendarAttribute(attrname, attrvalue))
 
     def __str__ (self): return str(self._pycard)
@@ -91,6 +95,13 @@ class Property (object):
     def __ge__(self, other): return self.__eq__(other) or self.__gt__(other)
     def __le__(self, other): return self.__eq__(other) or self.__lt__(other)
 
+    def duplicate(self):
+        """
+        Duplicate this object and all its contents.
+        @return: the duplicated vcard.
+        """
+        return Property(None, None, params=None, pycard=self._pycard.duplicate())
+        
     def name  (self): return self._pycard.getName()
 
     def value (self): return self._pycard.getValue().getValue()
@@ -149,8 +160,9 @@ class Property (object):
 
     def removeParameterValue(self, paramname, paramvalue):
         
+        paramname = paramname.upper()
         for attr in tuple(self._pycard.getAttributes()):
-            if attr.getName() == paramname:
+            if attr.getName().upper() == paramname:
                 for value in attr.getValues():
                     if value == paramvalue:
                         if not attr.removeValue(value):
