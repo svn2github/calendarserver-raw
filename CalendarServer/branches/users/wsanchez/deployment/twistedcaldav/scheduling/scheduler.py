@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2008 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 ##
 
 
+from twisted.internet.abstract import isIPAddress
 from twisted.internet.defer import inlineCallbacks, returnValue
 
 from twisted.python.failure import Failure
@@ -37,7 +38,10 @@ from twistedcaldav.method import report_common
 from twistedcaldav.scheduling import addressmapping
 from twistedcaldav.scheduling.caldav import ScheduleViaCalDAV
 from twistedcaldav.scheduling.cuaddress import InvalidCalendarUser,\
-    LocalCalendarUser, RemoteCalendarUser, PartitionedCalendarUser
+    calendarUserFromPrincipal, OtherServerCalendarUser
+from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
+from twistedcaldav.scheduling.cuaddress import RemoteCalendarUser
+from twistedcaldav.scheduling.cuaddress import PartitionedCalendarUser
 from twistedcaldav.scheduling.ischedule import ScheduleViaISchedule
 from twistedcaldav.scheduling.ischeduleservers import IScheduleServers
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
@@ -385,6 +389,8 @@ class Scheduler(object):
     
         # Loop over each recipient and aggregate into lists by service types.
         caldav_recipients = []
+        partitioned_recipients = []
+        otherserver_recipients = []
         remote_recipients = []
         for ctr, recipient in enumerate(self.recipients):
     
@@ -400,7 +406,10 @@ class Scheduler(object):
                 caldav_recipients.append(recipient)
 
             elif isinstance(recipient, PartitionedCalendarUser):
-                remote_recipients.append(recipient)
+                partitioned_recipients.append(recipient)
+
+            elif isinstance(recipient, OtherServerCalendarUser):
+                otherserver_recipients.append(recipient)
 
             elif isinstance(recipient, RemoteCalendarUser):
                 remote_recipients.append(recipient)
@@ -412,6 +421,14 @@ class Scheduler(object):
         # Now process local recipients
         if caldav_recipients:
             yield self.generateLocalSchedulingResponses(caldav_recipients, responses, freebusy)
+
+        # Now process partitioned recipients
+        if partitioned_recipients:
+            yield self.generateRemoteSchedulingResponses(partitioned_recipients, responses, freebusy)
+
+        # Now process other recipients
+        if otherserver_recipients:
+            yield self.generateRemoteSchedulingResponses(otherserver_recipients, responses, freebusy)
 
         # To reduce chatter, we suppress certain messages
         if not getattr(self.request, 'suppressRefresh', False):
@@ -547,7 +564,7 @@ class CalDAVScheduler(Scheduler):
                     inbox = (yield self.request.locateResource(inboxURL)) if principal.locallyHosted() else "dummy"
 
                 if inbox:
-                    results.append(LocalCalendarUser(recipient, principal, inbox, inboxURL) if principal.locallyHosted() else PartitionedCalendarUser(recipient, principal))
+                    results.append(calendarUserFromPrincipal(recipient, principal, inbox, inboxURL))
                 else:
                     log.err("No schedule inbox for principal: %s" % (principal,))
                     results.append(InvalidCalendarUser(recipient))
@@ -670,7 +687,7 @@ class RemoteScheduler(Scheduler):
                     inbox = (yield self.request.locateResource(inboxURL)) if principal.locallyHosted() else "dummy"
 
                 if inbox:
-                    results.append(LocalCalendarUser(recipient, principal, inbox, inboxURL) if principal.locallyHosted() else PartitionedCalendarUser(recipient, principal))
+                    results.append(calendarUserFromPrincipal(recipient, principal, inbox, inboxURL))
                 else:
                     log.err("No schedule inbox for principal: %s" % (principal,))
                     results.append(InvalidCalendarUser(recipient))
@@ -699,8 +716,8 @@ class IScheduleScheduler(RemoteScheduler):
                 log.err("Cannot use originator that is on this server: %s" % (self.originator,))
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "originator-allowed")))
             else:
-                self.originator = PartitionedCalendarUser(self.originator, originatorPrincipal)
-                #self._validPartitionServer()
+                self.originator = calendarUserFromPrincipal(self.originator, originatorPrincipal)
+                self._validAlternateServer(originatorPrincipal)
         else:
             self.originator = RemoteCalendarUser(self.originator)
             self._validiScheduleServer()
@@ -753,13 +770,16 @@ class IScheduleScheduler(RemoteScheduler):
                 log.err("Originator not on allowed server: %s" % (self.originator,))
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "originator-allowed")))
 
-    def _validPartitionServer(self, principal):
+    def _validAlternateServer(self, principal):
         """
         Check the validity of the partitioned host.
         """
 
-        # Extract expected host/port
-        expected_uri = principal.hostedURL()
+        # Extract expected host/port. This will be the partitionURI, or if no partitions,
+        # the serverURI
+        expected_uri = principal.partitionURI()
+        if expected_uri is None:
+            expected_uri = principal.serverURI()
         expected_uri = urlparse.urlparse(expected_uri)
     
         # Get the request IP and map to hostname.
@@ -767,15 +787,16 @@ class IScheduleScheduler(RemoteScheduler):
         
         # First compare as dotted IP
         matched = False
-        if clientip == expected_uri.hostname:
-            matched = True
+        if isIPAddress(expected_uri.hostname):
+            if clientip == expected_uri.hostname:
+                matched = True
         else:
-            # Now do hostname lookup
+            # Now do expected hostname -> IP lookup
             try:
-                host, aliases, _ignore_ips = socket.gethostbyaddr(clientip)
-                for hostname in itertools.chain((host,), aliases):
-                    # Try host match
-                    if hostname == expected_uri.hostname:
+                # So now try the lookup of the expected host
+                _ignore_host, _ignore_aliases, ips = socket.gethostbyname_ex(expected_uri.hostname)
+                for ip in ips:
+                    if ip == clientip:
                         matched = True
                         break
             except socket.herror, e:
@@ -801,8 +822,8 @@ class IScheduleScheduler(RemoteScheduler):
                     raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "organizer-allowed")))
                 else:
                     # Check that the origin server is the correct partition
-                    self.organizer = PartitionedCalendarUser(organizer, organizerPrincipal)
-                    self._validPartitionServer(self.organizer.principal)
+                    self.organizer = calendarUserFromPrincipal(organizer, organizerPrincipal)
+                    self._validAlternateServer(self.organizer.principal)
             else:
                 localUser = (yield addressmapping.mapper.isCalendarUserInMyDomain(organizer))
                 if localUser:
@@ -828,7 +849,7 @@ class IScheduleScheduler(RemoteScheduler):
                 log.err("Invalid ATTENDEE in calendar data: %s" % (self.calendardata,))
                 raise HTTPError(ErrorResponse(responsecode.FORBIDDEN, (caldav_namespace, "attendee-allowed")))
             else:
-                self._validPartitionServer(attendeePrincipal)                
+                self._validAlternateServer(attendeePrincipal)                
         else:
             localUser = (yield addressmapping.mapper.isCalendarUserInMyDomain(self.attendee))
             if localUser:

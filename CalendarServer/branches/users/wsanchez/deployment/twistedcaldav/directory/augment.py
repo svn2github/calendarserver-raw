@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2009 Apple Inc. All rights reserved.
+# Copyright (c) 2009-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,13 +35,15 @@ class AugmentRecord(object):
         self,
         uid,
         enabled=False,
-        hostedAt="",
+        serverID="",
+        partitionID="",
         enabledForCalendaring=False,
         autoSchedule=False,
     ):
         self.uid = uid
         self.enabled = enabled
-        self.hostedAt = hostedAt
+        self.serverID = serverID
+        self.partitionID = partitionID
         self.enabledForCalendaring = enabledForCalendaring
         self.autoSchedule = autoSchedule
 
@@ -222,9 +224,6 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
     def __init__(self, dbID, dbapiName, dbapiArgs, **kwargs):
         
         AugmentDB.__init__(self)
-        self.cachedPartitions = {}
-        self.cachedHostedAt = {}
-        
         AbstractADBAPIDatabase.__init__(self, dbID, dbapiName, dbapiArgs, True, **kwargs)
         
     @inlineCallbacks
@@ -251,16 +250,17 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
         """
         
         # Query for the record information
-        results = (yield self.query("select UID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE from AUGMENTS where UID = :1", (uid,)))
+        results = (yield self.query("select UID, ENABLED, SERVERID, PARTITIONID, CALENDARING, AUTOSCHEDULE from AUGMENTS where UID = :1", (uid,)))
         if not results:
             returnValue(None)
         else:
-            uid, enabled, partitionid, enabdledForCalendaring, autoSchedule = results[0]
+            uid, enabled, serverid, partitionid, enabdledForCalendaring, autoSchedule = results[0]
             
             record = AugmentRecord(
                 uid = uid,
                 enabled = enabled == "T",
-                hostedAt = (yield self._getPartition(partitionid)),
+                serverID = serverid,
+                partitionID = partitionid,
                 enabledForCalendaring = enabdledForCalendaring == "T",
                 autoSchedule = autoSchedule == "T",
             )
@@ -270,17 +270,16 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
     @inlineCallbacks
     def addAugmentRecord(self, record, update=False):
 
-        partitionid = (yield self._getPartitionID(record.hostedAt))
-        
         if update:
             yield self.execute(
                 """update AUGMENTS set
-                   (UID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE) =
-                   (:1, :2, :3, :4, :5) where UID = :6""",
+                   (UID, ENABLED, SERVERID, PARTITIONID, CALENDARING, AUTOSCHEDULE) =
+                   (:1, :2, :3, :4, :5 :6) where UID = :7""",
                 (
                     record.uid,
                     "T" if record.enabled else "F",
-                    partitionid,
+                    record.serverID,
+                    record.partitionID,
                     "T" if record.enabledForCalendaring else "F",
                     "T" if record.autoSchedule else "F",
                     record.uid,
@@ -289,12 +288,13 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
         else:
             yield self.execute(
                 """insert into AUGMENTS
-                   (UID, ENABLED, PARTITIONID, CALENDARING, AUTOSCHEDULE)
-                   values (:1, :2, :3, :4, :5)""",
+                   (UID, ENABLED, SERVERID, PARTITIONID, CALENDARING, AUTOSCHEDULE)
+                   values (:1, :2, :3, :4, :5, :6)""",
                 (
                     record.uid,
                     "T" if record.enabled else "F",
-                    partitionid,
+                    record.serverID,
+                    record.partitionID,
                     "T" if record.enabledForCalendaring else "F",
                     "T" if record.autoSchedule else "F",
                 )
@@ -303,35 +303,6 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
     def removeAugmentRecord(self, uid):
 
         return self.query("delete from AUGMENTS where UID = :1", (uid,))
-
-    @inlineCallbacks
-    def _getPartitionID(self, hostedat, createIfMissing=True):
-        
-        # We will use a cache for these as we do not expect changes whilst running
-        try:
-            returnValue(self.cachedHostedAt[hostedat])
-        except KeyError:
-            pass
-
-        partitionid = (yield self.queryOne("select PARTITIONID from PARTITIONS where HOSTEDAT = :1", (hostedat,)))
-        if partitionid == None:
-            yield self.execute("insert into PARTITIONS (HOSTEDAT) values (:1)", (hostedat,))
-            partitionid = (yield self.queryOne("select PARTITIONID from PARTITIONS where HOSTEDAT = :1", (hostedat,)))
-        self.cachedHostedAt[hostedat] = partitionid
-        returnValue(partitionid)
-
-    @inlineCallbacks
-    def _getPartition(self, partitionid):
-        
-        # We will use a cache for these as we do not expect changes whilst running
-        try:
-            returnValue(self.cachedPartitions[partitionid])
-        except KeyError:
-            pass
-
-        partition = (yield self.queryOne("select HOSTEDAT from PARTITIONS where PARTITIONID = :1", (partitionid,)))
-        self.cachedPartitions[partitionid] = partition
-        returnValue(partition)
 
     def _db_version(self):
         """
@@ -357,20 +328,15 @@ class AugmentADAPI(AugmentDB, AbstractADBAPIDatabase):
         yield self._create_table("AUGMENTS", (
             ("UID",          "text unique"),
             ("ENABLED",      "text(1)"),
+            ("SERVERID",     "text"),
             ("PARTITIONID",  "text"),
             ("CALENDARING",  "text(1)"),
             ("AUTOSCHEDULE", "text(1)"),
         ))
 
-        yield self._create_table("PARTITIONS", (
-            ("PARTITIONID",   "serial"),
-            ("HOSTEDAT",      "text"),
-        ))
-
     @inlineCallbacks
     def _db_empty_data_tables(self):
         yield self._db_execute("delete from AUGMENTS")
-        yield self._db_execute("delete from PARTITIONS")
 
 class AugmentSqliteDB(ADBAPISqliteMixin, AugmentADAPI):
     """

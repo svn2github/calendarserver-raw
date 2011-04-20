@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -473,7 +473,7 @@ def checkForReply(request, principal, calendar):
                 tr = caldavxml.TimeRange(start="20000101", end="20000101")
                 tr.start = instance.start
                 tr.end = instance.end
-                yield report_common.generateFreeBusyInfo(request, testcal, fbinfo, tr, 0, uid)
+                yield report_common.generateFreeBusyInfo(request, testcal, fbinfo, tr, 0, uid, servertoserver=True)
                 
                 # If any fbinfo entries exist we have an overlap
                 if len(fbinfo[0]) or len(fbinfo[1]) or len(fbinfo[2]):

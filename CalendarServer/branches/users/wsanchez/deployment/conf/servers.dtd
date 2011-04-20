@@ -1,5 +1,5 @@
 <!--
-Copyright (c) 2006-2009 Apple Inc. All rights reserved.
+Copyright (c) 2011 Apple Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,15 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<!ELEMENT augments (record*) >
+<!ELEMENT servers (server*) >
 
-  <!ELEMENT record (uid, enable, (server-id, partition-id?)?, enable-calendar?, auto-schedule?)>
-    <!ATTLIST record repeat CDATA "1">
+	<!ELEMENT server (id, uri, partitions?) >
+		<!ATTLIST server implicit (yes|no) "yes">
 
-  <!ELEMENT uid               (#PCDATA)>
-  <!ELEMENT enable            (#PCDATA)>
-  <!ELEMENT server-id          (#PCDATA)>
-  <!ELEMENT partition-id       (#PCDATA)>
-  <!ELEMENT enable-calendar   (#PCDATA)>
-  <!ELEMENT auto-schedule     (#PCDATA)>
->
+		<!ELEMENT id  (#PCDATA) >
+		<!ELEMENT uri (#PCDATA) >
+
+		<!ELEMENT partitions (partition*) >
+			<!ELEMENT partition (id, uri) >

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ##
-# Copyright (c) 2009-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2009-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ def changeSubElementText(parent, tag, text):
     child = parent.find(tag)
     child.text = text
 
-def doAdd(xmlfile, uid, host, enable_calendar, auto_schedule):
+def doAdd(xmlfile, uid, serverID, partitionID, enable_calendar, auto_schedule):
 
     augments_node = readXML(xmlfile)
 
@@ -84,7 +84,8 @@ def doAdd(xmlfile, uid, host, enable_calendar, auto_schedule):
     record = addSubElement(augments_node, xmlaugmentsparser.ELEMENT_RECORD, "\n    ")
     addSubElement(record, xmlaugmentsparser.ELEMENT_UID, uid, 4)
     addSubElement(record, xmlaugmentsparser.ELEMENT_ENABLE, "true", 4)
-    addSubElement(record, xmlaugmentsparser.ELEMENT_HOSTEDAT, host, 4)
+    addSubElement(record, xmlaugmentsparser.ELEMENT_SERVERID, serverID, 4)
+    addSubElement(record, xmlaugmentsparser.ELEMENT_PARTITIONID, partitionID, 4)
     addSubElement(record, xmlaugmentsparser.ELEMENT_ENABLECALENDAR, "true" if enable_calendar else "false", 4)
     addSubElement(record, xmlaugmentsparser.ELEMENT_AUTOSCHEDULE, "true" if auto_schedule else "false", 2)
     
@@ -92,7 +93,7 @@ def doAdd(xmlfile, uid, host, enable_calendar, auto_schedule):
     writeXML(xmlfile, augments_node)
     print "Added uid '%s' in augment file: '%s'" % (uid, xmlfile,)
     
-def doModify(xmlfile, uid, host, enable_calendar, auto_schedule):
+def doModify(xmlfile, uid, serverID, partitionID, enable_calendar, auto_schedule):
 
     augments_node = readXML(xmlfile)
 
@@ -113,8 +114,10 @@ def doModify(xmlfile, uid, host, enable_calendar, auto_schedule):
         error("Cannot modify uid '%s' because it does not exist in augment file: '%s'" % (uid, xmlfile,))
     
     # Modify record
-    if host is not None:
-        child.find(xmlaugmentsparser.ELEMENT_HOSTEDAT).text = host
+    if serverID is not None:
+        child.find(xmlaugmentsparser.ELEMENT_SERVERID).text = serverID
+    if partitionID is not None:
+        child.find(xmlaugmentsparser.ELEMENT_PARTITIONID).text = partitionID
     child.find(xmlaugmentsparser.ELEMENT_ENABLECALENDAR).text = "true" if enable_calendar else "false"
     child.find(xmlaugmentsparser.ELEMENT_AUTOSCHEDULE).text = "true" if auto_schedule else "false"
     
@@ -177,11 +180,13 @@ ACTION is one of add|modify|remove|print
                       help="UID to manipulate", metavar="UID")
     parser.add_option("-i", "--uidfile", dest="uidfile",
                       help="File containing a list of UIDs to manipulate", metavar="UIDFILE")
-    parser.add_option("-n", "--node", dest="node",
-                      help="Partition node to assign to UID", metavar="NODE")
+    parser.add_option("-s", "--server", dest="serverID",
+                      help="Server id to assign to UID", metavar="SERVER")
+    parser.add_option("-p", "--partition", dest="partitionID",
+                      help="Partition id to assign to UID", metavar="PARTITION")
     parser.add_option("-c", "--enable-calendar", action="store_true", dest="enable_calendar",
                       default=True, help="Enable calendaring for this UID: %default")
-    parser.add_option("-a", "--auto-schedule", action="store_true", dest="auto_schedule",
+    parser.add_option("-x", "--auto-schedule", action="store_true", dest="auto_schedule",
                       default=False, help="Enable auto-schedule for this UID: %default")
 
     (options, args) = parser.parse_args()
@@ -200,13 +205,11 @@ ACTION is one of add|modify|remove|print
                 uids.append(line[:-1])
         
     if args[0] == "add":
-        if not options.node:
-            parser.error("Partition node must be specified when adding")
         for uid in uids:
-            doAdd(options.xmlfilename, uid, options.node, options.enable_calendar, options.auto_schedule)
+            doAdd(options.xmlfilename, uid, options.serverID, options.partitionID, options.enable_calendar, options.auto_schedule)
     elif args[0] == "modify":
         for uid in uids:
-            doModify(options.xmlfilename, uid, options.node, options.enable_calendar, options.auto_schedule)
+            doModify(options.xmlfilename, uid, options.serverID, options.partitionID, options.enable_calendar, options.auto_schedule)
     elif args[0] == "remove":
         for uid in uids:
             doRemove(options.xmlfilename, uid)

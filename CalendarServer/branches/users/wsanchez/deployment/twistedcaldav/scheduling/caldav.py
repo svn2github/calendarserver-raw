@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ from twistedcaldav.log import Logger
 from twistedcaldav.method import report_common
 from twistedcaldav.resource import isCalendarCollectionResource
 from twistedcaldav.scheduling.cuaddress import LocalCalendarUser, RemoteCalendarUser,\
-    PartitionedCalendarUser
+    PartitionedCalendarUser, OtherServerCalendarUser
 from twistedcaldav.scheduling.delivery import DeliveryService
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
 from twistedcaldav.scheduling.itip import handleRequest
@@ -98,7 +98,7 @@ class ScheduleViaCalDAV(DeliveryService):
         uid = self.scheduler.calendar.resourceUID()
 
         organizerPrincipal = None
-        if type(self.scheduler.organizer) in (LocalCalendarUser, PartitionedCalendarUser,):
+        if type(self.scheduler.organizer) in (LocalCalendarUser, PartitionedCalendarUser, OtherServerCalendarUser,):
             organizerPrincipal = davxml.Principal(davxml.HRef(self.scheduler.organizer.principal.principalURL()))
 
         for recipient in self.recipients:
@@ -252,6 +252,7 @@ class ScheduleViaCalDAV(DeliveryService):
                 organizer = self.scheduler.organizer.cuaddr,
                 organizerPrincipal = organizerPrincipal,
                 same_calendar_user = same_calendar_user,
+                servertoserver = remote,
             ))
     
         # Build VFREEBUSY iTIP reply for this recipient

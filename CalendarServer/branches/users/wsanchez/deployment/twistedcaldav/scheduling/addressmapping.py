@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ from twistedcaldav.config import config
 from twistedcaldav.log import Logger
 from twistedcaldav.memcacher import Memcacher
 from twistedcaldav.scheduling.caldav import ScheduleViaCalDAV
-from twistedcaldav.scheduling.cuaddress import LocalCalendarUser,\
-    RemoteCalendarUser, InvalidCalendarUser, PartitionedCalendarUser
+from twistedcaldav.scheduling.cuaddress import RemoteCalendarUser, InvalidCalendarUser,\
+    calendarUserFromPrincipal
 from twistedcaldav.scheduling.delivery import DeliveryService
 from twistedcaldav.scheduling.ischedule import ScheduleViaISchedule
 
@@ -50,7 +50,7 @@ class ScheduleAddressMapper(object):
         
         # If we have a principal always treat the user as local or partitioned
         if principal:
-            returnValue(LocalCalendarUser(cuaddr, principal) if principal.locallyHosted() else PartitionedCalendarUser(cuaddr, principal))
+            returnValue(calendarUserFromPrincipal(cuaddr, principal))
 
         # Get the type
         cuaddr_type = (yield self.getCalendarUserServiceType(cuaddr))

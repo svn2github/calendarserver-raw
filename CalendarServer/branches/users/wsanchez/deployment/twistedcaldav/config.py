@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ from twisted.web2.dav.resource import TwistedACLInheritable
 from twistedcaldav.py.plistlib import readPlist
 from twistedcaldav.log import Logger
 from twistedcaldav.log import clearLogLevels, setLogLevelForNamespace, InvalidLogLevelError
-from twistedcaldav.partitions import partitions
 
 log = Logger()
 
@@ -336,14 +335,14 @@ defaultConfig = {
     },
 
     #
-    # Partitioning
+    # Support multiple hosts within a domain
     #
-    "Partitioning" : {
-        "Enabled":             False,   # Partitioning enabled or not
-        "ServerPartitionID":   "",      # Unique ID for this server's partition instance.
-        "PartitionConfigFile": "/etc/caldavd/partitions.plist", # File path for partition information
-        "MaxClients":          5,       # Pool size for connections to each partition
+    "Servers" : {
+        "Enabled": False,                          # Multiple servers/partitions enabled or not
+        "ConfigFile": "/etc/caldavd/servers.xml",  # File path for server information
+        "MaxClients": 5,                           # Pool size for connections to each partition
     },
+    "ServerPartitionID": "",                       # Unique ID for this server's partition instance.
 
     #
     # Performance tuning
@@ -466,7 +465,7 @@ class Config (object):
             self.updateDropBox,
             self.updateLogLevels,
             self.updateNotifications,
-            self.updatePartitions,
+            self.updateServers,
         ]
 
     def __str__(self):
@@ -647,19 +646,18 @@ class Config (object):
             raise ConfigurationError("Invalid log level: %s" % (e.level))
 
     @staticmethod
-    def updatePartitions(self, items):
-        #
-        # Partitions
-        #
-    
-        if "Partitioning" in items:
-            if items["Partitioning"]["Enabled"]:
-                partitions.setSelfPartition(items["Partitioning"]["ServerPartitionID"])
-                partitions.setMaxClients(items["Partitioning"]["MaxClients"])
-                partitions.readConfig(items["Partitioning"]["PartitionConfigFile"])
-                partitions.installReverseProxies()
+    def updateServers(self, items):
+        import servers
+        if "Servers" in items:
+            if items["Servers"]["Enabled"]:
+                servers.Servers.load()
+                if "ServerPartitionID" in items:
+                    servers.Servers.getThisServer().installReverseProxies(
+                        items["ServerPartitionID"],
+                        items["Servers"]["MaxClients"],
+                )
             else:
-                partitions.clear()
+                servers.Servers.clear()
 
     def updateDefaults(self, items):
         _mergeData(self._defaults, items)

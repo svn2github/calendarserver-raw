@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -442,7 +442,8 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
             """---------------------\n"""
             """Directory GUID: %s\n"""         % (self.record.service.guid,),
             """Realm: %s\n"""                  % (self.record.service.realmName,),
-            """Hosted-At: %s\n"""              % (self.record.hostedAt,) if config.Partitioning.Enabled else "", 
+            """Hosted-At: %s\n"""              % (self.record.serverURI(),) if config.Servers.Enabled else "", 
+            """Partition: %s\n"""              % (self.record.partitionID,) if config.Servers.Enabled and self.record.partitionID else "", 
             """\n"""
             """Principal Information\n"""
             """---------------------\n"""
@@ -603,11 +604,17 @@ class DirectoryPrincipalResource (PropfindCacheMixin, PermissionsMixIn, DAVPrinc
     def principalUID(self):
         return self.record.guid
 
+    def serverURI(self):
+        return self.record.serverURI()
+
+    def partitionURI(self):
+        return self.record.partitionURI()
+
     def locallyHosted(self):
         return self.record.locallyHosted()
     
-    def hostedURL(self):
-        return self.record.hostedURL()
+    def thisServer(self):
+        return self.record.thisServer()
 
     ##
     # Extra resource info
@@ -678,7 +685,8 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
             """---------------------\n"""
             """Directory GUID: %s\n"""         % (self.record.service.guid,),
             """Realm: %s\n"""                  % (self.record.service.realmName,),
-            """Hosted-At: %s\n"""              % (self.record.hostedAt,) if config.Partitioning.Enabled else "", 
+            """Hosted-At: %s\n"""              % (self.record.serverURI(),) if config.Servers.Enabled else "", 
+            """Partition: %s\n"""              % (self.record.partitionID,) if config.Servers.Enabled and self.record.partitionID else "", 
             """\n"""
             """Principal Information\n"""
             """---------------------\n"""
@@ -761,12 +769,17 @@ class DirectoryCalendarPrincipalResource (DirectoryPrincipalResource, CalendarPr
 
     def _homeChildURL(self, name):
         if not hasattr(self, "calendarHomeURL"):
-            home = self._calendarHome()
-            if home is None:
-                self.calendarHomeURL = None
+            if not hasattr(self.record.service, "calendarHomesCollection"):
                 return None
-            else:
-                self.calendarHomeURL = home.url()
+            self.calendarHomeURL = joinURL(
+                self.record.service.calendarHomesCollection.url(),
+                uidsResourceName,
+                self.record.guid
+            ) + "/"
+
+            # Prefix with other server if needed
+            if not self.thisServer():
+                self.calendarHomeURL = joinURL(self.serverURI(), self.calendarHomeURL)
             
         url = self.calendarHomeURL
         if url is None:

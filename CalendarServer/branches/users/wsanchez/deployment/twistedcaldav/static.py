@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -664,9 +664,11 @@ class CalendarHomeUIDProvisioningFile (AutoProvisioningFileMixIn, DirectoryCalen
     
                 assert child.exists()
         
-        else:
+        elif record.thisServer():
             childPath = self.fp.child(name[0:2]).child(name[2:4]).child(name)
             child = CalendarHomeReverseProxyFile(childPath.path, self, record)
+        else:
+            child = None # Use a redirect?
 
         return child
 
@@ -680,7 +682,7 @@ class CalendarHomeReverseProxyFile(ReverseProxyResource):
         self.parent = parent
         self.record = record
         
-        super(CalendarHomeReverseProxyFile, self).__init__(self.record.hostedAt)
+        super(CalendarHomeReverseProxyFile, self).__init__(self.record.partitionID)
     
     def url(self):
         return joinURL(self.parent.url(), self.record.guid)

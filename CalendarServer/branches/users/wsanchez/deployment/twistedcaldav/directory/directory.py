@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ from twistedcaldav.config import config
 from twistedcaldav.log import LoggingMixIn
 from twistedcaldav.directory.idirectory import IDirectoryService, IDirectoryRecord
 from twistedcaldav.directory.util import uuidFromName
-from twistedcaldav.partitions import partitions
+from twistedcaldav import servers
 
 class DirectoryService(LoggingMixIn):
     implements(IDirectoryService, ICredentialsChecker)
@@ -153,7 +153,7 @@ class DirectoryRecord(LoggingMixIn):
     implements(IDirectoryRecord)
 
     def __repr__(self):
-        return "<%s[%s@%s(%s)] %s(%s) %r @ %s>" % (
+        return "<%s[%s@%s(%s)] %s(%s) %r @ %s/#%s>" % (
             self.__class__.__name__,
             self.recordType,
             self.service.guid,
@@ -161,7 +161,8 @@ class DirectoryRecord(LoggingMixIn):
             self.guid,
             self.shortName,
             self.fullName,
-            self.hostedAt,
+            self.serverURI(),
+            self.partitionID,
         )
 
     def __init__(
@@ -179,7 +180,8 @@ class DirectoryRecord(LoggingMixIn):
         self.recordType            = recordType
         self.guid                  = guid
         self.enabled               = False
-        self.hostedAt              = ""
+        self.serverID              = ""
+        self.partitionID           = ""
         self.shortName             = shortName
         self.fullName              = fullName
         self.emailAddresses        = emailAddresses
@@ -225,7 +227,8 @@ class DirectoryRecord(LoggingMixIn):
         
         if augment:
             self.enabled = augment.enabled
-            self.hostedAt = augment.hostedAt
+            self.serverID = augment.serverID
+            self.partitionID = augment.partitionID
             self.enabledForCalendaring = augment.enabledForCalendaring
             self.autoSchedule = augment.autoSchedule
 
@@ -236,7 +239,8 @@ class DirectoryRecord(LoggingMixIn):
         else:
             # Groups are by default always enabled
             self.enabled = (self.recordType == self.service.recordType_groups)
-            self.hostedAt = ""
+            self.serverID = ""
+            self.partitionID = ""
             self.enabledForCalendaring = False
 
     def members(self):
@@ -263,11 +267,42 @@ class DirectoryRecord(LoggingMixIn):
     def verifyCredentials(self, credentials):
         return False
 
-    def locallyHosted(self):
-        return not self.hostedAt or not config.Partitioning.Enabled or self.hostedAt == config.Partitioning.ServerPartitionID
+    def serverURI(self):
+        """
+        URL of the server hosting this record. Return None if hosted on this server.
+        """
+        if config.Servers.Enabled and self.serverID:
+            return servers.Servers.getServerURIById(self.serverID)
+        else:
+            return None
     
-    def hostedURL(self):
-        return partitions.getPartitionURL(self.hostedAt)
+    def partitionURI(self):
+        """
+        URL of the server hosting this record. Return None if hosted on this server.
+        """
+        if config.Servers.Enabled and self.serverID:
+            s = servers.Servers.getServerById(self.serverID)
+            if s:
+                return s.getPartitionURIForId(self.partitionID)
+        return None
+    
+    def locallyHosted(self):
+        """
+        Hosted on this server/partition instance.
+        """
+        
+        if config.Servers.Enabled and self.serverID:
+            s = servers.Servers.getServerById(self.serverID)
+            if s:
+                return s.thisServer and (not self.partitionID or self.partitionID == config.ServerPartitionID)
+        return True
+
+    def thisServer(self):
+        if config.Servers.Enabled and self.serverID:
+            s = servers.Servers.getServerById(self.serverID)
+            if s:
+                return s.thisServer
+        return True
 
 class DirectoryError(RuntimeError):
     """

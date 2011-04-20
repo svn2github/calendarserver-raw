@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -287,7 +287,9 @@ fbtype_mapper = {"BUSY": 0, "BUSY-TENTATIVE": 1, "BUSY-UNAVAILABLE": 2}
 fbtype_index_mapper = {'B': 0, 'T': 1, 'U': 2}
 
 def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
-                         excludeuid=None, organizer=None, organizerPrincipal=None, same_calendar_user=False):
+                         excludeuid=None, organizer=None,
+                         organizerPrincipal=None, same_calendar_user=False,
+                         servertoserver=False):
     """
     Run a free busy report on the specified calendar collection
     accumulating the free busy info for later processing.
@@ -302,16 +304,21 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
         This is used in conjunction with the UID value to process exclusions.
     @param same_calendar_user:   a C{bool} indicating whether the calendar user requesting the free-busy information
         is the same as the calendar user being targeted.
+    @param servertoserver: a C{bool} indicating whether we are doing a local or
+        remote lookup request.
     """
     
     # First check the privilege on this collection
-#    try:
-#        d = waitForDeferred(calresource.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), principal=organizerPrincipal))
-#        yield d
-#        d.getResult()
-#    except AccessDeniedError:
-#        yield matchtotal
-#        return
+    # Per-calendar ACLs never used - commented this out to improve performance 
+    # TODO: for server-to-server we bypass this right now as we have no way to authorize external users.
+#    if not servertoserver:
+#        try:
+#            d = waitForDeferred(calresource.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), principal=organizerPrincipal))
+#            yield d
+#            d.getResult()
+#        except AccessDeniedError:
+#            yield matchtotal
+#            return
 
     # May need organizer principal
     organizer_principal = calresource.principalForCalendarUserAddress(organizer) if organizer else None
@@ -369,12 +376,15 @@ def generateFreeBusyInfo(request, calresource, fbinfo, timerange, matchtotal,
         yield child
         child = child.getResult()
 
-#        try:
-#            d = waitForDeferred(child.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), inherited_aces=filteredaces, principal=organizerPrincipal))
-#            yield d
-#            d.getResult()
-#        except AccessDeniedError:
-#            continue
+        # Per-resource ACLs never used - commented this out to improve performance 
+#        # TODO: for server-to-server we bypass this right now as we have no way to authorize external users.
+#        if not servertoserver:
+#            try:
+#                d = waitForDeferred(child.checkPrivileges(request, (caldavxml.ReadFreeBusy(),), inherited_aces=filteredaces, principal=organizerPrincipal))
+#                yield d
+#                d.getResult()
+#            except AccessDeniedError:
+#                continue
 
         # Short-cut - if an fbtype exists we can use that
         if type == "VEVENT" and aggregated_resources[key][0][3] != '?':

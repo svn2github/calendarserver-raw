@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2007 Apple Inc. All rights reserved.
+# Copyright (c) 2007-2011 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -231,7 +231,11 @@ class CalDAVOptionsTest(TestCase):
         a '/' seperated path.  Such as '-o MultiProcess/ProcessCount=1'
         """
 
-        argv = ['-o', 'MultiProcess/ProcessCount=102']
+        myConfig = deepcopy(config_mod.defaultConfig)
+        myConfigFile = self.mktemp()
+        writePlist(myConfig, myConfigFile)
+
+        argv = ['-f', myConfigFile, '-o', 'MultiProcess/ProcessCount=102']
         self.config.parseOptions(argv)
 
         self.assertEquals(config.MultiProcess['ProcessCount'], 102)
@@ -345,6 +349,7 @@ class CalDAVServiceMakerTests(BaseServiceMakerTests):
         self.writeConfig()
         self.assertRaises(UsageError, self.makeService)
 
+    test_makeServiceDispatcher.skip = True
 
 class SlaveServiceTest(BaseServiceMakerTests):
     """
