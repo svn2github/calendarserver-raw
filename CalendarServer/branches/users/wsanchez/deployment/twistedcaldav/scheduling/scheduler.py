@@ -45,6 +45,7 @@ from twistedcaldav.scheduling.cuaddress import PartitionedCalendarUser
 from twistedcaldav.scheduling.ischedule import ScheduleViaISchedule
 from twistedcaldav.scheduling.ischeduleservers import IScheduleServers
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
+from twistedcaldav.servers import Servers
 
 import datetime
 import itertools
@@ -785,9 +786,16 @@ class IScheduleScheduler(RemoteScheduler):
         # Get the request IP and map to hostname.
         clientip = self.request.remoteAddr.host
         
-        # First compare as dotted IP
+        # Check against this server (or any of its partitions). We need this because an external iTIP message
+        # may be addressed to users on different partitions, and the node receiving the iTIP message will need to
+        # forward it to the partition nodes, thus the client ip seen by the partitions will in fact be the initial
+        # receiving node.
         matched = False
-        if isIPAddress(expected_uri.hostname):
+        if Servers.getThisServer().checkThisIP(clientip):
+            matched = True
+    
+        # Next compare as dotted IP
+        elif isIPAddress(expected_uri.hostname):
             if clientip == expected_uri.hostname:
                 matched = True
         else:
