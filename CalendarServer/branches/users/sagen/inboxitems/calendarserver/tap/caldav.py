@@ -429,7 +429,6 @@ class SlaveSpawnerService(Service):
     L{DelayedStartupProcessMonitor}:
 
         - regular slave processes (CalDAV workers)
-        - task sidecar
         - notifier
         - mail gateway
     """

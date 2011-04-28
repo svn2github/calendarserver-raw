@@ -40,7 +40,7 @@ from twistedcaldav.scheduling.scheduler import DirectScheduler
 
 from twisted.application.service import Service
 from twisted.internet import reactor
-from twisted.internet.defer import inlineCallbacks, succeed
+from twisted.internet.defer import inlineCallbacks, succeed, returnValue
 
 from txdav.caldav.datastore.index_file import db_basename
 
@@ -54,6 +54,8 @@ from twisted.python.reflect import namedAny
 deadPropertyXattrPrefix = namedAny(
     "txdav.base.propertystore.xattr.PropertyStore.deadPropertyXattrPrefix"
 )
+
+INBOX_ITEMS = "inboxitems.txt"
 
 log = Logger()
 
@@ -327,21 +329,6 @@ def upgrade_to_1(config):
             os.chown(journalPath, uid, gid)
 
 
-    def createTaskServiceDirectory(config, uid, gid):
-
-        taskDir = os.path.join(config.DataRoot, "tasks")
-        if not os.path.exists(taskDir):
-            os.mkdir(taskDir)
-        os.chown(taskDir, uid, gid)
-
-        incomingDir = os.path.join(taskDir, "incoming")
-        if not os.path.exists(incomingDir):
-            os.mkdir(incomingDir)
-        os.chown(incomingDir, uid, gid)
-
-        return incomingDir
-
-
 
     directory = getDirectory()
 
@@ -438,13 +425,12 @@ def upgrade_to_1(config):
                                         if not inboxItem.startswith("."):
                                             inboxItems.add(os.path.join(inboxPath, inboxItem))
 
-            incomingDir = createTaskServiceDirectory(config, uid, gid)
             if inboxItems:
-                taskFile = os.path.join(incomingDir, "scheduleinboxes.task")
-                with open(taskFile, "w") as out:
+                inboxItemsFile = os.path.join(config.DataRoot, INBOX_ITEMS)
+                with open(inboxItemsFile, "w") as out:
                     for item in inboxItems:
                         out.write("%s\n" % (item))
-                os.chown(taskFile, uid, gid)
+                os.chown(inboxItemsFile, uid, gid)
 
             if total:
                 log.warn("Processing %d calendar homes in %s" % (total, uidHomes))
@@ -815,21 +801,35 @@ class UpgradeFileSystemFormatService(Service, object):
 
 
 class PostDBImportService(Service, object):
+    """
+    Service for processing non-implicit inbox items after data has been
+    imported into the DB
+    """
 
     def __init__(self, config, store, service):
+        """
+        Initialize the service.
+        """
         self.wrappedService = service
         self.store = store
         self.config = config
 
     def startService(self):
+        """
+        Start the service.
+        """
         self.processInboxItems()
 
 
     @inlineCallbacks
     def processInboxItems(self):
+        """
+        When data is migrated from a non-implicit scheduling server there can
+        be inbox items that clients have not yet processed.  This method
+        runs those inbox items through the implicit scheduling mechanism.
+        """
 
-        inboxItemsList = os.path.join(self.config.DataRoot, "tasks", "incoming",
-            "scheduleinboxes.task")
+        inboxItemsList = os.path.join(self.config.DataRoot, INBOX_ITEMS)
         if os.path.exists(inboxItemsList):
 
             root = getRootResource(self.config, self.store)
@@ -871,7 +871,8 @@ class PostDBImportService(Service, object):
                         inboxItemResource = yield inbox.getChild(fileName)
                         if inboxItemResource and inboxItemResource.exists():
 
-                            uri = "/calendars/__uids__/%s/inbox/%s" % (uuid, fileName)
+                            uri = "/calendars/__uids__/%s/inbox/%s" % (uuid,
+                                fileName)
                             request.path = uri
                             request._rememberResource(inboxItemResource, uri)
 
@@ -885,22 +886,34 @@ class PostDBImportService(Service, object):
                                 uuid,
                                 uri
                             )
-                inboxItems.remove(inboxItem)
+                    inboxItems.remove(inboxItem)
+
+            except Exception, e:
+                log.error("Error processing inbox item: %s (%s)" % (inboxItem, e))
+                log.error("Restart calendar service to reattempt processing")
 
             finally:
-                # Rewrite the task file in case we exit before we're done
-                with open(inboxItemsList + ".tmp", "w") as output:
-                    for inboxItem in inboxItems:
-                        output.write("%s\n" % (inboxItem,))
-                os.rename(inboxItemsList + ".tmp", inboxItemsList)
+                # Rewrite the inbox items file in case we exit before we're
+                # done so we'll pick up where we left off next time we start up.
+                if inboxItems:
+                    with open(inboxItemsList + ".tmp", "w") as output:
+                        for inboxItem in inboxItems:
+                            output.write("%s\n" % (inboxItem,))
+                    os.rename(inboxItemsList + ".tmp", inboxItemsList)
+                else:
+                    os.remove(inboxItemsList)
 
-        os.remove(inboxItemsList)
         reactor.callLater(0, self.wrappedService.setServiceParent, self.parent)
 
 
     @inlineCallbacks
     def processInboxItem(self, root, directory, principal, request, inbox,
-            inboxItem, uuid, uri):
+        inboxItem, uuid, uri):
+        """
+        Run an individual inbox item through implicit scheduling and remove
+        the inbox item.
+        """
+
         log.debug("Processing inbox item %s" % (inboxItem,))
 
         ownerPrincipal = principal
@@ -928,11 +941,11 @@ class PostDBImportService(Service, object):
         recipients = (owner,)
 
         txn = request._newStoreTransaction
-
         scheduler = DirectScheduler(request, inboxItem)
+        # Process inbox item
         yield scheduler.doSchedulingViaPUT(originator, recipients, calendar,
             internal_request=False)
+        # Remove item
         yield inboxItem.storeRemove(request, True, uri)
-
         yield txn.commit()
 
