@@ -33,6 +33,10 @@ from twistedcaldav.directory.resourceinfo import ResourceInfoDatabase
 from twistedcaldav.mail import MailGatewayTokensDatabase
 from twistedcaldav.ical import Component
 from twistedcaldav import caldavxml
+from twistedcaldav.ical import Component
+from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
+from twistedcaldav.scheduling.scheduler import DirectScheduler
+
 
 from twisted.application.service import Service
 from twisted.internet import reactor
@@ -40,8 +44,11 @@ from twisted.internet.defer import inlineCallbacks, succeed
 
 from txdav.caldav.datastore.index_file import db_basename
 
+from calendarserver.tap.util import getRootResource, FakeRequest
+
 from calendarserver.tools.util import getDirectory
 from calendarserver.tools.resources import migrateResources
+
 from twisted.python.reflect import namedAny
 
 deadPropertyXattrPrefix = namedAny(
@@ -806,4 +813,126 @@ class UpgradeFileSystemFormatService(Service, object):
         self.doUpgrade()
 
 
+
+class PostDBImportService(Service, object):
+
+    def __init__(self, config, store, service):
+        self.wrappedService = service
+        self.store = store
+        self.config = config
+
+    def startService(self):
+        self.processInboxItems()
+
+
+    @inlineCallbacks
+    def processInboxItems(self):
+
+        inboxItemsList = os.path.join(self.config.DataRoot, "tasks", "incoming",
+            "scheduleinboxes.task")
+        if os.path.exists(inboxItemsList):
+
+            root = getRootResource(self.config, self.store)
+            directory = root.getDirectory()
+            principalCollection = directory.principalCollection
+
+            inboxItems = set()
+            with open(inboxItemsList) as input:
+                for inboxItem in input:
+                    inboxItem = inboxItem.strip()
+                    inboxItems.add(inboxItem)
+
+            try:
+                for inboxItem in list(inboxItems):
+                    log.info("Processing inbox item: %s" % (inboxItem,))
+                    ignore, uuid, ignore, fileName = inboxItem.rsplit("/", 3)
+
+                    record = directory.recordWithUID(uuid)
+                    if not record:
+                        continue
+
+                    principal = principalCollection.principalForRecord(record)
+                    if not principal:
+                        continue
+
+                    request = FakeRequest(root, "PUT", None)
+                    request.checkedSACL = True
+                    request.authnUser = request.authzUser = davxml.Principal(
+                        davxml.HRef.fromString("/principals/__uids__/%s/" % (uuid,))
+                    )
+
+                    calendarHome = yield principal.calendarHome(request)
+                    if not calendarHome:
+                        continue
+
+                    inbox = yield calendarHome.getChild("inbox")
+                    if inbox and inbox.exists():
+
+                        inboxItemResource = yield inbox.getChild(fileName)
+                        if inboxItemResource and inboxItemResource.exists():
+
+                            uri = "/calendars/__uids__/%s/inbox/%s" % (uuid, fileName)
+                            request.path = uri
+                            request._rememberResource(inboxItemResource, uri)
+
+                            yield self.processInboxItem(
+                                root,
+                                directory,
+                                principal,
+                                request,
+                                inbox,
+                                inboxItemResource,
+                                uuid,
+                                uri
+                            )
+                inboxItems.remove(inboxItem)
+
+            finally:
+                # Rewrite the task file in case we exit before we're done
+                with open(inboxItemsList + ".tmp", "w") as output:
+                    for inboxItem in inboxItems:
+                        output.write("%s\n" % (inboxItem,))
+                os.rename(inboxItemsList + ".tmp", inboxItemsList)
+
+        os.remove(inboxItemsList)
+        reactor.callLater(0, self.wrappedService.setServiceParent, self.parent)
+
+
+    @inlineCallbacks
+    def processInboxItem(self, root, directory, principal, request, inbox,
+            inboxItem, uuid, uri):
+        log.debug("Processing inbox item %s" % (inboxItem,))
+
+        ownerPrincipal = principal
+        cua = "urn:uuid:%s" % (uuid,)
+        owner = LocalCalendarUser(cua, ownerPrincipal,
+            inbox, ownerPrincipal.scheduleInboxURL())
+
+        data = yield inboxItem.iCalendarText()
+        calendar = Component.fromString(data)
+        try:
+            method = calendar.propertyValue("METHOD")
+        except ValueError:
+            returnValue(None)
+
+        if method == "REPLY":
+            # originator is attendee sending reply
+            originator = calendar.getAttendees()[0]
+        else:
+            # originator is the organizer
+            originator = calendar.getOrganizer()
+
+        principalCollection = directory.principalCollection
+        originatorPrincipal = principalCollection.principalForCalendarUserAddress(originator)
+        originator = LocalCalendarUser(originator, originatorPrincipal)
+        recipients = (owner,)
+
+        txn = request._newStoreTransaction
+
+        scheduler = DirectScheduler(request, inboxItem)
+        yield scheduler.doSchedulingViaPUT(originator, recipients, calendar,
+            internal_request=False)
+        yield inboxItem.storeRemove(request, True, uri)
+
+        yield txn.commit()
 

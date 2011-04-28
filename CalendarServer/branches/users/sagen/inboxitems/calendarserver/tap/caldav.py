@@ -69,7 +69,7 @@ from twistedcaldav.localization import processLocalizationFiles
 from twistedcaldav.mail import IMIPReplyInboxResource
 from twistedcaldav import memcachepool
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
-from twistedcaldav.upgrade import UpgradeFileSystemFormatService
+from twistedcaldav.upgrade import UpgradeFileSystemFormatService, PostDBImportService
 
 from calendarserver.tap.util import pgServiceFromConfig
 
@@ -505,25 +505,6 @@ class SlaveSpawnerService(Service):
 
             self.monitor.addProcess("mailgateway", mailGatewayArgv,
                                env=PARENT_ENVIRONMENT)
-
-        self.maker.log_info("Adding task service")
-        taskArgv = [
-            sys.executable,
-            sys.argv[0],
-        ]
-        if config.UserName:
-            taskArgv.extend(("-u", config.UserName))
-        if config.GroupName:
-            taskArgv.extend(("-g", config.GroupName))
-        taskArgv.extend((
-            "--reactor=%s" % (config.Twisted.reactor,),
-            "-n", "caldav_task",
-            "-f", self.configPath,
-        ))
-
-        self.monitor.addProcess(
-            "caldav_task", taskArgv, env=PARENT_ENVIRONMENT
-        )
 
 
 
@@ -982,7 +963,8 @@ class CalDAVServiceMaker (LoggingMixIn):
             mainService = createMainService(cp, store)
             upgradeSvc = UpgradeFileSystemFormatService(config,
                 UpgradeToDatabaseService.wrapService(
-                    CachingFilePath(config.DocumentRoot), mainService,
+                    CachingFilePath(config.DocumentRoot),
+                    PostDBImportService(config, store, mainService),
                     store, uid=uid, gid=gid
                 )
             )
