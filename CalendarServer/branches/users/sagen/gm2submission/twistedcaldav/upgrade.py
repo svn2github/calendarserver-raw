@@ -42,6 +42,7 @@ from twisted.application.service import Service
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, succeed, returnValue
 
+from calendarserver.tap.util import getRootResource, FakeRequest
 from calendarserver.tools.util import getDirectory
 from calendarserver.tools.resources import migrateResources
 from twisted.python.reflect import namedAny
