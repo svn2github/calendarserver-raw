@@ -275,7 +275,7 @@
 				</verify>
 			</request>
 		</test>
-		<test name='3' ignore='no'>
+		<test name='3' ignore='yes'>
 			<description>query for free busy on collection with Depth infinity</description>
 			<request user='$userid2:' pswd='$pswd2:' print-response='no'>
 				<method>REPORT</method>

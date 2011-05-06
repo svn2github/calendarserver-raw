@@ -20,7 +20,7 @@
  DRI: Cyrus Daboo, cdaboo@apple.com
  -->
 
-<caldavtest>
+<caldavtest ignore-all='yes'>
 	<start>
 		<request end-delete="yes">
 			<method>MKCOL</method>
@@ -231,7 +231,7 @@
 	<test-suite name='Schedule free-busy' ignore='no'>
 		<test name='1'>
 			<description>POST free busy</description>
-			<request user="$userid2:" pswd='$pswd2:' print-response='no'>
+			<request user="$userid2:" pswd='$pswd2:' print-response='yes'>
 				<method>POST</method>
 				<header>
 					<name>Originator</name>
