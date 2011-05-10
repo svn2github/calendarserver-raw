@@ -101,7 +101,10 @@ class TwistdSlaveProcess(object):
         Re-initialize the meta-socket, if this process is using one.
         """
         if self.metaSocket is not None:
-            self.dispatcher.removeSocket(self.metaSocket)
+            try:
+                self.dispatcher.removeSocket(self.metaSocket)
+            except OSError:
+                log.err("Exception while removing socket; probably bad FD.")
             self.metaSocket = None
         if self.dispatcher is not None:
             self.metaSocket = self.dispatcher.addSocket()
