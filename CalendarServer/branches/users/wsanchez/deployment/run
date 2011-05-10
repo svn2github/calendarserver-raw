@@ -521,7 +521,7 @@ fi;
 if ! py_have_module xml.dom.ext; then
   xml="${top}/PyXML-0.8.4";
 
-  www_get "PyXML" "${xml}" http://internap.dl.sourceforge.net/sourceforge/pyxml/PyXML-0.8.4.tar.gz;
+  www_get "PyXML" "${xml}" http://softlayer.dl.sourceforge.net/sourceforge/pyxml/PyXML-0.8.4.tar.gz;
   py_build "PyXML" "${xml}" false;
   py_install "PyXML" "${xml}";
 
@@ -665,9 +665,9 @@ if ! type pgsql >& /dev/null; then
   #
   # postgresql
   #
-  postgresql="${top}/postgresql-8.4.4"
+  postgresql="${top}/postgresql-9.0.4"
 
-  www_get "postgresql" "${postgresql}" http://ftp9.us.postgresql.org/pub/mirrors/postgresql/source/v8.4.4/postgresql-8.4.4.tar.gz;
+  www_get "postgresql" "${postgresql}" http://ftp9.us.postgresql.org/pub/mirrors/postgresql/source/v9.0.4/postgresql-9.0.4.tar.gz;
 
   if "${do_setup}" && (
     "${force_setup}" || [ ! -d "${postgresql}/_root" ]
@@ -790,7 +790,7 @@ svn_get "CalDAVTester" "${caldavtester}" "${svn_uri_base}/CalDAVTester/branches/
 
 pyflakes="${top}/Pyflakes";
 
-svn_get "Pyflakes" "${pyflakes}" http://divmod.org/svn/Divmod/trunk/Pyflakes 17198;
+www_get "Pyflakes" "${pyflakes}" http://pypi.python.org/packages/source/p/pyflakes/pyflakes-0.4.0.tar.gz;
 
 #
 # Calendar Server
