@@ -665,9 +665,9 @@ if ! type pgsql >& /dev/null; then
   #
   # postgresql
   #
-  postgresql="${top}/postgresql-9.0.4"
+  postgresql="${top}/postgresql-8.4.4"
 
-  www_get "postgresql" "${postgresql}" http://ftp9.us.postgresql.org/pub/mirrors/postgresql/source/v9.0.4/postgresql-9.0.4.tar.gz;
+  www_get "postgresql" "${postgresql}" http://static.calendarserver.org/pkg/PostgreSQL-9e1ce0db3b70272379b16ed5eb6263e9-postgresql-8.4.4.tar.gz;
 
   if "${do_setup}" && (
     "${force_setup}" || [ ! -d "${postgresql}/_root" ]
