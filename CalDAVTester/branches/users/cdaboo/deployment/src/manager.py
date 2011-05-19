@@ -176,7 +176,7 @@ class manager(object):
 
         # Process any filesarguments as test configs
         for f in args:
-            fnames.append(dname + "/" + f)
+            fnames.append((dname + "/" + f) if f[0] != "/" else f)
         
         self.readXML(sname, pname, fnames, all)
         if docroot:
