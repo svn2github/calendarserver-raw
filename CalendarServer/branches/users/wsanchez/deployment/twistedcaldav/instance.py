@@ -223,19 +223,42 @@ class InstanceList(object):
         @param component: the Component to expand
         @param limit: the end datetime.datetime for expansion
         """
-        start = component.getStartDateUTC()
-        due = component.getDueDateUTC()
+        dtstart = component.getStartDateUTC()
+        dtend = component.getEndDateUTC()
+        dtdue = component.getDueDateUTC()
 
-        if start is None and due is None:
-            return
+        # DTSTART and DURATION or DUE case
+        if dtstart is not None:
+            start = dtstart
+            if dtend is not None:
+                end = dtend
+            elif dtdue is not None:
+                end = dtdue
+            else:
+                end = dtstart
+        
+        # DUE case
+        elif dtdue is not None:
+            start = end = dtdue
+        
+        # Fall back to COMPLETED or CREATED
+        else:
+            from twistedcaldav.ical import maxDateTime, minDateTime
+            dtcreated = component.getCreatedDateUTC()
+            dtcompleted = component.getCompletedDateUTC()
+            if dtcompleted:
+                end = dtcompleted
+                start = dtcreated if dtcreated else dtend
+            elif dtcreated:
+                start = dtcreated
+                end = maxDateTime
+            else:
+                start = minDateTime
+                end = maxDateTime
 
-        if start is None:
-            start = due
-        elif due is None:
-            due = start
-        duration = differenceDateTime(start, due)
+        duration = differenceDateTime(start, end)
 
-        self._addMasterComponent(component, limit, start, due, duration)
+        self._addMasterComponent(component, limit, start, end, duration)
 
     def _addOverrideToDoComponent(self, component):
         """
@@ -247,18 +270,40 @@ class InstanceList(object):
         
         #TODO: This does not take into account THISANDPRIOR - only THISANDFUTURE
         
-        start = component.getStartDateUTC()
-        due = component.getDueDateUTC()
+        dtstart = component.getStartDateUTC()
+        dtend = component.getEndDateUTC()
+        dtdue = component.getDueDateUTC()
 
-        if start is None and due is None:
-            return
+        # DTSTART and DURATION or DUE case
+        if dtstart is not None:
+            start = dtstart
+            if dtend is not None:
+                end = dtend
+            elif dtdue is not None:
+                end = dtdue
+            else:
+                end = dtstart
+        
+        # DUE case
+        elif dtdue is not None:
+            start = end = dtdue
+        
+        # Fall back to COMPLETED or CREATED
+        else:
+            from twistedcaldav.ical import maxDateTime, minDateTime
+            dtcreated = component.getCreatedDateUTC()
+            dtcompleted = component.getCompletedDateUTC()
+            if dtcompleted:
+                end = dtcompleted
+                start = dtcreated if dtcreated else dtend
+            elif dtcreated:
+                start = dtcreated
+                end = maxDateTime
+            else:
+                start = minDateTime
+                end = maxDateTime
 
-        if start is None:
-            start = due
-        elif due is None:
-            due = start
-
-        self._addOverrideComponent(component, start, due)
+        self._addOverrideComponent(component, start, end)
 
     def _addMasterComponent(self, component, limit, start, end, duration):
         # Always add first instance if included in range.

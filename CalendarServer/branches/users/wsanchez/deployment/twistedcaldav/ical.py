@@ -64,6 +64,10 @@ allowedComponents = (
     #"VAVAILABILITY",
 )
 
+# Used for min/max time-range query limits
+minDateTime = datetime.datetime(1900, 1, 1, 0, 0, 0, tzinfo=utc)
+maxDateTime = datetime.datetime(2100, 1, 1, 0, 0, 0, tzinfo=utc)
+
 class Property (object):
     """
     iCalendar Property
@@ -567,6 +571,32 @@ class Component (object):
 
         if due is not None:
             return normalizeToUTC(due)
+        else:
+            return None
+ 
+    def getCompletedDateUTC(self):
+        """
+        Return the completed date or date-time for the specified component
+        converted to UTC.
+        @param component: the Component whose start should be returned.
+        @return: the datetime.date or datetime.datetime for the start.
+        """
+        completed = self.propertyNativeValue("COMPLETED")
+        if completed is not None:
+            return normalizeToUTC(completed)
+        else:
+            return None
+ 
+    def getCreatedDateUTC(self):
+        """
+        Return the created date or date-time for the specified component
+        converted to UTC.
+        @param component: the Component whose start should be returned.
+        @return: the datetime.date or datetime.datetime for the start.
+        """
+        created = self.propertyNativeValue("CREATED")
+        if created is not None:
+            return normalizeToUTC(created)
         else:
             return None
  
