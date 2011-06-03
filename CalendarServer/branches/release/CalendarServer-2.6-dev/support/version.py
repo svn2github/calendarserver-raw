@@ -24,7 +24,7 @@ def version():
     # Compute the version number.
     #
 
-    base_version = "2.5"
+    base_version = "2.6"
 
     branches = (
         "tags/release/CalendarServer-" + base_version,
