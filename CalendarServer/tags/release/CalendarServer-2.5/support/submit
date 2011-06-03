@@ -1,0 +1,194 @@
+#!/bin/sh
+
+##
+# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##
+
+##
+# Submit project to B&I (Apple internal build)
+##
+
+set -e
+set -u
+
+version="12";
+
+ wd="$(cd "$(dirname "$0")" && pwd)";
+src="$(cd "${wd}/.." && pwd)";
+
+##
+# Command line
+##
+
+  build=false;
+install=false;
+package=false;
+
+submission_enabled=true;
+
+usage ()
+{
+  program="$(basename "$0")";
+
+  if [ "${1-}" != "-" ]; then echo "$@"; echo; fi;
+
+  echo "Usage: ${program} release";
+  echo "       ${program} -b[ip]";
+  echo "";
+  echo "Options:";
+  echo "	-b Run buildit";
+  echo "	-i Install resulting build on this system";
+  echo "	-p Create a package with the resulting build";
+
+  if [ "${1-}" == "-" ]; then return 0; fi;
+  exit 64;
+}
+
+while getopts 'hbip' option; do
+  case "$option" in
+    '?') usage; ;;
+    'h') usage -; exit 0; ;;
+    'b')   build=true; ;;
+    'i') install=true; ;;
+    'p') package=true; ;;
+  esac;
+done;
+shift $((${OPTIND} - 1));
+
+if ! "${build}"; then
+  if "${install}"; then usage "-i flag requires -b"; fi;
+  if "${package}"; then usage "-p flag requires -b"; fi;
+
+  if [ $# == 0 ]; then usage "No release specified"; fi;
+  release="$1"; shift;
+
+  if ! "${submission_enabled}"; then
+    echo "Submissions from this branch are not enabled.";
+    exit 1;
+  fi;
+fi;
+
+if [ $# != 0 ]; then usage "Unrecognized arguments:" "$@"; fi;
+
+ project="CalendarServer";
+     uri="$(svn info "${src}" --xml | sed -n 's|^.*<url>\(.*\)</url>.*$|\1|p')";
+revision="$(svnversion "${src}")";
+
+##
+# Do the Right Thing
+##
+
+if "${build}"; then
+  project_version="${project}-$(echo ${revision} | sed -e 's/:/_/g')";
+else
+  #
+  # We need a single revision number
+  #
+  if [ -n "$(echo "${revision}" | sed 's|[0-9M]||g')" ]; then
+    echo "Working copy has multiple versions of files: ${revision}.  Aborting.";
+    exit 1;
+  else
+    revision="$(echo "${revision}" | sed 's|M$||g')";
+  fi;
+
+  project_version="${project}-$((${version} + ${revision} / 10000 % 100)).$((${revision} / 100 % 100)).$((${revision} % 100))";
+
+  #
+  # Make sure changes are checked in.
+  #
+  if [ "$(svn st "${src}" | grep -v support/submit)" != "" ]; then
+    echo "Working copy has uncommitted changes.  Aborting.";
+    exit 1;
+  fi;
+fi;
+#
+# Do submission
+#
+
+tmp="$(mktemp -d -t CalendarServer_build)";
+wc="${tmp}/${project_version}";
+
+if "${build}"; then
+  echo "";
+  echo "Copying ${src}...";
+  ignores="$(mktemp -t CalendarServer_ignores)";
+  svn st --no-ignore | sed -n -e 's|^I......||p' > "${ignores}";
+  rsync -av --exclude=".svn" --exclude="_trial_temp" --exclude-from="${ignores}" "${src}/" "${wc}";
+  rm "${ignores}";
+else
+  echo "";
+  echo "Exporting ${uri}@${revision}..."
+  svn export -r "${revision}" "${uri}@${revision}" "${wc}";
+fi;
+
+echo ""
+echo "Tweaking for B&I...";
+ln -s support/Makefile.Apple "${wc}/Makefile";
+
+version_file="${wc}/SubmissionInfo.xml";
+cat - >> "${version_file}" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<submission>
+ <project>${project}</project>
+ <version>${version}</version>
+ <source>
+  <svn>
+   <uri>${uri}</uri>
+   <revision>${revision}</revision>
+   <date>$(date -u)</date>
+  </svn>
+ </source>
+</submission>
+EOF
+
+echo "";
+echo "Preparing sources for ${project_version}...";
+make -C "${wc}" prep;
+
+if "${build}"; then
+  echo "";
+  echo "Building ${project_version}...";
+
+  if "${package}"; then
+    package_tmp="${tmp}/pkg";
+    install -d "${package_tmp}";
+    merge_flags="-merge \"${package_tmp}\"";
+  elif "${install}"; then
+    merge_flags="-merge /";
+  else
+    merge_flags="";
+  fi;
+
+  sudo ~rc/bin/buildit "${wc}" CALENDARSERVER_CACHE_DEPS="${CALENDARSERVER_CACHE_DEPS-${wd}/.dependencies}" \
+    $(file /System/Library/Frameworks/Python.framework/Versions/Current/Python | sed -n -e 's|^.*(for architecture \([^)][^)]*\).*$|-arch \1|p' | sed 's|ppc7400|ppc|') \
+    -release SnowLeopard \
+    ${merge_flags};
+
+  if "${package}"; then
+    package_file="${project_version}.tgz";
+    echo "Creating package: ${package_file}...";
+    tar -C "${package_tmp}" -cvzf "${package_file}" .;
+    if "${install}"; then
+      echo "Installing package: ${package_file}";
+      tar -C / -xvzf "${package_file}";
+    fi;
+  fi;
+else
+  echo "";
+  echo "Submitting sources for ${project_version}...";
+  ~rc/bin/submitproject "${wc}" "${release}";
+fi;
+
+rm -rf "${tmp}";
