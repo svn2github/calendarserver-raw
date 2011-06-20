@@ -74,7 +74,7 @@ postgresql-8.4.4::
 
 PyGreSQL-4.0::
 	@echo "Building $@..."
-	$(_v) cd $(BuildDirectory)/$@ && $(Environment) PATH=$(PATH):$(DSTROOT)/usr/local/pgsql/bin $(PYTHON) setup.py build
+	$(_v) cd $(BuildDirectory)/$@ && $(Environment) PATH=$(PATH):$(DSTROOT)/usr/local/pgsql/bin LIBRARY_PATH="/usr/local/pgsql/lib" $(PYTHON) setup.py build
 
 
 TwistedSubEnvironment = $(Environment) PYTHONPATH="$(DSTROOT)$(SHAREDIR)/caldavd/lib/python"
