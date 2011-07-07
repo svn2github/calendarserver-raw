@@ -395,6 +395,9 @@ class IScheduleInboxResource (CalDAVResource):
             ),
         )
 
+    def exists(self):
+        return True
+
     def resourceType(self):
         return davxml.ResourceType.ischeduleinbox
 

@@ -139,6 +139,7 @@ class ScheduleViaISchedule(DeliveryService):
         if server not in self.otherServers:
             self.otherServers[server] = IScheduleServerRecord(uri=joinURL(server, "/ischedule"))
             self.otherServers[server].unNormalizeAddresses = False
+            self.otherServers[server].moreHeaders.append(recipient.principal.server().secretHeader())
         
         return self.otherServers[server]
 
@@ -192,6 +193,10 @@ class IScheduleRequest(object):
         for recipient in self.recipients:
             self.headers.addRawHeader('Recipient', utf8String(recipient.cuaddr))
         self.headers.setHeader('Content-Type', MimeType("text", "calendar", params={"charset":"utf-8"}))
+
+        # Add any additional headers
+        for name, value in self.server.moreHeaders:
+            self.headers.addRawHeader(name, value)
 
     def _doAuthentication(self):
         if self.server.authentication and self.server.authentication[0] == "basic":
