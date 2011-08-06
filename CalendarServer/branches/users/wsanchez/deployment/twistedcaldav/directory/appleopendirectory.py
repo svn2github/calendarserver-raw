@@ -120,7 +120,7 @@ class OpenDirectoryService(DirectoryService):
         """
         This service works by having the master process call this method
         which queries OD for all records, storing the pickled results into
-        files that the child processes stat/read every minute.
+        files, then sending SIGUSR1 to the children to tell them to refresh.
         The files are only written by this method if there are actually
         changes in the results.
         The reloadCache( ) method below used to talk to OD, but now it reads
