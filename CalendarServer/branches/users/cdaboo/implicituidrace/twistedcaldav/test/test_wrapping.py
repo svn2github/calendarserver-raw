@@ -119,13 +119,13 @@ class WrappingTests(TestCase):
             self.calendarCollection._newStore._path.createDirectory()
         except:
             pass
-        txn = self.calendarCollection._newStore.newTransaction()
-        home = yield txn.calendarHomeWithUID(uid, True)
+        transaction = self.calendarCollection._newStore.newTransaction()
+        home = yield transaction.calendarHomeWithUID(uid, True)
         cal = yield home.calendarWithName("calendar")
         yield cal.createCalendarObjectWithName(
             objectName, VComponent.fromString(objectText)
         )
-        yield txn.commit()
+        yield transaction.commit()
 
 
     @inlineCallbacks
@@ -146,8 +146,8 @@ class WrappingTests(TestCase):
             self.addressbookCollection._newStore._path.createDirectory()
         except:
             pass
-        txn = self.addressbookCollection._newStore.newTransaction()
-        home = yield txn.addressbookHomeWithUID(uid, True)
+        transaction = self.addressbookCollection._newStore.newTransaction()
+        home = yield transaction.addressbookHomeWithUID(uid, True)
         adbk = yield home.addressbookWithName("addressbook")
         if adbk is None:
             yield home.createAddressBookWithName("addressbook")
@@ -155,7 +155,7 @@ class WrappingTests(TestCase):
         yield adbk.createAddressBookObjectWithName(
             objectName, VCComponent.fromString(objectText)
         )
-        yield txn.commit()
+        yield transaction.commit()
 
 
     requestUnderTest = None

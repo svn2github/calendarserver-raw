@@ -109,22 +109,22 @@ class AddressBookHome(CommonHome):
         yield Delete(
             From=ahm,
             Where=ahm.RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield Delete(
             From=ab,
             Where=ab.ADDRESSBOOK_HOME_RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield Delete(
             From=aor,
             Where=aor.ADDRESSBOOK_HOME_RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield Delete(
             From=ah,
             Where=ah.RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield self._cacher.delete(str(self._ownerUID))
 
@@ -272,7 +272,7 @@ class AddressBookObject(CommonObjectResource):
         self._size = len(componentText)
 
         # Special - if migrating we need to preserve the original md5    
-        if self._txn._migrating and hasattr(component, "md5"):
+        if self._transaction._migrating and hasattr(component, "md5"):
             self._md5 = component.md5
 
         if inserting:
@@ -286,7 +286,7 @@ class AddressBookObject(CommonObjectResource):
                     Return=(ao.RESOURCE_ID,
                             ao.CREATED,
                             ao.MODIFIED)
-                ).on(self._txn))[0]
+                ).on(self._transaction))[0]
         else:
             self._modified = (yield Update(
                 {ao.VCARD_TEXT: componentText,
@@ -294,7 +294,7 @@ class AddressBookObject(CommonObjectResource):
                  ao.MD5: self._md5,
                  ao.MODIFIED: utcNowSQL},
                 Where=ao.RESOURCE_ID == self._resourceID,
-                Return=ao.MODIFIED).on(self._txn))[0][0]
+                Return=ao.MODIFIED).on(self._transaction))[0][0]
 
 
     @inlineCallbacks

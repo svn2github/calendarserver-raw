@@ -1784,16 +1784,16 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
         calendarName = calendar.name()
         ownerHome = calendar.ownerCalendarHome()
         homeUID = ownerHome.uid()
-        txn = ownerHome.transaction().store().newTransaction(
+        transaction = ownerHome.transaction().store().newTransaction(
             "new transaction for " + self._newStoreObject.name())
-        newParent = (yield (yield txn.calendarHomeWithUID(homeUID))
+        newParent = (yield (yield transaction.calendarHomeWithUID(homeUID))
                              .calendarWithName(calendarName))
         newObject = (yield newParent.calendarObjectWithName(objectName))
-        request._newStoreTransaction = txn
+        request._newStoreTransaction = transaction
         request._resourcesByURL.clear()
         request._urlsByResource.clear()
         self._initializeWithObject(newObject, newParent)
-        returnValue(txn)
+        returnValue(transaction)
 
 
     @inlineCallbacks
@@ -1854,6 +1854,7 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
         # delete from happening.
 
         isinbox = self._newStoreObject._calendar.name() == "inbox"
+        transaction = self._newStoreObject._transaction
 
         # Do If-Schedule-Tag-Match behavior first
         # Important: this should only ever be done when storeRemove is called
@@ -1875,7 +1876,7 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
             )
             if do_implicit_action:
                 lock = MemcacheLock(
-                    "ImplicitUIDLock", calendar.resourceUID(), timeout=60.0
+                    "ImplicitUIDLock", calendar.resourceUID(), timeout=60.0, expire_time=5*60
                 )
 
         try:
@@ -1896,7 +1897,9 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
 
         finally:
             if lock:
-                yield lock.clean()
+                # Release lock after commit or abort
+                transaction.postCommit(lock.clean)
+                transaction.postAbort(lock.clean)
 
         returnValue(NO_CONTENT)
 

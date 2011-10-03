@@ -334,7 +334,7 @@ class ScheduleOutboxResource (CalendarSchedulingCollectionResource):
         scheduler = CalDAVScheduler(request, self)
 
         # Do the POST processing treating
-        result = (yield scheduler.doSchedulingViaPOST())
+        result = (yield scheduler.doSchedulingViaPOST(self._associatedTransaction))
         returnValue(result.response())
 
 
@@ -451,17 +451,17 @@ class IScheduleInboxResource (ReadOnlyNoCopyResourceMixIn, DAVResource):
         scheduler = IScheduleScheduler(request, self)
 
         # Need a transaction to work with
-        txn = self._newStore.newTransaction("new transaction for Server To Server Inbox Resource")
-        request._newStoreTransaction = txn
+        transaction = self._newStore.newTransaction("new transaction for Server To Server Inbox Resource")
+        request._newStoreTransaction = transaction
          
         # Do the POST processing treating this as a non-local schedule
         try:
-            result = (yield scheduler.doSchedulingViaPOST(use_request_headers=True))
+            result = (yield scheduler.doSchedulingViaPOST(transaction, use_request_headers=True))
         except Exception, e:
-            yield txn.abort()
+            yield transaction.abort()
             raise e
         else:
-            yield txn.commit()
+            yield transaction.commit()
         returnValue(result.response())
 
     ##

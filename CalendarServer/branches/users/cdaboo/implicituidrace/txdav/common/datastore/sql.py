@@ -103,7 +103,7 @@ class CommonDataStore(Service, object):
     Shared logic for SQL-based data stores, between calendar and addressbook
     storage.
 
-    @ivar sqlTxnFactory: A 0-arg factory callable that produces an
+    @ivar sqlTransactionFactory: A 0-arg factory callable that produces an
         L{IAsyncTransaction}.
 
     @ivar notifierFactory: a L{twistedcaldav.notify.NotifierFactory} (or
@@ -129,12 +129,12 @@ class CommonDataStore(Service, object):
 
     implements(ICalendarStore)
 
-    def __init__(self, sqlTxnFactory, notifierFactory, attachmentsPath,
+    def __init__(self, sqlTransactionFactory, notifierFactory, attachmentsPath,
                  enableCalendars=True, enableAddressBooks=True,
                  label="unlabeled", quota=(2 ** 20)):
         assert enableCalendars or enableAddressBooks
 
-        self.sqlTxnFactory = sqlTxnFactory
+        self.sqlTransactionFactory = sqlTransactionFactory
         self.notifierFactory = notifierFactory
         self.attachmentsPath = attachmentsPath
         self.enableCalendars = enableCalendars
@@ -164,7 +164,7 @@ class CommonDataStore(Service, object):
         """
         return CommonStoreTransaction(
             self,
-            self.sqlTxnFactory(),
+            self.sqlTransactionFactory(),
             self.enableCalendars,
             self.enableAddressBooks,
             None if migrating else self.notifierFactory,
@@ -215,7 +215,7 @@ class CommonStoreTransaction(object):
 
     id = 0
 
-    def __init__(self, store, sqlTxn,
+    def __init__(self, store, sqlTransaction,
                  enableCalendars, enableAddressBooks,
                  notifierFactory, label, migrating=False):
         self._store = store
@@ -223,6 +223,7 @@ class CommonStoreTransaction(object):
         self._addressbookHomes = {}
         self._notificationHomes = {}
         self._postCommitOperations = []
+        self._postAbortOperations = []
         self._notifierFactory = notifierFactory
         self._label = label
         self._migrating = migrating
@@ -245,9 +246,9 @@ class CommonStoreTransaction(object):
         from txdav.carddav.datastore.sql import AddressBookHome
         CommonStoreTransaction._homeClass[ECALENDARTYPE] = CalendarHome
         CommonStoreTransaction._homeClass[EADDRESSBOOKTYPE] = AddressBookHome
-        self._sqlTxn = sqlTxn
-        self.paramstyle = sqlTxn.paramstyle
-        self.dialect = sqlTxn.dialect
+        self._sqlTransaction = sqlTransaction
+        self.paramstyle = sqlTransaction.paramstyle
+        self.dialect = sqlTransaction.dialect
         
         # FIXME: want to pass a "debug" option in to enable this via config - off for now
         self._stats = None #TransactionStatsCollector()
@@ -330,6 +331,13 @@ class CommonStoreTransaction(object):
         self._postCommitOperations.append(operation)
 
 
+    def postAbort(self, operation):
+        """
+        Run things after C{abort}.
+        """
+        self._postAbortOperations.append(operation)
+
+
     _savepointCounter = 0
 
     def _savepoint(self):
@@ -363,7 +371,7 @@ class CommonStoreTransaction(object):
         # TODO: we should really have a list of acceptable exceptions for
         # failure and not blanket catch, but that involves more knowledge of the
         # database driver in use than we currently possess at this layer.
-        block = self._sqlTxn.commandBlock()
+        block = self._sqlTransaction.commandBlock()
         sp = self._savepoint()
         failuresToMaybeLog = []
         triesLeft = retries + 1
@@ -383,7 +391,7 @@ class CommonStoreTransaction(object):
                         # they actually get done, even if they didn't actually
                         # block or yield to wait for them!  (c.f. property
                         # store writes.)
-                        newBlock = self._sqlTxn.commandBlock()
+                        newBlock = self._sqlTransaction.commandBlock()
                         block.end()
                         block = newBlock
                         sp = self._savepoint()
@@ -415,7 +423,7 @@ class CommonStoreTransaction(object):
         """
         if self._stats:        
             self._stats.startStatement(a[0])
-        results = (yield self._sqlTxn.execSQL(*a, **kw))
+        results = (yield self._sqlTransaction.execSQL(*a, **kw))
         if self._stats:        
             self._stats.endStatement()
         returnValue(results)
@@ -450,14 +458,18 @@ class CommonStoreTransaction(object):
         if self._stats:        
             self._stats.printReport()
 
-        return self._sqlTxn.commit().addCallback(postCommit)
+        return self._sqlTransaction.commit().addCallback(postCommit)
 
 
     def abort(self):
         """
         Abort the transaction.
         """
-        return self._sqlTxn.abort()
+        def postAbort(ignored):
+            for operation in self._postAbortOperations:
+                operation()
+            return ignored
+        return self._sqlTransaction.abort().addCallback(postAbort)
 
 
     def _oldEventsBase(limited): #@NoSelf
@@ -598,7 +610,7 @@ class CommonHome(LoggingMixIn):
     _cacher = None  # Initialize in derived classes
 
     def __init__(self, transaction, ownerUID, notifiers):
-        self._txn = transaction
+        self._transaction = transaction
         self._ownerUID = ownerUID
         self._resourceID = None
         self._shares = None
@@ -617,7 +629,7 @@ class CommonHome(LoggingMixIn):
 
 
     def quotaAllowedBytes(self):
-        return self._txn.store().quota
+        return self._transaction.store().quota
 
 
     @classproperty
@@ -643,7 +655,7 @@ class CommonHome(LoggingMixIn):
         result = yield self._cacher.get(self._ownerUID)
         if result is None:
             result = yield self._resourceIDFromOwnerQuery.on(
-                self._txn, ownerUID=self._ownerUID)
+                self._transaction, ownerUID=self._ownerUID)
             if result and not no_cache:
                 yield self._cacher.set(self._ownerUID, result)
 
@@ -657,14 +669,14 @@ class CommonHome(LoggingMixIn):
 
     @classmethod
     @inlineCallbacks
-    def homeWithUID(cls, txn, uid, create=False):
-        if txn._notifierFactory:
-            notifiers = (txn._notifierFactory.newNotifier(
+    def homeWithUID(cls, transaction, uid, create=False):
+        if transaction._notifierFactory:
+            notifiers = (transaction._notifierFactory.newNotifier(
                 id=uid, prefix=cls._notifierPrefix
             ),)
         else:
             notifiers = None
-        homeObject = cls(txn, uid, notifiers)
+        homeObject = cls(transaction, uid, notifiers)
         homeObject = (yield homeObject.initFromStore())
         if homeObject is not None:
             returnValue(homeObject)
@@ -675,31 +687,31 @@ class CommonHome(LoggingMixIn):
             # Use savepoint so we can do a partial rollback if there is a race condition
             # where this row has already been inserted
             savepoint = SavepointAction("homeWithUID")
-            yield savepoint.acquire(txn)
+            yield savepoint.acquire(transaction)
 
             try:
                 resourceid = (yield Insert(
                     {cls._homeSchema.OWNER_UID: uid},
-                    Return=cls._homeSchema.RESOURCE_ID).on(txn))[0][0]
+                    Return=cls._homeSchema.RESOURCE_ID).on(transaction))[0][0]
                 yield Insert(
-                    {cls._homeMetaDataSchema.RESOURCE_ID: resourceid}).on(txn)
+                    {cls._homeMetaDataSchema.RESOURCE_ID: resourceid}).on(transaction)
             except Exception: # FIXME: Really want to trap the pg.DatabaseError but in a non-DB specific manner
-                yield savepoint.rollback(txn)
+                yield savepoint.rollback(transaction)
 
                 # Retry the query - row may exist now, if not re-raise
-                homeObject = cls(txn, uid, notifiers)
+                homeObject = cls(transaction, uid, notifiers)
                 homeObject = (yield homeObject.initFromStore())
                 if homeObject:
                     returnValue(homeObject)
                 else:
                     raise
             else:
-                yield savepoint.release(txn)
+                yield savepoint.release(transaction)
 
                 # Note that we must not cache the owner_uid->resource_id
                 # mapping in _cacher when creating as we don't want that to appear
                 # until AFTER the commit
-                home = cls(txn, uid, notifiers)
+                home = cls(transaction, uid, notifiers)
                 home = (yield home.initFromStore(no_cache=True))
                 yield home.createdHome()
                 returnValue(home)
@@ -707,8 +719,8 @@ class CommonHome(LoggingMixIn):
 
     @classmethod
     @inlineCallbacks
-    def homeUIDWithResourceID(cls, txn, rid):
-        rows = (yield cls._ownerFromFromResourceID.on(txn, resourceID=rid))
+    def homeUIDWithResourceID(cls, transaction, rid):
+        rows = (yield cls._ownerFromFromResourceID.on(transaction, resourceID=rid))
         if rows:
             returnValue(rows[0][0])
         else:
@@ -729,7 +741,7 @@ class CommonHome(LoggingMixIn):
 
 
     def transaction(self):
-        return self._txn
+        return self._transaction
 
 
     def retrieveOldShares(self):
@@ -882,7 +894,7 @@ class CommonHome(LoggingMixIn):
     @inlineCallbacks
     def syncToken(self):
         revision = (yield self._syncTokenQuery.on(
-            self._txn, resourceID=self._resourceID))[0][0]
+            self._transaction, resourceID=self._resourceID))[0][0]
         returnValue("%s_%s" % (self._resourceID, revision))
 
 
@@ -914,7 +926,7 @@ class CommonHome(LoggingMixIn):
                 wasdeleted
             )
             for path, collection, name, wasdeleted in
-            (yield self._changesQuery.on(self._txn,
+            (yield self._changesQuery.on(self._transaction,
                                          resourceID=self._resourceID,
                                          token=token))
         ]
@@ -947,7 +959,7 @@ class CommonHome(LoggingMixIn):
                 Where=(bind.RESOURCE_NAME == sharename).And(
                     bind.HOME_RESOURCE_ID == self._resourceID).And(
                         bind.BIND_MODE != _BIND_MODE_OWN)
-            ).on(self._txn))[0][0]
+            ).on(self._transaction))[0][0]
             results = [
                 (
                     sharename,
@@ -958,7 +970,7 @@ class CommonHome(LoggingMixIn):
                 (yield Select([rev.RESOURCE_NAME, rev.DELETED],
                                  From=rev,
                                 Where=(rev.REVISION > sharetoken).And(
-                                rev.RESOURCE_ID == shareID)).on(self._txn))
+                                rev.RESOURCE_ID == shareID)).on(self._transaction))
                 if name
             ]
 
@@ -979,7 +991,7 @@ class CommonHome(LoggingMixIn):
     def _loadPropertyStore(self):
         props = yield PropertyStore.load(
             self.uid(),
-            self._txn,
+            self._transaction,
             self._resourceID
         )
         self._propertyStore = props
@@ -1031,7 +1043,7 @@ class CommonHome(LoggingMixIn):
         in the named child collections.
         """
         results = []
-        rows = (yield self._resourceByUIDQuery.on(self._txn, uid=uid,
+        rows = (yield self._resourceByUIDQuery.on(self._transaction, uid=uid,
                                                   resourceID=self._resourceID))
         if rows:
             for childID, objectID in rows:
@@ -1056,7 +1068,7 @@ class CommonHome(LoggingMixIn):
     def quotaUsedBytes(self):
         if self._quotaUsedBytes is None:
             self._quotaUsedBytes = (yield self._quotaQuery.on(
-                self._txn, resourceID=self._resourceID))[0][0]
+                self._transaction, resourceID=self._resourceID))[0][0]
         returnValue(self._quotaUsedBytes)
 
 
@@ -1092,18 +1104,18 @@ class CommonHome(LoggingMixIn):
         update' because a race also exists in the 'update ... x = x + 1' case as
         seen via unit tests.
         """
-        yield self._preLockResourceIDQuery.on(self._txn,
+        yield self._preLockResourceIDQuery.on(self._transaction,
                                               resourceID=self._resourceID)
 
         self._quotaUsedBytes = (yield self._increaseQuotaQuery.on(
-            self._txn, delta=delta, resourceID=self._resourceID))[0][0]
+            self._transaction, delta=delta, resourceID=self._resourceID))[0][0]
 
         # Double check integrity
         if self._quotaUsedBytes < 0:
             log.error(
                 "Fixing quota adjusted below zero to %s by change amount %s" %
                 (self._quotaUsedBytes, delta,))
-            yield self._resetQuotaQuery.on(self._txn,
+            yield self._resetQuotaQuery.on(self._transaction,
                                            resourceID=self._resourceID)
             self._quotaUsedBytes = 0
 
@@ -1137,7 +1149,7 @@ class CommonHome(LoggingMixIn):
         """
         if self._notifiers:
             for notifier in self._notifiers:
-                self._txn.postCommit(notifier.notify)
+                self._transaction.postCommit(notifier.notify)
 
 
 
@@ -1162,7 +1174,7 @@ class _SharedSyncLogic(object):
     def syncToken(self):
         if self._syncTokenRevision is None:
             self._syncTokenRevision = (yield self._childSyncTokenQuery.on(
-                self._txn, resourceID=self._resourceID))[0][0]
+                self._transaction, resourceID=self._resourceID))[0][0]
         returnValue(("%s_%s" % (self._resourceID, self._syncTokenRevision,)))
 
 
@@ -1188,7 +1200,7 @@ class _SharedSyncLogic(object):
             (name if name else "", deleted)
             for name, deleted in
             (yield self._objectNamesSinceRevisionQuery.on(
-                self._txn, revision=token, resourceID=self._resourceID))
+                self._transaction, revision=token, resourceID=self._resourceID))
         ]
         results.sort(key=lambda x:x[1])
 
@@ -1229,10 +1241,10 @@ class _SharedSyncLogic(object):
     @inlineCallbacks
     def _initSyncToken(self):
         yield self._removeDeletedRevision.on(
-            self._txn, homeID=self._home._resourceID, collectionName=self._name
+            self._transaction, homeID=self._home._resourceID, collectionName=self._name
         )
         self._syncTokenRevision = (yield (
-            self._addNewRevision.on(self._txn, homeID=self._home._resourceID,
+            self._addNewRevision.on(self._transaction, homeID=self._home._resourceID,
                                     resourceID=self._resourceID,
                                     collectionName=self._name)))[0][0]
 
@@ -1256,7 +1268,7 @@ class _SharedSyncLogic(object):
     @inlineCallbacks
     def _renameSyncToken(self):
         self._syncTokenRevision = (yield self._renameSyncTokenQuery.on(
-            self._txn, name=self._name, resourceID=self._resourceID))[0][0]
+            self._transaction, name=self._name, resourceID=self._resourceID))[0][0]
 
 
     @classproperty
@@ -1303,7 +1315,7 @@ class _SharedSyncLogic(object):
     @inlineCallbacks
     def _deletedSyncToken(self, sharedRemoval=False):
         # Remove all child entries
-        yield self._deleteSyncTokenQuery.on(self._txn,
+        yield self._deleteSyncTokenQuery.on(self._transaction,
                                             homeID=self._home._resourceID,
                                             resourceID=self._resourceID)
 
@@ -1312,11 +1324,11 @@ class _SharedSyncLogic(object):
         # non-shared collection, then we need to mark all collections
         # with the resource-id as being deleted to account for direct shares.
         if sharedRemoval:
-            yield self._sharedRemovalQuery.on(self._txn,
+            yield self._sharedRemovalQuery.on(self._transaction,
                                               homeID=self._home._resourceID,
                                               resourceID=self._resourceID)
         else:
-            yield self._unsharedRemovalQuery.on(self._txn,
+            yield self._unsharedRemovalQuery.on(self._transaction,
                                                 resourceID=self._resourceID)
         self._syncTokenRevision = None
 
@@ -1386,11 +1398,11 @@ class _SharedSyncLogic(object):
         if action == "delete":
             self._syncTokenRevision = (
                 yield self._deleteBumpTokenQuery.on(
-                    self._txn, resourceID=self._resourceID, name=name))[0][0]
+                    self._transaction, resourceID=self._resourceID, name=name))[0][0]
         elif action == "update":
             self._syncTokenRevision = (
                 yield self._updateBumpTokenQuery.on(
-                    self._txn, resourceID=self._resourceID, name=name))[0][0]
+                    self._transaction, resourceID=self._resourceID, name=name))[0][0]
         elif action == "insert":
             # Note that an "insert" may happen for a resource that previously
             # existed and then was deleted. In that case an entry in the
@@ -1399,16 +1411,16 @@ class _SharedSyncLogic(object):
 
             found = bool( (
                 yield self._insertFindPreviouslyNamedQuery.on(
-                    self._txn, resourceID=self._resourceID, name=name)) )
+                    self._transaction, resourceID=self._resourceID, name=name)) )
             if found:
                 self._syncTokenRevision = (
                     yield self._updatePreviouslyNamedQuery.on(
-                        self._txn, resourceID=self._resourceID, name=name)
+                        self._transaction, resourceID=self._resourceID, name=name)
                 )[0][0]
             else:
                 self._syncTokenRevision = (
                     yield self._completelyNewRevisionQuery.on(
-                        self._txn, homeID=self._home._resourceID,
+                        self._transaction, homeID=self._home._resourceID,
                         resourceID=self._resourceID, name=name)
                 )[0][0]
         self._maybeNotify()
@@ -1504,10 +1516,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         # FIXME: tests don't cover this as directly as they should.
         if owned:
             rows = yield cls._ownedChildListQuery.on(
-                home._txn, resourceID=home._resourceID)
+                home._transaction, resourceID=home._resourceID)
         else:
             rows = yield cls._sharedChildListQuery.on(
-                home._txn, resourceID=home._resourceID)
+                home._transaction, resourceID=home._resourceID)
         names = [row[0] for row in rows]
         returnValue(names)
 
@@ -1558,12 +1570,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             query = cls._ownedHomeChildrenQuery
         else:
             query = cls._sharedHomeChildrenQuery
-        dataRows = (yield query.on(home._txn, resourceID=home._resourceID))
+        dataRows = (yield query.on(home._transaction, resourceID=home._resourceID))
 
         if dataRows:
             # Get property stores for all these child resources (if any found)
             propertyStores = (yield PropertyStore.forMultipleResources(
-                home.uid(), home._txn,
+                home.uid(), home._transaction,
                 cls._bindSchema.RESOURCE_ID, cls._bindSchema.HOME_RESOURCE_ID,
                 home._resourceID
             ))
@@ -1581,7 +1593,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                     And(ownedCond).
                     And((rev.RESOURCE_NAME != None).Or(rev.DELETED == False)),
                 GroupBy=rev.RESOURCE_ID
-            ).on(home._txn))
+            ).on(home._transaction))
             revisions = dict(revisions)
 
         # Create the actual objects merging in properties
@@ -1653,7 +1665,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             query = cls._resourceIDOwnedByHomeByName
         else:
             query = cls._resourceIDSharedToHomeByName
-        data = yield query.on(home._txn,
+        data = yield query.on(home._transaction,
                               objectName=name, homeID=home._resourceID)
         if not data:
             returnValue(None)
@@ -1689,7 +1701,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             exists.
         """
         data = yield cls._homeChildByIDQuery.on(
-            home._txn, resourceID=resourceID, homeID=home._resourceID)
+            home._transaction, resourceID=resourceID, homeID=home._resourceID)
         if not data:
             returnValue(None)
         name, mode = data[0]
@@ -1735,10 +1747,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         # Create and initialize this object, similar to initFromStore
         resourceID, _created, _modified = (
-            yield cls._insertDefaultHomeChild.on(home._txn))[0]
+            yield cls._insertDefaultHomeChild.on(home._transaction))[0]
 
         # Bind table needs entry
-        yield cls._initialOwnerBind.on(home._txn, homeID=home._resourceID,
+        yield cls._initialOwnerBind.on(home._transaction, homeID=home._resourceID,
                                        resourceID=resourceID, name=name)
 
         # Initialize other state
@@ -1777,14 +1789,14 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         avoid having to do DB queries for those individually later.
         """
         self._created, self._modified = (
-            yield self._datesByIDQuery.on(self._txn,
+            yield self._datesByIDQuery.on(self._transaction,
                                           resourceID=self._resourceID))[0]
         yield self._loadPropertyStore()
 
 
     @property
-    def _txn(self):
-        return self._home._txn
+    def _transaction(self):
+        return self._home._transaction
 
 
     def resourceType(self):
@@ -1834,7 +1846,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @return: a L{Deferred} which fires when the modification is complete.
         """
         oldName = self._name
-        yield self._renameQuery.on(self._txn, name=name,
+        yield self._renameQuery.on(self._transaction, name=name,
                                    resourceID=self._resourceID,
                                    homeID=self._home._resourceID)
         self._name = name
@@ -1859,7 +1871,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     @inlineCallbacks
     def remove(self):
         yield self._deletedSyncToken()
-        yield self._deleteQuery.on(self._txn, NoSuchHomeChildError,
+        yield self._deleteQuery.on(self._transaction, NoSuchHomeChildError,
                                    resourceID=self._resourceID)
         self.properties()._removeResource()
 
@@ -1898,7 +1910,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             returnValue(self._home._resourceID)
         else:
             rid = (yield self._ownerHomeFromResourceQuery.on(
-                self._txn, resourceID=self._resourceID))[0][0]
+                self._transaction, resourceID=self._resourceID))[0][0]
             returnValue(rid)
 
 
@@ -1933,7 +1945,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     def listObjectResources(self):
         if self._objectNames is None:
             rows = yield self._objectResourceNamesQuery.on(
-                self._txn, resourceID=self._resourceID)
+                self._transaction, resourceID=self._resourceID)
             self._objectNames = sorted([row[0] for row in rows])
         returnValue(self._objectNames)
 
@@ -2006,7 +2018,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         except KeyError:
             pass
         rows = yield self._resourceNameForUIDQuery.on(
-            self._txn, uid=uid, resourceID=self._resourceID)
+            self._transaction, uid=uid, resourceID=self._resourceID)
         if rows:
             returnValue(rows[0][0])
         else:
@@ -2035,7 +2047,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         except KeyError:
             pass
         rows = yield self._resourceUIDForNameQuery.on(
-            self._txn, name=name, resourceID=self._resourceID)
+            self._transaction, name=name, resourceID=self._resourceID)
         if rows:
             returnValue(rows[0][0])
         else:
@@ -2105,7 +2117,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         if props is None:
             props = yield PropertyStore.load(
                 self.ownerHome().uid(),
-                self._txn,
+                self._transaction,
                 self._resourceID
             )
         self.initPropertyStore(props)
@@ -2173,7 +2185,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         """
         if self._notifiers:
             for notifier in self._notifiers:
-                self._txn.postCommit(notifier.notify)
+                self._transaction.postCommit(notifier.notify)
 
 
 
@@ -2225,14 +2237,14 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
 
         # Load from the main table first
         dataRows = yield cls._allColumnsWithParent.on(
-            parent._txn, parentID=parent._resourceID)
+            parent._transaction, parentID=parent._resourceID)
 
         if dataRows:
             # Get property stores for all these child resources (if any found)
             if parent.objectResourcesHaveProperties():
                 propertyStores =(yield PropertyStore.forMultipleResources(
                     parent._home.uid(),
-                    parent._txn,
+                    parent._transaction,
                     cls._objectSchema.RESOURCE_ID,
                     cls._objectSchema.PARENT_RESOURCE_ID,
                     parent._resourceID
@@ -2325,15 +2337,15 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
 
         if self._name:
             rows = yield self._allWithParentAndName.on(
-                self._txn, name=self._name,
+                self._transaction, name=self._name,
                 parentID=self._parentCollection._resourceID)
         elif self._uid:
             rows = yield self._allWithParentAndUID.on(
-                self._txn, uid=self._uid,
+                self._transaction, uid=self._uid,
                 parentID=self._parentCollection._resourceID)
         elif self._resourceID:
             rows = yield self._allWithParentAndID.on(
-                self._txn, resourceID=self._resourceID,
+                self._transaction, resourceID=self._resourceID,
                 parentID=self._parentCollection._resourceID)
         if rows:
             self._initFromRow(tuple(rows[0]))
@@ -2381,7 +2393,7 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
             if self._parentCollection.objectResourcesHaveProperties():
                 props = yield PropertyStore.load(
                     self._parentCollection.ownerHome().uid(),
-                    self._txn,
+                    self._transaction,
                     self._resourceID,
                     created=created
                 )
@@ -2408,8 +2420,8 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
 
 
     @property
-    def _txn(self):
-        return self._parentCollection._txn
+    def _transaction(self):
+        return self._parentCollection._transaction
 
 
     def setComponent(self, component, inserting=False):
@@ -2434,7 +2446,7 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
 
     @inlineCallbacks
     def remove(self):
-        yield self._deleteQuery.on(self._txn, NoSuchObjectResourceError,
+        yield self._deleteQuery.on(self._transaction, NoSuchObjectResourceError,
                                    resourceID=self._resourceID)
         self.properties()._removeResource()
 
@@ -2492,7 +2504,7 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
     def _text(self):
         if self._objectText is None:
             text = (
-                yield self._textByIDQuery.on(self._txn,
+                yield self._textByIDQuery.on(self._transaction,
                                              resourceID=self._resourceID)
             )[0][0]
             self._objectText = text
@@ -2516,9 +2528,9 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     _homeSchema = schema.NOTIFICATION_HOME
 
 
-    def __init__(self, txn, uid, resourceID):
+    def __init__(self, transaction, uid, resourceID):
 
-        self._txn = txn
+        self._transaction = transaction
         self._uid = uid
         self._resourceID = resourceID
         self._notifications = {}
@@ -2527,12 +2539,12 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         # Make sure we have push notifications setup to push on this collection
         # as well as the home it is in
-        if txn._notifierFactory:
+        if transaction._notifierFactory:
             childID = "%s/%s" % (uid, "notification")
-            notifier = txn._notifierFactory.newNotifier(
+            notifier = transaction._notifierFactory.newNotifier(
                 label="collection",
                 id=childID,
-                prefix=txn._homeClass[txn._primaryHomeType]._notifierPrefix
+                prefix=transaction._homeClass[transaction._primaryHomeType]._notifierPrefix
             )
             notifier.addID(id=uid)
             notifiers = (notifier,)
@@ -2562,8 +2574,8 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
     @classmethod
     @inlineCallbacks
-    def notificationsWithUID(cls, txn, uid):
-        rows = yield cls._resourceIDFromUIDQuery.on(txn, uid=uid)
+    def notificationsWithUID(cls, transaction, uid):
+        rows = yield cls._resourceIDFromUIDQuery.on(transaction, uid=uid)
 
         if rows:
             resourceID = rows[0][0]
@@ -2572,17 +2584,17 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             # Use savepoint so we can do a partial rollback if there is a race condition
             # where this row has already been inserted
             savepoint = SavepointAction("notificationsWithUID")
-            yield savepoint.acquire(txn)
+            yield savepoint.acquire(transaction)
 
             try:
                 resourceID = str((
-                    yield cls._provisionNewNotificationsQuery.on(txn, uid=uid)
+                    yield cls._provisionNewNotificationsQuery.on(transaction, uid=uid)
                 )[0][0])
             except Exception: # FIXME: Really want to trap the pg.DatabaseError but in a non-DB specific manner
-                yield savepoint.rollback(txn)
+                yield savepoint.rollback(transaction)
                 
                 # Retry the query - row may exist now, if not re-raise
-                rows = yield cls._resourceIDFromUIDQuery.on(txn, uid=uid)
+                rows = yield cls._resourceIDFromUIDQuery.on(transaction, uid=uid)
                 if rows:
                     resourceID = rows[0][0]
                     created = False
@@ -2590,9 +2602,9 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                     raise
             else:
                 created = True
-                yield savepoint.release(txn)
+                yield savepoint.release(transaction)
                 
-        collection = cls(txn, uid, resourceID)
+        collection = cls(transaction, uid, resourceID)
         yield collection._loadPropertyStore()
         if created:
             yield collection._initSyncToken()
@@ -2603,7 +2615,7 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     def _loadPropertyStore(self):
         self._propertyStore = yield PropertyStore.load(
             self._uid,
-            self._txn,
+            self._transaction,
             self._resourceID
         )
 
@@ -2647,7 +2659,7 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     def listNotificationObjects(self):
         if self._notificationNames is None:
             rows = yield self._notificationUIDsForHomeQuery.on(
-                self._txn, resourceID=self._resourceID)
+                self._transaction, resourceID=self._resourceID)
             self._notificationNames = sorted([row[0] for row in rows])
         returnValue(self._notificationNames)
 
@@ -2705,7 +2717,7 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     @inlineCallbacks
     def removeNotificationObjectWithUID(self, uid):
         yield self._removeByUIDQuery.on(
-            self._txn, uid=uid, resourceID=self._resourceID)
+            self._transaction, uid=uid, resourceID=self._resourceID)
         self._notifications.pop(uid, None)
         yield self._deleteRevision("%s.xml" % (uid,))
 
@@ -2723,7 +2735,7 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     @inlineCallbacks
     def _initSyncToken(self):
         self._syncTokenRevision = (yield self._initSyncTokenQuery.on(
-            self._txn, resourceID=self._resourceID))[0][0]
+            self._transaction, resourceID=self._resourceID))[0][0]
 
 
     _syncTokenQuery = Select(
@@ -2737,7 +2749,7 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         if self._syncTokenRevision is None:
             self._syncTokenRevision = (
                 yield self._syncTokenQuery.on(
-                    self._txn, resourceID=self._resourceID)
+                    self._transaction, resourceID=self._resourceID)
             )[0][0]
         returnValue("%s_%s" % (self._resourceID, self._syncTokenRevision))
 
@@ -2775,7 +2787,7 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         """
         if self._notifiers:
             for notifier in self._notifiers:
-                self._txn.postCommit(notifier.notify)
+                self._transaction.postCommit(notifier.notify)
 
 
     @classproperty
@@ -2852,14 +2864,14 @@ class NotificationObject(LoggingMixIn, FancyEqMixin):
 
         # Load from the main table first
         dataRows = (
-            yield cls._allColumnsByHomeIDQuery.on(parent._txn,
+            yield cls._allColumnsByHomeIDQuery.on(parent._transaction,
                                                   homeID=parent._resourceID))
 
         if dataRows:
             # Get property stores for all these child resources (if any found)
             propertyStores =(yield PropertyStore.forMultipleResources(
                 parent.uid(),
-                parent._txn,
+                parent._transaction,
                 schema.NOTIFICATION.RESOURCE_ID,
                 schema.NOTIFICATION.NOTIFICATION_HOME_RESOURCE_ID,
                 parent._resourceID,
@@ -2911,7 +2923,7 @@ class NotificationObject(LoggingMixIn, FancyEqMixin):
         @return: L{self} if object exists in the DB, else C{None}
         """
         rows = (yield self._oneNotificationQuery.on(
-            self._txn, uid=self._uid, homeID=self._home._resourceID))
+            self._transaction, uid=self._uid, homeID=self._home._resourceID))
         if rows:
             (self._resourceID,
              self._md5,
@@ -2936,8 +2948,8 @@ class NotificationObject(LoggingMixIn, FancyEqMixin):
 
 
     @property
-    def _txn(self):
-        return self._home._txn
+    def _transaction(self):
+        return self._home._transaction
 
 
     def notificationCollection(self):
@@ -2993,14 +3005,14 @@ class NotificationObject(LoggingMixIn, FancyEqMixin):
         self._size = len(xmldata)
         if inserting:
             rows = yield self._newNotificationQuery.on(
-                self._txn, homeID=self._home._resourceID, uid=uid,
+                self._transaction, homeID=self._home._resourceID, uid=uid,
                 xmlType=self._xmlType.toxml(), xmlData=xmldata, md5=self._md5
             )
             self._resourceID, self._created, self._modified = rows[0]
             self._loadPropertyStore()
         else:
             rows = yield self._updateNotificationQuery.on(
-                self._txn, homeID=self._home._resourceID, uid=uid,
+                self._transaction, homeID=self._home._resourceID, uid=uid,
                 xmlType=self._xmlType.toxml(), xmlData=xmldata, md5=self._md5
             )
             self._modified = rows[0][0]
@@ -3017,7 +3029,7 @@ class NotificationObject(LoggingMixIn, FancyEqMixin):
         if self._objectText is None:
             self._objectText = (
                 yield self._xmlDataFromID.on(
-                    self._txn, resourceID=self._resourceID))[0][0]
+                    self._transaction, resourceID=self._resourceID))[0][0]
         returnValue(self._objectText)
 
 

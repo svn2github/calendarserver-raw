@@ -149,9 +149,9 @@ class CommonDataStore(DataStore):
                         uid = actualHome.basename()
                         if not isValidName(uid):
                             continue
-                        txn = self.newTransaction("enumerate home %r" % (uid,))
-                        home = txn.homeWithUID(storeType, uid, False)
-                        yield (txn, home)
+                        transaction = self.newTransaction("enumerate home %r" % (uid,))
+                        home = transaction.homeWithUID(storeType, uid, False)
+                        yield (transaction, home)
 
 
     def eachCalendarHome(self):
@@ -270,12 +270,12 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
 
 
     @classmethod
-    def homeWithUID(cls, txn, uid, create=False, withNotifications=False):
+    def homeWithUID(cls, transaction, uid, create=False, withNotifications=False):
 
         assert len(uid) >= 4
 
         childPathSegments = []
-        childPathSegments.append(txn._dataStore._path.child(cls._topPath))
+        childPathSegments.append(transaction._dataStore._path.child(cls._topPath))
         childPathSegments.append(childPathSegments[-1].child(UIDPATH))
         childPathSegments.append(childPathSegments[-1].child(uid[0:2]))
         childPathSegments.append(childPathSegments[-1].child(uid[2:4]))
@@ -308,24 +308,24 @@ class CommonHome(FileMetaDataMixin, LoggingMixIn):
                     # do this _after_ all other file operations
                     home._path = childPath
                     return lambda : None
-                txn.addOperation(do, "create home UID %r" % (uid,))
+                transaction.addOperation(do, "create home UID %r" % (uid,))
 
         elif not childPath.isdir():
             return None
         else:
             homePath = childPath
 
-        if txn._notifierFactory:
-            notifiers = (txn._notifierFactory.newNotifier(id=uid,
+        if transaction._notifierFactory:
+            notifiers = (transaction._notifierFactory.newNotifier(id=uid,
                 prefix=cls._notifierPrefix),)
         else:
             notifiers = None
 
-        home = cls(uid, homePath, txn._dataStore, txn, notifiers)
+        home = cls(uid, homePath, transaction._dataStore, transaction, notifiers)
         if creating:
             home.createdHome()
             if withNotifications:
-                txn.notificationsWithUID(uid, home)
+                transaction.notificationsWithUID(uid, home)
 
         return home
 
@@ -1007,18 +1007,18 @@ class NotificationCollection(CommonHomeChild):
         self._objectResourceClass = NotificationObject
 
     @classmethod
-    def notificationsFromHome(cls, txn, home):
+    def notificationsFromHome(cls, transaction, home):
 
         notificationCollectionName = "notification"
         if not home._path.child(notificationCollectionName).isdir():
-            notifications = cls._create(txn, home, notificationCollectionName)
+            notifications = cls._create(transaction, home, notificationCollectionName)
         else:
             notifications = cls(notificationCollectionName, home)
         return notifications
 
 
     @classmethod
-    def _create(cls, txn, home, collectionName):
+    def _create(cls, transaction, home, collectionName):
         # FIXME: this is a near-copy of CommonHome.createChildWithName.
         temporary = hidden(home._path.child(collectionName).temporarySibling())
         temporary.createDirectory()
@@ -1043,7 +1043,7 @@ class NotificationCollection(CommonHomeChild):
             # Return undo
             return lambda: home._path.child(collectionName).remove()
 
-        txn.addOperation(do, "create notification child %r" %
+        transaction.addOperation(do, "create notification child %r" %
                           (collectionName,))
         props = c.properties()
         props[PropertyName(*ResourceType.qname())] = c.resourceType()

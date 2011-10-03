@@ -113,9 +113,9 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
         """
         setUpCalendarStore(self)
         fileStore = self.calendarStore
-        txn = fileStore.newTransaction()
-        self.addCleanup(txn.commit)
-        return txn
+        transaction = fileStore.newTransaction()
+        self.addCleanup(transaction.commit)
+        return transaction
 
 
     @inlineCallbacks
@@ -128,7 +128,7 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
         yield self.createAttachmentTest(lambda x: x)
         attachmentRoot = (
             yield self.calendarObjectUnderTest()
-        )._txn._store.attachmentsPath
+        )._transaction._store.attachmentsPath
         obj = yield self.calendarObjectUnderTest()
         hasheduid = hashlib.md5(obj._dropboxID).hexdigest()
         attachmentPath = attachmentRoot.child(
@@ -279,41 +279,41 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
 
         calendarStore = self._sqlCalendarStore
 
-        txn1 = calendarStore.newTransaction()
-        txn2 = calendarStore.newTransaction()
-        txn3 = calendarStore.newTransaction()
+        transaction1 = calendarStore.newTransaction()
+        transaction2 = calendarStore.newTransaction()
+        transaction3 = calendarStore.newTransaction()
 
         # Provision one home now - we will use this to later verify we can do
         # reads of existing data in the table
-        home_uid2 = yield txn3.homeWithUID(ECALENDARTYPE, "uid2", create=True)
+        home_uid2 = yield transaction3.homeWithUID(ECALENDARTYPE, "uid2", create=True)
         self.assertNotEqual(home_uid2, None)
-        yield txn3.commit()
+        yield transaction3.commit()
 
-        home_uid1_1 = yield txn1.homeWithUID(
+        home_uid1_1 = yield transaction1.homeWithUID(
             ECALENDARTYPE, "uid1", create=True
         )
 
         @inlineCallbacks
         def _defer_home_uid1_2():
-            home_uid1_2 = yield txn2.homeWithUID(
+            home_uid1_2 = yield transaction2.homeWithUID(
                 ECALENDARTYPE, "uid1", create=True
             )
-            yield txn2.commit()
+            yield transaction2.commit()
             returnValue(home_uid1_2)
         d1 = _defer_home_uid1_2()
 
         @inlineCallbacks
         def _pause_home_uid1_1():
             yield deferLater(reactor, 1.0, lambda : None)
-            yield txn1.commit()
+            yield transaction1.commit()
         d2 = _pause_home_uid1_1()
 
         # Verify that we can still get to the existing home - i.e. the lock
         # on the table allows concurrent reads
-        txn4 = calendarStore.newTransaction()
-        home_uid2 = yield txn4.homeWithUID(ECALENDARTYPE, "uid2", create=True)
+        transaction4 = calendarStore.newTransaction()
+        home_uid2 = yield transaction4.homeWithUID(ECALENDARTYPE, "uid2", create=True)
         self.assertNotEqual(home_uid2, None)
-        yield txn4.commit()
+        yield transaction4.commit()
 
         # Now do the concurrent provision attempt
         yield d2
@@ -333,18 +333,18 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
         calendarStore = self._sqlCalendarStore
 
         # Provision the home and calendar now
-        txn = calendarStore.newTransaction()
-        home = yield txn.homeWithUID(ECALENDARTYPE, "uid1", create=True)
+        transaction = calendarStore.newTransaction()
+        home = yield transaction.homeWithUID(ECALENDARTYPE, "uid1", create=True)
         self.assertNotEqual(home, None)
         cal = yield home.calendarWithName("calendar")
         self.assertNotEqual(cal, None)
-        yield txn.commit()
+        yield transaction.commit()
 
-        txn1 = calendarStore.newTransaction()
-        txn2 = calendarStore.newTransaction()
+        transaction1 = calendarStore.newTransaction()
+        transaction2 = calendarStore.newTransaction()
 
-        home1 = yield txn1.homeWithUID(ECALENDARTYPE, "uid1", create=True)
-        home2 = yield txn2.homeWithUID(ECALENDARTYPE, "uid1", create=True)
+        home1 = yield transaction1.homeWithUID(ECALENDARTYPE, "uid1", create=True)
+        home2 = yield transaction2.homeWithUID(ECALENDARTYPE, "uid1", create=True)
 
         cal1 = yield home1.calendarWithName("calendar")
         cal2 = yield home2.calendarWithName("calendar")
@@ -391,7 +391,7 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
       "END:VEVENT\r\n"
     "END:VCALENDAR\r\n"
             ))
-            yield txn1.commit()
+            yield transaction1.commit()
         d1 = _defer1()
 
         @inlineCallbacks
@@ -436,7 +436,7 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
       "END:VEVENT\r\n"
     "END:VCALENDAR\r\n"
             ))
-            yield txn2.commit()
+            yield transaction2.commit()
         d2 = _defer2()
 
         yield d1
@@ -447,8 +447,8 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
         calendarStore = self._sqlCalendarStore
 
         # Provision the home and calendar now
-        txn = calendarStore.newTransaction()
-        home = yield txn.homeWithUID(ECALENDARTYPE, "uid1", create=True)
+        transaction = calendarStore.newTransaction()
+        home = yield transaction.homeWithUID(ECALENDARTYPE, "uid1", create=True)
         cal = yield home.calendarWithName("calendar")
         cal._created = "2011-02-05 11:22:47"
         cal._modified = "2011-02-06 11:22:47"
@@ -471,26 +471,26 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
 
         calendarStore = self._sqlCalendarStore
 
-        txn1 = calendarStore.newTransaction()
-        txn2 = calendarStore.newTransaction()
+        transaction1 = calendarStore.newTransaction()
+        transaction2 = calendarStore.newTransaction()
 
-        notification_uid1_1 = yield txn1.notificationsWithUID(
+        notification_uid1_1 = yield transaction1.notificationsWithUID(
            "uid1",
         )
 
         @inlineCallbacks
         def _defer_notification_uid1_2():
-            notification_uid1_2 = yield txn2.notificationsWithUID(
+            notification_uid1_2 = yield transaction2.notificationsWithUID(
                 "uid1",
             )
-            yield txn2.commit()
+            yield transaction2.commit()
             returnValue(notification_uid1_2)
         d1 = _defer_notification_uid1_2()
 
         @inlineCallbacks
         def _pause_notification_uid1_1():
             yield deferLater(reactor, 1.0, lambda : None)
-            yield txn1.commit()
+            yield transaction1.commit()
         d2 = _pause_notification_uid1_1()
 
         # Now do the concurrent provision attempt
@@ -648,18 +648,18 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
         calendarStore = self._sqlCalendarStore
 
         # Provision the home and calendar now
-        txn = calendarStore.newTransaction()
-        home = yield txn.homeWithUID(ECALENDARTYPE, "uid1", create=True)
+        transaction = calendarStore.newTransaction()
+        home = yield transaction.homeWithUID(ECALENDARTYPE, "uid1", create=True)
         self.assertNotEqual(home, None)
         cal = yield home.calendarWithName("calendar")
         self.assertNotEqual(cal, None)
-        yield txn.commit()
+        yield transaction.commit()
 
-        txn1 = calendarStore.newTransaction()
-        txn2 = calendarStore.newTransaction()
+        transaction1 = calendarStore.newTransaction()
+        transaction2 = calendarStore.newTransaction()
 
-        home1 = yield txn1.homeWithUID(ECALENDARTYPE, "uid1", create=True)
-        home2 = yield txn2.homeWithUID(ECALENDARTYPE, "uid1", create=True)
+        home1 = yield transaction1.homeWithUID(ECALENDARTYPE, "uid1", create=True)
+        home2 = yield transaction2.homeWithUID(ECALENDARTYPE, "uid1", create=True)
 
         shares1 = yield home1.retrieveOldShares()
         shares2 = yield home2.retrieveOldShares()
@@ -675,13 +675,13 @@ class CalendarSQLStorageTests(CalendarCommonTests, unittest.TestCase):
         @inlineCallbacks
         def _defer1():
             yield shares1.addOrUpdateRecord(record)
-            yield txn1.commit()
+            yield transaction1.commit()
         d1 = _defer1()
 
         @inlineCallbacks
         def _defer2():
             yield shares2.addOrUpdateRecord(record)
-            yield txn2.commit()
+            yield transaction2.commit()
         d2 = _defer2()
 
         yield d1

@@ -170,7 +170,7 @@ def transactionFactoryFromFD(dbampfd):
 
 
 
-def storeFromConfig(config, txnFactory):
+def storeFromConfig(config, transactionFactory):
     """
     Produce an L{IDataStore} from the given configuration, transaction factory,
     and notifier factory.
@@ -192,9 +192,9 @@ def storeFromConfig(config, txnFactory):
     quota = config.UserQuota
     if quota == 0:
         quota = None
-    if txnFactory is not None:
+    if transactionFactory is not None:
         return CommonSQLDataStore(
-            txnFactory, notifierFactory, FilePath(config.AttachmentsRoot),
+            transactionFactory, notifierFactory, FilePath(config.AttachmentsRoot),
             config.EnableCalDAV, config.EnableCardDAV,
             quota=quota
         )

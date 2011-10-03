@@ -2175,8 +2175,8 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
 
     @inlineCallbacks
     def createNotificationsCollection(self):
-        txn = self._associatedTransaction
-        notifications = yield txn.notificationsWithUID(self._newStoreHome.uid())
+        transaction = self._associatedTransaction
+        notifications = yield transaction.notificationsWithUID(self._newStoreHome.uid())
 
         from twistedcaldav.storebridge import StoreNotificationCollectionResource
         similar = StoreNotificationCollectionResource(

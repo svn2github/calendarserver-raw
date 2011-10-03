@@ -135,31 +135,31 @@ class UpgradeToDatabaseService(Service, LoggingMixIn, object):
         for homeType, migrateFunc, eachFunc, destFunc, topPathName in [
             ("calendar", migrateCalendarHome,
                 self.fileStore.eachCalendarHome,
-                lambda txn: txn.calendarHomeWithUID,
+                lambda transaction: transaction.calendarHomeWithUID,
                 "calendars"),
             ("addressbook", migrateAddressbookHome,
                 self.fileStore.eachAddressbookHome,
-                lambda txn: txn.addressbookHomeWithUID,
+                lambda transaction: transaction.addressbookHomeWithUID,
                 "addressbooks")
             ]:
-            for fileTxn, fileHome in eachFunc():
+            for fileTransaction, fileHome in eachFunc():
                 uid = fileHome.uid()
                 self.log_warn("Migrating %s UID %r" % (homeType, uid))
-                sqlTxn = self.sqlStore.newTransaction(migrating=True)
-                homeGetter = destFunc(sqlTxn)
+                sqlTransaction = self.sqlStore.newTransaction(migrating=True)
+                homeGetter = destFunc(sqlTransaction)
                 if (yield homeGetter(uid, create=False)) is not None:
                     self.log_warn(
                         "%s home %r already existed not migrating" % (
                             homeType, uid))
-                    yield sqlTxn.abort()
-                    yield fileTxn.commit()
+                    yield sqlTransaction.abort()
+                    yield fileTransaction.commit()
                     continue
                 sqlHome = yield homeGetter(uid, create=True)
                 if sqlHome is None:
                     raise RuntimeError("THIS SHOULD NOT BE POSSIBLE.")
                 yield migrateFunc(fileHome, sqlHome)
-                yield fileTxn.commit()
-                yield sqlTxn.commit()
+                yield fileTransaction.commit()
+                yield sqlTransaction.commit()
                 # FIXME: need a public remove...HomeWithUID() for de-
                 # provisioning
 
@@ -260,14 +260,14 @@ class UpgradeDatabaseSchemaService(Service, LoggingMixIn, object):
             self.log_warn("Required schema version: %s." % (required_version,))
         
         # Get the schema version in the current database
-        sqlTxn = self.sqlStore.newTransaction()
-        dialect = sqlTxn.dialect
+        sqlTransaction = self.sqlStore.newTransaction()
+        dialect = sqlTransaction.dialect
         try:
-            actual_version = yield sqlTxn.schemaVersion()
-            yield sqlTxn.commit()
+            actual_version = yield sqlTransaction.schemaVersion()
+            yield sqlTransaction.commit()
         except RuntimeError:
             self.log_error("Database schema version cannot be determined.")
-            yield sqlTxn.abort()
+            yield sqlTransaction.abort()
             raise
 
         self.log_warn("Actual schema version: %s." % (actual_version,))
@@ -305,14 +305,14 @@ class UpgradeDatabaseSchemaService(Service, LoggingMixIn, object):
         upgrades = self.determineUpgradeSequence(fromVersion, toVersion, files, dialect)
 
         # Use one transaction for the entire set of upgrades
-        sqlTxn = self.sqlStore.newTransaction()
+        sqlTransaction = self.sqlStore.newTransaction()
         try:
             for fp in upgrades:
-                yield self.applyUpgrade(sqlTxn, fp)
-            yield sqlTxn.commit()
+                yield self.applyUpgrade(sqlTransaction, fp)
+            yield sqlTransaction.commit()
         except RuntimeError:
             self.log_error("Database upgrade failed:" % (fp.basename(),))
-            yield sqlTxn.abort()
+            yield sqlTransaction.abort()
             raise
 
         self.log_warn("Schema upgraded from version %d to %d." % (fromVersion, toVersion,))
@@ -364,13 +364,13 @@ class UpgradeDatabaseSchemaService(Service, LoggingMixIn, object):
         return upgrades
 
     @inlineCallbacks
-    def applyUpgrade(self, sqlTxn, fp):
+    def applyUpgrade(self, sqlTransaction, fp):
         """
         Apply the schema upgrade .sql file to the database.
         """
         self.log_warn("Applying schema upgrade: %s" % (fp.basename(),))
         sql = fp.getContent()
-        yield sqlTxn.execSQLBlock(sql)
+        yield sqlTransaction.execSQLBlock(sql)
         
     def startService(self):
         """

@@ -58,7 +58,7 @@ class FakeCXOracleModule(object):
 
 
 
-class NullTestingOracleTxn(object):
+class NullTestingOracleTransaction(object):
     """
     Fake transaction for testing oracle NULL behavior.
     """
@@ -643,7 +643,7 @@ class GenerationTests(TestCase):
         return conn, pool, factory
 
 
-    def test_insertMultiReturnOnOracleTxn(self):
+    def test_insertMultiReturnOnOracleTransaction(self):
         """
         As described in L{test_insertMultiReturnOracle}, Oracle deals with
         'returning' clauses by using out parameters.  However, this is not quite
@@ -938,7 +938,7 @@ class GenerationTests(TestCase):
         :3, as per the DB-API.
         """
         stmts = []
-        class FakeOracleTxn(object):
+        class FakeOracleTransaction(object):
             def execSQL(self, text, params, exc):
                 stmts.append((text, params))
             dialect = ORACLE_DIALECT
@@ -947,7 +947,7 @@ class GenerationTests(TestCase):
                From=self.schema.FOO,
                Where=(self.schema.FOO.BAR == 7).And(
                    self.schema.FOO.BAZ == 9)
-              ).on(FakeOracleTxn())
+              ).on(FakeOracleTransaction())
         self.assertEquals(
             stmts, [("select BAR from FOO where BAR = :1 and BAZ = :2",
                      [7, 9])]
@@ -969,7 +969,7 @@ class GenerationTests(TestCase):
         rows = resultOf(
             Select([self.schema.NULLCHECK.ASTRING,
                     self.schema.NULLCHECK.ANUMBER],
-                   From=self.schema.NULLCHECK).on(NullTestingOracleTxn()))[0]
+                   From=self.schema.NULLCHECK).on(NullTestingOracleTransaction()))[0]
 
         self.assertEquals(rows, [['', None]])
 
@@ -980,7 +980,7 @@ class GenerationTests(TestCase):
         shortcut.
         """
         rows = resultOf(
-            Select(From=self.schema.NULLCHECK).on(NullTestingOracleTxn())
+            Select(From=self.schema.NULLCHECK).on(NullTestingOracleTransaction())
         )[0]
         self.assertEquals(rows, [['', None]])
 

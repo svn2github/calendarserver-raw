@@ -640,9 +640,9 @@ class CalDAVServiceMaker (LoggingMixIn):
         """
         pool = None
         if config.DBAMPFD:
-            txnFactory = transactionFactoryFromFD(int(config.DBAMPFD))
+            transactionFactory = transactionFactoryFromFD(int(config.DBAMPFD))
         elif not config.UseDatabase:
-            txnFactory = None
+            transactionFactory = None
         elif not config.SharedConnectionPool:
             dialect = POSTGRES_DIALECT
             paramstyle = 'pyformat'
@@ -663,12 +663,12 @@ class CalDAVServiceMaker (LoggingMixIn):
             pool = ConnectionPool(connectionFactory, dialect=dialect,
                                   paramstyle=paramstyle,
                                   maxConnections=config.MaxDBConnectionsPerPool)
-            txnFactory = pool.connection
+            transactionFactory = pool.connection
         else:
             raise UsageError(
                 "trying to use DB in slave, but no connection info from parent"
             )
-        store = storeFromConfig(config, txnFactory)
+        store = storeFromConfig(config, transactionFactory)
         result = self.requestProcessingService(options, store)
         if pool is not None:
             pool.setServiceParent(result)

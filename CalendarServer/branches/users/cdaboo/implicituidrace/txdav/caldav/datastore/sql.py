@@ -126,22 +126,22 @@ class CalendarHome(CommonHome):
         yield Delete(
             From=chm,
             Where=chm.RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield Delete(
             From=cb,
             Where=cb.CALENDAR_HOME_RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield Delete(
             From=cor,
             Where=cor.CALENDAR_HOME_RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield Delete(
             From=ch,
             Where=ch.RESOURCE_ID == self._resourceID
-        ).on(self._txn)
+        ).on(self._transaction)
 
         yield self._cacher.delete(str(self._ownerUID))
 
@@ -184,7 +184,7 @@ class CalendarHome(CommonHome):
                          'left outer'),
             Where=(co.DROPBOX_ID == dropboxID).And(
                 cb.HOME_RESOURCE_ID == self._resourceID)
-        ).on(self._txn))
+        ).on(self._transaction))
 
         if rows:
             calendarID, objectID = rows[0]
@@ -205,7 +205,7 @@ class CalendarHome(CommonHome):
             Where=(co.DROPBOX_ID != None).And(
                 cb.HOME_RESOURCE_ID == self._resourceID),
             OrderBy=co.DROPBOX_ID
-        ).on(self._txn))
+        ).on(self._transaction))
         returnValue([row[0] for row in rows])
 
 
@@ -442,7 +442,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
         else:
 
             # If migrating or re-creating or config option for delayed indexing is off, always index
-            if reCreate or self._txn._migrating or not config.FreeBusyIndexDelayedExpand:
+            if reCreate or self._transaction._migrating or not config.FreeBusyIndexDelayedExpand:
                 doInstanceIndexing = True
 
             # Duration into the future through which recurrences are expanded in the index
@@ -480,7 +480,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
             self.log_error("Invalid instance %s when indexing %s in %s" %
                            (e.rid, self._name, self._calendar,))
 
-            if self._txn._migrating:
+            if self._transaction._migrating:
                 # TODO: fix the data here by re-writing component then re-index
                 instances = component.expandTimeRanges(expand, ignoreInvalidInstances=True)
                 recurrenceLimit = instances.limit
@@ -511,7 +511,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
             self._size = len(componentText)
 
             # Special - if migrating we need to preserve the original md5
-            if self._txn._migrating and hasattr(component, "md5"):
+            if self._transaction._migrating and hasattr(component, "md5"):
                 self._md5 = component.md5
 
             # Determine attachment mode (ignore inbox's) - NB we have to do this
@@ -553,7 +553,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
                     yield Insert(
                         values,
                         Return=(co.RESOURCE_ID, co.CREATED, co.MODIFIED)
-                    ).on(self._txn)
+                    ).on(self._transaction)
                 )[0]
             else:
                 values[co.MODIFIED] = utcNowSQL
@@ -561,13 +561,13 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
                     yield Update(
                         values, Return=co.MODIFIED,
                         Where=co.RESOURCE_ID == self._resourceID
-                    ).on(self._txn)
+                    ).on(self._transaction)
                 )[0][0]
                 # Need to wipe the existing time-range for this and rebuild
                 yield Delete(
                     From=tr,
                     Where=tr.CALENDAR_OBJECT_RESOURCE_ID == self._resourceID
-                ).on(self._txn)
+                ).on(self._transaction)
         else:
             values = {
                 co.RECURRANCE_MAX :
@@ -577,13 +577,13 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
             yield Update(
                 values,
                 Where=co.RESOURCE_ID == self._resourceID
-            ).on(self._txn)
+            ).on(self._transaction)
 
             # Need to wipe the existing time-range for this and rebuild
             yield Delete(
                 From=tr,
                 Where=tr.CALENDAR_OBJECT_RESOURCE_ID == self._resourceID
-            ).on(self._txn)
+            ).on(self._transaction)
 
         if doInstanceIndexing:
             # TIME_RANGE table update
@@ -606,14 +606,14 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
                             instance.component.getFBType(),
                             icalfbtype_to_indexfbtype["FREE"]),
                     tr.TRANSPARENT                 : transp,
-                }, Return=tr.INSTANCE_ID).on(self._txn))[0][0]
+                }, Return=tr.INSTANCE_ID).on(self._transaction))[0][0]
                 peruserdata = component.perUserTransparency(instance.rid)
                 for useruid, transp in peruserdata:
                     (yield Insert({
                         tpy.TIME_RANGE_INSTANCE_ID : instanceid,
                         tpy.USER_ID                : useruid,
                         tpy.TRANSPARENT            : transp,
-                    }).on(self._txn))
+                    }).on(self._transaction))
 
             # Special - for unbounded recurrence we insert a value for "infinity"
             # that will allow an open-ended time-range to always match it.
@@ -631,14 +631,14 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
                     tr.FBTYPE                      :
                         icalfbtype_to_indexfbtype["UNKNOWN"],
                     tr.TRANSPARENT                 : transp,
-                }, Return=tr.INSTANCE_ID).on(self._txn))[0][0]
+                }, Return=tr.INSTANCE_ID).on(self._transaction))[0][0]
                 peruserdata = component.perUserTransparency(None)
                 for useruid, transp in peruserdata:
                     (yield Insert({
                         tpy.TIME_RANGE_INSTANCE_ID : instanceid,
                         tpy.USER_ID                : useruid,
                         tpy.TRANSPARENT            : transp,
-                    }).on(self._txn))
+                    }).on(self._transaction))
 
 
     @inlineCallbacks
@@ -734,7 +734,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
         sharerHomeID = (yield self._parentCollection.sharerHomeID())
         returnValue((
             yield Attachment.create(
-                self._txn, (yield self.dropboxID()), name, sharerHomeID
+                self._transaction, (yield self.dropboxID()), name, sharerHomeID
             )
         ))
 
@@ -744,7 +744,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
         yield attachment.remove()
 
     def attachmentWithName(self, name):
-        return Attachment.loadWithName(self._txn, self._dropboxID, name)
+        return Attachment.loadWithName(self._transaction, self._dropboxID, name)
 
     def attendeesCanManageAttachments(self):
         return self._attachment == _ATTACHMENTS_MODE_WRITE
@@ -763,7 +763,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
     @inlineCallbacks
     def attachments(self):
         if self._dropboxID:
-            rows = yield self._attachmentsQuery.on(self._txn,
+            rows = yield self._attachmentsQuery.on(self._transaction,
                                                    dropboxID=self._dropboxID)
             result = []
             for row in rows:
@@ -805,8 +805,8 @@ class AttachmentStorageTransport(StorageTransportBase):
 
 
     @property
-    def _txn(self):
-        return self._attachment._txn
+    def _transaction(self):
+        return self._attachment._transaction
 
 
     def write(self, data):
@@ -827,7 +827,7 @@ class AttachmentStorageTransport(StorageTransportBase):
         # prevented from committing successfully.  It's not valid to have an
         # attachment that doesn't point to a real file.
 
-        home = (yield self._txn.calendarHomeWithResourceID(
+        home = (yield self._transaction.calendarHomeWithResourceID(
                     self._attachment._ownerHomeID))
 
         oldSize = self._attachment.size()
@@ -856,7 +856,7 @@ class AttachmentStorageTransport(StorageTransportBase):
                 Where=(att.PATH == self._attachment.name()).And(
                     att.DROPBOX_ID == self._attachment._dropboxID
                 ),
-                Return=(att.CREATED, att.MODIFIED)).on(self._txn))[0]
+                Return=(att.CREATED, att.MODIFIED)).on(self._transaction))[0]
         )
 
         if home:
@@ -875,8 +875,8 @@ class Attachment(object):
 
     implements(IAttachment)
 
-    def __init__(self, txn, dropboxID, name, ownerHomeID=None, justCreated=False):
-        self._txn = txn
+    def __init__(self, transaction, dropboxID, name, ownerHomeID=None, justCreated=False):
+        self._transaction = transaction
         self._dropboxID = dropboxID
         self._name = name
         self._ownerHomeID = ownerHomeID
@@ -885,8 +885,8 @@ class Attachment(object):
 
 
     @classmethod
-    def _attachmentPathRoot(cls, txn, dropboxID):
-        attachmentRoot = txn._store.attachmentsPath
+    def _attachmentPathRoot(cls, transaction, dropboxID):
+        attachmentRoot = transaction._store.attachmentsPath
 
         # Use directory hashing scheme based on MD5 of dropboxID
         hasheduid = hashlib.md5(dropboxID).hexdigest()
@@ -896,16 +896,16 @@ class Attachment(object):
 
     @classmethod
     @inlineCallbacks
-    def create(cls, txn, dropboxID, name, ownerHomeID):
+    def create(cls, transaction, dropboxID, name, ownerHomeID):
 
         # File system paths need to exist
         try:
-            cls._attachmentPathRoot(txn, dropboxID).makedirs()
+            cls._attachmentPathRoot(transaction, dropboxID).makedirs()
         except:
             pass
 
         # Now create the DB entry
-        attachment = cls(txn, dropboxID, name, ownerHomeID, True)
+        attachment = cls(transaction, dropboxID, name, ownerHomeID, True)
         att = schema.ATTACHMENT
         yield Insert({
             att.CALENDAR_HOME_RESOURCE_ID : ownerHomeID,
@@ -914,14 +914,14 @@ class Attachment(object):
             att.SIZE                      : 0,
             att.MD5                       : "",
             att.PATH                      : name
-        }).on(txn)
+        }).on(transaction)
         returnValue(attachment)
 
 
     @classmethod
     @inlineCallbacks
-    def loadWithName(cls, txn, dropboxID, name):
-        attachment = cls(txn, dropboxID, name)
+    def loadWithName(cls, transaction, dropboxID, name):
+        attachment = cls(transaction, dropboxID, name)
         attachment = (yield attachment.initFromStore())
         returnValue(attachment)
 
@@ -938,7 +938,7 @@ class Attachment(object):
                               att.SIZE, att.MD5, att.CREATED, att.MODIFIED],
                              From=att,
                              Where=(att.DROPBOX_ID == self._dropboxID).And(
-                                 att.PATH == self._name)).on(self._txn))
+                                 att.PATH == self._name)).on(self._transaction))
         if not rows:
             returnValue(None)
         self._ownerHomeID = rows[0][0]
@@ -956,7 +956,7 @@ class Attachment(object):
 
     @property
     def _path(self):
-        attachmentRoot = self._txn._store.attachmentsPath
+        attachmentRoot = self._transaction._store.attachmentsPath
         # Use directory hashing scheme based on MD5 of dropboxID
         hasheduid = hashlib.md5(self._dropboxID).hexdigest()
         return attachmentRoot.child(hasheduid[0:2]).child(
@@ -986,10 +986,10 @@ class Attachment(object):
     @inlineCallbacks
     def remove(self):
         oldSize = self._size
-        self._txn.postCommit(self._path.remove)
+        self._transaction.postCommit(self._path.remove)
         yield self._internalRemove()
         # Adjust quota
-        home = (yield self._txn.calendarHomeWithResourceID(self._ownerHomeID))
+        home = (yield self._transaction.calendarHomeWithResourceID(self._ownerHomeID))
         if home:
             yield home.adjustQuotaUsedBytes(-oldSize)
 
@@ -1003,7 +1003,7 @@ class Attachment(object):
         for attachments that have failed to be created due to errors during
         storage.)
         """
-        return self._removeStatement.on(self._txn, dropboxID=self._dropboxID,
+        return self._removeStatement.on(self._transaction, dropboxID=self._dropboxID,
                                         path=self._name)
 
 

@@ -68,7 +68,7 @@ def setUpCalendarStore(test):
     testID = test.id()
     test.calendarStore = CalendarStore(storeRootPath, test.notifierFactory,
                                        quota=deriveQuota(test))
-    test.txn = test.calendarStore.newTransaction(testID + "(old)")
+    test.transaction = test.calendarStore.newTransaction(testID + "(old)")
     assert test.calendarStore is not None, "No calendar store?"
 
 
@@ -76,7 +76,7 @@ def setUpCalendarStore(test):
 @inlineCallbacks
 def setUpHome1(test):
     setUpCalendarStore(test)
-    test.home1 = yield test.txn.calendarHomeWithUID("home1")
+    test.home1 = yield test.transaction.calendarHomeWithUID("home1")
     assert test.home1 is not None, "No calendar home?"
 
 
@@ -203,9 +203,9 @@ class CalendarTest(unittest.TestCase):
         index = calendar._index
         yield self.assertEquals(set((yield index.calendarObjects())),
                                 set((yield calendar.calendarObjects())))
-        yield self.txn.commit()
-        self.txn = self.calendarStore.newTransaction()
-        self.home1 = yield self.txn.calendarHomeWithUID("home1")
+        yield self.transaction.commit()
+        self.transaction = self.calendarStore.newTransaction()
+        self.home1 = yield self.transaction.calendarHomeWithUID("home1")
         calendar = yield self.home1.calendarWithName("calendar2")
         # FIXME: we should be curating our own index here, but in order to fix
         # that the code in the old implicit scheduler needs to change.  This
@@ -285,7 +285,7 @@ class CalendarTest(unittest.TestCase):
         """
         self.calendar1.removeCalendarObjectWithName("2.ics")
         self.failUnless(self.calendar1._path.child("2.ics").exists())
-        yield self.txn.commit()
+        yield self.transaction.commit()
         self.failIf(self.calendar1._path.child("2.ics").exists())
 
 
@@ -311,10 +311,10 @@ class CalendarTest(unittest.TestCase):
         transaction.
         """
         self.counter += 1
-        self.txn = self.calendarStore.newTransaction(
+        self.transaction = self.calendarStore.newTransaction(
             self.id() + " (old #" + str(self.counter) + ")"
         )
-        self.home1 = yield self.txn.calendarHomeWithUID("home1")
+        self.home1 = yield self.transaction.calendarHomeWithUID("home1")
         self.calendar1 = yield self.home1.calendarWithName("calendar_1")
 
 
@@ -326,19 +326,19 @@ class CalendarTest(unittest.TestCase):
         """
         # Make sure that the calendar home is actually committed; rolling back
         # calendar home creation will remove the whole directory.
-        yield self.txn.commit()
+        yield self.transaction.commit()
         yield self._refresh()
         self.calendar1.createCalendarObjectWithName(
             "sample.ics",
             VComponent.fromString(test_event_text)
         )
-        yield self.txn.abort()
+        yield self.transaction.abort()
         yield self._refresh()
         self.assertIdentical(
             (yield self.calendar1.calendarObjectWithName("sample.ics")),
             None
         )
-        yield self.txn.commit()
+        yield self.transaction.commit()
 
 
     @inlineCallbacks
@@ -351,8 +351,8 @@ class CalendarTest(unittest.TestCase):
         """
         def fail():
             raise RuntimeError("oops")
-        self.txn.addOperation(fail, "dummy failing operation")
-        self.assertRaises(RuntimeError, self.txn.commit)
+        self.transaction.addOperation(fail, "dummy failing operation")
+        self.assertRaises(RuntimeError, self.transaction.commit)
         yield self._refresh()
 
 

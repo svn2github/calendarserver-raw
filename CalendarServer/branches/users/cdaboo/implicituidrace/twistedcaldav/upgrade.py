@@ -1061,8 +1061,8 @@ class PostDBImportService(Service, object):
         #
         # Remove item
         #
-        txn = request._newStoreTransaction
-        txn._notifierFactory = None # Do not send push notifications
+        transaction = request._newStoreTransaction
+        transaction._notifierFactory = None # Do not send push notifications
         yield inboxItem.storeRemove(request, True, uri)
-        yield txn.commit()
+        yield transaction.commit()
 

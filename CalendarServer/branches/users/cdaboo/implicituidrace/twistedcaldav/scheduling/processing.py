@@ -256,7 +256,7 @@ class ImplicitProcessor(object):
             # We need to get the UID lock for implicit processing whilst we send the auto-reply
             # as the Organizer processing will attempt to write out data to other attendees to
             # refresh them. To prevent a race we need a lock.
-            uidlock = MemcacheLock("ImplicitUIDLock", self.uid, timeout=60.0)
+            uidlock = MemcacheLock("ImplicitUIDLock", self.uid, timeout=60.0, expire_time=5*60)
     
             try:
                 yield uidlock.acquire()
@@ -271,7 +271,7 @@ class ImplicitProcessor(object):
                 # inNewTransaction wipes out the remembered resource<-> URL mappings in the
                 # request object but we need to be able to map the actual reply resource to its
                 # URL when doing auto-processing, so we have to sneak that mapping back in here.
-                txn = yield resource.inNewTransaction(self.request)
+                transaction = yield resource.inNewTransaction(self.request)
                 organizer_resource = (yield self.request.locateResource(resource._url))
     
                 try:
@@ -281,10 +281,11 @@ class ImplicitProcessor(object):
                         log.debug("ImplicitProcessing - skipping refresh of missing UID: '%s'" % (self.uid,))
                 except Exception, e:
                     log.debug("ImplicitProcessing - refresh exception UID: '%s', %s" % (self.uid, str(e)))
-                    yield txn.abort()
+                    yield transaction.abort()
                 else:
-                    yield txn.commit()
+                    yield transaction.commit()
             finally:
+                # This correctly gets called only after commit or abort is done
                 yield uidlock.clean()
 
         if lock:
@@ -513,7 +514,7 @@ class ImplicitProcessor(object):
         # We need to get the UID lock for implicit processing whilst we send the auto-reply
         # as the Organizer processing will attempt to write out data to other attendees to
         # refresh them. To prevent a race we need a lock.
-        lock = MemcacheLock("ImplicitUIDLock", calendar.resourceUID(), timeout=60.0)
+        lock = MemcacheLock("ImplicitUIDLock", calendar.resourceUID(), timeout=60.0, expire_time=5*60)
 
         # Note that this lock also protects the request, as this request is
         # being re-used by potentially multiple transactions and should not be
@@ -528,7 +529,7 @@ class ImplicitProcessor(object):
             # inNewTransaction wipes out the remembered resource<-> URL mappings in the
             # request object but we need to be able to map the actual reply resource to its
             # URL when doing auto-processing, so we have to sneak that mapping back in here.
-            txn = yield resource.inNewTransaction(self.request)
+            transaction = yield resource.inNewTransaction(self.request)
             self.request._rememberResource(resource, resource._url)
 
             try:
@@ -538,10 +539,11 @@ class ImplicitProcessor(object):
                 scheduler = ImplicitScheduler()
                 yield scheduler.sendAttendeeReply(self.request, resource, calendar, self.recipient)
             except:
-                yield txn.abort()
+                yield transaction.abort()
             else:
-                yield txn.commit()
+                yield transaction.commit()
         finally:
+            # This correctly gets called only after commit or abort is done
             yield lock.clean()
 
             # Track outstanding auto-reply processing

@@ -63,7 +63,7 @@ def setUpAddressBookStore(test):
 
     test.notifierFactory = StubNotifierFactory()
     test.addressbookStore = AddressBookStore(storeRootPath, test.notifierFactory)
-    test.txn = test.addressbookStore.newTransaction(test.id() + " (old)")
+    test.transaction = test.addressbookStore.newTransaction(test.id() + " (old)")
     assert test.addressbookStore is not None, "No addressbook store?"
 
 
@@ -71,7 +71,7 @@ def setUpAddressBookStore(test):
 @inlineCallbacks
 def setUpHome1(test):
     setUpAddressBookStore(test)
-    test.home1 = yield test.txn.addressbookHomeWithUID("home1")
+    test.home1 = yield test.transaction.addressbookHomeWithUID("home1")
     assert test.home1 is not None, "No addressbook home?"
 
 
@@ -195,9 +195,9 @@ class AddressBookTest(unittest.TestCase):
         index = addressbook._index
         self.assertEquals(set((yield index.addressbookObjects())),
                           set((yield addressbook.addressbookObjects())))
-        yield self.txn.commit()
-        self.txn = self.addressbookStore.newTransaction(self.id())
-        self.home1 = yield self.txn.addressbookHomeWithUID("home1")
+        yield self.transaction.commit()
+        self.transaction = self.addressbookStore.newTransaction(self.id())
+        self.home1 = yield self.transaction.addressbookHomeWithUID("home1")
         addressbook = yield self.home1.addressbookWithName("addressbook2")
         # FIXME: we should be curating our own index here, but in order to fix
         # that the code in the old implicit scheduler needs to change.  This
@@ -279,7 +279,7 @@ class AddressBookTest(unittest.TestCase):
         """
         self.addressbook1.removeAddressBookObjectWithName("2.vcf")
         self.failUnless(self.addressbook1._path.child("2.vcf").exists())
-        self.txn.commit()
+        self.transaction.commit()
         self.failIf(self.addressbook1._path.child("2.vcf").exists())
 
 
@@ -303,8 +303,8 @@ class AddressBookTest(unittest.TestCase):
         Re-read the (committed) home1 and addressbook1 objects in a new
         transaction.
         """
-        self.txn = self.addressbookStore.newTransaction(self.id())
-        self.home1 = yield self.txn.addressbookHomeWithUID("home1")
+        self.transaction = self.addressbookStore.newTransaction(self.id())
+        self.home1 = yield self.transaction.addressbookHomeWithUID("home1")
         self.addressbook1 = yield self.home1.addressbookWithName("addressbook_1")
 
 
@@ -316,13 +316,13 @@ class AddressBookTest(unittest.TestCase):
         """
         # Make sure that the addressbook home is actually committed; rolling back
         # addressbook home creation will remove the whole directory.
-        yield self.txn.commit()
+        yield self.transaction.commit()
         yield self._refresh()
         self.addressbook1.createAddressBookObjectWithName(
             "sample.vcf",
             VComponent.fromString(vcard4_text)
         )
-        yield self.txn.abort()
+        yield self.transaction.abort()
         yield self._refresh()
         self.assertIdentical(
             (yield self.addressbook1.addressbookObjectWithName("sample.vcf")),
@@ -340,8 +340,8 @@ class AddressBookTest(unittest.TestCase):
         """
         def fail():
             raise RuntimeError("oops")
-        self.txn.addOperation(fail, "dummy failing operation")
-        self.assertRaises(RuntimeError, self.txn.commit)
+        self.transaction.addOperation(fail, "dummy failing operation")
+        self.assertRaises(RuntimeError, self.transaction.commit)
         yield self._refresh()
 
 
@@ -381,7 +381,7 @@ class AddressBookTest(unittest.TestCase):
             modifiedComponent,
             (yield self.addressbook1.addressbookObjectWithName("1.vcf")).component()
         )
-        self.txn.commit()
+        self.transaction.commit()
 
 
     @featureUnimplemented

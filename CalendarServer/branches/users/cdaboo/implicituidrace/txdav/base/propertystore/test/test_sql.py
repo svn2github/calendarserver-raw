@@ -46,19 +46,19 @@ class PropertyStoreTest(PropertyStoreTest):
         self.notifierFactory = StubNotifierFactory()
         self.store = yield buildStore(self, self.notifierFactory)
         self.addCleanup(self.maybeCommitLast)
-        self._txn = self.store.newTransaction()
+        self._transaction = self.store.newTransaction()
         self.propertyStore = self.propertyStore1 = yield PropertyStore.load(
-            "user01", self._txn, 1
+            "user01", self._transaction, 1
         )
-        self.propertyStore2 = yield PropertyStore.load("user01", self._txn, 1)
+        self.propertyStore2 = yield PropertyStore.load("user01", self._transaction, 1)
         self.propertyStore2._setPerUserUID("user02")
 
 
     @inlineCallbacks
     def maybeCommitLast(self):
-        if hasattr(self, "_txn"):
-            result = yield self._txn.commit()
-            delattr(self, "_txn")
+        if hasattr(self, "_transaction"):
+            result = yield self._transaction.commit()
+            delattr(self, "_transaction")
         else:
             result = None
         self.propertyStore = self.propertyStore1 = self.propertyStore2 = None
@@ -67,20 +67,20 @@ class PropertyStoreTest(PropertyStoreTest):
 
     @inlineCallbacks
     def _changed(self, store):
-        if hasattr(self, "_txn"):
-            yield self._txn.commit()
-            delattr(self, "_txn")
-        self._txn = self.store.newTransaction()
+        if hasattr(self, "_transaction"):
+            yield self._transaction.commit()
+            delattr(self, "_transaction")
+        self._transaction = self.store.newTransaction()
 
         store = self.propertyStore1
         self.propertyStore = self.propertyStore1 = yield PropertyStore.load(
-            "user01", self._txn, 1
+            "user01", self._transaction, 1
         )
         self.propertyStore1._shadowableKeys = store._shadowableKeys
         self.propertyStore1._globalKeys = store._globalKeys
 
         store = self.propertyStore2
-        self.propertyStore2 = yield PropertyStore.load("user01", self._txn, 1)
+        self.propertyStore2 = yield PropertyStore.load("user01", self._transaction, 1)
         self.propertyStore2._setPerUserUID("user02")
         self.propertyStore2._shadowableKeys = store._shadowableKeys
         self.propertyStore2._globalKeys = store._globalKeys
@@ -88,21 +88,21 @@ class PropertyStoreTest(PropertyStoreTest):
 
     @inlineCallbacks
     def _abort(self, store):
-        if hasattr(self, "_txn"):
-            yield self._txn.abort()
-            delattr(self, "_txn")
+        if hasattr(self, "_transaction"):
+            yield self._transaction.abort()
+            delattr(self, "_transaction")
 
-        self._txn = self.store.newTransaction()
+        self._transaction = self.store.newTransaction()
 
         store = self.propertyStore1
         self.propertyStore = self.propertyStore1 = yield PropertyStore.load(
-            "user01", self._txn, 1
+            "user01", self._transaction, 1
         )
         self.propertyStore1._shadowableKeys = store._shadowableKeys
         self.propertyStore1._globalKeys = store._globalKeys
 
         store = self.propertyStore2
-        self.propertyStore2 = yield PropertyStore.load("user01", self._txn, 1)
+        self.propertyStore2 = yield PropertyStore.load("user01", self._transaction, 1)
         self.propertyStore2._setPerUserUID("user02")
         self.propertyStore2._shadowableKeys = store._shadowableKeys
         self.propertyStore2._globalKeys = store._globalKeys
@@ -118,16 +118,16 @@ class PropertyStoreTest(PropertyStoreTest):
         pname = propertyName("concurrent")
         pval1 = propertyValue("alpha")
         pval2 = propertyValue("beta")
-        concurrentTxn = self.store.newTransaction()
+        concurrentTransaction = self.store.newTransaction()
         @inlineCallbacks
         def maybeAbortIt():
             try:
-                yield concurrentTxn.abort()
+                yield concurrentTransaction.abort()
             except AlreadyFinishedError:
                 pass
         self.addCleanup(maybeAbortIt)
         concurrentPropertyStore = yield PropertyStore.load(
-            "user01", concurrentTxn, 1
+            "user01", concurrentTransaction, 1
         )
         concurrentPropertyStore[pname] = pval1
         race = []
@@ -141,10 +141,10 @@ class PropertyStoreTest(PropertyStoreTest):
                 race.append(label)
                 return result
             return breaktie
-        a = concurrentTxn.commit().addCallback(tiebreaker('a'))
+        a = concurrentTransaction.commit().addCallback(tiebreaker('a'))
         self.propertyStore[pname] = pval2
-        b = self._txn.commit().addCallback(tiebreaker('b'))
-        del self._txn
+        b = self._transaction.commit().addCallback(tiebreaker('b'))
+        del self._transaction
         self.assertEquals((yield gatherResults([a, b])), [None, None])
         yield self._abort(self.propertyStore)
         winner = {'a': pval1,

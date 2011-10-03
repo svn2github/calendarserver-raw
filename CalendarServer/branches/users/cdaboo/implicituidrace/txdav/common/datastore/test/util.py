@@ -154,7 +154,7 @@ class SQLStoreBuilder(object):
 
     @inlineCallbacks
     def cleanStore(self, testCase, storeToClean):
-        cleanupTxn = storeToClean.sqlTxnFactory(
+        cleanupTransaction = storeToClean.sqlTransactionFactory(
             "%s schema-cleanup" % (testCase.id(),)
         )
         # TODO: should be getting these tables from a declaration of the schema
@@ -177,10 +177,10 @@ class SQLStoreBuilder(object):
                   'NOTIFICATION_HOME']
         for table in tables:
             try:
-                yield cleanupTxn.execSQL("delete from "+table, [])
+                yield cleanupTransaction.execSQL("delete from "+table, [])
             except:
                 log.err()
-        yield cleanupTxn.commit()
+        yield cleanupTransaction.commit()
         
         # Deal with memcached items that must be cleared
         from txdav.caldav.datastore.sql import CalendarHome
@@ -252,11 +252,11 @@ def populateCalendarsFrom(requirements, store):
 
     @param store: the L{IDataStore} to populate with calendar data.
     """
-    populateTxn = store.newTransaction()
+    populateTransaction = store.newTransaction()
     for homeUID in requirements:
         calendars = requirements[homeUID]
         if calendars is not None:
-            home = yield populateTxn.calendarHomeWithUID(homeUID, True)
+            home = yield populateTransaction.calendarHomeWithUID(homeUID, True)
             # We don't want the default calendar or inbox to appear unless it's
             # explicitly listed.
             try:
@@ -278,7 +278,7 @@ def populateCalendarsFrom(requirements, store):
                             VComponent.fromString(objData),
                             metadata = metadata,
                         )
-    yield populateTxn.commit()
+    yield populateTransaction.commit()
 
 @inlineCallbacks
 def resetCalendarMD5s(md5s, store):
@@ -290,11 +290,11 @@ def resetCalendarMD5s(md5s, store):
 
     @param store: the L{IDataStore} to populate with calendar data.
     """
-    populateTxn = store.newTransaction()
+    populateTransaction = store.newTransaction()
     for homeUID in md5s:
         calendars = md5s[homeUID]
         if calendars is not None:
-            home = yield populateTxn.calendarHomeWithUID(homeUID, True)
+            home = yield populateTransaction.calendarHomeWithUID(homeUID, True)
             for calendarName in calendars:
                 calendarObjNames = calendars[calendarName]
                 if calendarObjNames is not None:
@@ -307,7 +307,7 @@ def resetCalendarMD5s(md5s, store):
                             objectName,
                         )
                         obj.properties()[md5key] = TwistedGETContentMD5.fromString(md5)
-    yield populateTxn.commit()
+    yield populateTransaction.commit()
 
 
 @inlineCallbacks
@@ -320,11 +320,11 @@ def populateAddressBooksFrom(requirements, store):
 
     @param store: the L{IDataStore} to populate with addressbook data.
     """
-    populateTxn = store.newTransaction()
+    populateTransaction = store.newTransaction()
     for homeUID in requirements:
         addressbooks = requirements[homeUID]
         if addressbooks is not None:
-            home = yield populateTxn.addressbookHomeWithUID(homeUID, True)
+            home = yield populateTransaction.addressbookHomeWithUID(homeUID, True)
             # We don't want the default addressbook
             try:
                 yield home.removeAddressBookWithName("addressbook")
@@ -343,7 +343,7 @@ def populateAddressBooksFrom(requirements, store):
                             objectName,
                             ABComponent.fromString(objData),
                         )
-    yield populateTxn.commit()
+    yield populateTransaction.commit()
 
 @inlineCallbacks
 def resetAddressBookMD5s(md5s, store):
@@ -355,11 +355,11 @@ def resetAddressBookMD5s(md5s, store):
 
     @param store: the L{IDataStore} to populate with addressbook data.
     """
-    populateTxn = store.newTransaction()
+    populateTransaction = store.newTransaction()
     for homeUID in md5s:
         addressbooks = md5s[homeUID]
         if addressbooks is not None:
-            home = yield populateTxn.addressbookHomeWithUID(homeUID, True)
+            home = yield populateTransaction.addressbookHomeWithUID(homeUID, True)
             for addressbookName in addressbooks:
                 addressbookObjNames = addressbooks[addressbookName]
                 if addressbookObjNames is not None:
@@ -372,7 +372,7 @@ def resetAddressBookMD5s(md5s, store):
                             objectName,
                         )
                         obj.properties()[md5key] = TwistedGETContentMD5.fromString(md5)
-    yield populateTxn.commit()
+    yield populateTransaction.commit()
 
 
 def assertProvides(testCase, interface, provider):
@@ -416,10 +416,10 @@ class CommonCommonTests(object):
         if self.savedStore is None:
             self.savedStore = self.storeUnderTest()
         self.counter += 1
-        txn = self.lastTransaction = self.savedStore.newTransaction(
+        transaction = self.lastTransaction = self.savedStore.newTransaction(
             self.id() + " #" + str(self.counter)
         )
-        return txn
+        return transaction
 
 
     def commit(self):

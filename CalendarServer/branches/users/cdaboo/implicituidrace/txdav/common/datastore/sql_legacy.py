@@ -132,8 +132,8 @@ class SQLLegacyInvites(object):
 
 
     @property
-    def _txn(self):
-        return self._collection._txn
+    def _transaction(self):
+        return self._collection._transaction
 
 
     def _getHomeWithUID(self, uid):
@@ -184,7 +184,7 @@ class SQLLegacyInvites(object):
     def allRecords(self):
         values = []
         rows = yield self._allRecordsQuery.on(
-            self._txn, resourceID=self._collection._resourceID
+            self._transaction, resourceID=self._collection._resourceID
         )
         for row in rows:
             values.append(self._makeInvite(row))
@@ -205,7 +205,7 @@ class SQLLegacyInvites(object):
     @inlineCallbacks
     def recordForUserID(self, userid):
         rows = yield self._inviteForRecipientQuery.on(
-            self._txn,
+            self._transaction,
             resourceID=self._collection._resourceID,
             recipient=userid
         )
@@ -227,7 +227,7 @@ class SQLLegacyInvites(object):
     @inlineCallbacks
     def recordForPrincipalUID(self, principalUID):
         rows = yield self._inviteForPrincipalUIDQuery.on(
-            self._txn,
+            self._transaction,
             resourceID=self._collection._resourceID,
             principalUID=principalUID
         )
@@ -245,7 +245,7 @@ class SQLLegacyInvites(object):
 
     @inlineCallbacks
     def recordForInviteUID(self, inviteUID):
-        rows = yield self._inviteForUIDQuery.on(self._txn, uid=inviteUID)
+        rows = yield self._inviteForUIDQuery.on(self._transaction, uid=inviteUID)
         returnValue(self._makeInvite(rows[0]) if rows else None)
 
 
@@ -345,27 +345,27 @@ class SQLLegacyInvites(object):
             "INVALID": _BIND_STATUS_INVALID,
         }[record.state]
         shareeHome = yield self._getHomeWithUID(record.principalUID)
-        rows = yield self._idsForInviteUID.on(self._txn,
+        rows = yield self._idsForInviteUID.on(self._transaction,
                                               inviteuid=record.inviteuid)
         if rows:
             [[resourceID, homeResourceID]] = rows
             yield self._updateBindQuery.on(
-                self._txn,
+                self._transaction,
                 mode=bindMode, status=bindStatus, message=record.summary,
                 resourceID=resourceID, homeID=homeResourceID
             )
             yield self._updateInviteQuery.on(
-                self._txn, name=record.name, uid=record.inviteuid
+                self._transaction, name=record.name, uid=record.inviteuid
             )
         else:
             yield self._insertInviteQuery.on(
-                self._txn, uid=record.inviteuid, name=record.name,
+                self._transaction, uid=record.inviteuid, name=record.name,
                 homeID=shareeHome._resourceID,
                 resourceID=self._collection._resourceID,
                 recipient=record.userid
             )
             yield self._insertBindQuery.on(
-                self._txn,
+                self._transaction,
                 homeID=shareeHome._resourceID,
                 resourceID=self._collection._resourceID,
                 mode=bindMode,
@@ -404,8 +404,8 @@ class SQLLegacyInvites(object):
 
     @inlineCallbacks
     def removeRecordForInviteUID(self, inviteUID):
-        yield self._deleteBindByUID.on(self._txn, uid=inviteUID)
-        yield self._deleteInviteByUID.on(self._txn, uid=inviteUID)
+        yield self._deleteBindByUID.on(self._transaction, uid=inviteUID)
+        yield self._deleteInviteByUID.on(self._transaction, uid=inviteUID)
 
 
 
@@ -422,7 +422,7 @@ class SQLLegacyCalendarInvites(SQLLegacyInvites):
     _bindSchema = schema.CALENDAR_BIND
 
     def _getHomeWithUID(self, uid):
-        return self._txn.calendarHomeWithUID(uid, create=True)
+        return self._transaction.calendarHomeWithUID(uid, create=True)
 
 
 
@@ -439,7 +439,7 @@ class SQLLegacyAddressBookInvites(SQLLegacyInvites):
     _bindSchema = schema.ADDRESSBOOK_BIND
 
     def _getHomeWithUID(self, uid):
-        return self._txn.addressbookHomeWithUID(uid, create=True)
+        return self._transaction.addressbookHomeWithUID(uid, create=True)
 
 
 
@@ -457,8 +457,8 @@ class SQLLegacyShares(object):
 
 
     @property
-    def _txn(self):
-        return self._home._txn
+    def _transaction(self):
+        return self._home._transaction
 
 
     def _getHomeWithUID(self, uid):
@@ -525,13 +525,13 @@ class SQLLegacyShares(object):
         # much simpler anyway; we should just do that.
         all = []
         shareRows = yield self._allSharedToQuery.on(
-            self._txn, homeID=self._home._resourceID)
+            self._transaction, homeID=self._home._resourceID)
         for resourceID, resourceName, bindMode, summary in shareRows:
             [[ownerHomeID, ownerResourceName]] = yield (
-                self._ownerHomeIDAndName.on(self._txn,
+                self._ownerHomeIDAndName.on(self._transaction,
                                             resourceID=resourceID))
             [[ownerUID]] = yield self._ownerUIDFromHomeID.on(
-                self._txn, homeID=ownerHomeID)
+                self._transaction, homeID=ownerHomeID)
             hosturl = '/%s/__uids__/%s/%s' % (
                 self._urlTopSegment, ownerUID, ownerResourceName
             )
@@ -539,7 +539,7 @@ class SQLLegacyShares(object):
             if bindMode != _BIND_MODE_DIRECT:
                 sharetype = 'I'
                 [[shareuid]] = yield self._inviteUIDByResourceIDsQuery.on(
-                    self._txn, resourceID=resourceID,
+                    self._transaction, resourceID=resourceID,
                     homeID=self._home._resourceID
                 )
             else:
@@ -612,7 +612,7 @@ class SQLLegacyShares(object):
             # XXX_BIND.XXX_RESOURCE_NAME.
 
             yield self._updateBindName.on(
-                self._txn, localname=record.localname,
+                self._transaction, localname=record.localname,
                 homeID=self._home._resourceID, resourceID=collectionResourceID
             )
         elif record.sharetype == 'D':
@@ -621,20 +621,20 @@ class SQLLegacyShares(object):
             # Use savepoint so we can do a partial rollback if there is a race condition
             # where this row has already been inserted
             savepoint = SavepointAction("addOrUpdateRecord")
-            yield savepoint.acquire(self._txn)
+            yield savepoint.acquire(self._transaction)
 
             try:
                 yield self._acceptDirectShareQuery.on(
-                    self._txn, homeID=self._home._resourceID,
+                    self._transaction, homeID=self._home._resourceID,
                     resourceID=collectionResourceID, name=record.localname,
                     message=record.summary
                 )
             except Exception: # FIXME: Really want to trap the pg.DatabaseError but in a non-DB specific manner
-                yield savepoint.rollback(self._txn)
+                yield savepoint.rollback(self._transaction)
 
                 # For now we will assume that the insert already done is the winner - so nothing more to do here
             else:
-                yield savepoint.release(self._txn)
+                yield savepoint.release(self._transaction)
 
         shareeCollection = yield self._home.sharedChildWithName(record.localname)
         yield shareeCollection._initSyncToken()
@@ -655,7 +655,7 @@ class SQLLegacyShares(object):
         shareeCollection = yield self._home.sharedChildWithName(record.localname)
         yield shareeCollection._deletedSyncToken(sharedRemoval=True)
 
-        result = yield self._unbindShareQuery.on(self._txn, name=localname,
+        result = yield self._unbindShareQuery.on(self._transaction, name=localname,
                                                  homeID=self._home._resourceID)
         returnValue(result)
 
@@ -693,13 +693,13 @@ class SQLLegacyShares(object):
         yield shareeCollection._deletedSyncToken(sharedRemoval=True)
 
         if not shareUID.startswith("Direct"):
-            yield self._removeInviteShareQuery.on(self._txn, uid=shareUID)
+            yield self._removeInviteShareQuery.on(self._transaction, uid=shareUID)
         else:
             # Extract pieces from synthesised UID
             homeID, resourceID = shareUID[len("Direct-"):].split("-")
             # Now remove the binding for the direct share
             yield self._removeDirectShareQuery.on(
-                self._txn, homeID=homeID, resourceID=resourceID)
+                self._transaction, homeID=homeID, resourceID=resourceID)
 
 
 class SQLLegacyCalendarShares(SQLLegacyShares):
@@ -716,7 +716,7 @@ class SQLLegacyCalendarShares(SQLLegacyShares):
 
 
     def _getHomeWithUID(self, uid):
-        return self._txn.calendarHomeWithUID(uid, create=True)
+        return self._transaction.calendarHomeWithUID(uid, create=True)
 
 
 
@@ -734,7 +734,7 @@ class SQLLegacyAddressBookShares(SQLLegacyShares):
 
 
     def _getHomeWithUID(self, uid):
-        return self._txn.addressbookHomeWithUID(uid, create=True)
+        return self._transaction.addressbookHomeWithUID(uid, create=True)
 
 
 
@@ -1083,8 +1083,8 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
     _objectSchema = schema.CALENDAR_OBJECT
 
     @property
-    def _txn(self):
-        return self.calendar._txn
+    def _transaction(self):
+        return self.calendar._transaction
 
 
     @inlineCallbacks
@@ -1134,7 +1134,7 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
         """
         returnValue([row[0] for row in (
             yield self._notExpandedBeyondQuery.on(
-                self._txn, minDate=pyCalendarTodatetime(normalizeForIndex(minDate)),
+                self._transaction, minDate=pyCalendarTodatetime(normalizeForIndex(minDate)),
                 resourceID=self.calendar._resourceID))]
         )
 
@@ -1180,7 +1180,7 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
         # that it happens to be used by the oracle binding that we're using,
         # whereas the postgres binding happens to use the 'pyformat' (e.g. %s)
         # parameter style.
-        if self.calendar._txn.paramstyle == 'numeric':
+        if self.calendar._transaction.paramstyle == 'numeric':
             generator = oraclesqlgenerator
         else:
             generator = postgresqlgenerator
@@ -1216,7 +1216,7 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
         else:
             if fbtype:
                 # For a free-busy time-range query we return all instances
-                rowiter = yield self._txn.execSQL(
+                rowiter = yield self._transaction.execSQL(
                     """
                     select DISTINCT
                         CALENDAR_OBJECT.RESOURCE_NAME,
@@ -1231,7 +1231,7 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
                     qualifiers[1]
                 )
             else:
-                rowiter = yield self._txn.execSQL(
+                rowiter = yield self._transaction.execSQL(
                     """
                     select
                         DISTINCT CALENDAR_OBJECT.RESOURCE_NAME,
@@ -1273,7 +1273,7 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
 
     def bruteForceSearch(self):
         return self._bruteForceQuery.on(
-            self._txn, resourceID=self.resource._resourceID)
+            self._transaction, resourceID=self.resource._resourceID)
 
 
     @inlineCallbacks
@@ -1300,7 +1300,7 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
     def resourceExists(self, name):
         returnValue((bool(
             (yield self._resourceExistsQuery.on(
-                self._txn, name=name, resourceID=self.resource._resourceID))
+                self._transaction, name=name, resourceID=self.resource._resourceID))
         )))
 
 
@@ -1406,8 +1406,8 @@ class PostgresLegacyABIndexEmulator(LegacyIndexHelper):
 
 
     @property
-    def _txn(self):
-        return self.addressbook._txn
+    def _transaction(self):
+        return self.addressbook._transaction
 
 
     @inlineCallbacks
@@ -1445,7 +1445,7 @@ class PostgresLegacyABIndexEmulator(LegacyIndexHelper):
             C{name} is the resource name, C{uid} is the resource UID, and
             C{type} is the resource iCalendar component type.x
         """
-        if self.addressbook._txn.paramstyle == 'numeric':
+        if self.addressbook._transaction.paramstyle == 'numeric':
             generator = oraclesqladbkgenerator
         else:
             generator = postgresqladbkgenerator
@@ -1456,7 +1456,7 @@ class PostgresLegacyABIndexEmulator(LegacyIndexHelper):
         else:
             qualifiers = None
         if qualifiers is not None:
-            rowiter = yield self._txn.execSQL(
+            rowiter = yield self._transaction.execSQL(
                 "select DISTINCT ADDRESSBOOK_OBJECT.RESOURCE_NAME, ADDRESSBOOK_OBJECT.VCARD_UID" +
                 qualifiers[0],
                 qualifiers[1]
@@ -1468,7 +1468,7 @@ class PostgresLegacyABIndexEmulator(LegacyIndexHelper):
                 From=self._objectSchema,
                 Where=self._objectSchema.ADDRESSBOOK_RESOURCE_ID ==
                 self.addressbook._resourceID
-            ).on(self.addressbook._txn)
+            ).on(self.addressbook._transaction)
 
         returnValue(list(rowiter))
 

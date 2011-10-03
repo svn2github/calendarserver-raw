@@ -56,7 +56,7 @@ class PropertyStore(AbstractPropertyStore):
 
 
     @inlineCallbacks
-    def _refresh(self, txn):
+    def _refresh(self, transaction):
         """
         Load, or re-load, this object with the given transaction; first from
         memcache, then pulling from the database again.
@@ -65,7 +65,7 @@ class PropertyStore(AbstractPropertyStore):
         # Look for memcache entry first
         rows = yield self._cacher.get(str(self._resourceID))
         if rows is None:
-            rows = yield self._allWithID.on(txn, resourceID=self._resourceID)
+            rows = yield self._allWithID.on(transaction, resourceID=self._resourceID)
             yield self._cacher.set(str(self._resourceID),
                                    rows if rows is not None else ())
         for name, uid, value in rows:
@@ -74,20 +74,20 @@ class PropertyStore(AbstractPropertyStore):
 
     @classmethod
     @inlineCallbacks
-    def load(cls, defaultuser, txn, resourceID, created=False):
+    def load(cls, defaultuser, transaction, resourceID, created=False):
         self = cls.__new__(cls)
         super(PropertyStore, self).__init__(defaultuser)
-        self._txn = txn
+        self._transaction = transaction
         self._resourceID = resourceID
         self._cached = {}
         if not created:
-            yield self._refresh(txn)
+            yield self._refresh(transaction)
         returnValue(self)
 
 
     @classmethod
     @inlineCallbacks
-    def forMultipleResources(cls, defaultUser, txn,
+    def forMultipleResources(cls, defaultUser, transaction,
                              childColumn, parentColumn, parentID):
         """
         Load all property stores for all objects in a collection.  This is used
@@ -99,9 +99,9 @@ class PropertyStore(AbstractPropertyStore):
 
         @type defaultUser: C{str}
 
-        @param txn: the transaction within which to fetch the rows.
+        @param transaction: the transaction within which to fetch the rows.
 
-        @type txn: L{IAsyncTransaction}
+        @type transaction: L{IAsyncTransaction}
 
         @param childColumn: The resource ID column for the child resources, i.e.
             the resources of the type for which this method will loading the
@@ -124,7 +124,7 @@ class PropertyStore(AbstractPropertyStore):
                            'right'),
             Where=parentColumn == parentID
         )
-        rows = yield query.on(txn)
+        rows = yield query.on(transaction)
 
         createdStores = {}
         for object_resource_id, resource_id, name, view_uid, value in rows:
@@ -132,7 +132,7 @@ class PropertyStore(AbstractPropertyStore):
                 if resource_id not in createdStores:
                     store = cls.__new__(cls)
                     super(PropertyStore, store).__init__(defaultUser)
-                    store._txn = txn
+                    store._transaction = transaction
                     store._resourceID = resource_id
                     store._cached = {}
                     createdStores[resource_id] = store
@@ -140,7 +140,7 @@ class PropertyStore(AbstractPropertyStore):
             else:
                 store = cls.__new__(cls)
                 super(PropertyStore, store).__init__(defaultUser)
-                store._txn = txn
+                store._transaction = transaction
                 store._resourceID = object_resource_id
                 store._cached = {}
                 createdStores[object_resource_id] = store
@@ -183,21 +183,21 @@ class PropertyStore(AbstractPropertyStore):
         wasCached = [(key_str, uid) in self._cached]
         self._cached[(key_str, uid)] = value_str
         @inlineCallbacks
-        def trySetItem(txn):
+        def trySetItem(transaction):
             if tried:
-                yield self._refresh(txn)
+                yield self._refresh(transaction)
                 wasCached[:] = [(key_str, uid) in self._cached]
             tried.append(True)
             if wasCached[0]:
                 yield self._updateQuery.on(
-                    txn, resourceID=self._resourceID, value=value_str,
+                    transaction, resourceID=self._resourceID, value=value_str,
                     name=key_str, uid=uid)
             else:
                 yield self._insertQuery.on(
-                    txn, resourceID=self._resourceID, value=value_str,
+                    transaction, resourceID=self._resourceID, value=value_str,
                     name=key_str, uid=uid)
             self._cacher.delete(str(self._resourceID))
-        self._txn.subtransaction(trySetItem)
+        self._transaction.subtransaction(trySetItem)
 
 
 
@@ -213,7 +213,7 @@ class PropertyStore(AbstractPropertyStore):
 
         key_str = key.toString()
         del self._cached[(key_str, uid)]
-        self._deleteQuery.on(self._txn, lambda:KeyError(key),
+        self._deleteQuery.on(self._transaction, lambda:KeyError(key),
                              resourceID=self._resourceID,
                              name=key_str, uid=uid
                             )
@@ -232,6 +232,6 @@ class PropertyStore(AbstractPropertyStore):
     def _removeResource(self):
 
         self._cached = {}
-        self._deleteResourceQuery.on(self._txn, resourceID=self._resourceID)
+        self._deleteResourceQuery.on(self._transaction, resourceID=self._resourceID)
         self._cacher.delete(str(self._resourceID))
 

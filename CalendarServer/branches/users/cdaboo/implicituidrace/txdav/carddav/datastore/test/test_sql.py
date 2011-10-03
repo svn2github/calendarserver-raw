@@ -53,11 +53,11 @@ class AddressBookSQLStorageTests(AddressBookCommonTests, unittest.TestCase):
 
     @inlineCallbacks
     def populate(self):
-        populateTxn = self.storeUnderTest().newTransaction()
+        populateTransaction = self.storeUnderTest().newTransaction()
         for homeUID in self.requirements:
             addressbooks = self.requirements[homeUID]
             if addressbooks is not None:
-                home = yield populateTxn.addressbookHomeWithUID(homeUID, True)
+                home = yield populateTransaction.addressbookHomeWithUID(homeUID, True)
                 # We don't want the default addressbook to appear unless it's
                 # explicitly listed.
                 yield home.removeAddressBookWithName("addressbook")
@@ -72,7 +72,7 @@ class AddressBookSQLStorageTests(AddressBookCommonTests, unittest.TestCase):
                                 objectName, VCard.fromString(objData)
                             )
 
-        yield populateTxn.commit()
+        yield populateTransaction.commit()
         self.notifierFactory.reset()
 
 
@@ -125,9 +125,9 @@ class AddressBookSQLStorageTests(AddressBookCommonTests, unittest.TestCase):
         """
         setUpAddressBookStore(self)
         fileStore = self.addressbookStore
-        txn = fileStore.newTransaction()
-        self.addCleanup(txn.commit)
-        return txn
+        transaction = fileStore.newTransaction()
+        self.addCleanup(transaction.commit)
+        return transaction
 
 
     @inlineCallbacks
@@ -222,18 +222,18 @@ class AddressBookSQLStorageTests(AddressBookCommonTests, unittest.TestCase):
         addressbookStore = yield buildStore(self, self.notifierFactory)
 
         # Provision the home and addressbook now
-        txn = addressbookStore.newTransaction()
-        home = yield txn.homeWithUID(EADDRESSBOOKTYPE, "uid1", create=True)
+        transaction = addressbookStore.newTransaction()
+        home = yield transaction.homeWithUID(EADDRESSBOOKTYPE, "uid1", create=True)
         self.assertNotEqual(home, None)
         adbk = yield home.addressbookWithName("addressbook")
         self.assertNotEqual(adbk, None)
-        yield txn.commit()
+        yield transaction.commit()
 
-        txn1 = addressbookStore.newTransaction()
-        txn2 = addressbookStore.newTransaction()
+        transaction1 = addressbookStore.newTransaction()
+        transaction2 = addressbookStore.newTransaction()
 
-        home1 = yield txn1.homeWithUID(EADDRESSBOOKTYPE, "uid1", create=True)
-        home2 = yield txn2.homeWithUID(EADDRESSBOOKTYPE, "uid1", create=True)
+        home1 = yield transaction1.homeWithUID(EADDRESSBOOKTYPE, "uid1", create=True)
+        home2 = yield transaction2.homeWithUID(EADDRESSBOOKTYPE, "uid1", create=True)
 
         adbk1 = yield home1.addressbookWithName("addressbook")
         adbk2 = yield home2.addressbookWithName("addressbook")
@@ -254,7 +254,7 @@ UID:uid1
 END:VCARD
 """.replace("\n", "\r\n")
             ))
-            yield txn1.commit() # FIXME: CONCURRENT
+            yield transaction1.commit() # FIXME: CONCURRENT
         d1 = _defer1()
 
         @inlineCallbacks
@@ -273,7 +273,7 @@ UID:uid2
 END:VCARD
 """.replace("\n", "\r\n")
             ))
-            yield txn2.commit() # FIXME: CONCURRENT
+            yield transaction2.commit() # FIXME: CONCURRENT
         d2 = _defer2()
 
         yield d1

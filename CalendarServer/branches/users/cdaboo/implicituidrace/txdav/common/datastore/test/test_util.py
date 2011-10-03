@@ -94,19 +94,19 @@ class HomeMigrationTests(TestCase):
         self.topService.startService()
         yield self.subStarted
         self.assertEquals(self.stubService.running, True)
-        txn = self.sqlStore.newTransaction()
-        self.addCleanup(txn.commit)
+        transaction = self.sqlStore.newTransaction()
+        self.addCleanup(transaction.commit)
         for uid in CommonTests.requirements:
             if CommonTests.requirements[uid] is not None:
                 self.assertNotIdentical(
-                    None, (yield txn.calendarHomeWithUID(uid))
+                    None, (yield transaction.calendarHomeWithUID(uid))
                 )
         # Successfully migrated calendar homes are deleted
         self.assertFalse(self.filesPath.child("calendars").child(
             "__uids__").child("ho").child("me").child("home1").exists())
 
         # Want metadata preserved
-        home = (yield txn.calendarHomeWithUID("home1"))
+        home = (yield transaction.calendarHomeWithUID("home1"))
         calendar = (yield home.calendarWithName("calendar_1"))
         for name, metadata, md5 in (
             ("1.ics", CommonTests.metadata1, CommonTests.md5Values[0]),
@@ -124,14 +124,14 @@ class HomeMigrationTests(TestCase):
         L{UpgradeToDatabaseService.startService} will skip migrating existing
         homes.
         """
-        startTxn = self.sqlStore.newTransaction("populate empty sample")
-        yield startTxn.calendarHomeWithUID("home1", create=True)
-        yield startTxn.commit()
+        startTransaction = self.sqlStore.newTransaction("populate empty sample")
+        yield startTransaction.calendarHomeWithUID("home1", create=True)
+        yield startTransaction.commit()
         self.topService.startService()
         yield self.subStarted
-        vrfyTxn = self.sqlStore.newTransaction("verify sample still empty")
-        self.addCleanup(vrfyTxn.commit)
-        home = yield vrfyTxn.calendarHomeWithUID("home1")
+        vrfyTransaction = self.sqlStore.newTransaction("verify sample still empty")
+        self.addCleanup(vrfyTransaction.commit)
+        home = yield vrfyTransaction.calendarHomeWithUID("home1")
         # The default calendar is still there.
         self.assertNotIdentical(None, (yield home.calendarWithName("calendar")))
         # The migrated calendar isn't.
@@ -145,17 +145,17 @@ class HomeMigrationTests(TestCase):
         as well.
         """
 
-        txn = self.fileStore.newTransaction()
+        transaction = self.fileStore.newTransaction()
         committed = []
         def maybeCommit():
             if not committed:
                 committed.append(True)
-                return txn.commit()
+                return transaction.commit()
         self.addCleanup(maybeCommit)
 
         @inlineCallbacks
         def getSampleObj():
-            home = (yield txn.calendarHomeWithUID("home1"))
+            home = (yield transaction.calendarHomeWithUID("home1"))
             calendar = (yield home.calendarWithName("calendar_1"))
             object = (yield calendar.calendarObjectWithName("1.ics"))
             returnValue(object)
@@ -174,7 +174,7 @@ class HomeMigrationTests(TestCase):
         self.topService.startService()
         yield self.subStarted
         committed = []
-        txn = self.sqlStore.newTransaction()
+        transaction = self.sqlStore.newTransaction()
         outObject = yield getSampleObj()
         outAttachment = yield outObject.attachmentWithName(someAttachmentName)
         allDone = Deferred()
@@ -199,19 +199,19 @@ class HomeMigrationTests(TestCase):
         self.topService.startService()
         yield self.subStarted
         self.assertEquals(self.stubService.running, True)
-        txn = self.sqlStore.newTransaction()
-        self.addCleanup(txn.commit)
+        transaction = self.sqlStore.newTransaction()
+        self.addCleanup(transaction.commit)
         for uid in ABCommonTests.requirements:
             if ABCommonTests.requirements[uid] is not None:
                 self.assertNotIdentical(
-                    None, (yield txn.addressbookHomeWithUID(uid))
+                    None, (yield transaction.addressbookHomeWithUID(uid))
                 )
         # Successfully migrated addressbook homes are deleted
         self.assertFalse(self.filesPath.child("addressbooks").child(
             "__uids__").child("ho").child("me").child("home1").exists())
 
         # Want metadata preserved
-        home = (yield txn.addressbookHomeWithUID("home1"))
+        home = (yield transaction.addressbookHomeWithUID("home1"))
         adbk = (yield home.addressbookWithName("addressbook_1"))
         for name, md5 in (
             ("1.vcf", ABCommonTests.md5Values[0]),
@@ -320,32 +320,32 @@ class SchemaUpgradeTests(TestCase):
             Use the postgres schema mechanism to do tests under a separate "namespace"
             in postgres that we can quickly wipe clean afterwards.
             """
-            startTxn = store.newTransaction("test_dbUpgrades")        
-            yield startTxn.execSQL("create schema test_dbUpgrades;")
-            yield startTxn.execSQL("set search_path to test_dbUpgrades;")
-            yield startTxn.execSQL(path.getContent())
-            yield startTxn.commit()
+            startTransaction = store.newTransaction("test_dbUpgrades")        
+            yield startTransaction.execSQL("create schema test_dbUpgrades;")
+            yield startTransaction.execSQL("set search_path to test_dbUpgrades;")
+            yield startTransaction.execSQL(path.getContent())
+            yield startTransaction.commit()
 
         @inlineCallbacks
         def _loadVersion():
-            startTxn = store.newTransaction("test_dbUpgrades")        
-            new_version = yield startTxn.execSQL("select value from calendarserver where name = 'VERSION';")
-            yield startTxn.commit()
+            startTransaction = store.newTransaction("test_dbUpgrades")        
+            new_version = yield startTransaction.execSQL("select value from calendarserver where name = 'VERSION';")
+            yield startTransaction.commit()
             returnValue(int(new_version[0][0]))
 
         @inlineCallbacks
         def _unloadOldSchema():
-            startTxn = store.newTransaction("test_dbUpgrades")        
-            yield startTxn.execSQL("set search_path to public;")
-            yield startTxn.execSQL("drop schema test_dbUpgrades cascade;")
-            yield startTxn.commit()
+            startTransaction = store.newTransaction("test_dbUpgrades")        
+            yield startTransaction.execSQL("set search_path to public;")
+            yield startTransaction.execSQL("drop schema test_dbUpgrades cascade;")
+            yield startTransaction.commit()
 
         @inlineCallbacks
         def _cleanupOldSchema():
-            startTxn = store.newTransaction("test_dbUpgrades")        
-            yield startTxn.execSQL("set search_path to public;")
-            yield startTxn.execSQL("drop schema if exists test_dbUpgrades cascade;")
-            yield startTxn.commit()
+            startTransaction = store.newTransaction("test_dbUpgrades")        
+            yield startTransaction.execSQL("set search_path to public;")
+            yield startTransaction.execSQL("drop schema if exists test_dbUpgrades cascade;")
+            yield startTransaction.commit()
 
         self.addCleanup(_cleanupOldSchema)
 

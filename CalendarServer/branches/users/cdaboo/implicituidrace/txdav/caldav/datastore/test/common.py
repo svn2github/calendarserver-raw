@@ -301,9 +301,9 @@ class CommonTests(CommonCommonTests):
         L{ICommonStoreTransaction}, L{ICalendarTransaction}, and their
         respectively required attributes.
         """
-        txn = self.transactionUnderTest()
-        self.assertProvides(ICommonTransaction, txn)
-        self.assertProvides(ICalendarTransaction, txn)
+        transaction = self.transactionUnderTest()
+        self.assertProvides(ICommonTransaction, transaction)
+        self.assertProvides(ICalendarTransaction, transaction)
 
 
     @inlineCallbacks
@@ -337,8 +337,8 @@ class CommonTests(CommonCommonTests):
 
     @inlineCallbacks
     def notificationUnderTest(self):
-        txn = self.transactionUnderTest()
-        notifications = yield txn.notificationsWithUID("home1")
+        transaction = self.transactionUnderTest()
+        notifications = yield transaction.notificationsWithUID("home1")
         inviteNotification = InviteNotification()
         yield notifications.writeNotificationObject("abc", inviteNotification,
             inviteNotification.toxml())
@@ -362,8 +362,8 @@ class CommonTests(CommonCommonTests):
         L{ICalendar.resourceNamesSinceToken} will return the names of calendar
         objects changed or deleted since 
         """
-        txn = self.transactionUnderTest()
-        coll = yield txn.notificationsWithUID("home1")
+        transaction = self.transactionUnderTest()
+        coll = yield transaction.notificationsWithUID("home1")
         invite1 = InviteNotification()
         yield coll.writeNotificationObject("1", invite1, invite1.toxml())
         st = yield coll.syncToken()
@@ -493,8 +493,8 @@ class CommonTests(CommonCommonTests):
         L{INotificationObject.notificationCollection} returns the
         L{INotificationCollection} that the object was retrieved from.
         """
-        txn = self.transactionUnderTest()
-        collection = yield txn.notificationsWithUID("home1")
+        transaction = self.transactionUnderTest()
+        collection = yield transaction.notificationsWithUID("home1")
         notification = yield self.notificationUnderTest()
         self.assertIdentical(collection, notification.notificationCollection())
 
@@ -541,8 +541,8 @@ class CommonTests(CommonCommonTests):
         L{ICommonStoreTransaction.calendarHomeWithUID} should return C{None}
         when asked for a non-existent calendar home.
         """
-        txn = self.transactionUnderTest()
-        self.assertEquals((yield txn.calendarHomeWithUID("xyzzy")), None)
+        transaction = self.transactionUnderTest()
+        self.assertEquals((yield transaction.calendarHomeWithUID("xyzzy")), None)
 
 
     @inlineCallbacks
@@ -582,7 +582,7 @@ class CommonTests(CommonCommonTests):
         yield positiveAssertions()
         # FIXME: revert
         # FIXME: test for multiple renames
-        # FIXME: test for conflicting renames (a->b, c->a in the same txn)
+        # FIXME: test for conflicting renames (a->b, c->a in the same transaction)
 
 
     @inlineCallbacks
@@ -1267,26 +1267,26 @@ END:VCALENDAR
         L{ICommonStoreTransaction.calendarHomeWithUID} with C{create=True}
         will create a calendar home that doesn't exist yet.
         """
-        txn = self.transactionUnderTest()
+        transaction = self.transactionUnderTest()
         noHomeUID = "xyzzy"
-        calendarHome = yield txn.calendarHomeWithUID(
+        calendarHome = yield transaction.calendarHomeWithUID(
             noHomeUID,
             create=True
         )
         @inlineCallbacks
-        def readOtherTxn():
-            otherTxn = self.savedStore.newTransaction(self.id() + "other txn")
-            self.addCleanup(otherTxn.commit)
-            returnValue((yield otherTxn.calendarHomeWithUID(noHomeUID)))
+        def readOtherTransaction():
+            otherTransaction = self.savedStore.newTransaction(self.id() + "other transaction")
+            self.addCleanup(otherTransaction.commit)
+            returnValue((yield otherTransaction.calendarHomeWithUID(noHomeUID)))
         self.assertProvides(ICalendarHome, calendarHome)
         # Default calendar should be automatically created.
         self.assertProvides(ICalendar,
                             (yield calendarHome.calendarWithName("calendar")))
         # A concurrent transaction shouldn't be able to read it yet:
-        self.assertIdentical((yield readOtherTxn()), None)
+        self.assertIdentical((yield readOtherTransaction()), None)
         yield self.commit()
         # But once it's committed, other transactions should see it.
-        self.assertProvides(ICalendarHome, (yield readOtherTxn()))
+        self.assertProvides(ICalendarHome, (yield readOtherTransaction()))
 
 
     @inlineCallbacks
@@ -1867,15 +1867,15 @@ END:VCALENDAR
         L{AlreadyFinishedError}.
         """
         yield self.calendarObjectUnderTest()
-        txn = self.lastTransaction
+        transaction = self.lastTransaction
         yield self.commit()
 
         yield self.failUnlessFailure(
-            maybeDeferred(txn.commit),
+            maybeDeferred(transaction.commit),
             AlreadyFinishedError
         )
         yield self.failUnlessFailure(
-            maybeDeferred(txn.abort),
+            maybeDeferred(transaction.abort),
             AlreadyFinishedError
         )
 
@@ -1922,19 +1922,19 @@ END:VCALENDAR
         """
         # create some additional calendar homes
         additionalUIDs = set('alpha-uid home2 home3 beta-uid'.split())
-        txn = self.transactionUnderTest()
+        transaction = self.transactionUnderTest()
         for name in additionalUIDs:
             # maybe it's not actually necessary to yield (i.e. wait) for each
             # one?  commit() should wait for all of them.
-            yield txn.calendarHomeWithUID(name, create=True)
+            yield transaction.calendarHomeWithUID(name, create=True)
         yield self.commit()
         foundUIDs = set([])
-        lastTxn = None
-        for txn, home in (yield self.storeUnderTest().eachCalendarHome()):
-            self.addCleanup(txn.commit)
+        lastTransaction = None
+        for transaction, home in (yield self.storeUnderTest().eachCalendarHome()):
+            self.addCleanup(transaction.commit)
             foundUIDs.add(home.uid())
-            self.assertNotIdentical(lastTxn, txn)
-            lastTxn = txn
+            self.assertNotIdentical(lastTransaction, transaction)
+            lastTransaction = transaction
         requiredUIDs = set([
             uid for uid in self.requirements
             if self.requirements[uid] is not None

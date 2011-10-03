@@ -121,7 +121,7 @@ class _Statement(object):
         return self._toSQL(metadata)
 
 
-    def _extraVars(self, txn, metadata):
+    def _extraVars(self, transaction, metadata):
         """
         A hook for subclasses to provide additional keyword arguments to the
         C{bind} call when L{_Statement.on} is executed.  Currently this is used
@@ -156,12 +156,12 @@ class _Statement(object):
         return result
 
 
-    def on(self, txn, raiseOnZeroRowCount=None, **kw):
+    def on(self, transaction, raiseOnZeroRowCount=None, **kw):
         """
         Execute this statement on a given L{IAsyncTransaction} and return the
         resulting L{Deferred}.
 
-        @param txn: the L{IAsyncTransaction} to execute this on.
+        @param transaction: the L{IAsyncTransaction} to execute this on.
 
         @param raiseOnZeroRowCount: the exception to raise if no data was
             affected or returned by this query.
@@ -174,11 +174,11 @@ class _Statement(object):
         @rtype: a L{Deferred} firing a C{list} of records (C{tuple}s or
             C{list}s)
         """
-        metadata = self._paramstyles[txn.paramstyle](txn.dialect)
-        outvars = self._extraVars(txn, metadata)
+        metadata = self._paramstyles[transaction.paramstyle](transaction.dialect)
+        outvars = self._extraVars(transaction, metadata)
         kw.update(outvars)
         fragment = self.toSQL(metadata).bind(**kw)
-        result = txn.execSQL(fragment.text, fragment.parameters,
+        result = transaction.execSQL(fragment.text, fragment.parameters,
                              raiseOnZeroRowCount)
         result = self._extraResult(result, outvars, metadata)
         if metadata.dialect == ORACLE_DIALECT and result:
@@ -973,7 +973,7 @@ class _DMLStatement(_Statement):
             return self.Return
 
 
-    def _extraVars(self, txn, metadata):
+    def _extraVars(self, transaction, metadata):
         result = []
         rvars = self._returnAsList()
         if metadata.dialect == ORACLE_DIALECT:
@@ -1237,22 +1237,22 @@ class SavepointAction(object):
         self._name = name
 
 
-    def acquire(self, txn):
-        return Savepoint(self._name).on(txn)
+    def acquire(self, transaction):
+        return Savepoint(self._name).on(transaction)
 
 
-    def rollback(self, txn):
-        return RollbackToSavepoint(self._name).on(txn)
+    def rollback(self, transaction):
+        return RollbackToSavepoint(self._name).on(transaction)
 
 
-    def release(self, txn):
-        if txn.dialect == ORACLE_DIALECT:
+    def release(self, transaction):
+        if transaction.dialect == ORACLE_DIALECT:
             # There is no 'release savepoint' statement in oracle, but then, we
             # don't need it because there's no resource to manage.  Just don't
             # do anything.
             return NoOp()
         else:
-            return ReleaseSavepoint(self._name).on(txn)
+            return ReleaseSavepoint(self._name).on(transaction)
 
 
 
