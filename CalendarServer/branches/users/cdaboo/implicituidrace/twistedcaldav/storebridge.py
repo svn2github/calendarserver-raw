@@ -1854,7 +1854,7 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
         # delete from happening.
 
         isinbox = self._newStoreObject._calendar.name() == "inbox"
-        transaction = self._newStoreObject._transaction
+        transaction = self._newStoreObject.transaction()
 
         # Do If-Schedule-Tag-Match behavior first
         # Important: this should only ever be done when storeRemove is called

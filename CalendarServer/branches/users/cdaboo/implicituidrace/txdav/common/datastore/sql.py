@@ -2423,6 +2423,8 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
     def _transaction(self):
         return self._parentCollection._transaction
 
+    def transaction(self):
+        return self._parentCollection._transaction
 
     def setComponent(self, component, inserting=False):
         raise NotImplementedError
