@@ -1,8 +1,0 @@
-#!/bin/bash
-
-wd="$(cd "$(dirname "$0")" && pwd)";
-
-. "${wd}/support/shell.sh"
-
-exec "${python}" "$@";
-
