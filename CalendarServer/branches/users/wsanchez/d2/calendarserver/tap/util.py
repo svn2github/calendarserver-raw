@@ -642,12 +642,12 @@ def getRootResource(config, newStore, resources=None):
     if apnConfig.Enabled:
         log.info("Setting up APNS resource at /%s" %
             (apnConfig["SubscriptionURL"],))
-        # Only advertise digest auth on /apns
+        # Only advertise basic auth on /apns
         resources.append((
             apnConfig["SubscriptionURL"],
             apnSubscriptionResourceClass,
             [],
-            "digest"
+            "basic"
         ))
 
     #
