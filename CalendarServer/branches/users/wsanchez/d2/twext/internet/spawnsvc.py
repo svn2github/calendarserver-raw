@@ -30,6 +30,7 @@ from twisted.internet.error import ReactorNotRunning
 if __name__ == '__main__':
 
     sys.stdout = sys.stderr
+    log.startLogging(sys.stderr)
     there = sys.argv[1]
     protocolClass = namedAny(there)
     proto = protocolClass()
