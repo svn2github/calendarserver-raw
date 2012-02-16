@@ -551,6 +551,13 @@ class CommonCommonTests(object):
         if self.lastTransaction is not None:
             return self.commit()
 
+    def storeUnderTest(self):
+        """
+        Subclasses must implement this method.
+        """
+        raise NotImplementedError("CommonCommonTests subclasses must implement.")
+
+
 
 class StubNodeCacher(object):
 
