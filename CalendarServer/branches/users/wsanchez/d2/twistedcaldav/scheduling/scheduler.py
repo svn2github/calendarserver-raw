@@ -51,6 +51,7 @@ from twistedcaldav.scheduling.ischedule import ScheduleViaISchedule
 from twistedcaldav.scheduling.ischeduleservers import IScheduleServers
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
 from twistedcaldav.servers import Servers
+from twistedcaldav.util import normalizationLookup
 
 """
 CalDAV/Server-to-Server scheduling behavior.
@@ -847,18 +848,8 @@ class IScheduleScheduler(RemoteScheduler):
         """
 
         if not self.checkForFreeBusy():
-            def lookupFunction(cuaddr):
-                principal = self.resource.principalForCalendarUserAddress(cuaddr)
-                if principal is None:
-                    return (None, None, None)
-                else:
-                    return (
-                        principal.record.fullName.decode("utf-8"),
-                        principal.record.guid,
-                        principal.record.calendarUserAddresses
-                    )
-    
-            self.calendar.normalizeCalendarUserAddresses(lookupFunction)
+            self.calendar.normalizeCalendarUserAddresses(normalizationLookup,
+                self.resource.principalForCalendarUserAddress)
 
     def checkAuthorization(self):
         # Must have an unauthenticated user

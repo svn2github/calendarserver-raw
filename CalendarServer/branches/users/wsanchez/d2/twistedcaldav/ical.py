@@ -2474,7 +2474,8 @@ END:VCALENDAR
                     if dataValue.find(dropboxPrefix) != -1:
                         self.removeProperty(attachment)
 
-    def normalizeCalendarUserAddresses(self, lookupFunction, toUUID=True):
+    def normalizeCalendarUserAddresses(self, lookupFunction, principalFunction,
+        toUUID=True):
         """
         Do the ORGANIZER/ATTENDEE property normalization.
 
@@ -2492,7 +2493,8 @@ END:VCALENDAR
                 # Check that we can lookup this calendar user address - if not
                 # we cannot do anything with it
                 cuaddr = normalizeCUAddr(prop.value())
-                name, guid, cuaddrs = lookupFunction(cuaddr)
+                name, guid, cuaddrs = lookupFunction(cuaddr, principalFunction,
+                    config)
                 if guid is None:
                     continue
 
@@ -2502,38 +2504,58 @@ END:VCALENDAR
                     oldemail = "mailto:%s" % (oldemail,)
 
                 if toUUID:
+                    # Store the original CUA if http(s):
+                    if cuaddr.startswith("http"):
+                        prop.setParameter("CALENDARSERVER-OLD-CUA",
+                            prop.value())
+
                     # Always re-write value to urn:uuid
                     prop.setValue("urn:uuid:%s" % (guid,))
-                    
+
                 # If it is already a non-UUID address leave it be
                 elif cuaddr.startswith("urn:uuid:"):
-                    if oldemail:
+
+                    # Restore old CUA
+                    oldExternalCUA = prop.parameterValue("CALENDARSERVER-OLD-CUA")
+                    if oldExternalCUA:
+                        newaddr = oldExternalCUA
+                        prop.removeParameter("CALENDARSERVER-OLD-CUA")
+                    elif oldemail:
                         # Use the EMAIL parameter if it exists
                         newaddr = oldemail
                     else:
-                        # Pick the first mailto, or failing that the first http, or failing that the first one
+                        # Pick the first mailto,
+                        # or failing that the first path one,
+                        # or failing that the first http one,
+                        # or failing that the first one
                         first_mailto = None
+                        first_path = None
                         first_http = None
                         first = None
                         for addr in cuaddrs:
                             if addr.startswith("mailto:"):
                                 first_mailto = addr
                                 break
+                            elif addr.startswith("/"):
+                                if not first_path:
+                                    first_path = addr
                             elif addr.startswith("http:"):
                                 if not first_http:
                                     first_http = addr
                             elif not first:
                                 first = addr
-                        
+
                         if first_mailto:
                             newaddr = first_mailto
+                        elif first_path:
+                            newaddr = first_path
                         elif first_http:
                             newaddr = first_http
                         elif first:
                             newaddr = first
                         else:
                             newaddr = None
-                    
+
                     # Make the change
                     if newaddr:
                         prop.setValue(newaddr)

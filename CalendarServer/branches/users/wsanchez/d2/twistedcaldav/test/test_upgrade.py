@@ -1491,7 +1491,6 @@ END:VCALENDAR
 """.replace("\n", "\r\n")
 
 
-
 event01_before = """BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Apple Inc.//iCal 3.0//EN

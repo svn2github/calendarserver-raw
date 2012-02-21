@@ -290,7 +290,8 @@ class DirectoryPrincipalProvisioningResource (DirectoryProvisioningResource):
             else:
                 port = int(netloc[1])
 
-            if host != config.ServerHostName:
+            if (host != config.ServerHostName and
+                host not in config.Scheduling.Options.PrincipalHostAliases):
                 return None
 
             if port != {
@@ -1031,10 +1032,6 @@ class DirectoryCalendarPrincipalResource(DirectoryPrincipalResource,
         # Add the principal URL and alternate URIs to the list.
         for uri in ((self.principalURL(),) + tuple(self.alternateURIs())):
             addresses.add(uri)
-            if config.HTTPPort:
-                addresses.add("http://%s:%s%s" % (config.ServerHostName, config.HTTPPort, uri))
-            if config.EnableSSL and config.SSLPort:
-                addresses.add("https://%s:%s%s" % (config.ServerHostName, config.SSLPort, uri))
 
         return addresses
 
