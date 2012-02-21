@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- test-case-name: calendarserver.tools.test.test_purge -*-
 ##
-# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 
 import os
 import sys
+import traceback
 from errno import ENOENT, EACCES
 from getopt import getopt, GetoptError
 
@@ -199,7 +200,7 @@ class PurgePrincipalService(WorkerService):
         directory = rootResource.getDirectory()
         total = (yield purgeUIDs(directory, rootResource, self.uids,
             verbose=self.verbose, dryrun=self.dryrun,
-            completely=self.completely))
+            completely=self.completely, doimplicit=self.doimplicit))
         if self.verbose:
             amount = "%d event%s" % (total, "s" if total > 1 else "")
             if self.dryrun:
@@ -357,6 +358,7 @@ def main_purge_principals():
                 "config=",
                 "help",
                 "verbose",
+                "noimplicit",
             ],
         )
     except GetoptError, e:
@@ -369,6 +371,7 @@ def main_purge_principals():
     dryrun = False
     verbose = False
     completely = False
+    doimplicit = True
 
     for opt, arg in optargs:
         if opt in ("-h", "--help"):
@@ -386,6 +389,9 @@ def main_purge_principals():
         elif opt in ("-f", "--config"):
             configFileName = arg
 
+        elif opt in ("--noimplicit"):
+            doimplicit = False
+
         else:
             raise NotImplementedError(opt)
 
@@ -394,6 +400,7 @@ def main_purge_principals():
     PurgePrincipalService.completely = completely
     PurgePrincipalService.dryrun = dryrun
     PurgePrincipalService.verbose = verbose
+    PurgePrincipalService.doimplicit = doimplicit
 
 
     utilityMain(
@@ -497,14 +504,14 @@ def purgeOrphanedAttachments(store, batchSize, verbose=False, dryrun=False):
 
 @inlineCallbacks
 def purgeUIDs(directory, root, uids, verbose=False, dryrun=False,
-    completely=False):
+    completely=False, doimplicit=True):
     total = 0
 
     allAssignments = { }
 
     for uid in uids:
         count, allAssignments[uid] = (yield purgeUID(uid, directory, root,
-            verbose=verbose, dryrun=dryrun, completely=completely))
+            verbose=verbose, dryrun=dryrun, completely=completely, doimplicit=doimplicit))
         total += count
 
     # TODO: figure out what to do with the purged proxy assignments...
@@ -621,7 +628,7 @@ def cancelEvent(event, when, cua):
 
 @inlineCallbacks
 def purgeUID(uid, directory, root, verbose=False, dryrun=False, proxies=True,
-    when=None, completely=False):
+    when=None, completely=False, doimplicit=True):
 
     if when is None:
         when = PyCalendarDateTime.getNowUTC()
@@ -671,132 +678,167 @@ def purgeUID(uid, directory, root, verbose=False, dryrun=False, proxies=True,
 
     perUserFilter = PerUserDataFilter(uid)
 
-    for collName in (yield calendarHome.listChildren()):
-        collection = (yield calendarHome.getChild(collName))
-        if collection.isCalendarCollection() or collName == "inbox":
+    try:
+        for collName in (yield calendarHome.listChildren()):
+            collection = (yield calendarHome.getChild(collName))
+            if collection.isCalendarCollection() or collName == "inbox":
 
-            childNames = []
+                childNames = []
 
-            if completely:
-                # all events
-                for childName in (yield collection.listChildren()):
-                    childNames.append(childName)
-            else:
-                # events matching filter
-                for childName, childUid, childType in (yield collection.index().indexedSearch(filter)):
-                    childNames.append(childName)
-
-            for childName in childNames:
-
-                childResource = (yield collection.getChild(childName))
                 if completely:
-                    action = CANCELEVENT_SHOULD_DELETE
+                    # all events
+                    for childName in (yield collection.listChildren()):
+                        childNames.append(childName)
                 else:
-                    event = (yield childResource.iCalendar())
-                    event = perUserFilter.filter(event)
-                    action = cancelEvent(event, when, cua)
+                    # events matching filter
+                    for childName, childUid, childType in (yield collection.index().indexedSearch(filter)):
+                        childNames.append(childName)
 
-                uri = "/calendars/__uids__/%s/%s/%s" % (uid, collName, childName)
-                request.path = uri
-                if action == CANCELEVENT_MODIFIED:
-                    count += 1
-                    request._rememberResource(childResource, uri)
-                    storer = StoreCalendarObjectResource(
-                        request=request,
-                        destination=childResource,
-                        destination_uri=uri,
-                        destinationcal=True,
-                        destinationparent=collection,
-                        calendar=str(event),
-                    )
+                for childName in childNames:
+
+                    childResource = (yield collection.getChild(childName))
+                    if completely:
+                        action = CANCELEVENT_SHOULD_DELETE
+                    else:
+                        event = (yield childResource.iCalendar())
+                        event = perUserFilter.filter(event)
+                        action = cancelEvent(event, when, cua)
+
+                    uri = "/calendars/__uids__/%s/%s/%s" % (uid, collName, childName)
+                    request.path = uri
+                    if action == CANCELEVENT_MODIFIED:
+                        count += 1
+                        request._rememberResource(childResource, uri)
+                        storer = StoreCalendarObjectResource(
+                            request=request,
+                            destination=childResource,
+                            destination_uri=uri,
+                            destinationcal=True,
+                            destinationparent=collection,
+                            calendar=str(event),
+                        )
+                        if verbose:
+                            if dryrun:
+                                print "Would modify: %s" % (uri,)
+                            else:
+                                print "Modifying: %s" % (uri,)
+                        if not dryrun:
+                            result = (yield storer.run())
+
+                    elif action == CANCELEVENT_SHOULD_DELETE:
+                        incrementCount = dryrun
+                        request._rememberResource(childResource, uri)
+                        if verbose:
+                            if dryrun:
+                                print "Would delete: %s" % (uri,)
+                            else:
+                                print "Deleting: %s" % (uri,)
+                        if not dryrun:
+                            retry = False
+                            try:
+                                result = (yield childResource.storeRemove(request, doimplicit, uri))
+                                if result != NO_CONTENT:
+                                    print "Error deleting %s/%s/%s: %s" % (uid,
+                                        collName, childName, result)
+                                    retry = True
+                                else:
+                                    incrementCount = True
+
+                            except Exception, e:
+                                print "Exception deleting %s/%s/%s: %s" % (uid,
+                                    collName, childName, str(e))
+                                traceback.print_stack()
+                                retry = True
+
+                            if retry and doimplicit:
+                                # Try again with implicit scheduling off
+                                print "Retrying deletion of %s/%s/%s with implicit scheduling turned off" % (uid, collName, childName)
+                                try:
+                                    result = (yield childResource.storeRemove(request, False, uri))
+                                    if result != NO_CONTENT:
+                                        print "Error deleting %s/%s/%s: %s" % (uid,
+                                            collName, childName, result)
+                                    else:
+                                        incrementCount = True
+                                except Exception, e:
+                                    print "Still couldn't delete %s/%s/%s even with implicit scheduling turned off: %s" % (uid, collName, childName, str(e))
+                                    traceback.print_stack()
+
+                        if incrementCount:
+                            count += 1
+
+
+        txn = request._newStoreTransaction
+
+        # Remove empty calendar collections (and calendar home if no more
+        # calendars)
+        calHome = (yield txn.calendarHomeWithUID(uid))
+        if calHome is not None:
+            calendars = list((yield calHome.calendars()))
+            remainingCalendars = len(calendars)
+            for calColl in calendars:
+                if len(list((yield calColl.calendarObjects()))) == 0:
+                    remainingCalendars -= 1
+                    calendarName = calColl.name()
                     if verbose:
                         if dryrun:
-                            print "Would modify: %s" % (uri,)
+                            print "Would delete calendar: %s" % (calendarName,)
                         else:
-                            print "Modifying: %s" % (uri,)
+                            print "Deleting calendar: %s" % (calendarName,)
                     if not dryrun:
-                        result = (yield storer.run())
+                        (yield calHome.removeChildWithName(calendarName))
 
-                elif action == CANCELEVENT_SHOULD_DELETE:
-                    count += 1
-                    request._rememberResource(childResource, uri)
+            if not remainingCalendars:
+                if verbose:
+                    if dryrun:
+                        print "Would delete calendar home"
+                    else:
+                        print "Deleting calendar home"
+                if not dryrun:
+                    (yield calHome.remove())
+
+
+        # Remove VCards
+        abHome = (yield txn.addressbookHomeWithUID(uid))
+        if abHome is not None:
+            for abColl in list( (yield abHome.addressbooks()) ):
+                for card in list( (yield abColl.addressbookObjects()) ):
+                    cardName = card.name()
                     if verbose:
+                        uri = "/addressbooks/__uids__/%s/%s/%s" % (uid, abColl.name(), cardName)
                         if dryrun:
                             print "Would delete: %s" % (uri,)
                         else:
                             print "Deleting: %s" % (uri,)
                     if not dryrun:
-                        result = (yield childResource.storeRemove(request, True, uri))
-                        if result != NO_CONTENT:
-                            print "Error deleting %s/%s/%s: %s" % (uid,
-                                collName, childName, result)
-
-
-    txn = request._newStoreTransaction
-
-    # Remove empty calendar collections (and calendar home if no more
-    # calendars)
-    calHome = (yield txn.calendarHomeWithUID(uid))
-    if calHome is not None:
-        calendars = list((yield calHome.calendars()))
-        remainingCalendars = len(calendars)
-        for calColl in calendars:
-            if len(list((yield calColl.calendarObjects()))) == 0:
-                remainingCalendars -= 1
-                calendarName = calColl.name()
+                        (yield abColl.removeObjectResourceWithName(cardName))
+                    count += 1
                 if verbose:
+                    abName = abColl.name()
                     if dryrun:
-                        print "Would delete calendar: %s" % (calendarName,)
+                        print "Would delete addressbook: %s" % (abName,)
                     else:
-                        print "Deleting calendar: %s" % (calendarName,)
+                        print "Deleting addressbook: %s" % (abName,)
                 if not dryrun:
-                    (yield calHome.removeChildWithName(calendarName))
+                    # Also remove the addressbook collection itself
+                    (yield abHome.removeChildWithName(abColl.name()))
 
-        if not remainingCalendars:
             if verbose:
                 if dryrun:
-                    print "Would delete calendar home"
+                    print "Would delete addressbook home"
                 else:
-                    print "Deleting calendar home"
+                    print "Deleting addressbook home"
             if not dryrun:
-                (yield calHome.remove())
+                (yield abHome.remove())
 
+        # Commit
+        (yield txn.commit())
 
-    # Remove VCards
-    abHome = (yield txn.addressbookHomeWithUID(uid))
-    if abHome is not None:
-        for abColl in list( (yield abHome.addressbooks()) ):
-            for card in list( (yield abColl.addressbookObjects()) ):
-                cardName = card.name()
-                if verbose:
-                    uri = "/addressbooks/__uids__/%s/%s/%s" % (uid, abColl.name(), cardName)
-                    if dryrun:
-                        print "Would delete: %s" % (uri,)
-                    else:
-                        print "Deleting: %s" % (uri,)
-                if not dryrun:
-                    (yield abColl.removeObjectResourceWithName(cardName))
-                count += 1
-            if verbose:
-                abName = abColl.name()
-                if dryrun:
-                    print "Would delete addressbook: %s" % (abName,)
-                else:
-                    print "Deleting addressbook: %s" % (abName,)
-            if not dryrun:
-                # Also remove the addressbook collection itself
-                (yield abHome.removeChildWithName(abColl.name()))
-
-        if verbose:
-            if dryrun:
-                print "Would delete addressbook home"
-            else:
-                print "Deleting addressbook home"
-        if not dryrun:
-            (yield abHome.remove())
-
-    # Commit
-    (yield txn.commit())
+    except Exception, e:
+        # Abort
+        txn = request._newStoreTransaction
+        (yield txn.abort())
+        raise e
 
     if proxies and not dryrun:
         if verbose:
