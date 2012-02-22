@@ -521,7 +521,7 @@ fi;
 if ! py_have_module xml.dom.ext; then
   xml="${top}/PyXML-0.8.4";
 
-  www_get "PyXML" "${xml}" http://softlayer.dl.sourceforge.net/sourceforge/pyxml/PyXML-0.8.4.tar.gz;
+  www_get "PyXML" "${xml}" http://superb-sea2.dl.sourceforge.net/sourceforge/pyxml/PyXML-0.8.4.tar.gz;
   py_build "PyXML" "${xml}" false;
   py_install "PyXML" "${xml}";
 
@@ -595,7 +595,7 @@ fi;
 if ! py_have_module ctypes; then
   ctypes="${top}/ctypes-1.0.0"
 
-  www_get "ctypes" "${ctypes}" http://softlayer.dl.sourceforge.net/sourceforge/ctypes/ctypes-1.0.0.tar.gz;
+  www_get "ctypes" "${ctypes}" http://superb-sea2.dl.sourceforge.net/sourceforge/ctypes/ctypes-1.0.0.tar.gz;
   py_build "ctypes" "${ctypes}" true;
   py_install "ctypes" "${ctypes}";
 
