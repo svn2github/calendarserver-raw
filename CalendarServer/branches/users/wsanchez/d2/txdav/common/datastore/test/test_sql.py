@@ -13,17 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-from txdav.common.datastore.sql_tables import schema
-from twext.enterprise.dal.syntax import Select
-from txdav.common.icommondatastore import AllRetriesFailed
 
 """
 Tests for L{txdav.common.datastore.sql}.
 """
 
+from twext.enterprise.dal.syntax import Select
 from twisted.internet.defer import inlineCallbacks
+from twisted.internet.task import Clock
 from twisted.trial.unittest import TestCase
+from txdav.common.datastore.sql import log, CommonStoreTransactionMonitor
+from txdav.common.datastore.sql_tables import schema
 from txdav.common.datastore.test.util import CommonCommonTests, buildStore
+from txdav.common.icommondatastore import AllRetriesFailed
 
 
 class SubTransactionTests(CommonCommonTests, TestCase):
@@ -46,6 +48,101 @@ class SubTransactionTests(CommonCommonTests, TestCase):
         """
         return self._sqlStore
 
+
+    @inlineCallbacks
+    def test_logging(self):
+        """
+        txn.execSQL works with all logging options on.
+        """
+        
+        # Patch config to turn on logging then rebuild the store
+        self.patch(self._sqlStore, "logLabels", True)
+        self.patch(self._sqlStore, "logStats", True)
+        self.patch(self._sqlStore, "logSQL", True)
+
+        txn = self.transactionUnderTest()
+        cs = schema.CALENDARSERVER
+        version = (yield Select(
+                [cs.VALUE,],
+                From=cs,
+                Where=cs.NAME == 'VERSION',
+            ).on(txn))
+        self.assertNotEqual(version, None)
+        self.assertEqual(len(version), 1)
+        self.assertEqual(len(version[0]), 1)
+
+    def test_logWaits(self):
+        """
+        CommonStoreTransactionMonitor logs waiting transactions.
+        """
+        
+        c = Clock()
+        self.patch(CommonStoreTransactionMonitor, "callLater", c.callLater)
+
+        # Patch config to turn on log waits then rebuild the store
+        self.patch(self._sqlStore, "logTransactionWaits", 1)
+        
+        ctr = [0]
+        def counter(_ignore):
+            ctr[0] += 1
+        self.patch(log, "error", counter)
+
+        txn = self.transactionUnderTest()        
+ 
+        c.advance(2)
+        self.assertNotEqual(ctr[0], 0)
+        txn.abort()
+
+
+    def test_txnTimeout(self):
+        """
+        CommonStoreTransactionMonitor terminates long transactions.
+        """
+        
+        c = Clock()
+        self.patch(CommonStoreTransactionMonitor, "callLater", c.callLater)
+
+        # Patch config to turn on transaction timeouts then rebuild the store
+        self.patch(self._sqlStore, "timeoutTransactions", 1)
+        
+        ctr = [0]
+        def counter(_ignore):
+            ctr[0] += 1
+        self.patch(log, "error", counter)
+
+        txn = self.transactionUnderTest()
+
+        c.advance(2)
+        self.assertNotEqual(ctr[0], 0)
+        self.assertTrue(txn._sqlTxn._completed)
+
+
+    def test_logWaitsAndTxnTimeout(self):
+        """
+        CommonStoreTransactionMonitor logs waiting transactions and terminates long transactions.
+        """
+        
+        c = Clock()
+        self.patch(CommonStoreTransactionMonitor, "callLater", c.callLater)
+
+        # Patch config to turn on log waits then rebuild the store
+        self.patch(self._sqlStore, "logTransactionWaits", 1)
+        self.patch(self._sqlStore, "timeoutTransactions", 2)
+        
+        ctr = [0, 0]
+        def counter(logStr):
+            if "wait" in logStr:
+                ctr[0] += 1
+            elif "abort" in logStr:
+                ctr[1] += 1
+        self.patch(log, "error", counter)
+
+        txn = self.transactionUnderTest()
+        
+        c.advance(2)
+        self.assertNotEqual(ctr[0], 0)
+        self.assertNotEqual(ctr[1], 0)
+        self.assertTrue(txn._sqlTxn._completed)
 
     @inlineCallbacks
     def test_subtransactionOK(self):

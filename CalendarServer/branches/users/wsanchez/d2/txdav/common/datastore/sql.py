@@ -38,6 +38,7 @@ from twisted.python.modules import getModule
 from twisted.python.util import FancyEqMixin
 from twisted.python.failure import Failure
 
+from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
 from twisted.application.service import Service
@@ -80,6 +81,7 @@ from twistedcaldav.customxml import NotificationType
 from twistedcaldav.dateops import datetimeMktime, parseSQLTimestamp,\
     pyCalendarTodatetime
 
+from cStringIO import StringIO
 from sqlparse import parse
 import collections
 import sys
@@ -132,7 +134,9 @@ class CommonDataStore(Service, object):
 
     def __init__(self, sqlTxnFactory, notifierFactory, attachmentsPath,
                  enableCalendars=True, enableAddressBooks=True,
-                 label="unlabeled", quota=(2 ** 20)):
+                 label="unlabeled", quota=(2 ** 20),
+                 logLabels=False, logStats=False, logSQL=False,
+                 logTransactionWaits=0, timeoutTransactions=0):
         assert enableCalendars or enableAddressBooks
 
         self.sqlTxnFactory = sqlTxnFactory
@@ -142,6 +146,11 @@ class CommonDataStore(Service, object):
         self.enableAddressBooks = enableAddressBooks
         self.label = label
         self.quota = quota
+        self.logLabels = logLabels
+        self.logStats = logStats
+        self.logSQL = logSQL
+        self.logTransactionWaits = logTransactionWaits
+        self.timeoutTransactions = timeoutTransactions
         self._migrating = False
         self._enableNotifications = True
 
@@ -165,7 +174,7 @@ class CommonDataStore(Service, object):
         """
         @see L{IDataStore.newTransaction}
         """
-        return CommonStoreTransaction(
+        txn = CommonStoreTransaction(
             self,
             self.sqlTxnFactory(),
             self.enableCalendars,
@@ -174,6 +183,10 @@ class CommonDataStore(Service, object):
             label,
             self._migrating,
         )
+        
+        if self.logTransactionWaits or self.timeoutTransactions:
+            CommonStoreTransactionMonitor(txn, self.logTransactionWaits, self.timeoutTransactions)
+        return txn
 
     def setMigrating(self, state):
         """
@@ -224,6 +237,58 @@ class TransactionStatsCollector(object):
             toFile.write("\n")
         toFile.write("***\n")
 
+class CommonStoreTransactionMonitor(object):
+    """
+    Object that monitors the state of a transaction over time and logs or times out
+    the transaction.
+    """
+    
+    callLater = reactor.callLater
+
+    def __init__(self, txn, logTimerSeconds, timeoutSeconds):
+        self.txn = txn
+        self.delayedLog = None
+        self.delayedTimeout = None
+        self.logTimerSeconds = logTimerSeconds
+        self.timeoutSeconds = timeoutSeconds
+        
+        self.txn.postCommit(self._cleanTxn)
+        self.txn.postAbort(self._cleanTxn)
+        
+        self._installLogTimer()
+        self._installTimeout()
+    
+    def _cleanTxn(self):
+        self.txn = None
+        if self.delayedLog:
+            self.delayedLog.cancel()
+            self.delayedLog = None
+        if self.delayedTimeout:
+            self.delayedTimeout.cancel()
+            self.delayedTimeout = None
+
+    def _installLogTimer(self):
+        def _logTransactionWait():
+            if self.txn is not None:
+                log.error("Transaction wait: %r, Statements: %d, IUDs: %d, Statement: %s" % (self.txn, self.txn.statementCount, self.txn.iudCount, self.txn.currentStatement if self.txn.currentStatement else "None",))
+                self.delayedLog = self.callLater(self.logTimerSeconds, _logTransactionWait)
+
+        if self.logTimerSeconds:
+            self.delayedLog = self.callLater(self.logTimerSeconds, _logTransactionWait)
+    
+    def _installTimeout(self):
+        def _forceAbort():
+            if self.txn is not None:
+                log.error("Transaction abort too long: %r, Statements: %d, IUDs: %d, Statement: %s" % (self.txn, self.txn.statementCount, self.txn.iudCount, self.txn.currentStatement if self.txn.currentStatement else "None",))
+                self.delayedTimeout = None
+                if self.delayedLog:
+                    self.delayedLog.cancel()
+                    self.delayedLog = None
+                self.txn.abort()
+
+        if self.timeoutSeconds:
+            self.delayedTimeout = self.callLater(self.timeoutSeconds, _forceAbort)
+
 class CommonStoreTransaction(object):
     """
     Transaction implementation for SQL database.
@@ -268,8 +333,10 @@ class CommonStoreTransaction(object):
         self.paramstyle = sqlTxn.paramstyle
         self.dialect = sqlTxn.dialect
         
-        # FIXME: want to pass a "debug" option in to enable this via config - off for now
-        self._stats = None #TransactionStatsCollector()
+        self._stats = TransactionStatsCollector() if self._store.logStats else None
+        self.statementCount = 0
+        self.iudCount = 0
+        self.currentStatement = None
 
 
     def store(self):
@@ -535,9 +602,20 @@ class CommonStoreTransaction(object):
         """
         if self._stats:        
             self._stats.startStatement(a[0])
-        results = (yield self._sqlTxn.execSQL(*a, **kw))
-        if self._stats:        
-            self._stats.endStatement()
+        self.currentStatement = a[0]
+        if self._store.logTransactionWaits and a[0].split(" ", 1)[0].lower() in ("insert", "update", "delete",):
+            self.iudCount += 1
+        self.statementCount += 1
+        if self._store.logLabels:
+            a = ("-- Label: %s\n" % (self._label.replace("%", "%%"),) + a[0],) + a[1:]
+        if self._store.logSQL:
+            log.error("SQL: %r %r" % (a, kw,))
+        try:
+            results = (yield self._sqlTxn.execSQL(*a, **kw))
+        finally:
+            self.currentStatement = None
+            if self._stats:        
+                self._stats.endStatement()
         returnValue(results)
 
     @inlineCallbacks
@@ -568,7 +646,9 @@ class CommonStoreTransaction(object):
             return ignored
 
         if self._stats:        
-            self._stats.printReport()
+            s = StringIO()
+            self._stats.printReport(s)
+            log.error(s.getvalue())
 
         return self._sqlTxn.commit().addCallback(postCommit)
 
