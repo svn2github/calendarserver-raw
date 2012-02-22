@@ -547,22 +547,17 @@ class APNSubscriptionResource(ReadOnlyNoCopyResourceMixIn,
         @type request: L{twext.web2.server.Request}
         """
 
-        token = request.args.get("token", None)
-        key = request.args.get("key", None)
-        if key and token:
-            key = key[0]
-            token = token[0].replace(" ", "").lower()
-            principal = self.principalFromRequest(request)
-            guid = principal.record.guid
-            yield self.addSubscription(token, key, guid)
-            code = responsecode.OK
-            msg = None
-        else:
+        token = request.args.get("token", ("",))[0].replace(" ", "").lower()
+        key = request.args.get("key", ("",))[0]
+
+        if not (key and token):
             code = responsecode.BAD_REQUEST
             msg = "Invalid request: both 'token' and 'key' must be provided"
 
-<<<<<<< .working
-=======
+        elif not validToken(token):
+            code = responsecode.BAD_REQUEST
+            msg = "Invalid request: bad 'token' %s" % (token,)
+
         else:
             principal = self.principalFromRequest(request)
             uid = principal.record.uid
@@ -574,7 +569,6 @@ class APNSubscriptionResource(ReadOnlyNoCopyResourceMixIn,
                 code = responsecode.BAD_REQUEST
                 msg = "Invalid subscription values"
 
->>>>>>> .merge-right.r8549
         returnValue((code, msg))
 
     @inlineCallbacks
