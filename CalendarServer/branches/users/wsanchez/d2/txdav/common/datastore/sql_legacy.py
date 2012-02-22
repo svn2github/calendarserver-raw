@@ -1,6 +1,6 @@
 # -*- test-case-name: twistedcaldav.test.test_sharing,twistedcaldav.test.test_calendarquery -*-
 ##
-# Copyright (c) 2010-2011 Apple Inc. All rights reserved.
+# Copyright (c) 2010-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -347,6 +347,10 @@ class SQLLegacyInvites(object):
         shareeHome = yield self._getHomeWithUID(record.principalUID)
         rows = yield self._idsForInviteUID.on(self._txn,
                                               inviteuid=record.inviteuid)
+        
+        # FIXME: Do the BIND table query before the INVITE table query because BIND currently has proper
+        # constraints in place, whereas INVITE does not. Really we need to do this in a sub-transaction so
+        # we can roll back if any one query fails.
         if rows:
             [[resourceID, homeResourceID]] = rows
             yield self._updateBindQuery.on(
@@ -358,12 +362,6 @@ class SQLLegacyInvites(object):
                 self._txn, name=record.name, uid=record.inviteuid
             )
         else:
-            yield self._insertInviteQuery.on(
-                self._txn, uid=record.inviteuid, name=record.name,
-                homeID=shareeHome._resourceID,
-                resourceID=self._collection._resourceID,
-                recipient=record.userid
-            )
             yield self._insertBindQuery.on(
                 self._txn,
                 homeID=shareeHome._resourceID,
@@ -372,6 +370,15 @@ class SQLLegacyInvites(object):
                 status=bindStatus,
                 message=record.summary
             )
+            yield self._insertInviteQuery.on(
+                self._txn, uid=record.inviteuid, name=record.name,
+                homeID=shareeHome._resourceID,
+                resourceID=self._collection._resourceID,
+                recipient=record.userid
+            )
+        
+        # Must send notification to ensure cache invalidation occurs
+        self._collection.notifyChanged()
 
 
     @classmethod
@@ -406,6 +413,9 @@ class SQLLegacyInvites(object):
     def removeRecordForInviteUID(self, inviteUID):
         yield self._deleteBindByUID.on(self._txn, uid=inviteUID)
         yield self._deleteInviteByUID.on(self._txn, uid=inviteUID)
+        
+        # Must send notification to ensure cache invalidation occurs
+        self._collection.notifyChanged()
 
 
 
