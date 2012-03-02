@@ -17,7 +17,7 @@
 
 from __future__ import with_statement
 
-import xattr, os, zlib, hashlib, datetime, pwd, grp, shutil, errno, operator
+import xattr, os, zlib, hashlib, datetime, pwd, grp, shutil, errno, operator, time
 from zlib import compress
 from cPickle import loads as unpickle, UnpicklingError
 
@@ -481,6 +481,8 @@ def upgrade_to_1(config, spawner, parallel, directory):
             # list of pending inbox items
             total = 0
             inboxItems = set()
+            # Remove any inbox items created more than MigratedInboxDaysCutoff days in the past
+            cutoffTimestamp = time.time() - (config.MigratedInboxDaysCutoff * 24 * 60 * 60)
             for first in os.listdir(uidHomes):
                 if len(first) == 2:
                     firstPath = os.path.join(uidHomes, first)
@@ -497,7 +499,12 @@ def upgrade_to_1(config, spawner, parallel, directory):
                                 if os.path.exists(inboxPath):
                                     for inboxItem in os.listdir(inboxPath):
                                         if not inboxItem.startswith("."):
-                                            inboxItems.add(os.path.join(inboxPath, inboxItem))
+                                            itemPath = os.path.join(inboxPath, inboxItem)
+                                            timestamp = os.path.getmtime(itemPath)
+                                            if timestamp < cutoffTimestamp:
+                                                os.remove(itemPath)
+                                            else:
+                                                inboxItems.add(itemPath)
 
             if inboxItems:
                 inboxItemsFile = os.path.join(config.DataRoot, INBOX_ITEMS)
@@ -560,7 +567,7 @@ def upgrade_to_1(config, spawner, parallel, directory):
     createMailTokensDatabase(config, uid, gid)
 
     if errorOccurred:
-        raise UpgradeError("Data upgrade failed, see error.log for details")
+        log.warn("Data upgrade encountered errors but will proceed; see error.log for details")
 
 
 def normalizeCUAddrs(data, directory, cuaCache):
