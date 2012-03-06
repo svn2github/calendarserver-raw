@@ -1080,7 +1080,7 @@ class PostDBImportService(Service, object):
                 for ctr, inboxItem in enumerate(itemsToProcess):
                     log.info("Processing %d/%d inbox item: %s" % (ctr+1, totalItems, inboxItem,))
                     ignore, uuid, ignore, fileName = inboxItem.rsplit("/", 3)
-                    
+
                     if uuid in ignoreUUIDs:
                         log.debug("Ignored inbox item - uuid ignored: %s" % (inboxItem,))
                         inboxItems.remove(inboxItem)
@@ -1101,6 +1101,7 @@ class PostDBImportService(Service, object):
                         continue
 
                     request = FakeRequest(root, "PUT", None)
+                    request.noAttendeeRefresh = True # tell scheduling to skip refresh
                     request.checkedSACL = True
                     request.authnUser = request.authzUser = davxml.Principal(
                         davxml.HRef.fromString("/principals/__uids__/%s/" % (uuid,))
@@ -1116,17 +1117,17 @@ class PostDBImportService(Service, object):
                             inboxItems.remove(inboxItem)
                             ignoreUUIDs.add(uuid)
                             continue
-    
+
                         inbox = yield calendarHome.getChild("inbox")
                         if inbox is not None and inbox.exists():
-    
+
                             inboxItemResource = yield inbox.getChild(fileName)
                             if inboxItemResource is not None and inboxItemResource.exists():
-    
+
                                 uri = "/calendars/__uids__/%s/inbox/%s" % (uuid, fileName)
                                 request.path = uri
                                 request._rememberResource(inboxItemResource, uri)
-    
+
                                 try:
                                     txnCommitted = yield self.processInboxItem(
                                         root,
@@ -1146,9 +1147,9 @@ class PostDBImportService(Service, object):
                         else:
                             log.debug("Ignored inbox item - no inbox: %s" % (inboxItem,))
 
-    
+
                         inboxItems.remove(inboxItem)
-                        
+
                     finally:
                         if not txnCommitted and hasattr(request, "_newStoreTransaction"):
                             request._newStoreTransaction.abort()
@@ -1157,10 +1158,10 @@ class PostDBImportService(Service, object):
             # we are not logging properly.
             except Exception, e:
                 log.error("Exception during inbox item processing: %s" % (e,))
-                
+
             except:
                 log.error("Unknown exception during inbox item processing.")
-                
+
             finally:
                 if inboxItems:
                     # Rewrite the inbox items file in case we exit before we're
@@ -1200,6 +1201,7 @@ class PostDBImportService(Service, object):
         if calendar.mainType() is not None:
             try:
                 method = calendar.propertyValue("METHOD")
+                log.info("Inbox item method is %s" % (method,))
             except ValueError:
                 returnValue(None)
 
