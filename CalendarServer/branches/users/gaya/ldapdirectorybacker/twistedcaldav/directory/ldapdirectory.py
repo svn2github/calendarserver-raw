@@ -40,7 +40,7 @@ __all__ = [
     "LdapDirectoryService",
 ]
 
-import ldap
+import ldap, ldap.async
 from ldap.filter import escape_filter_chars as ldapEsc
 
 try:
@@ -468,23 +468,33 @@ class LdapDirectoryService(CachingDirectoryService):
 
 
     def timedSearch(self, base, scope, filterstr="(objectClass=*)",
-        attrlist=None):
+        attrlist=None, timeout=-1, sizelimit=0):
         """
         Execute an ldap.search_s( ); if it takes longer than the configured
         threshold, emit a log error.
         """
+        s = ldap.async.List( self.ldap )
+        s.startSearch( base, scope, filterStr=filterstr, attrList=attrlist, timeout=timeout, sizelimit=sizelimit, )
+        
         startTime = time.time()
         try:
-            result = self.ldap.search_s(base, scope, filterstr=filterstr,
-                attrlist=attrlist)
+            s.processResults()
+
         except ldap.SERVER_DOWN:
             self.log_error("LDAP server unavailable")
             raise HTTPError(StatusResponse(responsecode.SERVICE_UNAVAILABLE, "LDAP server unavailable"))
         except ldap.NO_SUCH_OBJECT:
-            result = []
+            pass
         except ldap.FILTER_ERROR, e:
             self.log_error("LDAP filter error: %s %s" % (e, filterstr))
-            result = []
+        except ldap.SIZELIMIT_EXCEEDED, e:
+            self.log_error("LDAP size limited exceeded: %s sizelimit %s (#results=%d)" % (e, sizelimit, len(s.allResults), ))
+        except ldap.TIMEOUT, e:
+            self.log_error("LDAP timeout %s timeout %s (#results=%d)" % (e, sizelimit, len(s.allResults), ))
+        
+        # change format, ignoring resultsType
+        result = [resultItem for resultType, resultItem in s.allResults]
+
         totalTime = time.time() - startTime
         if totalTime > self.warningThresholdSeconds:
             if filterstr and len(filterstr) > 100:

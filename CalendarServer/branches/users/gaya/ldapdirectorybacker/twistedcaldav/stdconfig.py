@@ -226,6 +226,41 @@ directoryAddressBookBackingServiceDefaultParams = {
         "additionalAttributes" : [],
         "allowedAttributes" : [],
     },
+    "twistedcaldav.directory.ldapdirectorybacker.LdapDirectoryBackingService": {
+        "appleInternalServer": False,
+        "warningThresholdSeconds": 3,
+        "uri": "ldap://localhost/",
+        "tls": False,
+        "tlsCACertFile": None,
+        "tlsCACertDir": None,
+        "tlsRequireCert": None, # never, allow, try, demand, hard
+        "credentials": {
+            "dn": None,
+            "password": None,
+        },
+        "authMethod": "LDAP",
+        "rdnSchema": {
+            "base": "dc=example,dc=com",
+            "guidAttr": None,
+            "users": {
+                "rdn": "ou=People",
+                "attr": "uid", # used only to synthesize email address
+                "emailSuffix": None, # used only to synthesize email address
+                "filter": None, # additional filter for this type
+                "loginEnabledAttr" : "", # attribute controlling login
+                "loginEnabledValue" : "yes", # "True" value of above attribute
+                "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
+                "calendarEnabledValue" : "yes", # "True" value of above attribute
+                "mapping" : { # maps internal record names to LDAP
+                    "recordName": "uid",
+                    "fullName" : "cn",
+                    "emailAddresses" : "mail",
+                    "firstName" : "givenName",
+                    "lastName" : "sn",
+                },
+            },
+        },
+    },
 }
 
 DEFAULT_CONFIG = {

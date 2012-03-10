@@ -214,7 +214,7 @@ class OpenDirectoryBackingService(DirectoryService):
         self._updateLock = MemcacheLock("OpenDirectoryBacker", self._updateLockPath)
         self._tmpDirAddressBookLock = MemcacheLock("OpenDirectoryBacker", self._tmpDirAddressBookLockPath)        
                 
-        # optimization so we don't have to always get create lock
+        # optimization so we don't have to always create lock
         self._triedCreateLock = False
         self._created = False
 
@@ -618,7 +618,7 @@ class OpenDirectoryBackingService(DirectoryService):
     
     def _getDSFilter(self, addressBookFilter):
         """
-        Convert the supplied addressbook-query into an expression tree.
+        Convert the supplied addressbook-query into a ds expression tree.
     
         @param filter: the L{Filter} for the addressbook-query to convert.
         @return: (needsAllRecords, espressionAttributes, expression) tuple
@@ -1002,7 +1002,7 @@ class OpenDirectoryBackingService(DirectoryService):
     @inlineCallbacks
     def vCardRecordsForAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
         """
-        Get vCards for a given addressBookFilder and addressBookQuery
+        Get vCards for a given addressBookFilter and addressBookQuery
         """
     
         allRecords, filterAttributes, dsFilter  = self._getDSFilter( addressBookFilter );
@@ -1240,7 +1240,20 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
                     self.attributes[key] = removeControlChars(values).decode("utf8")
             else:
                 self.attributes[key] = values
-                                                        
+                
+        # super needs recordname
+        recordName = self.firstValueForAttribute(dsattributes.kDSNAttrRecordName)
+        if not recordName:
+            recordName = self.firstValueForAttribute(dsattributes.kDS1AttrDistinguishedName)
+            if not recordName:
+                recordName = self.firstValueForAttribute(dsattributes.kDS1AttrLastName)
+            if not recordName:
+                recordName = self.firstValueForAttribute(dsattributes.kDS1AttrFirstName)
+            if not recordName:
+                recordName = self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)
+            recordAttributes[dsattributes.kDSNAttrRecordName] = recordName
+            self.attributes[dsattributes.kDSNAttrRecordName] = recordName
+
         # fill in  missing essential attributes used for filtering
         fullName = self.firstValueForAttribute(dsattributes.kDS1AttrDistinguishedName)
         if not fullName:
@@ -1506,6 +1519,7 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
             # pyOpenDirectory always returns binary-encoded string                                       
                                                         
             for photo in self.valuesForAttribute(dsattributes.kDSNAttrJPEGPhoto):
+                photo = "".join("".join(photo.split("\r")).split("\n")) #get rid of line folding: for PHOTO
                 addUniqueProperty(vcard, Property("PHOTO", photo, params={"ENCODING": ["b",], "TYPE": ["JPEG",],}), None, dsattributes.kDSNAttrJPEGPhoto, photo)
     
     
@@ -1967,18 +1981,10 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
     listProperties = deferredGenerator(listProperties)
     
 # utility
-#remove control characters because vCard does not support them
+#remove illegal XML
 def removeControlChars( utf8String ):
-    result = utf8String
-    for a in utf8String:
-        if '\x00' <= a <= '\x1F':
-            result = ""
-            for c in utf8String:
-                if '\x00' <= c <= '\x1F':
-                    pass 
-                else:
-                    result += c
-    #if utf8String != result: print ("changed %r to %r" % (utf8String, result))
+    result = ''.join([c for c in utf8String if c not in "\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"])
+    if utf8String != result: self.log_debug("changed %r to %r" % (utf8String, result))
     return result
 
 
