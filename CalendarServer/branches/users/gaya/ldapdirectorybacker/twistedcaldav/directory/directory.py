@@ -96,9 +96,6 @@ class DirectoryService(LoggingMixIn):
     baseGUID = None
     guid = property(_generatedGUID)
 
-    # Needed by twistedcaldav.directorybackedaddressbook
-    liveQuery = False
-
     def setRealm(self, realmName):
         self.realmName = realmName
 

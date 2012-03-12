@@ -88,12 +88,8 @@ class OpenDirectoryBackingService(DirectoryService):
         dsLocalCacheTimeout = 30,
         ignoreSystemRecords = True,
         
-        liveQuery = True,                    # query directory service as needed
-        fakeETag = True,                # eTag is not reliable if True 
-        
-        cacheQuery = False,
-        cacheTimeout=30,                # cache timeout            
-        
+        fakeETag = True,                    # eTag is not reliable if True 
+                
         addDSAttrXProperties=False,        # add dsattributes to vcards as "X-" attributes
         standardizeSyntheticUIDs = False,  # use simple synthetic UIDs --- good for testing
         appleInternalServer=False,
@@ -108,10 +104,7 @@ class OpenDirectoryBackingService(DirectoryService):
         @maxDSQueryRecords: maximum number of (unfiltered) ds records retrieved before raising 
             NumberOfMatchesWithinLimits exception or returning results
         @dsLocalCacheTimeout: how log to keep cache of DSLocal records
-        @liveQuery: C{True} to query the directory as needed
         @fakeETag: C{True} to use a fake eTag; allows ds queries with partial attributes
-        @cacheQuery: C{True} to query the directory and cache results
-        @cacheTimeout: if caching, the average cache timeout
         @standardizeSyntheticUIDs: C{True} when creating synthetic UID (==f(Node, Type, Record Name)), 
             use a standard Node name. This allows testing with the same UID on different hosts
         @allowedAttributes: list of DSAttributes that are used to create VCards
@@ -161,13 +154,8 @@ class OpenDirectoryBackingService(DirectoryService):
         self.queryDSLocal = queryDSLocal
         self.dsLocalCacheTimeout = dsLocalCacheTimeout
 
-        self.liveQuery = liveQuery or not cacheQuery
         self.fakeETag = fakeETag
-
-        self.cacheQuery = cacheQuery
-        
-        self.cacheTimeout = cacheTimeout if cacheTimeout > 0 else 30
-        
+                
         self.addDSAttrXProperties = addDSAttrXProperties
         self.standardizeSyntheticUIDs = standardizeSyntheticUIDs
         self.appleInternalServer = appleInternalServer
@@ -202,22 +190,6 @@ class OpenDirectoryBackingService(DirectoryService):
         else:
             self.defaultNodeName = None
         
-        #cleanup
-        self._cleanupTime = time.time()
-        
-        # file system locks
-        self._initLockPath = join(config.DocumentRoot, ".directory_address_book_create_lock")
-        self._createdLockPath = join(config.DocumentRoot, ".directory_address_book_created_lock")
-        self._updateLockPath = join(config.DocumentRoot, ".directory_address_book_update_lock")
-        self._tmpDirAddressBookLockPath = join(config.DocumentRoot, ".directory_address_book_tmpFolder_lock")
-        
-        self._updateLock = MemcacheLock("OpenDirectoryBacker", self._updateLockPath)
-        self._tmpDirAddressBookLock = MemcacheLock("OpenDirectoryBacker", self._tmpDirAddressBookLockPath)        
-                
-        # optimization so we don't have to always create lock
-        self._triedCreateLock = False
-        self._created = False
-
 
     def __cmp__(self, other):
         if not isinstance(other, DirectoryRecord):
@@ -235,196 +207,8 @@ class OpenDirectoryBackingService(DirectoryService):
             h = (h + hash(getattr(self, attr))) & sys.maxint
         return h
     
-    @inlineCallbacks
-    def available(self):
-        if not self._triedCreateLock:
-            returnValue( False )
-        elif not self._created:
-            createdLock = MemcacheLock("OpenDirectoryBacker", self._createdLockPath)
-            self.log_debug("blocking on lock of: \"%s\")" % self._createdLockPath)
-            self._created = (yield createdLock.locked())
-        
-        returnValue(self._created)
-        
-    
-    def updateLock(self):
-        return self._updateLock
-
-    
-    @inlineCallbacks
     def createCache(self):
-        """
-        If caching, create the cache for the first time.
-        """
-        
-        if not self.liveQuery:
-            self.log_info("loading directory address book")
-    
-            # get init lock
-            initLock = MemcacheLock("OpenDirectoryBacker", self._initLockPath, timeout=0)
-            self.log_debug("Attempt lock of: \"%s\")" % self._initLockPath)
-            gotCreateLock = False
-            try:
-                yield initLock.acquire()
-                gotCreateLock = True
-            except MemcacheLockTimeoutError:
-                pass
-                
-            self._triedCreateLock = True
-            
-            if gotCreateLock:
-                self.log_debug("Got lock!")
-                yield self._refreshCache( flushCache=False, creating=True )
-            else:
-                self.log_debug("Could not get lock - directory address book will be filled by peer")
-                        
-        
-
-    @inlineCallbacks
-    def _refreshCache(self, flushCache=False, creating=False, reschedule=True, query=None, attributes=None, keepLock=False, clear=False, maxRecords=0 ):
-        """
-        refresh the cache.
-        """
-
-        #print("_refreshCache:, flushCache=%s, creating=%s, reschedule=%s, query = %s" % (flushCache, creating, reschedule, "None" if query is None else query.generate(),))
-
-        def refreshLater():
-            #
-            # Add jitter/fuzz factor to avoid stampede for large OD query
-            #
-            cacheTimeout = min(self.cacheTimeout, 60) * 60
-            cacheTimeout = (cacheTimeout * random()) - (cacheTimeout / 2)
-            cacheTimeout += self.cacheTimeout * 60
-            reactor.callLater(cacheTimeout, self._refreshCache) #@UndefinedVariable
-            self.log_info("Refresh directory address book in %d minutes %d seconds" % divmod(cacheTimeout, 60))          
-
-        def cleanupLater():
-            
-            # try to cancel previous call if last clean up was less than 15 minutes ago
-            if (time.time() - self._cleanupTime) < 15*60:
-                try:
-                    self._lastCleanupCall.cancel()
-                except:
-                    pass
-            
-            #
-            # Add jitter/fuzz factor 
-            #
-            nom = 120
-            later = nom* (random() + .5)
-            self._lastCleanupCall = reactor.callLater(later, removeTmpAddressBooks) #@UndefinedVariable
-            self.log_info("Remove temporary directory address books in %d minutes %d seconds" % divmod(later, 60))          
-
-
-        def getTmpDirAndTmpFilePrefixSuffix():
-            # need to have temp file on same volumes as documents so that move works
-            absDocPath = abspath(config.DocumentRoot)
-            if absDocPath.startswith("/Volumes/"):
-                tmpDir = absDocPath
-                prefix = ".directoryAddressBook-"
-            else:
-                tmpDir = gettempdir()
-                prefix = "directoryAddressBook-"
-            
-            return (tmpDir, prefix, ".tmp")
-            
-        def makeTmpFilename():
-            tmpDir, prefix, suffix = getTmpDirAndTmpFilePrefixSuffix()
-            fd, fname = mkstemp(suffix=suffix, prefix=prefix, dir=tmpDir)
-            os.close(fd)
-            os.remove(fname)
-            return fname
-        
-        @inlineCallbacks
-        def removeTmpAddressBooks():
-            self.log_info("Checking for temporary directory address books")
-            tmpDir, prefix, suffix = getTmpDirAndTmpFilePrefixSuffix()
-
-            tmpDirLock = self._tmpDirAddressBookLock
-            self.log_debug("blocking on lock of: \"%s\")" % self._tmpDirAddressBookLockPath)
-            yield tmpDirLock.acquire()
-            
-            try:
-                for name in listdir(tmpDir):
-                    if name.startswith(prefix) and name.endswith(suffix):
-                        try:
-                            path = join(tmpDir, name)
-                            self.log_info("Deleting temporary directory address book at: %s" %    path)
-                            FilePath(path).remove()
-                            self.log_debug("Done deleting")
-                        except:
-                            self.log_info("Deletion failed")
-            finally:
-                self.log_debug("unlocking: \"%s\")" % self._tmpDirAddressBookLockPath)
-                yield tmpDirLock.release()
-            
-            self._cleanupTime = time.time()
-
-        
-        updateLock = None
-        limited = False
-        try:
-            
-            try:
-                # get the records
-                if clear:
-                    records = {}
-                else:
-                    records, limited = (yield self._getDirectoryRecords(query, attributes, maxRecords))
-                
-                # calculate the hash
-                # simple for now, could use MD5 digest if too many collisions     
-                newAddressBookCTag = customxml.GETCTag(str(hash(self.baseGUID + ":" + self.realmName + ":" + "".join(str(hash(records[key])) for key in records.keys()))))
-                
-                # get the old hash
-                oldAddressBookCTag = ""
-                updateLock = self.updateLock()
-                self.log_debug("blocking on lock of: \"%s\")" % self._updateLockPath)
-                yield updateLock.acquire()
-                
-                if not flushCache:
-                    # get update lock
-                    try:
-                        oldAddressBookCTag = self.directoryBackedAddressBook.readDeadProperty((calendarserver_namespace, "getctag"))
-                    except:
-                        oldAddressBookCTag = ""
-    
-                self.log_debug("Comparing {http://calendarserver.org/ns/}getctag: new = %s, old = %s" % (newAddressBookCTag, oldAddressBookCTag))
-                if str(newAddressBookCTag) != str(oldAddressBookCTag):
-                    
-                    self.log_debug("unlocking: \"%s\")" % self._updateLockPath)
-                    yield updateLock.release()
-                    updateLock = None
-                    
-
-                if not keepLock:
-                    self.log_debug("unlocking: \"%s\")" % self._updateLockPath)
-                    yield updateLock.release()
-                    updateLock = None
-                    
-            except:
-                cleanupLater()
-                if reschedule:
-                    refreshLater() 
-                raise
-            
-            if creating:
-                createdLock = MemcacheLock("OpenDirectoryBacker", self._createdLockPath)
-                self.log_debug("blocking on lock of: \"%s\")" % self._createdLockPath)
-                yield createdLock.acquire()
-            
-            cleanupLater()
-            if reschedule:
-                refreshLater() 
-        
-        except:
-            if updateLock:
-                yield updateLock.release()
-            raise
-
-        returnValue( (updateLock, limited) )
-
-
+         succeed(None)
 
     def _getDSLocalRecords(self):
         
@@ -475,7 +259,7 @@ class OpenDirectoryBackingService(DirectoryService):
             return records
         
 
-        if not self.liveQuery or not self.queryDSLocal:
+        if not self.queryDSLocal:
             return {}
         
         if time.time() > self._nextDSLocalQueryTime:
@@ -962,42 +746,6 @@ class OpenDirectoryBackingService(DirectoryService):
             return list(set(queryAttributes).intersection(set(self.returnedAttributes)))
 
     
-    @inlineCallbacks
-    def cacheVCardsForAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
-        """
-        Cache the vCards for a given addressBookFilder and addressBookQuery
-        """
-        startTime = time.time()
-        #print("Timing: cacheVCardsForAddressBookQuery.starttime=%f" % startTime)
-        
-    
-        allRecords, filterAttributes, dsFilter  = self._getDSFilter( addressBookFilter );
-        #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
-    
-        if allRecords:
-            dsFilter = None #  None expression == all Records
-        clear = not allRecords and not dsFilter
-        
-        #get unique list of requested attributes
-        if clear:
-            attributes = None
-        else:
-            queryAttributes = self._attributesForAddressBookQuery( addressBookQuery )
-            attributes = filterAttributes + queryAttributes
-        
-        #calc maxRecords from passed in maxResults allowing extra for second stage filtering in caller
-        maxRecords = int(maxResults * 1.2)
-        if self.maxDSQueryRecords and maxRecords > self.maxDSQueryRecords:
-            maxRecords = self.maxDSQueryRecords
-            
-        updateLock, limited = (yield self._refreshCache(reschedule=False, query=dsFilter, attributes=attributes, keepLock=True, clear=clear, maxRecords=maxRecords ))
-
-        elaspedTime = time.time()-startTime
-        self.log_info("Timing: Cache fill: %.1f ms" % (elaspedTime*1000,))
-        
-
-        returnValue((updateLock, limited))
-
 
     @inlineCallbacks
     def vCardRecordsForAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):

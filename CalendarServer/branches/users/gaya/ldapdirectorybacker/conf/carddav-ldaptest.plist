@@ -1040,18 +1040,9 @@
      	  <!- ignore system records like "root" when creating vCards ->
           <key>ignoreSystemRecords</key>
           <true/>
-       	  <!- True to use a directory service query for each addressBook-query to the directory address book ->
-          <key>liveQuery</key>
-          <true/>
        	  <!- fake the eTag.  If false all directory service attributes are used to calculate the eTag ->
           <key>fakeETag</key>
           <true/>
-          <!- True to store the results on disk after a directory service query. True is usually much slower. ->
-          <key>cacheQuery</key>
-          <false/>
-           	  <!- If cacheQuery is True and liveQuery is False, the minutes to keep the results from a complete directory service all record query. ->
-              <key>cacheTimeout</key>
-              <integer>30</integer>
           <key>standardizeSyntheticUIDs</key>
           <true/>
           <key>appleInternalServer</key>

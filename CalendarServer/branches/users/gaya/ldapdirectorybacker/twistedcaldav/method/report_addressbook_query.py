@@ -182,18 +182,7 @@ def report_urn_ietf_params_xml_ns_carddav_addressbook_query(self, request, addre
         directoryAddressBookLock = None
         try:                
 
-            if addrresource.isDirectoryBackedAddressBookCollection() and addrresource.directory.cacheQuery:
-                
-                directory = addrresource.directory
-                if directory.liveQuery:
-                    # if liveQuery and cacheQuery, get vCards into the directory address book on disk
-                    directoryAddressBookLock, limited[0] = (yield  directory.cacheVCardsForAddressBookQuery( filter, query, max_number_of_results[0] ) )
- 
-                elif directory.maxDSQueryRecords and directory.maxDSQueryRecords < max_number_of_results[0]:
-                    max_number_of_results[0] = directory.maxDSQueryRecords
-                   
-                
-            elif not addrresource.isAddressBookCollection():
+            if not addrresource.isAddressBookCollection():
  
                 #do UID lookup on last part of uri
                 resource_name = urllib.unquote(uri[uri.rfind("/") + 1:])
@@ -201,28 +190,12 @@ def report_urn_ietf_params_xml_ns_carddav_addressbook_query(self, request, addre
     
                     # see if parent is directory backed address book
                     parent = (yield  addrresource.locateParent( request, uri ) )
-    
-                    if parent.isDirectoryBackedAddressBookCollection() and parent.directory.cacheQuery:
-                        
-                        directory = parent.directory
-                        if directory.liveQuery:
-                            vCardFilter = carddavxml.Filter( *[carddavxml.PropertyFilter(
-                                                        carddavxml.TextMatch.fromString(resource_name[:-4]), 
-                                                        name="UID", # attributes
-                                                        ),] )
-                            vCardFilter = addressbookqueryfilter.Filter(vCardFilter)
-                            
-                            directoryAddressBookLock, limited[0] = (yield  directory.cacheVCardsForAddressBookQuery( vCardFilter, query, max_number_of_results[0] ) )
-
-                        elif directory.maxDSQueryRecords and directory.maxDSQueryRecords < max_number_of_results[0]:
-                            max_number_of_results[0] = directory.maxDSQueryRecords
-   
-    
+        
         
             # Check whether supplied resource is an address book or an address book object resource
             if addrresource.isAddressBookCollection():
     
-                if addrresource.isDirectoryBackedAddressBookCollection() and addrresource.directory.liveQuery and not addrresource.directory.cacheQuery:
+                if addrresource.isDirectoryBackedAddressBookCollection():
                     yield  maybeDeferred( queryDirectoryBackedAddressBook, addrresource, filter )
                 
                 else:
@@ -272,7 +245,7 @@ def report_urn_ietf_params_xml_ns_carddav_addressbook_query(self, request, addre
                     # see if parent is directory backed address book
                     parent = (yield  addrresource.locateParent( request, uri ) )
     
-                    if parent.isDirectoryBackedAddressBookCollection() and parent.directory.liveQuery and not parent.directory.cacheQuery:
+                    if parent.isDirectoryBackedAddressBookCollection():
  
                         vCardFilter = carddavxml.Filter( *[carddavxml.PropertyFilter(
                                                     carddavxml.TextMatch.fromString(resource_name[:-4]), 

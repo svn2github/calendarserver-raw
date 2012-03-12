@@ -39,7 +39,6 @@
 		66EAD05B150AF4EB00B8C5A7 /* watch_memcached */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = watch_memcached; sourceTree = "<group>"; };
 		66EAD061150AF4EB00B8C5A7 /* _sacl.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; path = _sacl.o; sourceTree = "<group>"; };
 		66EAD064150AF4EB00B8C5A7 /* sendmsg.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; path = sendmsg.o; sourceTree = "<group>"; };
-		66EAD065150AF4EB00B8C5A7 /* caldavd-dev.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "caldavd-dev.plist"; path = "../caldavd-dev.plist"; sourceTree = "<group>"; };
 		66EAD067150AF4EB00B8C5A7 /* __init__.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = __init__.py; sourceTree = "<group>"; };
 		66EAD068150AF4EB00B8C5A7 /* accesslog.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = accesslog.py; sourceTree = "<group>"; };
 		66EAD06A150AF4EB00B8C5A7 /* __init__.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = __init__.py; sourceTree = "<group>"; };
@@ -156,7 +155,7 @@
 		66EAD0F1150AF4EB00B8C5A7 /* caldavd-partitioning-secondary.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "caldavd-partitioning-secondary.plist"; sourceTree = "<group>"; };
 		66EAD0F2150AF4EB00B8C5A7 /* caldavd-test.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "caldavd-test.plist"; sourceTree = "<group>"; };
 		66EAD0F3150AF4EB00B8C5A7 /* caldavd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = caldavd.plist; sourceTree = "<group>"; };
-		66EAD0F4150AF4EB00B8C5A7 /* carddav-ldapdirtest.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "carddav-ldapdirtest.plist"; sourceTree = "<group>"; };
+		66EAD0F4150AF4EB00B8C5A7 /* carddav-ldaptest.plist */ = {isa = PBXFileReference; path = "carddav-ldaptest.plist"; sourceTree = "<group>"; };
 		66EAD0F5150AF4EB00B8C5A7 /* mime.types */ = {isa = PBXFileReference; lastKnownFileType = text; path = mime.types; sourceTree = "<group>"; };
 		66EAD0F7150AF4EB00B8C5A7 /* caldavd-resources.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "caldavd-resources.plist"; sourceTree = "<group>"; };
 		66EAD0F8150AF4EB00B8C5A7 /* locations-resources-orig.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "locations-resources-orig.xml"; sourceTree = "<group>"; };
@@ -1615,7 +1614,6 @@
 				66EAD03E150AF4EB00B8C5A7 /* benchreport */,
 				66EAD03F150AF4EB00B8C5A7 /* bin */,
 				66EAD05C150AF4EB00B8C5A7 /* build */,
-				66EAD065150AF4EB00B8C5A7 /* caldavd-dev.plist */,
 				66EAD066150AF4EB00B8C5A7 /* calendarserver */,
 				66EAD0E3150AF4EB00B8C5A7 /* conf */,
 				66EAD103150AF4EB00B8C5A7 /* contrib */,
@@ -2037,7 +2035,7 @@
 				66EAD0F1150AF4EB00B8C5A7 /* caldavd-partitioning-secondary.plist */,
 				66EAD0F2150AF4EB00B8C5A7 /* caldavd-test.plist */,
 				66EAD0F3150AF4EB00B8C5A7 /* caldavd.plist */,
-				66EAD0F4150AF4EB00B8C5A7 /* carddav-ldapdirtest.plist */,
+				66EAD0F4150AF4EB00B8C5A7 /* carddav-ldaptest.plist */,
 				66EAD0F5150AF4EB00B8C5A7 /* mime.types */,
 				66EAD0F6150AF4EB00B8C5A7 /* resources */,
 				66EAD0FB150AF4EB00B8C5A7 /* resources.xml */,

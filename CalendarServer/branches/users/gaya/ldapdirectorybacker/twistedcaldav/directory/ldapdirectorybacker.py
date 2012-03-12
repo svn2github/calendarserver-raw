@@ -163,10 +163,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         self.maxQueryRecords = maxQueryRecords
 
                 
-        self.realmName = None # needed for super
-        self.liveQuery = True # used by directorybackedaddressbook.py
-        self.cacheQuery = False
-        
+        self.realmName = None # needed for super        
         
         ### used by VCardRecord.
         self.fakeETag = fakeETag
@@ -201,17 +198,10 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             h = (h + hash(getattr(self, attr))) & sys.maxint
         return h
     
-    @inlineCallbacks
-    def available(self):
-        returnValue(True)
-        
-    
     #@inlineCallbacks
     def createCache(self):
          succeed(None)
 
-         
-                         
     #to do: use opendirectorybacker._getDSFilter passing in search map
     def _getLdapFilter(self, addressBookFilter, searchmap):
         """

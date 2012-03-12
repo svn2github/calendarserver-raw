@@ -156,22 +156,6 @@ class DirectoryBackedAddressBookResource (CalDAVResource):
     def renderHTTP(self, request):
         if not self.directory:
             raise HTTPError(StatusResponse(responsecode.SERVICE_UNAVAILABLE,"Service is starting up" ))
-        elif self.directory.liveQuery:
-            response = (yield maybeDeferred(super(DirectoryBackedAddressBookResource, self).renderHTTP, request))
-            returnValue(response)
-        else:
-            available = (yield maybeDeferred(self.directory.available, ))
-        
-            if not available:
-                raise HTTPError(StatusResponse(responsecode.SERVICE_UNAVAILABLE,"Service is starting up" ))
-            else:
-                updateLock = self.directory.updateLock()
-                yield updateLock.acquire()
-                try:
-                    response = (yield maybeDeferred(super(DirectoryBackedAddressBookResource, self).renderHTTP, request))
-    
-                finally:
-                    yield updateLock.release()
-                
-                returnValue(response)
 
+        response = (yield maybeDeferred(super(DirectoryBackedAddressBookResource, self).renderHTTP, request))
+        returnValue(response)
