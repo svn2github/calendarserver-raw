@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -398,28 +398,14 @@ class OpenDirectoryBackingService(DirectoryService):
         self.log_info("Timing: Directory query: %.1f ms (%d records, %.2f records/sec)" % (elaspedTime*1000, len(allResults), len(allResults)/elaspedTime))
         return succeed(allResults)
     
-    def attributesForAddressBookQuery(self, addressBookQuery, fakeETag=True ):
-                        
-        propertyNames = [] 
-        #print( "addressBookQuery.qname=%r" % addressBookQuery.qname)
-        if addressBookQuery.qname() == ("DAV:", "prop"):
+    def _attributesForAddressBookQuery(self, addressBookQuery ):
+    
+        etagRequested, propertyNames = propertiesInAddressBookQuery( addressBookQuery )
         
-            for property in addressBookQuery.children:                
-                #print("property = %r" % property )
-                if isinstance(property, carddavxml.AddressData):
-                    for addressProperty in property.children:
-                        #print("addressProperty = %r" % addressProperty )
-                        if isinstance(addressProperty, carddavxml.Property):
-                            #print("Adding property %r", addressProperty.attributes["name"])
-                            propertyNames.append(addressProperty.attributes["name"])
-                        
-                elif not fakeETag and property.qname() == ("DAV:", "getetag"):
-                    # for a real etag == md5(vCard), we need all attributes
-                    propertyNames = None
-                    break;
-                            
-        
-        if not len(propertyNames):
+        if etagRequested and not self.fakeETag:
+            propertyNames = None
+                                
+        if not propertyNames:
             #print("using all attributes")
             return self.returnedAttributes
         
@@ -441,7 +427,7 @@ class OpenDirectoryBackingService(DirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        allRecords, filterAttributes, dsFilter  = getDSFilter( addressBookFilter, searchMap=VCardRecord.dsqueryAttributesForProperty, allowedAttributes=self.allowedDSQueryAttributes );
+        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, searchMap=VCardRecord.dsqueryAttributesForProperty, allowedAttributes=self.allowedDSQueryAttributes );
         #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
         
         # testing:
@@ -455,7 +441,7 @@ class OpenDirectoryBackingService(DirectoryService):
         limited = False
 
         if not clear:
-            queryAttributes = self.attributesForAddressBookQuery( addressBookQuery, fakeETag=self.fakeETag )
+            queryAttributes = self._attributesForAddressBookQuery( addressBookQuery )
             attributes = filterAttributes + queryAttributes
             
             #calc maxRecords from passed in maxResults allowing extra for second stage filtering in caller
@@ -481,7 +467,30 @@ class OpenDirectoryBackingService(DirectoryService):
 
 
 #utility
-def getDSFilter(addressBookFilter, searchMap, allowedAttributes=None):
+def propertiesInAddressBookQuery( addressBookQuery ):
+    
+    etagRequested = False
+    propertyNames = [] 
+    #print( "addressBookQuery.qname=%r" % addressBookQuery.qname)
+    if addressBookQuery.qname() == ("DAV:", "prop"):
+    
+        for property in addressBookQuery.children:                
+            #print("property = %r" % property )
+            if isinstance(property, carddavxml.AddressData):
+                for addressProperty in property.children:
+                    #print("addressProperty = %r" % addressProperty )
+                    if isinstance(addressProperty, carddavxml.Property):
+                        #print("Adding property %r", addressProperty.attributes["name"])
+                        propertyNames.append(addressProperty.attributes["name"])
+                    
+            elif property.qname() == ("DAV:", "getetag"):
+                # for a real etag == md5(vCard), we need all attributes
+                etagRequested = True
+    
+    return (etagRequested, propertyNames if len(propertyNames) else None)
+
+
+def dsFilterFromAddressBookFilter(addressBookFilter, searchMap, allowedAttributes=None):
     """
     Convert the supplied addressbook-query into a ds expression tree.
 
@@ -781,7 +790,7 @@ def getDSFilter(addressBookFilter, searchMap, allowedAttributes=None):
         return (needsAllRecords, attributes, expr)
     
             
-    #print("_getDSFilter")
+    #print("_dsFilterFromAddressBookFilter")
     # Lets assume we have a valid filter from the outset
     
     # Top-level filter contains zero or more prop-filters

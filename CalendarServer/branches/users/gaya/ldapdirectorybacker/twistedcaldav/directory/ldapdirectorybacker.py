@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,12 +35,11 @@ from socket import getfqdn
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
-from twistedcaldav import carddavxml
 from twistedcaldav.directory.directory import DirectoryRecord
 from twistedcaldav.directory.ldapdirectory import LdapDirectoryService
 
 import ldap
-from twistedcaldav.directory.opendirectorybacker import VCardRecord, getDSFilter
+from twistedcaldav.directory.opendirectorybacker import VCardRecord, dsFilterFromAddressBookFilter, propertiesInAddressBookQuery
 
 
 class LdapDirectoryBackingService(LdapDirectoryService):
@@ -176,33 +175,16 @@ class LdapDirectoryBackingService(LdapDirectoryService):
     #to do: use opendirectorybacker: _attributesForAddressBookQuery
     def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapDSAttrMap ):
                         
-        propertyNames = [] 
-        #print( "addressBookQuery.qname=%r" % addressBookQuery.qname)
-        if addressBookQuery.qname() == ("DAV:", "prop"):
+        etagRequested, propertyNames = propertiesInAddressBookQuery( addressBookQuery )
         
-            for property in addressBookQuery.children:                
-                #print("property = %r" % property )
-                if isinstance(property, carddavxml.AddressData):
-                    for addressProperty in property.children:
-                        #print("addressProperty = %r" % addressProperty )
-                        if isinstance(addressProperty, carddavxml.Property):
-                            #print("Adding property %r", addressProperty.attributes["name"])
-                            propertyNames.append(addressProperty.attributes["name"])
-                        
-                elif not self.fakeETag and property.qname() == ("DAV:", "getetag"):
-                    # for a real etag == md5(vCard), we need all attributes
-                    propertyNames = None
-                    break;
-                            
+        if etagRequested and not self.fakeETag:
+            propertyNames = None
         
-        if not len(propertyNames):
-            #return self.returnedAttributes
-            #return None
+        if not propertyNames:
             result = ldapDSAttrMap.keys()
             self.log_debug("_ldapAttributesForAddressBookQuery returning all props=%s" % result)
         
         else:
-            #propertyNames.append("X-INTERNAL-MINIMUM-VCARD-PROPERTIES") # these properties are required to make a vCard
             queryAttributes = []
             for prop in propertyNames:
                 searchAttr = ldapDSAttrMap.get()
@@ -238,7 +220,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             searchMap = queryMap["searchMap"]
             ldapDSAttrMap = queryMap["ldapDSAttrMap"]
 
-            allRecords, filterAttributes, dsFilter  = getDSFilter( addressBookFilter, searchMap );
+            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, searchMap );
             #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
             self.log_debug("vCardRecordsForAddressBookQuery: queryType = \"%s\" LDAP allRecords = %s, filterAttributes = %s, query = %s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
