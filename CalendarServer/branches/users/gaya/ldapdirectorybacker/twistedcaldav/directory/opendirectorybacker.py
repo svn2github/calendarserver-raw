@@ -1182,6 +1182,7 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
                             splitValue = attrValue.split("|")
                             if len (splitValue) > 1:
                                 attrValue = splitValue[0]
+                                defaultLabel = splitValue[1]
 
                         colonIndex = attrValue.find(":")
                         if (colonIndex > len(attrValue)-2):
