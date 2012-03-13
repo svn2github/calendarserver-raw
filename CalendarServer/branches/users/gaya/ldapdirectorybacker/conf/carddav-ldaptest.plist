@@ -1144,8 +1144,24 @@
                 <!-- user vCards  -->
 				<key>people</key>
 				<dict>
+                    <key>rdn</key>
+                    <string>ou=people</string>
+                    <key>filter</key>
+                    <string></string>
+                    <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
+                    <key>vcardPropToLdapAttrMap</key>
+                    <dict>
+                        <key>FN</key>
+                        <string>cn</string>
+                        <key>EMAIL</key>
+                        <string>mail</string>
+                        <key>TEL</key>
+                        <string>telephoneNumber</string>
+                        <key>UID</key>
+                        <string>appleDSID</string>
+                    </dict>
                     <!-- map ldap attributes to ds attribute types.  -->
-					<key>ldapDSAttrMap</key>
+					<key>ldapAttrToDSAttrMap</key>
 					<dict>
 						<key>givenName</key>
 						<string>FirstName</string>
@@ -1201,55 +1217,6 @@
 						<key>appleManager</key>
 						<string>dsAttrTypeNative:appleManager</string>
 					</dict>
-					<key>rdn</key>
-					<string>ou=people</string>
-					<key>filter</key>
-					<string></string>
-                    <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
-					<key>searchMap</key>
-					<dict>
-						<key>FN</key>
-						<string>cn</string>
-						<key>EMAIL</key>
-						<string>mail</string>
-						<key>TEL</key>
-						<string>telephoneNumber</string>
-						<key>UID</key>
-						<string>appleDSID</string>
-					</dict>
-				</dict>
-                <!-- people vCards for another server.  Unused  -->
-				<key>people - 2</key>
-				<dict>
-					<key>ldapDSAttrMap</key>
-					<dict>
-						<key>givenName</key>
-						<string>FirstName</string>
-						<key>sn</key>
-						<string>LastName</string>
-						<key>cn</key>
-						<array>
-							<string>RealName</string>
-							<string>RecordName</string>
-						</array>
-						<key>mail</key>
-						<string>EMailAddress</string>
-						<key>uid</key>
-						<string>GeneratedUID</string>
-					</dict>
-					<key>rdn</key>
-					<string>ou=People</string>
-					<key>filter</key>
-					<string></string>
-					<key>searchMap</key>
-					<dict>
-						<key>FN</key>
-						<string>cn</string>
-						<key>EMAIL</key>
-						<string>mail</string>
-						<key>UID</key>
-						<string>uid</string>
-					</dict>
 				</dict>
                 <!-- mailing list vCards.  Should mark as "company" or use vCard 4.0 types  -->
 				<key>distribution list</key>
@@ -1260,7 +1227,7 @@
 					<string>(objectClass=appleGroup)</string>
 					<key>getAllAttributes</key>
 					<false/>
-					<key>searchMap</key>
+					<key>vcardPropToLdapAttrMap</key>
 					<dict>
 						<key>EMAIL</key>
 						<string>appleGroupEmail</string>
@@ -1269,7 +1236,7 @@
 						<key>UID</key>
 						<string>appleDSID</string>
 					</dict>
-					<key>ldapDSAttrMap</key>
+					<key>ldapAttrToDSAttrMap</key>
 					<dict>
 						<key>cn</key>
 						<string>RecordName</string>
@@ -1286,10 +1253,42 @@
 						<string>EMailAddress</string>
 					</dict>
 				</dict>
+                <!-- people vCards for another server.  Unused
+                <key>people - 2</key>
+                <dict>
+                    <key>ldapAttrToDSAttrMap</key>
+                    <dict>
+                        <key>givenName</key>
+                        <string>FirstName</string>
+                        <key>sn</key>
+                        <string>LastName</string>
+                        <key>cn</key>
+                        <array>
+                            <string>RealName</string>
+                            <string>RecordName</string>
+                        </array>
+                        <key>mail</key>
+                        <string>EMailAddress</string>
+                        <key>uid</key>
+                        <string>GeneratedUID</string>
+                    </dict>
+                    <key>rdn</key>
+                    <string>ou=People</string>
+                    <key>filter</key>
+                    <string></string>
+                    <key>vcardPropToLdapAttrMap</key>
+                    <dict>
+                        <key>FN</key>
+                        <string>cn</string>
+                        <key>EMAIL</key>
+                        <string>mail</string>
+                        <key>UID</key>
+                        <string>uid</string>
+                    </dict>
+                </dict>
+                -->
 			</dict>
 		</dict>
-
    </dict>
-
   </dict>
 </plist>

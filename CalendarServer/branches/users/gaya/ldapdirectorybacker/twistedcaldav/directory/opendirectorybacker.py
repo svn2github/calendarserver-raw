@@ -427,7 +427,7 @@ class OpenDirectoryBackingService(DirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, searchMap=VCardRecord.dsqueryAttributesForProperty, allowedAttributes=self.allowedDSQueryAttributes );
+        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap=VCardRecord.dsqueryAttributesForProperty, allowedAttributes=self.allowedDSQueryAttributes );
         #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
         
         # testing:
@@ -490,7 +490,7 @@ def propertiesInAddressBookQuery( addressBookQuery ):
     return (etagRequested, propertyNames if len(propertyNames) else None)
 
 
-def dsFilterFromAddressBookFilter(addressBookFilter, searchMap, allowedAttributes=None):
+def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, allowedAttributes=None):
     """
     Convert the supplied addressbook-query into a ds expression tree.
 
@@ -701,7 +701,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, searchMap, allowedAttribute
 
             # get attribute strings from dsqueryAttributesForProperty list 
             #queryAttributes = list(set(VCardRecord.dsqueryAttributesForProperty.get(propFilter.filter_name, [])).intersection(set(self.allowedDSQueryAttributes)))
-            queryAttributes = searchMap.get(propFilter.filter_name, [])
+            queryAttributes = vcardPropToLdapAttrMap.get(propFilter.filter_name, [])
             if isinstance(queryAttributes, str):
                 queryAttributes = [queryAttributes,]
             if allowedAttributes:

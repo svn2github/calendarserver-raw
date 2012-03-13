@@ -220,7 +220,7 @@ class LdapDirectoryService(CachingDirectoryService):
         # config.
         attrSet = set()
 
-        if self.rdnSchema["guidAttr"]:
+        if self.rdnSchema.get("guidAttr"):
             attrSet.add(self.rdnSchema["guidAttr"])
         for recordType in self.recordTypes():
             if self.rdnSchema[recordType]["attr"]:
@@ -239,7 +239,7 @@ class LdapDirectoryService(CachingDirectoryService):
             attrSet.add(self.groupSchema["nestedGroupsAttr"])
         if self.groupSchema["memberIdAttr"]:
             attrSet.add(self.groupSchema["memberIdAttr"])
-        if self.rdnSchema["users"]["loginEnabledAttr"]:
+        if self.rdnSchema.get("users") and self.rdnSchema["users"]["loginEnabledAttr"]:
             attrSet.add(self.rdnSchema["users"]["loginEnabledAttr"])
         if self.resourceSchema["resourceInfoAttr"]:
             attrSet.add(self.resourceSchema["resourceInfoAttr"])
@@ -489,8 +489,10 @@ class LdapDirectoryService(CachingDirectoryService):
             self.log_error("LDAP filter error: %s %s" % (e, filterstr))
         except ldap.SIZELIMIT_EXCEEDED, e:
             self.log_error("LDAP size limited exceeded: %s sizelimit %s (#results=%d)" % (e, sizelimit, len(s.allResults), ))
+        except ldap.TIMELIMIT_EXCEEDED, e:
+            self.log_error("LDAP timeout %s timeout %s (#results=%d)" % (e, timeout, len(s.allResults), ))
         except ldap.TIMEOUT, e:
-            self.log_error("LDAP timeout %s timeout %s (#results=%d)" % (e, sizelimit, len(s.allResults), ))
+            self.log_error("LDAP timeout %s (#results=%d)" % (e, len(s.allResults), ))
         
         # change format, ignoring resultsType
         result = [resultItem for resultType, resultItem in s.allResults]

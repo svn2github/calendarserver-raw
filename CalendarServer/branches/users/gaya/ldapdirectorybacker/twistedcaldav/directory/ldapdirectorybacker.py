@@ -65,10 +65,10 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 "queryTypes": ("people",),
                 "people": {
                     "rdn":"ou=people",
-                    "searchMap" : { # maps vCard properties to searchable ldap attributes
+                    "vcardPropToLdapAttrMap" : { # maps vCard properties to searchable ldap attributes
                         "FN" : "cn",
                      },
-                    "ldapDSAttrMap" : { # maps ldap attributes to ds record types
+                    "ldapAttrToDSAttrMap" : { # maps ldap attributes to ds record types
                         "cn" : "dsAttrTypeStandard:RealName",
                      },
                 },
@@ -108,8 +108,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         # or we could just require dsAttrTypeStandard: prefix in the plist
         rdnSchema = params["rdnSchema"];
         for queryType in rdnSchema["queryTypes"]:
-            ldapDSAttrMap = rdnSchema[queryType]["ldapDSAttrMap"]
-            for ldapAttrName, dsAttrNames in ldapDSAttrMap.iteritems():
+            ldapAttrToDSAttrMap = rdnSchema[queryType]["ldapAttrToDSAttrMap"]
+            for ldapAttrName, dsAttrNames in ldapAttrToDSAttrMap.iteritems():
                 if not isinstance(dsAttrNames, list):
                     dsAttrNames = [dsAttrNames,]
                 
@@ -122,9 +122,9 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 
                 # not needed, but tests code paths
                 if len(normalizedDSAttrNames) > 1:
-                    ldapDSAttrMap[ldapAttrName] = normalizedDSAttrNames
+                    ldapAttrToDSAttrMap[ldapAttrName] = normalizedDSAttrNames
                 else:
-                    ldapDSAttrMap[ldapAttrName] = normalizedDSAttrNames[0]
+                    ldapAttrToDSAttrMap[ldapAttrName] = normalizedDSAttrNames[0]
                
                 
         self.log_debug("_actuallyConfigure after clean: params=%s" % (params,))
@@ -173,7 +173,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
          succeed(None)
                         
 
-    def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapDSAttrMap ):
+    def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapAttrToDSAttrMap ):
                         
         etagRequested, propertyNames = propertiesInAddressBookQuery( addressBookQuery )
         
@@ -181,13 +181,13 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             propertyNames = None
         
         if not propertyNames:
-            result = ldapDSAttrMap.keys()
+            result = ldapAttrToDSAttrMap.keys()
             self.log_debug("_ldapAttributesForAddressBookQuery returning all props=%s" % result)
         
         else:
             queryAttributes = []
             for prop in propertyNames:
-                searchAttr = ldapDSAttrMap.get()
+                searchAttr = ldapAttrToDSAttrMap.get()
                 if searchAttr:
                     print("adding attributes %r" % searchAttr)
                     if not isinstance(searchAttr, tuple):
@@ -217,21 +217,22 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         for queryType in self.rdnSchema["queryTypes"]:
 
             queryMap = self.rdnSchema[queryType]
-            searchMap = queryMap["searchMap"]
-            ldapDSAttrMap = queryMap["ldapDSAttrMap"]
+            vcardPropToLdapAttrMap = queryMap["vcardPropToLdapAttrMap"]
+            ldapAttrToDSAttrMap = queryMap["ldapAttrToDSAttrMap"]
 
-            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, searchMap );
+            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap );
             self.log_debug("vCardRecordsForAddressBookQuery: queryType=\"%s\" LDAP allRecords=%s, filterAttributes=%s, query=%s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
             
             if allRecords:
                 dsFilter = None #  None expression == all Records
                 
-            clear = not allRecords and not dsFilter
+            # could stop query for all, but OK because of post filtering.
+            # clear = not allRecords and not dsFilter
             clear = False
                     
             if not clear:
-                queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapDSAttrMap )
+                queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapAttrToDSAttrMap )
                 attributes = filterAttributes + queryAttributes if queryAttributes else None
                 self.log_debug("vCardRecordsForAddressBookQuery: attributes=%s, queryAttributes=%s" % (attributes, queryAttributes,))
                 
@@ -242,7 +243,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 rdn = queryMap["rdn"]
                 base =  ldap.dn.str2dn(rdn) + self.base
                 
-                #add additonal filter from config
+                filterstr = "(cn=*)"    # all query
+                #add additional filter from config
                 queryFilter = queryMap.get("filter")
                 if dsFilter and queryFilter:
                     filterstr = "(&%s%s)" % (queryFilter, dsFilter.generate())
@@ -274,7 +276,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                             ldapAttributeValues = [attr for attr in ldapAttributeValues if len(attr)]
                             
                             if len(ldapAttributeValues):
-                                dsAttributeNames = ldapDSAttrMap.get(ldapAttributeName)
+                                dsAttributeNames = ldapAttrToDSAttrMap.get(ldapAttributeName)
                                 if dsAttributeNames:
                                     
                                     if not isinstance(dsAttributeNames, list):

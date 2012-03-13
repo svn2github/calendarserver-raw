@@ -238,22 +238,22 @@ directoryAddressBookBackingServiceDefaultParams = {
         "authMethod": "LDAP",
         "rdnSchema": {
             "base": "dc=example,dc=com",
-            "guidAttr": None,
-            "users": {
+            "queryTypes": ("people", ),
+            "people": {
                 "rdn": "ou=People",
                 "attr": "uid", # used only to synthesize email address
-                "emailSuffix": None, # used only to synthesize email address
                 "filter": None, # additional filter for this type
-                "loginEnabledAttr" : "", # attribute controlling login
-                "loginEnabledValue" : "yes", # "True" value of above attribute
-                "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
-                "calendarEnabledValue" : "yes", # "True" value of above attribute
-                "mapping" : { # maps internal record names to LDAP
-                    "recordName": "uid",
-                    "fullName" : "cn",
-                    "emailAddresses" : "mail",
-                    "firstName" : "givenName",
-                    "lastName" : "sn",
+                "vcardPropToLdapAttrMap" : { # maps address book query vCard properties to ldap attributes
+                    "givenName" : "FirstName",
+                    "sn" : "LastName",
+                    "cn" : "RealName",
+                    "uid" : "GeneratedUID",
+                    "mail" : "EMailAddress",
+                },
+                "ldapAttrToDSAttrMap" : { # maps ldap attributes to ds record attributes
+                    "FN" : "cn",
+                    "EMAIL" : "mail",
+                    "UID" : "uid",
                 },
             },
         },
