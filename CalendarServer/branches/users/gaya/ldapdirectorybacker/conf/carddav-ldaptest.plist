@@ -547,7 +547,7 @@
 
     <!-- Log levels -->
     <key>DefaultLogLevel</key>
-    <string>info</string> <!-- debug, info, warn, error -->
+    <string>debug</string> <!-- debug, info, warn, error -->
 
     <!-- Log level overrides for specific functionality -->
     <key>LogLevels</key>
@@ -1145,7 +1145,7 @@
 				<key>people</key>
 				<dict>
                     <!-- map ldap attributes to ds attribute types.  -->
-					<key>ldapdsattrmap</key>
+					<key>ldapDSAttrMap</key>
 					<dict>
 						<key>givenName</key>
 						<string>FirstName</string>
@@ -1206,7 +1206,7 @@
 					<key>filter</key>
 					<string></string>
                     <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
-					<key>searchmap</key>
+					<key>searchMap</key>
 					<dict>
 						<key>FN</key>
 						<string>cn</string>
@@ -1221,7 +1221,7 @@
                 <!-- people vCards for another server.  Unused  -->
 				<key>people - 2</key>
 				<dict>
-					<key>ldapdsattrmap</key>
+					<key>ldapDSAttrMap</key>
 					<dict>
 						<key>givenName</key>
 						<string>FirstName</string>
@@ -1241,7 +1241,7 @@
 					<string>ou=People</string>
 					<key>filter</key>
 					<string></string>
-					<key>searchmap</key>
+					<key>searchMap</key>
 					<dict>
 						<key>FN</key>
 						<string>cn</string>
@@ -1260,7 +1260,7 @@
 					<string>(objectClass=appleGroup)</string>
 					<key>getAllAttributes</key>
 					<false/>
-					<key>searchmap</key>
+					<key>searchMap</key>
 					<dict>
 						<key>EMAIL</key>
 						<string>appleGroupEmail</string>
@@ -1269,7 +1269,7 @@
 						<key>UID</key>
 						<string>appleDSID</string>
 					</dict>
-					<key>ldapdsattrmap</key>
+					<key>ldapDSAttrMap</key>
 					<dict>
 						<key>cn</key>
 						<string>RecordName</string>

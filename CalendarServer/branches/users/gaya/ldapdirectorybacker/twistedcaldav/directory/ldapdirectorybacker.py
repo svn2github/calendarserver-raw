@@ -67,7 +67,7 @@ from twisted.python.reflect import namedModule
 
 import ldap
 from twistedcaldav.directory.ldapdirectory import LdapDirectoryService
-from twistedcaldav.directory.opendirectorybacker import VCardRecord
+from twistedcaldav.directory.opendirectorybacker import VCardRecord, getDSFilter
 
 
 class LdapDirectoryBackingService(LdapDirectoryService):
@@ -93,10 +93,10 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 "queryTypes": ("people",),
                 "people": {
                     "rdn":"ou=people",
-                    "searchmap" : { # maps vCard properties to searchable ldap attributes
+                    "searchMap" : { # maps vCard properties to searchable ldap attributes
                         "FN" : "cn",
                      },
-                    "ldapdsattrmap" : { # maps ldap attributes to ds record types
+                    "ldapDSAttrMap" : { # maps ldap attributes to ds record types
                         "cn" : "dsAttrTypeStandard:RealName",
                      },
                 },
@@ -136,8 +136,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         # or we could just require dsAttrTypeStandard: prefix in the plist
         rdnSchema = params["rdnSchema"];
         for queryType in rdnSchema["queryTypes"]:
-            ldapdsattrmap = rdnSchema[queryType]["ldapdsattrmap"]
-            for ldapAttrName, dsAttrNames in ldapdsattrmap.iteritems():
+            ldapDSAttrMap = rdnSchema[queryType]["ldapDSAttrMap"]
+            for ldapAttrName, dsAttrNames in ldapDSAttrMap.iteritems():
                 if not isinstance(dsAttrNames, list):
                     dsAttrNames = [dsAttrNames,]
                 
@@ -150,9 +150,9 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 
                 # not needed, but tests code paths
                 if len(normalizedDSAttrNames) > 1:
-                    ldapdsattrmap[ldapAttrName] = normalizedDSAttrNames
+                    ldapDSAttrMap[ldapAttrName] = normalizedDSAttrNames
                 else:
-                    ldapdsattrmap[ldapAttrName] = normalizedDSAttrNames[0]
+                    ldapDSAttrMap[ldapAttrName] = normalizedDSAttrNames[0]
                
                 
         self.log_debug("_actuallyConfigure after clean: params=%s" % (params,))
@@ -200,323 +200,9 @@ class LdapDirectoryBackingService(LdapDirectoryService):
     #@inlineCallbacks
     def createCache(self):
          succeed(None)
-
-    #to do: use opendirectorybacker._getDSFilter passing in search map
-    def _getLdapFilter(self, addressBookFilter, searchmap):
-        """
-        Convert the supplied addressbook-query into an expression tree.
-    
-        @param filter: the L{Filter} for the addressbook-query to convert.
-        @return: (needsAllRecords, espressionAttributes, expression) tuple
-        """
-        def propFilterListQuery(filterAllOf, propFilters):
-
-            def propFilterExpression(filterAllOf, propFilter):
-                #print("propFilterExpression")
-                """
-                Create an expression for a single prop-filter element.
-                
-                @param propFilter: the L{PropertyFilter} element.
-                @return: (needsAllRecords, espressionAttributes, expressions) tuple
-                """
-                
-                def definedExpression( defined, allOf, filterName, constant, queryAttributes, allAttrStrings):
-                    if constant or filterName in ("N" , "FN", "UID", ):
-                        return (defined, [], [])     # all records have this property so no records do not have it
-                    else:
-                        matchList = list(set([dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in allAttrStrings]))
-                        if defined:
-                            return andOrExpression(allOf, queryAttributes, matchList)
-                        else:
-                            if len(matchList) > 1:
-                                expr = dsquery.expression( dsquery.expression.OR, matchList )
-                            else:
-                                expr = matchList
-                            return (False, queryAttributes, [dsquery.expression( dsquery.expression.NOT, expr),])
-                    #end isNotDefinedExpression()
-    
-    
-                def andOrExpression(propFilterAllOf, queryAttributes, matchList):
-                    #print("andOrExpression(propFilterAllOf=%r, queryAttributes%r, matchList%r)" % (propFilterAllOf, queryAttributes, matchList))
-                    if propFilterAllOf and len(matchList):
-                        # add OR expression because parent will AND
-                        return (False, queryAttributes, [dsquery.expression( dsquery.expression.OR, matchList),])
-                    else:
-                        return (False, queryAttributes, matchList)
-                    #end andOrExpression()
-                    
-    
-                # short circuit parameter filters
-                def supportedParamter( filterName, paramFilters, propFilterAllOf ):
-                    
-                    def supported( paramFilterName, paramFilterDefined, params ):
-                        paramFilterName = paramFilterName.upper()
-                        if len(params.keys()) and ((paramFilterName in params.keys()) != paramFilterDefined):
-                            return False
-                        if len(params[paramFilterName]) and str(paramFilter.qualifier).upper() not in params[paramFilterName]:
-                            return False
-                        return True 
-                        #end supported()
-                
-                    
-                    oneSupported = False
-                    for paramFilter in paramFilters:
-                        if filterName == "PHOTO":
-                            if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "ENCODING": ["B",], "TYPE": ["JPEG",], }):
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                        elif filterName == "ADR":
-                            if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": ["WORK", "PREF", "POSTAL", "PARCEL",], }):
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                        elif filterName == "LABEL":
-                            if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": ["POSTAL", "PARCEL",]}):
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                        elif filterName == "TEL":
-                            if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": [], }): # has params derived from ds attributes
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                        elif filterName == "EMAIL":
-                            if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": [], }): # has params derived from ds attributes
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                        elif filterName == "URL":
-                            if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, {}):
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                        elif filterName == "KEY":
-                            if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "ENCODING": ["B",], "TYPE": ["PGPPUBILICKEY", "USERCERTIFICATE", "USERPKCS12DATA", "USERSMIMECERTIFICATE",] }):
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                        elif not filterName.startswith("X-"): #X- IMHandles X-ABRELATEDNAMES excepted, no other params are used
-                            if propFilterAllOf == paramFilter.defined:
-                                return not propFilterAllOf
-                            oneSupported |= propFilterAllOf
-                    
-                    if propFilterAllOf:
-                        return True
-                    else:
-                        return oneSupported
-                    #end supportedParamter()
-                    
-                    
-                def textMatchElementExpression( propFilterAllOf, textMatchElement ):
-    
-                    # pre process text match strings for ds query 
-                    def getMatchStrings( propFilter, matchString ):
-                                            
-                        if propFilter.filter_name in ("REV" , "BDAY", ):
-                            rawString = matchString
-                            matchString = ""
-                            for c in rawString:
-                                if not c in "TZ-:":
-                                    matchString += c
-                        elif propFilter.filter_name == "GEO":
-                            matchString = ",".join(matchString.split(";"))
-                        
-                        if propFilter.filter_name in ("N" , "ADR", "ORG", ):
-                            # for structured properties, change into multiple strings for ds query
-                            if propFilter.filter_name == "ADR":
-                                #split by newline and comma
-                                rawStrings = ",".join( matchString.split("\n") ).split(",")
-                            else:
-                                #split by space
-                                rawStrings = matchString.split(" ")
-                            
-                            # remove empty strings
-                            matchStrings = []
-                            for oneString in rawStrings:
-                                if len(oneString):
-                                    matchStrings += [oneString,]
-                            return matchStrings
-                        
-                        elif len(matchString):
-                            return [matchString,]
-                        else:
-                            return []
-                        # end getMatchStrings
-    
-                    if constant:
-                        # do the match right now!  Return either all or none.
-                        return( textMatchElement.test([constant,]), [], [] )
-                    else:
-
-                        matchStrings = getMatchStrings(propFilter, textMatchElement.text)
-
-                        if not len(matchStrings) or binaryAttrStrs:
-                            # no searching text in binary ds attributes, so change to defined/not defined case
-                            if textMatchElement.negate:
-                                return definedExpression(False, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
-                            # else fall through to attribute exists case below
-                        else:
-                            
-                            # special case UID's formed from node and record name
-                            if propFilter.filter_name == "UID":
-                                matchString = matchStrings[0]
-                                seperatorIndex = matchString.find(VCardRecord.peopleUIDSeparator)
-                                if seperatorIndex > 1:
-                                    recordNameStart = seperatorIndex + len(VCardRecord.peopleUIDSeparator)
-                                else:
-                                    seperatorIndex = matchString.find(VCardRecord.userUIDSeparator)                        
-                                    if seperatorIndex > 1:
-                                        recordNameStart = seperatorIndex + len(VCardRecord.userUIDSeparator)
-                                    else:
-                                        recordNameStart = sys.maxint
-        
-                                if recordNameStart < len(matchString)-1:
-                                    try:
-                                        recordNameQualifier = matchString[recordNameStart:].decode("base64").decode("utf8")
-                                    except Exception, e:
-                                        self.log_debug("Could not decode UID string %r in %r: %r" % (matchString[recordNameStart:], matchString, e,))
-                                    else:
-                                        if textMatchElement.negate:
-                                            return (False, queryAttributes, 
-                                                    [dsquery.expression(dsquery.expression.NOT, dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact)),]
-                                                    )
-                                        else:
-                                            return (False, queryAttributes, 
-                                                    [dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact),]
-                                                    )
-                            
-                            # use match_type where possible depending on property/attribute mapping
-                            # Note that case sensitive negate will not work
-                            #        Should return all records in that case
-                            matchType = dsattributes.eDSContains
-                            if propFilter.filter_name in ("NICKNAME" , "TITLE" , "NOTE" , "UID", "URL", "N", "ADR", "ORG", "REV",  "LABEL", ):
-                                if textMatchElement.match_type == "equals":
-                                        matchType = dsattributes.eDSExact
-                                elif textMatchElement.match_type == "starts-with":
-                                        matchType = dsattributes.eDSStartsWith
-                                elif textMatchElement.match_type == "ends-with":
-                                        matchType = dsattributes.eDSEndsWith
-                            
-                            matchList = []
-                            for matchString in matchStrings:
-                                matchList += [dsquery.match(attrName, matchString, matchType) for attrName in stringAttrStrs]
-                            
-                            matchList = list(set(matchList))
-    
-                            if textMatchElement.negate:
-                                if len(matchList) > 1:
-                                    expr = dsquery.expression( dsquery.expression.OR, matchList )
-                                else:
-                                    expr = matchList
-                                return (False, queryAttributes, [dsquery.expression( dsquery.expression.NOT, expr),])
-                            else:
-                                return andOrExpression(propFilterAllOf, queryAttributes, matchList)
-    
-                    # attribute exists search
-                    return definedExpression(True, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
-                    #end textMatchElementExpression()
-                    
-    
-                # get attribute strings from dsqueryAttributesForProperty list 
-                #queryAttributes = list(set(VCardRecord.dsqueryAttributesForProperty.get(propFilter.filter_name, [])).intersection(set(self.allowedDSQueryAttributes)))
-                #queryAttributes = VCardRecord.dsqueryAttributesForProperty.get(propFilter.filter_name, [])
-                queryAttributes = searchmap.get(propFilter.filter_name, [])
-                if isinstance(queryAttributes, str):
-                    queryAttributes = (queryAttributes,)
-                
-                binaryAttrStrs = []
-                stringAttrStrs = []
-                for attr in queryAttributes:
-                    if isinstance(attr, tuple):
-                        binaryAttrStrs.append(attr[0])
-                    else:
-                        stringAttrStrs.append(attr)
-                allAttrStrings = stringAttrStrs + binaryAttrStrs
-                                        
-                constant = VCardRecord.constantProperties.get(propFilter.filter_name)
-                if not constant and not allAttrStrings: 
-                    return (False, [], [])
-                
-                if propFilter.qualifier and isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
-                    return definedExpression(False, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
-                
-                paramFilterElements = [paramFilterElement for paramFilterElement in propFilter.filters if isinstance(paramFilterElement, addressbookqueryfilter.ParameterFilter)]
-                textMatchElements = [textMatchElement for textMatchElement in propFilter.filters if isinstance(textMatchElement, addressbookqueryfilter.TextMatch)]
-                propFilterAllOf = propFilter.propfilter_test == "allof"
-                
-                # handle parameter filter elements
-                if len(paramFilterElements) > 0:
-                    if supportedParamter(propFilter.filter_name, paramFilterElements, propFilterAllOf ):
-                        if len(textMatchElements) == 0:
-                            return definedExpression(True, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
-                    else:
-                        if propFilterAllOf:
-                            return (False, [], [])
-                
-                # handle text match elements
-                propFilterNeedsAllRecords = propFilterAllOf
-                propFilterAttributes = []
-                propFilterExpressionList = []
-                for textMatchElement in textMatchElements:
-                    
-                    textMatchNeedsAllRecords, textMatchExpressionAttributes, textMatchExpression = textMatchElementExpression(propFilterAllOf, textMatchElement)
-                    if propFilterAllOf:
-                        propFilterNeedsAllRecords &= textMatchNeedsAllRecords
-                    else:
-                        propFilterNeedsAllRecords |= textMatchNeedsAllRecords
-                    propFilterAttributes += textMatchExpressionAttributes
-                    propFilterExpressionList += textMatchExpression
-    
-
-                if (len(propFilterExpressionList) > 1) and (filterAllOf != propFilterAllOf):
-                    propFilterExpressions = [dsquery.expression(dsquery.expression.AND if propFilterAllOf else dsquery.expression.OR , list(set(propFilterExpressionList)))] # remove duplicates
-                else:
-                    propFilterExpressions = list(set(propFilterExpressionList))
-                
-                return (propFilterNeedsAllRecords, propFilterAttributes, propFilterExpressions)
-                #end propFilterExpression
-
-            #print("propFilterListQuery: filterAllOf=%r, propFilters=%r" % (filterAllOf, propFilters,))
-            """
-            Create an expression for a list of prop-filter elements.
-            
-            @param filterAllOf: the C{True} if parent filter test is "allof"
-            @param propFilters: the C{list} of L{ComponentFilter} elements.
-            @return: (needsAllRecords, espressionAttributes, expression) tuple
-            """
-            needsAllRecords = filterAllOf
-            attributes = []
-            expressions = []
-            for propFilter in propFilters:
-                
-                propNeedsAllRecords, propExpressionAttributes, propExpression = propFilterExpression(filterAllOf, propFilter)
-                if filterAllOf:
-                    needsAllRecords &= propNeedsAllRecords
-                else:
-                    needsAllRecords |= propNeedsAllRecords
-                attributes += propExpressionAttributes
-                expressions += propExpression
-
-            if len(expressions) > 1:
-                expr = dsquery.expression(dsquery.expression.AND if filterAllOf else dsquery.expression.OR , list(set(expressions))) # remove duplicates
-            elif len(expressions):
-                expr = expressions[0]
-            else:
-                expr = None
-            
-            return (needsAllRecords, list(set(attributes)), expr)
-        
-                
-        #print("_getDSFilter")
-        # Lets assume we have a valid filter from the outset
-        
-        # Top-level filter contains zero or more prop-filters
-        if addressBookFilter:
-            filterAllOf = addressBookFilter.filter_test == "allof"
-            if len(addressBookFilter.children) > 0:
-                return propFilterListQuery(filterAllOf, addressBookFilter.children)
-            else:
-                return (filterAllOf, [], [])
-        else:
-            return (False, [], [])    
-    
                         
     #to do: use opendirectorybacker: _attributesForAddressBookQuery
-    def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapdsattrmap ):
+    def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapDSAttrMap ):
                         
         propertyNames = [] 
         #print( "addressBookQuery.qname=%r" % addressBookQuery.qname)
@@ -540,14 +226,14 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         if not len(propertyNames):
             #return self.returnedAttributes
             #return None
-            result = ldapdsattrmap.keys()
+            result = ldapDSAttrMap.keys()
             self.log_debug("_ldapAttributesForAddressBookQuery returning all props=%s" % result)
         
         else:
             #propertyNames.append("X-INTERNAL-MINIMUM-VCARD-PROPERTIES") # these properties are required to make a vCard
             queryAttributes = []
             for prop in propertyNames:
-                searchAttr = ldapdsattrmap.get()
+                searchAttr = ldapDSAttrMap.get()
                 if searchAttr:
                     print("adding attributes %r" % searchAttr)
                     if not isinstance(searchAttr, tuple):
@@ -577,10 +263,10 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         for queryType in self.rdnSchema["queryTypes"]:
 
             queryMap = self.rdnSchema[queryType]
-            searchmap = queryMap["searchmap"]
-            ldapdsattrmap = queryMap["ldapdsattrmap"]
+            searchMap = queryMap["searchMap"]
+            ldapDSAttrMap = queryMap["ldapDSAttrMap"]
 
-            allRecords, filterAttributes, dsFilter  = self._getLdapFilter( addressBookFilter, searchmap );
+            allRecords, filterAttributes, dsFilter  = getDSFilter( addressBookFilter, searchMap );
             #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
             self.log_debug("vCardRecordsForAddressBookQuery: queryType = \"%s\" LDAP allRecords = %s, filterAttributes = %s, query = %s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
@@ -592,7 +278,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             clear = False
                     
             if not clear:
-                queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapdsattrmap )
+                queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapDSAttrMap )
                 attributes = filterAttributes + queryAttributes if queryAttributes else None
                 self.log_debug("vCardRecordsForAddressBookQuery: attributes = %s, queryAttributes = %s" % (attributes, queryAttributes,))
                 
@@ -612,12 +298,12 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 elif dsFilter:
                     filterstr = dsFilter.generate()
                 
-                attrlist = attributes
+                #attrlist = attributes
                 #filterstr = "(&(!(objectClass=organizationalUnit))(sn=Gaya))"
                 #attrlist = ("cn", "sn", "objectClass", "mail", "telephoneNumber", "appleDSID")
-                self.log_debug("LDAP query with base %s and filter %s and attributes %s sizelimit %s" % (ldap.dn.dn2str(base), filterstr, attrlist, maxRecords))
+                self.log_debug("LDAP query with base %s and filter %s and attributes %s sizelimit %s" % (ldap.dn.dn2str(base), filterstr, attributes, maxRecords))
                 
-                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attrlist, sizelimit=maxRecords))
+                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeout=maxRecords, sizelimit=maxRecords))
     
                 self.log_debug("ldapSearchResult=%s" % (ldapSearchResult,))
                 
@@ -635,7 +321,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                             ldapAttributeValues = [attr for attr in ldapAttributeValues if len(attr)]
                             
                             if len(ldapAttributeValues):
-                                dsAttributeNames = ldapdsattrmap.get(ldapAttributeName)
+                                dsAttributeNames = ldapDSAttrMap.get(ldapAttributeName)
                                 if dsAttributeNames:
                                     
                                     if not isinstance(dsAttributeNames, list):
