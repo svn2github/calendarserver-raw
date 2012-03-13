@@ -217,7 +217,7 @@ directoryAddressBookBackingServiceDefaultParams = {
         "ignoreSystemRecords": True,
         "dsLocalCacheTimeout":30,
         "fakeETag": True,
-        "standardizeSyntheticUIDs": False,
+        "generateSimpleUIDs": False,
         "addDSAttrXProperties": False,
         "appleInternalServer": False,
         "additionalAttributes" : [],

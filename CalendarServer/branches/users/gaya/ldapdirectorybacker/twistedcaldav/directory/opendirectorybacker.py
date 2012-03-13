@@ -84,14 +84,14 @@ class OpenDirectoryBackingService(DirectoryService):
         userNode = "/Search",
         maxDSQueryRecords = 0,            # maximum number of records requested for any ds query
         
-        queryDSLocal = False,              #query in DSLocal -- debug
+        queryDSLocal = False,             #query in DSLocal -- debug
         dsLocalCacheTimeout = 30,
         ignoreSystemRecords = True,
         
-        fakeETag = True,                    # eTag is not reliable if True 
+        fakeETag = True,                  # eTag is not reliable if True 
                 
-        addDSAttrXProperties=False,        # add dsattributes to vcards as "X-" attributes
-        standardizeSyntheticUIDs = False,  # use simple synthetic UIDs --- good for testing
+        addDSAttrXProperties=False,       # add dsattributes to vcards as "X-" attributes
+        generateSimpleUIDs = False,       # use simple synthetic UIDs --- good for testing
         appleInternalServer=False,
         
         additionalAttributes=[],
@@ -105,7 +105,7 @@ class OpenDirectoryBackingService(DirectoryService):
             NumberOfMatchesWithinLimits exception or returning results
         @dsLocalCacheTimeout: how log to keep cache of DSLocal records
         @fakeETag: C{True} to use a fake eTag; allows ds queries with partial attributes
-        @standardizeSyntheticUIDs: C{True} when creating synthetic UID (==f(Node, Type, Record Name)), 
+        @generateSimpleUIDs: C{True} when creating synthetic UID (==f(Node, Type, Record Name)), 
             use a standard Node name. This allows testing with the same UID on different hosts
         @allowedAttributes: list of DSAttributes that are used to create VCards
 
@@ -157,7 +157,7 @@ class OpenDirectoryBackingService(DirectoryService):
         self.fakeETag = fakeETag
                 
         self.addDSAttrXProperties = addDSAttrXProperties
-        self.standardizeSyntheticUIDs = standardizeSyntheticUIDs
+        self.generateSimpleUIDs = generateSimpleUIDs
         self.appleInternalServer = appleInternalServer
         
         self.additionalAttributes = additionalAttributes
@@ -289,7 +289,11 @@ class OpenDirectoryBackingService(DirectoryService):
         
         for (recordShortName, value) in queryResults: #@UnusedVariable
             
-            record = VCardRecord(self, value, self.defaultNodeName)
+            record = VCardRecord(self, value, defaultNodeName=self.defaultNodeName, 
+                                 generateSimpleUIDs=self.generateSimpleUIDs, 
+                                 addDSAttrXProperties=self.addDSAttrXProperties,
+                                 appleInternalServer=self.appleInternalServer,
+                                 )
 
             if self.ignoreSystemRecords:
                 # remove system users and people
@@ -964,14 +968,17 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
         }
 
     
-    def __init__(self, service, recordAttributes, defaultNodeName=None):
+    def __init__(self, service, recordAttributes, defaultNodeName=None, generateSimpleUIDs=False, addDSAttrXProperties=False, appleInternalServer=False, ):
         
 
         self.log_debug("service=%s, attributes=%s"    % (service, recordAttributes))
 
         #save off for debugging
-        if service.addDSAttrXProperties:
+        self.addDSAttrXProperties = addDSAttrXProperties;
+        if addDSAttrXProperties:
             self.originalAttributes = recordAttributes.copy()
+        self.generateSimpleUIDs = generateSimpleUIDs
+        self.appleInternalServer = appleInternalServer
 
         self.directoryBackedAddressBook = service.directoryBackedAddressBook
         self._vCard = None
@@ -1017,7 +1024,7 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
         
         guid = self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)
         if not guid:
-            if service.standardizeSyntheticUIDs:
+            if generateSimpleUIDs:
                 nodeUUIDStr = "00000000"
             else:
                 nodeUUIDStr = "%x" % abs(hash(node))
@@ -1041,12 +1048,12 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
             recordType = DirectoryService.recordType_people
                         
         super(VCardRecord, self).__init__(
-            service                  = service,
-            recordType              = recordType,
+            service               = service,
+            recordType            = recordType,
             guid                  = guid,
-            shortNames              = tuple(self.valuesForAttribute(dsattributes.kDSNAttrRecordName)),
+            shortNames            = tuple(self.valuesForAttribute(dsattributes.kDSNAttrRecordName)),
             fullName              = fullName,
-            firstName              = self.firstValueForAttribute(dsattributes.kDS1AttrFirstName, None),
+            firstName             = self.firstValueForAttribute(dsattributes.kDS1AttrFirstName, None),
             lastName              = self.firstValueForAttribute(dsattributes.kDS1AttrLastName, None),
             emailAddresses        = (),
             calendarUserAddresses = (),
@@ -1165,7 +1172,7 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
                 for attrValue in self.valuesForAttribute(attrType):
                     try:
                         # special case for Apple
-                        if self.service.appleInternalServer and attrType == dsattributes.kDSNAttrIMHandle:
+                        if self.appleInternalServer and attrType == dsattributes.kDSNAttrIMHandle:
                             splitValue = attrValue.split("|")
                             if len (splitValue) > 1:
                                 attrValue = splitValue[0]
@@ -1568,7 +1575,7 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
             
             
             # special case for Apple
-            if self.service.appleInternalServer:
+            if self.appleInternalServer:
                 for manager in self.valuesForAttribute("dsAttrTypeNative:appleManager"):
                     splitManager = manager.split("|")
                     if len(splitManager) >= 4:
@@ -1601,7 +1608,7 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
             """
             
             # debug, create x attributes for all ds attributes
-            if self.service.addDSAttrXProperties:
+            if self.addDSAttrXProperties:
                 for attribute in self.originalAttributes:
                     for value in self.valuesForAttribute(attribute):
                         vcard.addProperty(Property("X-"+"-".join(attribute.split(":")), removeControlChars(value)))

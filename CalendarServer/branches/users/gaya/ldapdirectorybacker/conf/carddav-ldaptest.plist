@@ -1043,7 +1043,7 @@
        	  <!- fake the eTag.  If false all directory service attributes are used to calculate the eTag ->
           <key>fakeETag</key>
           <true/>
-          <key>standardizeSyntheticUIDs</key>
+          <key>generateSimpleUIDs</key>
           <true/>
           <key>appleInternalServer</key>
           <false/>

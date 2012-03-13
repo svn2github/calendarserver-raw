@@ -104,7 +104,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             "appleInternalServer":False,         # does magic in VCardRecord
             "maxQueryRecords":0,                 # max records returned
             "fakeETag":True,                     # eTag is fake, otherwise it is md5(all attributes)
-            "standardizeSyntheticUIDs":False,    # if UID is faked, use simple method for generating
+            "generateSimpleUIDs":False,    # if UID is faked, use simple method for generating
        }
 
         #params = self.getParams(params, defaults, ignored)
@@ -128,8 +128,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         del params["maxQueryRecords"]
         fakeETag=params["fakeETag"]
         del params["fakeETag"]
-        standardizeSyntheticUIDs=params["standardizeSyntheticUIDs"]
-        del params["standardizeSyntheticUIDs"]
+        generateSimpleUIDs=params["generateSimpleUIDs"]
+        del params["generateSimpleUIDs"]
 
         
         #standardize ds attributes type names
@@ -167,8 +167,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         
         ### used by VCardRecord.
         self.fakeETag = fakeETag
-        self.addDSAttrXProperties = False
-        self.standardizeSyntheticUIDs = standardizeSyntheticUIDs
+        self.generateSimpleUIDs = generateSimpleUIDs
         self.appleInternalServer = appleInternalServer
  
         super(LdapDirectoryBackingService, self).__init__(params)
@@ -654,7 +653,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                         dsRecordAttributes[dsAttributeName] = list(set(dsRecordAttributes[dsAttributeName] + ldapAttributeValues))
                                         self.log_debug("dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
                                    
-                        dsRecord = VCardRecord(self, dsRecordAttributes, self.defaultNodeName)
+                        dsRecord = VCardRecord(self, dsRecordAttributes, defaultNodeName=None, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
                         vCardText = dsRecord.vCardText()
                     except:
                         traceback.print_exc()
