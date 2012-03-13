@@ -172,7 +172,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
     def createCache(self):
          succeed(None)
                         
-    #to do: use opendirectorybacker: _attributesForAddressBookQuery
+
     def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapDSAttrMap ):
                         
         etagRequested, propertyNames = propertiesInAddressBookQuery( addressBookQuery )
@@ -221,8 +221,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             ldapDSAttrMap = queryMap["ldapDSAttrMap"]
 
             allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, searchMap );
-            #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
-            self.log_debug("vCardRecordsForAddressBookQuery: queryType = \"%s\" LDAP allRecords = %s, filterAttributes = %s, query = %s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
+            self.log_debug("vCardRecordsForAddressBookQuery: queryType=\"%s\" LDAP allRecords=%s, filterAttributes=%s, query=%s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
             
             if allRecords:
@@ -234,16 +233,16 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             if not clear:
                 queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapDSAttrMap )
                 attributes = filterAttributes + queryAttributes if queryAttributes else None
-                self.log_debug("vCardRecordsForAddressBookQuery: attributes = %s, queryAttributes = %s" % (attributes, queryAttributes,))
+                self.log_debug("vCardRecordsForAddressBookQuery: attributes=%s, queryAttributes=%s" % (attributes, queryAttributes,))
                 
+                #get all ldap attributes -- for debug
                 if queryMap.get("getAllAttributes"):
                     attributes = None
-                               
                    
                 rdn = queryMap["rdn"]
                 base =  ldap.dn.str2dn(rdn) + self.base
                 
-                #add additonal filter
+                #add additonal filter from config
                 queryFilter = queryMap.get("filter")
                 if dsFilter and queryFilter:
                     filterstr = "(&%s%s)" % (queryFilter, dsFilter.generate())
@@ -252,24 +251,24 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 elif dsFilter:
                     filterstr = dsFilter.generate()
                 
-                #attrlist = attributes
-                #filterstr = "(&(!(objectClass=organizationalUnit))(sn=Gaya))"
-                #attrlist = ("cn", "sn", "objectClass", "mail", "telephoneNumber", "appleDSID")
-                self.log_debug("LDAP query with base %s and filter %s and attributes %s sizelimit %s" % (ldap.dn.dn2str(base), filterstr, attributes, maxRecords))
+                # can't resist also using a timeout, 1 sec per requested record for now
+                timeout = maxRecords
+
+                self.log_debug("vCardRecordsForAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s sizelimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxRecords))
                 
-                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeout=maxRecords, sizelimit=maxRecords))
+                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeout=timeout, sizelimit=maxRecords))
     
-                self.log_debug("ldapSearchResult=%s" % (ldapSearchResult,))
+                self.log_debug("vCardRecordsForAddressBookQuery: ldapSearchResult=%s" % (ldapSearchResult,))
                 
                 for dn, ldapAttributes in ldapSearchResult:
                     #dn = normalizeDNstr(dn)
                     dsRecord = None
                     try:
+                        # make a dsRecordAttributes dict from the ldap attributes
                         dsRecordAttributes = {}
-                        
                         for ldapAttributeName, ldapAttributeValues in ldapAttributes.iteritems():
     
-                            self.log_debug("inspecting ldapAttributeName %s with values %s" % (ldapAttributeName, ldapAttributeValues,))
+                            #self.log_debug("inspecting ldapAttributeName %s with values %s" % (ldapAttributeName, ldapAttributeValues,))
     
                             # get rid of '' values
                             ldapAttributeValues = [attr for attr in ldapAttributeValues if len(attr)]
@@ -282,32 +281,32 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                         dsAttributeNames = [dsAttributeNames,]
                                         
                                     for dsAttributeName in dsAttributeNames:
-                                    
+                                        
+                                        # base64 encode binary attributes
                                         if dsAttributeName in VCardRecord.binaryDSAttributeStrs:
                                             ldapAttributeValues = [attr.encode('base64') for attr in ldapAttributeValues]
                                         
-                                        # all dsRecordAttributes values are lists
+                                        # add to dsRecordAttributes
                                         if dsAttributeName not in dsRecordAttributes:
                                             dsRecordAttributes[dsAttributeName] = list()
                                             
                                         dsRecordAttributes[dsAttributeName] = list(set(dsRecordAttributes[dsAttributeName] + ldapAttributeValues))
-                                        self.log_debug("dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
-                                   
+                                        self.log_debug("vCardRecordsForAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
+ 
+                        # get a record for dsRecordAttributes 
                         dsRecord = VCardRecord(self, dsRecordAttributes, defaultNodeName=None, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
                         vCardText = dsRecord.vCardText()
                     except:
                         traceback.print_exc()
                         self.log_info("Could not get vcard for ds record %s" % (dsRecord,))
                     else:
-                        self.log_debug("VCard text =\n%s" % (vCardText, ))
+                        self.log_debug("vCardRecordsForAddressBookQuery: VCard text =\n%s" % (vCardText, ))
                         queryRecords.append(dsRecord)
-               
-                self.log_info("maxRecords was %s len(ldapSearchResult) %s" % (maxRecords,len(ldapSearchResult),))
+                
+                # only get requested number of record results
                 maxRecords -= len(ldapSearchResult)
-                self.log_info("maxRecords now %s len(ldapSearchResult) %s" % (maxRecords,len(ldapSearchResult),))
                 if maxRecords <= 0:
                     limited = True
-                    self.log_info("limited %s" % (limited,))
                     break
 
                          
