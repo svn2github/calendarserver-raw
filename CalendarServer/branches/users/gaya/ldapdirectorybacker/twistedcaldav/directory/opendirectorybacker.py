@@ -30,9 +30,7 @@ import os
 import sys
 import time
 
-from os import listdir
-from os.path import join, abspath
-from tempfile import mkstemp, gettempdir
+from os.path import join
 from random import random
 
 from pycalendar.n import N
@@ -41,9 +39,7 @@ from pycalendar.datetime import PyCalendarDateTime
 
 from socket import getfqdn
 
-from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue, deferredGenerator, succeed
-from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2.dav import davxml
 from twext.web2.dav.element.base import twisted_dav_namespace, dav_namespace, parse_date, twisted_private_namespace
 from twext.web2.dav.resource import DAVPropertyMixIn
@@ -51,11 +47,9 @@ from twext.web2.dav.util import joinURL
 from twext.web2.http_headers import MimeType, generateContentType, ETag
 
 
-from twistedcaldav import customxml, carddavxml
-from twistedcaldav.customxml import calendarserver_namespace
+from twistedcaldav import carddavxml
 from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.query import addressbookqueryfilter
 from twistedcaldav.vcard import Component, Property, vCardProductID
 
