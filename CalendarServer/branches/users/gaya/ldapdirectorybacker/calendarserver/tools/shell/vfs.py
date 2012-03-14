@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 ##
 # Copyright (c) 2011-2012 Apple Inc. All rights reserved.
 #
@@ -21,11 +20,13 @@ Virtual file system for data store objects.
 
 from cStringIO import StringIO
 
-#from twisted.python import log
+from twisted.python import log
 from twisted.internet.defer import succeed
 from twisted.internet.defer import inlineCallbacks, returnValue
 
 from txdav.common.icommondatastore import NotFoundError
+
+from twistedcaldav.ical import InvalidICalendarDataError
 
 from calendarserver.tools.tables import Table
 
@@ -153,6 +154,7 @@ class RootFolder(Folder):
         self._childClasses["users"    ] = UsersFolder
         self._childClasses["locations"] = LocationsFolder
         self._childClasses["resources"] = ResourcesFolder
+        self._childClasses["groups"   ] = GroupsFolder
 
 
 class UIDsFolder(Folder):
@@ -191,7 +193,7 @@ class RecordFolder(Folder):
 
         return PrincipalHomeFolder(
             self.service,
-            self.path + (record.uid,),
+            self.path + (name,),
             record.uid,
             record=record
         )
@@ -224,6 +226,13 @@ class ResourcesFolder(RecordFolder):
     Folder containing all resource principals by name.
     """
     recordType = "resources"
+
+
+class GroupsFolder(RecordFolder):
+    """
+    Folder containing all group principals by name.
+    """
+    recordType = "groups"
 
 
 class PrincipalHomeFolder(Folder):
@@ -295,6 +304,62 @@ class PrincipalHomeFolder(Folder):
     def list(self):
         return Folder.list(self)
 
+    def describe(self):
+        result = []
+        result.append("Principal home for UID: %s\n" % (self.uid,))
+
+        if self.record is not None:
+            #
+            # Basic record info
+            #
+
+            rows = []
+
+            def add(name, value):
+                if value:
+                    rows.append((name, value))
+
+            add("Service"    , self.record.service   )
+            add("Record Type", self.record.recordType)
+
+            for shortName in self.record.shortNames:
+                add("Short Name", shortName)
+
+            add("GUID"      , self.record.guid     )
+            add("Full Name" , self.record.fullName )
+            add("First Name", self.record.firstName)
+            add("Last Name" , self.record.lastName )
+
+            for email in self.record.emailAddresses:
+                add("Email Address", email)
+
+            for cua in self.record.calendarUserAddresses:
+                add("Calendar User Address", cua)
+
+            add("Server ID"           , self.record.serverID              )
+            add("Partition ID"        , self.record.partitionID           )
+            add("Enabled"             , self.record.enabled               )
+            add("Enabled for Calendar", self.record.enabledForCalendaring )
+            add("Enabled for Contacts", self.record.enabledForAddressBooks)
+
+            if rows:
+                result.append("Directory Record:")
+                result.append(tableString(rows, header=("Name", "Value")))
+
+            #
+            # Group memberships
+            #
+            rows = []
+
+            for group in self.record.groups():
+                rows.append((group.uid, group.shortNames[0], group.fullName))
+
+            if rows:
+                result.append("Group Memberships:")
+                result.append(tableString(rows, header=("UID", "Short Name", "Full Name")))
+
+        return "\n".join(result)
+
 
 class CalendarHomeFolder(Folder):
     """
@@ -332,7 +397,7 @@ class CalendarHomeFolder(Folder):
         properties   = (yield self.home.properties())
 
         result = []
-        result.append("Calendar home for UID: %s" % (uid,))
+        result.append("Calendar home for UID: %s\n" % (uid,))
 
         #
         # Attributes
@@ -352,14 +417,14 @@ class CalendarHomeFolder(Folder):
             ))
 
         if len(rows):
-            result.append("\nAttributes:")
+            result.append("Attributes:")
             result.append(tableString(rows, header=("Name", "Value")))
 
         #
         # Properties
         #
         if properties:
-            result.append("\Properties:")
+            result.append("Properties:")
             result.append(tableString(
                 ((name, properties[name]) for name in sorted(properties)),
                 header=("Name", "Value")
@@ -379,8 +444,8 @@ class CalendarFolder(Folder):
 
     @inlineCallbacks
     def _childWithObject(self, object):
-        name = (yield object.uid())
-        returnValue(CalendarObject(self.service, self.path + (name,), object))
+        uid = (yield object.uid())
+        returnValue(CalendarObject(self.service, self.path + (uid,), object, uid))
 
     @inlineCallbacks
     def child(self, name):
@@ -408,27 +473,39 @@ class CalendarObject(File):
     """
     Calendar object.
     """
-    def __init__(self, service, path, calendarObject):
+    def __init__(self, service, path, calendarObject, uid):
         File.__init__(self, service, path)
 
         self.object = calendarObject
+        self.uid    = uid
 
     @inlineCallbacks
     def lookup(self):
         if not hasattr(self, "component"):
             component = (yield self.object.component())
-            mainComponent = component.mainComponent()
 
-            self.componentType = mainComponent.name()
-            self.uid           = mainComponent.propertyValue("UID")
-            self.summary       = mainComponent.propertyValue("SUMMARY")
-            self.mainComponent = mainComponent
-            self.component     = component
+            try:
+                mainComponent = component.mainComponent(allow_multiple=True)
+
+                assert self.uid == mainComponent.propertyValue("UID")
+
+                self.componentType = mainComponent.name()
+                self.summary       = mainComponent.propertyValue("SUMMARY")
+                self.mainComponent = mainComponent
+
+            except InvalidICalendarDataError, e:
+                log.err("%s: %s" % (self.path, e))
+
+                self.componentType = "?"
+                self.summary       = "** Invalid data **"
+                self.mainComponent = None
+
+            self.component = component
 
     @inlineCallbacks
     def list(self):
         (yield self.lookup())
-        returnValue(((CalendarObject, self.uid, self.componentType, self.summary),))
+        returnValue(((CalendarObject, self.uid, self.componentType, self.summary.replace("\n", " ")),))
 
     @inlineCallbacks
     def text(self):
@@ -463,7 +540,6 @@ class CalendarObject(File):
 #       for attachment in attachments:
 #           log.msg("%r" % (attachment,))
 #           # FIXME: Not getting any results here
-
 
         returnValue("Calendar object:\n%s" % tableString(rows))
 

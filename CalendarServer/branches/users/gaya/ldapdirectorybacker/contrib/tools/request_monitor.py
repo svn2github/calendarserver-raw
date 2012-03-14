@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ##
-# Copyright (c) 2009-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2009-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,18 +24,48 @@ import sys
 import time
 import traceback
 
-NETSTAT = "/usr/sbin/netstat"
-enableListenQueue = os.path.exists(NETSTAT)
-IOSTAT = "/usr/sbin/iostat"
-enableCpuIdle = os.path.exists(IOSTAT)
-VMSTAT = "/usr/bin/vm_stat"
-enableFreeMem = os.path.exists(VMSTAT)
+# Detect which OS this is being run on
+child = Popen(
+    args=[
+        "uname",
+    ],
+    stdout=PIPE, stderr=STDOUT,
+)
+output, _ignore_error = child.communicate()
+output = output.strip()
+if output == "Darwin":
+    OS = "OS X"
+elif output == "Linux":
+    OS = "Linux"
+else:
+    print "Unknown OS: %s" % (output,)
+    sys.exit(1)
 
+# Some system commands we need to detect
+if OS == "OS X":
+    NETSTAT = "/usr/sbin/netstat"
+    enableListenQueue = os.path.exists(NETSTAT)
+elif OS == "Linux":
+    enableListenQueue = False
+
+if OS == "OS X":
+    IOSTAT = "/usr/sbin/iostat"
+    enableCpuIdle = os.path.exists(IOSTAT)
+elif OS == "Linux":
+    IOSTAT = "/usr/bin/iostat"
+    enableCpuIdle = os.path.exists(IOSTAT)
+
+if OS == "OS X":
+    VMSTAT = "/usr/bin/vm_stat"
+    enableFreeMem = os.path.exists(VMSTAT)
+elif OS == "Linux":
+    VMSTAT = "/usr/bin/vmstat"
+    enableFreeMem = os.path.exists(VMSTAT)
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0) 
 
 
-filename = "/var/log/caldavd/access.log"
+filenames = ["/var/log/caldavd/access.log",]
 debug = False
 
 def listenq():
@@ -75,28 +105,32 @@ def idleHistory():
 
 
 
-def tail(filename, n):
-    child = Popen(
-        args=[
-            "/usr/bin/tail", "-%d" % (n,), filename,
-        ],
-        stdout=PIPE, stderr=STDOUT,
-    )
-    output, _ignore_error = child.communicate()
-    return output.split("\n")
-
-def range(filename, start, end):
+def tail(filenames, n):
     results = []
-    with open(filename) as f:
-        for count, line in enumerate(f):
-            if count >= start:
-                results.append(line)
-            if count > end:
-                break
+    for filename in filenames:
+        child = Popen(
+            args=[
+                "/usr/bin/tail", "-%d" % (n,), filename,
+            ],
+            stdout=PIPE, stderr=STDOUT,
+        )
+        output, _ignore_error = child.communicate()
+        results.extend(output.splitlines())
+    return results
+
+def range(filenames, start, end):
+    results = []
+    for filename in filenames:
+        with open(filename) as f:
+            for count, line in enumerate(f):
+                if count >= start:
+                    results.append(line)
+                if count > end:
+                    break
     return results
 
 def cpuPerDaemon():
-    a = []
+    a = {}
     child = Popen(
         args=[
             "ps", "auxw",
@@ -107,37 +141,68 @@ def cpuPerDaemon():
     for l in output.split("\n"):
         if "ProcessType=" in l:
             f = l.split()
-            a.append(f[2])
-    return ", ".join(a)
+            for l in f:
+                if l.startswith("LogID="):
+                    logID = int(l[6:])
+                    break
+            else:
+                logID = None
+            if logID is not None:
+                a[logID] = f[2]
+    return ", ".join([v for _ignore_k, v in sorted(a.items(), key=lambda i:i[0])])
 
 
 def cpuidle():
-    child = Popen(
-        args=[
-            IOSTAT, "-c", "2", "-n", "0",
-        ],
-        stdout=PIPE, stderr=STDOUT,
-    )
-    output, _ignore_ = child.communicate()
-    return output.split("\n")[-2].split()[2]
-
-def freemem():
-    try:
+    if OS == "OS X":
         child = Popen(
             args=[
-                VMSTAT,
+                IOSTAT, "-c", "2", "-n", "0",
             ],
             stdout=PIPE, stderr=STDOUT,
         )
         output, _ignore_ = child.communicate()
-        lines = output.split("\n")
-        
-        line = lines[0]
-        pageSize = int(line[line.find("page size of")+12:].split()[0])
-        line = lines[1]
-        freeSize = int(line[line.find("Pages free:")+11:].split()[0][:-1])
-        freed = freeSize * pageSize
-        return "%d bytes (%.1f GB)" % (freed, freed / (1024.0 * 1024 * 1024),)
+        return output.splitlines[-2].split()[2]
+    elif OS == "Linux":
+        child = Popen(
+            args=[
+                IOSTAT, "-c", "1", "2"
+            ],
+            stdout=PIPE, stderr=STDOUT,
+        )
+        output, _ignore_ = child.communicate()
+        return output.splitlines()[-2].split()[5]
+
+def freemem():
+    try:
+        if OS == "OS X":
+            child = Popen(
+                args=[
+                    VMSTAT,
+                ],
+                stdout=PIPE, stderr=STDOUT,
+            )
+            output, _ignore_ = child.communicate()
+            lines = output.split("\n")
+            
+            line = lines[0]
+            pageSize = int(line[line.find("page size of")+12:].split()[0])
+            line = lines[1]
+            freeSize = int(line[line.find("Pages free:")+11:].split()[0][:-1])
+            freed = freeSize * pageSize
+            return "%d bytes (%.1f GB)" % (freed, freed / (1024.0 * 1024 * 1024),)
+        elif OS == "Linux":
+            child = Popen(
+                args=[
+                    VMSTAT, "-s", "-S", "K"
+                ],
+                stdout=PIPE, stderr=STDOUT,
+            )
+            output, _ignore_ = child.communicate()
+            lines = output.splitlines()
+            
+            line = lines[4]
+            freed = int(line.split()[0]) * 1024
+            return "%d bytes (%.1f GB)" % (freed, freed / (1024.0 * 1024 * 1024),)
     except Exception, e:
         if debug:
             print "freemem failure", e
@@ -251,22 +316,24 @@ for option, value in options:
         numTop = int(value)
 
 if len(args):
-    filename = os.path.expanduser(args[0])
+    filenames = [os.path.expanduser(arg) for arg in args]
 
-if not os.path.isfile(filename):
-    print "Path %s does not exist" % (filename,)
-    print
-    usage()
-    sys.exit(1)
+for filename in filenames:
+    if not os.path.isfile(filename):
+        print "Path %s does not exist" % (filename,)
+        print
+        usage()
+        sys.exit(1)
 
-if not os.access(filename, os.R_OK):
-    print "Path %s does not exist" % (filename,)
-    print
-    usage()
-    sys.exit(1)
+for filename in filenames:
+    if not os.access(filename, os.R_OK):
+        print "Path %s does not exist" % (filename,)
+        print
+        usage()
+        sys.exit(1)
 
 if debug:
-    print "Starting: access log file: %s" % (filename,)
+    print "Starting: access log files: %s" % (", ".join(filenames),)
     print
 
 while True:
@@ -297,7 +364,7 @@ while True:
     parseErrors = 0
 
     try:
-        lines = tail(filename, numLines) if lineRange is None else range(filename, *lineRange)
+        lines = tail(filenames, numLines) if lineRange is None else range(filenames, *lineRange)
         for line in lines:
             if not line or line.startswith("Log"):
                 continue

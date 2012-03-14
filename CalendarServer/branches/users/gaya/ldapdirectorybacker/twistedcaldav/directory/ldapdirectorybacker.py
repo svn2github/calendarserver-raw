@@ -256,9 +256,9 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 # can't resist also using a timeout, 1 sec per requested record for now
                 timeout = maxRecords
 
-                self.log_debug("vCardRecordsForAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s sizelimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxRecords))
+                self.log_debug("vCardRecordsForAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s resultLimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxRecords))
                 
-                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeout=timeout, sizelimit=maxRecords))
+                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeoutSeconds=timeout, resultLimit=maxRecords))
     
                 self.log_debug("vCardRecordsForAddressBookQuery: ldapSearchResult=%s" % (ldapSearchResult,))
                 

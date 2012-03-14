@@ -86,6 +86,9 @@ class LdapDirectoryService(CachingDirectoryService):
             "negativeCaching": False,
             "warningThresholdSeconds": 3,
             "batchSize": 500, # for splitting up large queries
+            "requestTimeoutSeconds" : 10,
+            "requestResultsLimit" : 200,
+            "optimizeMultiName" : False,
             "queryLocationsImplicitly": True,
             "restrictEnabledRecords": False,
             "restrictToGroup": "",
@@ -195,6 +198,11 @@ class LdapDirectoryService(CachingDirectoryService):
 
         self.warningThresholdSeconds = params["warningThresholdSeconds"]
         self.batchSize = params["batchSize"]
+        self.requestTimeoutSeconds = params["requestTimeoutSeconds"]
+        self.requestResultsLimit = params["requestResultsLimit"]
+        self.optimizeMultiName = params["optimizeMultiName"]
+        if self.batchSize > self.requestResultsLimit:
+            self.batchSize = self.requestResultsLimit
         self.queryLocationsImplicitly = params["queryLocationsImplicitly"]
         self.augmentService = params["augmentService"]
         self.groupMembershipCache = params["groupMembershipCache"]
@@ -261,24 +269,9 @@ class LdapDirectoryService(CachingDirectoryService):
                 self.rdnSchema[recordType]["rdn"].lower()
             ) + self.base
 
-        # Create LDAP connection
-        self.log_info("Connecting to LDAP %s" % (repr(self.uri),))
 
-        self.ldap = self.createLDAPConnection()
-        if self.credentials.get("dn", ""):
-            try:
-                self.log_info("Binding to LDAP %s" %
-                    (repr(self.credentials.get("dn")),))
-                self.ldap.simple_bind_s(self.credentials.get("dn"),
-                    self.credentials.get("password"))
-            except ldap.SERVER_DOWN:
-                msg = "Can't connect to LDAP %s: server down" % (self.uri,)
-                self.log_error(msg)
-                raise DirectoryConfigurationError(msg)
-            except ldap.INVALID_CREDENTIALS:
-                msg = "Can't bind to LDAP %s: check credentials" % (self.uri,)
-                self.log_error(msg)
-                raise DirectoryConfigurationError(msg)
+        self.ldap = None
+
 
         # Separate LDAP connection used solely for authenticating clients
         self.authLDAP = None
@@ -390,12 +383,30 @@ class LdapDirectoryService(CachingDirectoryService):
 
         return assignments
 
+    def getLDAPConnection(self):
+        if self.ldap is None:
+            self.log_info("Connecting to LDAP %s" % (repr(self.uri),))
+            self.ldap = self.createLDAPConnection()
+            self.log_info("Connection established to LDAP %s" % (repr(self.uri),))
+            if self.credentials.get("dn", ""):
+                try:
+                    self.log_info("Binding to LDAP %s" %
+                        (repr(self.credentials.get("dn")),))
+                    self.ldap.simple_bind_s(self.credentials.get("dn"),
+                        self.credentials.get("password"))
+                    self.log_info("Successfully authenticated with LDAP as %s" %
+                        (repr(self.credentials.get("dn")),))
+                except ldap.INVALID_CREDENTIALS:
+                    msg = "Can't bind to LDAP %s: check credentials" % (self.uri,)
+                    self.log_error(msg)
+                    raise DirectoryConfigurationError(msg)
+        return self.ldap
 
     def createLDAPConnection(self):
         """
         Create and configure LDAP connection
         """
-        cxn = ldap.ldapobject.ReconnectLDAPObject(self.uri)
+        cxn = ldap.initialize(self.uri)
 
         if self.tlsCACertFile:
             cxn.set_option(ldap.OPT_X_TLS_CACERTFILE, self.tlsCACertFile)
@@ -468,42 +479,51 @@ class LdapDirectoryService(CachingDirectoryService):
 
 
     def timedSearch(self, base, scope, filterstr="(objectClass=*)",
-        attrlist=None, timeout=-1, sizelimit=0):
+        attrlist=None, timeoutSeconds=-1, resultLimit=0):
         """
-        Execute an ldap.search_s( ); if it takes longer than the configured
+        Execute an LDAP query, retrying up to 3 times in case the LDAP server has
+        gone down and we need to reconnect. If it takes longer than the configured
         threshold, emit a log error.
+        The number of records requested is controlled by resultLimit (0=no limit).
+        If timeoutSeconds is not -1, the query will abort after the specified number
+        of seconds and the results retrieved so far are returned.
         """
-        s = ldap.async.List( self.ldap )
-        s.startSearch( base, scope, filterStr=filterstr, attrList=attrlist, timeout=timeout, sizelimit=sizelimit, )
-        
-        startTime = time.time()
-        try:
-            s.processResults()
+        TRIES = 3
 
-        except ldap.SERVER_DOWN:
-            self.log_error("LDAP server unavailable")
-            raise HTTPError(StatusResponse(responsecode.SERVICE_UNAVAILABLE, "LDAP server unavailable"))
-        except ldap.NO_SUCH_OBJECT:
-            pass
-        except ldap.FILTER_ERROR, e:
-            self.log_error("LDAP filter error: %s %s" % (e, filterstr))
-        except ldap.SIZELIMIT_EXCEEDED, e:
-            self.log_error("LDAP size limited exceeded: %s sizelimit %s (#results=%d)" % (e, sizelimit, len(s.allResults), ))
-        except ldap.TIMELIMIT_EXCEEDED, e:
-            self.log_error("LDAP timeout %s timeout %s (#results=%d)" % (e, timeout, len(s.allResults), ))
-        except ldap.TIMEOUT, e:
-            self.log_error("LDAP timeout %s (#results=%d)" % (e, len(s.allResults), ))
-        
-        # change format, ignoring resultsType
-        result = [resultItem for resultType, resultItem in s.allResults]
+        for i in xrange(TRIES):
+            try:
+                s = ldap.async.List(self.getLDAPConnection())
+                s.startSearch(base, scope, filterstr, attrList=attrlist,
+                    timeout=timeoutSeconds,
+                    sizelimit=resultLimit)
+                startTime = time.time()
+                s.processResults()
+            except ldap.NO_SUCH_OBJECT:
+                return []
+            except ldap.FILTER_ERROR, e:
+                self.log_error("LDAP filter error: %s %s" % (e, filterstr))
+                return []
+            except ldap.SIZELIMIT_EXCEEDED, e:
+                self.log_debug("LDAP result limit exceeded: %d" % (resultLimit,))
+            except ldap.TIMELIMIT_EXCEEDED, e:
+                self.log_warn("LDAP timeout exceeded: %d seconds" % (timeoutSeconds,))
+            except ldap.SERVER_DOWN:
+                self.ldap = None
+                self.log_error("LDAP server unavailable (tried %d times)" % (i+1,))
+                continue
 
-        totalTime = time.time() - startTime
-        if totalTime > self.warningThresholdSeconds:
-            if filterstr and len(filterstr) > 100:
-                filterstr = "%s..." % (filterstr[:100],)
-            self.log_error("LDAP query exceeded threshold: %.2f seconds for %s %s %s (#results=%d)" %
-                (totalTime, base, filterstr, attrlist, len(result)))
-        return result
+            # change format, ignoring resultsType
+            result = [resultItem for resultType, resultItem in s.allResults]
+
+            totalTime = time.time() - startTime
+            if totalTime > self.warningThresholdSeconds:
+                if filterstr and len(filterstr) > 100:
+                    filterstr = "%s..." % (filterstr[:100],)
+                self.log_error("LDAP query exceeded threshold: %.2f seconds for %s %s %s (#results=%d)" %
+                    (totalTime, base, filterstr, attrlist, len(result)))
+            return result
+
+        raise HTTPError(StatusResponse(responsecode.SERVICE_UNAVAILABLE, "LDAP server unavailable"))
 
 
     @property
@@ -951,15 +971,19 @@ class LdapDirectoryService(CachingDirectoryService):
 
             else:
                 scope = ldap.SCOPE_SUBTREE
-                filterstr = buildFilter(self.rdnSchema[recordType]["mapping"],
-                    fields, operand=operand)
+                filterstr = buildFilter(recordType,
+                    self.rdnSchema[recordType]["mapping"],
+                    fields, operand=operand,
+                    optimizeMultiName=self.optimizeMultiName)
 
             if filterstr is not None:
                 # Query the LDAP server
                 self.log_debug("LDAP search %s %s %s" %
                     (ldap.dn.dn2str(base), scope, filterstr))
-                results = self.timedSearch(ldap.dn.dn2str(base), scope, filterstr=filterstr,
-                    attrlist=self.attrlist)
+                results = self.timedSearch(ldap.dn.dn2str(base), scope,
+                    filterstr=filterstr, attrlist=self.attrlist,
+                    timeoutSeconds=self.requestTimeoutSeconds,
+                    resultLimit=self.requestResultsLimit)
                 self.log_debug("LDAP search returned %d results" % (len(results),))
                 numMissingGuids = 0
                 numMissingRecordNames = 0
@@ -1105,7 +1129,17 @@ def normalizeDNstr(dnStr):
     return ' '.join(ldap.dn.dn2str(ldap.dn.str2dn(dnStr.lower())).split())
 
 
-def buildFilter(mapping, fields, operand="or"):
+def _convertValue(value, matchType):
+    if matchType == "starts-with":
+        value = "%s*" % (ldapEsc(value),)
+    elif matchType == "contains":
+        value = "*%s*" % (ldapEsc(value),)
+    # otherwise it's an exact match
+    else:
+        value = ldapEsc(value)
+    return value
+
+def buildFilter(recordType, mapping, fields, operand="or", optimizeMultiName=False):
     """
     Create an LDAP filter string from a list of tuples representing directory
     attributes to search
@@ -1117,29 +1151,55 @@ def buildFilter(mapping, fields, operand="or"):
     """
 
     converted = []
+    combined = {}
     for field, value, caseless, matchType in fields:
         ldapField = mapping.get(field, None)
         if ldapField:
-            if matchType == "starts-with":
-                value = "%s*" % (ldapEsc(value),)
-            elif matchType == "contains":
-                value = "*%s*" % (ldapEsc(value),)
-            # otherwise it's an exact match
-            else:
-                value = ldapEsc(value)
+            combined.setdefault(field, []).append((value, caseless, matchType))
+            value = _convertValue(value, matchType)
             converted.append("(%s=%s)" % (ldapField, value))
 
     if len(converted) == 0:
-        filterstr = None
-    elif len(converted) == 1:
+        return None
+
+    if optimizeMultiName and recordType in ("users", "groups"):
+        for field in [key for key in combined.keys() if key != "guid"]:
+            if len(combined.get(field, [])) > 1:
+                # Client is searching on more than one name -- interpret this as the user
+                # explicitly looking up a user by name (ignoring other record types), and
+                # try the various firstName/lastName permutations:
+                if recordType == "users":
+                    converted = []
+                    for firstName, firstCaseless, firstMatchType in combined["firstName"]:
+                        for lastName, lastCaseless, lastMatchType in combined["lastName"]:
+                            if firstName != lastName:
+                                firstValue = _convertValue(firstName, firstMatchType)
+                                lastValue = _convertValue(lastName, lastMatchType)
+                                converted.append("(&(%s=%s)(%s=%s))" %
+                                    (mapping["firstName"], firstValue,
+                                     mapping["lastName"], lastValue)
+                                )
+                else:
+                    return None
+
+    if len(converted) == 1:
         filterstr = converted[0]
     else:
         operand = ("|" if operand == "or" else "&")
         filterstr = "(%s%s)" % (operand, "".join(converted))
 
+    if filterstr:
+        # To reduce the amount of records returned, filter out the ones
+        # that don't have (possibly) required attribute values (record
+        # name, guid)
+        additional = []
+        for key in ("recordName", "guid"):
+            if mapping.has_key(key):
+                additional.append("(%s=*)" % (mapping.get(key),))
+        if additional:
+            filterstr = "(&%s%s)" % ("".join(additional), filterstr)
+
     return filterstr
-
-
 
 
 class LdapDirectoryRecord(CachingDirectoryRecord):
