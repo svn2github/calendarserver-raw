@@ -7,6 +7,21 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		6661EBC71512997600B11823 /* carddav-odtest.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "carddav-odtest.plist"; sourceTree = "<group>"; };
+		667574CC151168C400BE9C7C /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = SOURCE_ROOT; };
+		667574CD151168C400BE9C7C /* diffbranch */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = diffbranch; sourceTree = SOURCE_ROOT; };
+		667574CE151168C400BE9C7C /* directorysetup.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = directorysetup.py; sourceTree = SOURCE_ROOT; };
+		667574CF151168C400BE9C7C /* Makefile.Apple */ = {isa = PBXFileReference; lastKnownFileType = text; path = Makefile.Apple; sourceTree = SOURCE_ROOT; };
+		667574D0151168C400BE9C7C /* mergebranch */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = mergebranch; sourceTree = SOURCE_ROOT; };
+		667574D1151168C400BE9C7C /* patchapply */ = {isa = PBXFileReference; lastKnownFileType = text; path = patchapply; sourceTree = SOURCE_ROOT; };
+		667574D2151168C400BE9C7C /* patchmaker */ = {isa = PBXFileReference; lastKnownFileType = text; path = patchmaker; sourceTree = SOURCE_ROOT; };
+		667574D3151168C400BE9C7C /* pull-up */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "pull-up"; sourceTree = SOURCE_ROOT; };
+		667574D4151168C400BE9C7C /* py.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = py.sh; sourceTree = SOURCE_ROOT; };
+		667574D5151168C400BE9C7C /* pydoctor */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = pydoctor; sourceTree = SOURCE_ROOT; };
+		667574D6151168C400BE9C7C /* pygettext.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = pygettext.py; sourceTree = SOURCE_ROOT; };
+		667574D7151168C400BE9C7C /* shell.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = shell.sh; sourceTree = SOURCE_ROOT; };
+		667574D8151168C400BE9C7C /* submit */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = submit; sourceTree = SOURCE_ROOT; };
+		667574DC151168C400BE9C7C /* version.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = version.py; sourceTree = SOURCE_ROOT; };
 		66EAD03D150AF4EB00B8C5A7 /* benchmark */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = benchmark; path = ../benchmark; sourceTree = "<group>"; };
 		66EAD03E150AF4EB00B8C5A7 /* benchreport */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = benchreport; path = ../benchreport; sourceTree = "<group>"; };
 		66EAD040150AF4EB00B8C5A7 /* _calendarserver_preamble.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = _calendarserver_preamble.py; sourceTree = "<group>"; };
@@ -155,7 +170,7 @@
 		66EAD0F1150AF4EB00B8C5A7 /* caldavd-partitioning-secondary.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "caldavd-partitioning-secondary.plist"; sourceTree = "<group>"; };
 		66EAD0F2150AF4EB00B8C5A7 /* caldavd-test.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "caldavd-test.plist"; sourceTree = "<group>"; };
 		66EAD0F3150AF4EB00B8C5A7 /* caldavd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = caldavd.plist; sourceTree = "<group>"; };
-		66EAD0F4150AF4EB00B8C5A7 /* carddav-ldaptest.plist */ = {isa = PBXFileReference; path = "carddav-ldaptest.plist"; sourceTree = "<group>"; };
+		66EAD0F4150AF4EB00B8C5A7 /* carddav-ldaptest.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "carddav-ldaptest.plist"; sourceTree = "<group>"; };
 		66EAD0F5150AF4EB00B8C5A7 /* mime.types */ = {isa = PBXFileReference; lastKnownFileType = text; path = mime.types; sourceTree = "<group>"; };
 		66EAD0F7150AF4EB00B8C5A7 /* caldavd-resources.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "caldavd-resources.plist"; sourceTree = "<group>"; };
 		66EAD0F8150AF4EB00B8C5A7 /* locations-resources-orig.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "locations-resources-orig.xml"; sourceTree = "<group>"; };
@@ -1631,11 +1646,33 @@
 				66EAD1EF150AF4EB00B8C5A7 /* sim */,
 				66EAD1F0150AF4EB00B8C5A7 /* test */,
 				66EAD1F1150AF4EB00B8C5A7 /* testserver */,
-				66EAD1F2150AF4EB00B8C5A7 /* twext */,
 				66EAD2AE150AF4EB00B8C5A7 /* twisted */,
 				66EAD2B3150AF4EB00B8C5A7 /* twistedcaldav */,
-				66EAD66E150AF4EC00B8C5A7 /* txdav */,
+				66EAD1F2150AF4EB00B8C5A7 /* twext */,
+				667574CA1511685600BE9C7C /* support */,
 			);
+			sourceTree = "<group>";
+		};
+		667574CA1511685600BE9C7C /* support */ = {
+			isa = PBXGroup;
+			children = (
+				667574CC151168C400BE9C7C /* build.sh */,
+				667574CD151168C400BE9C7C /* diffbranch */,
+				667574CE151168C400BE9C7C /* directorysetup.py */,
+				667574CF151168C400BE9C7C /* Makefile.Apple */,
+				667574D0151168C400BE9C7C /* mergebranch */,
+				667574D1151168C400BE9C7C /* patchapply */,
+				667574D2151168C400BE9C7C /* patchmaker */,
+				667574D3151168C400BE9C7C /* pull-up */,
+				667574D4151168C400BE9C7C /* py.sh */,
+				667574D5151168C400BE9C7C /* pydoctor */,
+				667574D6151168C400BE9C7C /* pygettext.py */,
+				667574D7151168C400BE9C7C /* shell.sh */,
+				667574D8151168C400BE9C7C /* submit */,
+				667574DC151168C400BE9C7C /* version.py */,
+			);
+			name = support;
+			path = ../txdav;
 			sourceTree = "<group>";
 		};
 		66EAD03F150AF4EB00B8C5A7 /* bin */ = {
@@ -2036,6 +2073,7 @@
 				66EAD0F2150AF4EB00B8C5A7 /* caldavd-test.plist */,
 				66EAD0F3150AF4EB00B8C5A7 /* caldavd.plist */,
 				66EAD0F4150AF4EB00B8C5A7 /* carddav-ldaptest.plist */,
+				6661EBC71512997600B11823 /* carddav-odtest.plist */,
 				66EAD0F5150AF4EB00B8C5A7 /* mime.types */,
 				66EAD0F6150AF4EB00B8C5A7 /* resources */,
 				66EAD0FB150AF4EB00B8C5A7 /* resources.xml */,
@@ -2873,6 +2911,7 @@
 		66EAD2B3150AF4EB00B8C5A7 /* twistedcaldav */ = {
 			isa = PBXGroup;
 			children = (
+				66EAD66E150AF4EC00B8C5A7 /* txdav */,
 				66EAD2B4150AF4EB00B8C5A7 /* __init__.py */,
 				66EAD2B5150AF4EB00B8C5A7 /* accounting.py */,
 				66EAD2B6150AF4EB00B8C5A7 /* authkerb.py */,
