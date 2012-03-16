@@ -20,7 +20,7 @@ Apple Open Directory directory service implementation for backing up directory-b
 """
 
 __all__ = [
-    "LdapDirectoryBackingService", "VCardRecord",
+    "LdapDirectoryBackingService",
 ]
 
 import traceback
@@ -45,10 +45,9 @@ from twistedcaldav.directory.opendirectorybacker import VCardRecord, dsFilterFro
 class LdapDirectoryBackingService(LdapDirectoryService):
     """
     """
-
-    baseGUID = "BF07A1A2-5BB5-4A4D-A59A-67260EA7E143"
-    node="/Search"
     
+    node="/Search"
+
     def __repr__(self):
         return "<%s %r>" % (self.__class__.__name__, self.realmName, )
 
@@ -73,10 +72,10 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                      },
                 },
             },
-            "appleInternalServer":False,         # does magic in VCardRecord
-            "maxQueryRecords":0,                 # max records returned
-            "fakeETag":True,                     # eTag is fake, otherwise it is md5(all attributes)
-            "generateSimpleUIDs":False,    # if UID is faked, use simple method for generating
+            "appleInternalServer":False,    # does magic in VCardRecord
+            "maxQueryRecords":0,            # max records returned
+            "fakeETag":True,                # eTag is fake, otherwise it is md5(all attributes)
+            "generateSimpleUIDs":False,     # if UID is faked, use simple method for generating
        }
 
         #params = self.getParams(params, defaults, ignored)
@@ -137,7 +136,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 
         self.realmName = None # needed for super        
         
-        ### used by VCardRecord.
+        ### params for VCardRecord()
         self.fakeETag = fakeETag
         self.generateSimpleUIDs = generateSimpleUIDs
         self.appleInternalServer = appleInternalServer
@@ -227,9 +226,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             if allRecords:
                 dsFilter = None #  None expression == all Records
                 
-            # could stop query for all, but OK because of post filtering.
-            # clear = not allRecords and not dsFilter
-            clear = False
+            # stop query all
+            clear = not allRecords and not dsFilter
                     
             if not clear:
                 queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapAttrToDSAttrMap )
