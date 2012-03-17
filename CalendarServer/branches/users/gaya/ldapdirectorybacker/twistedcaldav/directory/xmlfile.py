@@ -38,6 +38,7 @@ from twistedcaldav.directory.util import normalizeUUID
 from twistedcaldav.scheduling.cuaddress import normalizeCUAddr
 from twistedcaldav.xmlutil import addSubElement, createElement, elementToXML
 from uuid import uuid4
+from twisted.internet.defer import succeed
 
 
 class XMLDirectoryService(DirectoryService):
@@ -337,7 +338,8 @@ class XMLDirectoryService(DirectoryService):
             recordTypes = list(self.recordTypes())
         else:
             recordTypes = (recordType,)
-
+        
+        records = []
         for recordType in recordTypes:
             for xmlPrincipal in self._accounts()[recordType].itervalues():
                 if xmlPrincipalMatches(xmlPrincipal):
@@ -345,8 +347,8 @@ class XMLDirectoryService(DirectoryService):
                     # Load/cache record from its GUID
                     record = self.recordWithGUID(xmlPrincipal.guid)
                     if record:
-                        yield record
-
+                        records.append(record)
+        return succeed(records) 
 
     def _addElement(self, parent, principal):
         """
