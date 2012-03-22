@@ -39,7 +39,7 @@ from twistedcaldav.directory.directory import DirectoryRecord
 from twistedcaldav.directory.ldapdirectory import LdapDirectoryService
 
 import ldap
-from twistedcaldav.directory.opendirectorybacker import VCardResource, dsFilterFromAddressBookFilter, propertiesInAddressBookQuery
+from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter, propertiesInAddressBookQuery
 
 
 class LdapDirectoryBackingService(LdapDirectoryService):
@@ -74,7 +74,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 ),
 
             },
-            "appleInternalServer":False,    # does magic in VCardResource
+            "appleInternalServer":False,    # does magic in ABDirectoryQueryResult
             "maxQueryRecords":0,            # max records returned
             "fakeETag":True,                # eTag is fake, otherwise it is md5(all attributes)
             "generateSimpleUIDs":False,     # if UID is faked, use simple method for generating
@@ -138,14 +138,14 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 
         self.realmName = None # needed for super        
         
-        ### params for VCardResource()
+        ### params for ABDirectoryQueryResult()
         self.fakeETag = fakeETag
         self.generateSimpleUIDs = generateSimpleUIDs
         self.appleInternalServer = appleInternalServer
  
         super(LdapDirectoryBackingService, self).__init__(params)
         
-         ### self.defaultNodeName used by VCardResource.
+         ### self.defaultNodeName used by ABDirectoryQueryResult.
         # get this now once
         hostname = getfqdn()
         if hostname:
@@ -192,7 +192,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
  
     @inlineCallbacks
-    def vCardResourcesForAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
+    def doAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
         """
         Get vCards for a given addressBookFilter and addressBookQuery
         """
@@ -212,7 +212,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             ldapAttrToDSAttrMap = queryMap["ldapAttrToDSAttrMap"]
 
             allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap );
-            self.log_debug("vCardResourcesForAddressBookQuery: rdn=%s LDAP allRecords=%s, filterAttributes=%s, query=%s" % (rdn, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
+            self.log_debug("doAddressBookQuery: rdn=%s LDAP allRecords=%s, filterAttributes=%s, query=%s" % (rdn, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
             
             if allRecords:
@@ -224,7 +224,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             if not clear:
                 queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapAttrToDSAttrMap )
                 attributes = filterAttributes + queryAttributes if queryAttributes else None
-                self.log_debug("vCardResourcesForAddressBookQuery: attributes=%s, queryAttributes=%s" % (attributes, queryAttributes,))
+                self.log_debug("doAddressBookQuery: attributes=%s, queryAttributes=%s" % (attributes, queryAttributes,))
                 
                 #get all ldap attributes -- for debug
                 if queryMap.get("getAllAttributes"):
@@ -245,11 +245,11 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 # can't resist also using a timeout, 1 sec per requested record for now
                 timeout = maxRecords
 
-                self.log_debug("vCardResourcesForAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s resultLimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxRecords))
+                self.log_debug("doAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s resultLimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxRecords))
                 
                 ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeoutSeconds=timeout, resultLimit=maxRecords))
     
-                self.log_debug("vCardResourcesForAddressBookQuery: ldapSearchResult=%s" % (ldapSearchResult,))
+                self.log_debug("doAddressBookQuery: ldapSearchResult=%s" % (ldapSearchResult,))
                 
                 for dn, ldapAttributes in ldapSearchResult:
                     #dn = normalizeDNstr(dn)
@@ -274,7 +274,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                     for dsAttributeName in dsAttributeNames:
                                         
                                         # base64 encode binary attributes
-                                        if dsAttributeName in VCardResource.binaryDSAttributeStrs:
+                                        if dsAttributeName in ABDirectoryQueryResult.binaryDSAttributeStrs:
                                             ldapAttributeValues = [attr.encode('base64') for attr in ldapAttributeValues]
                                         
                                         # add to dsRecordAttributes
@@ -282,16 +282,16 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                             dsRecordAttributes[dsAttributeName] = list()
                                             
                                         dsRecordAttributes[dsAttributeName] = list(set(dsRecordAttributes[dsAttributeName] + ldapAttributeValues))
-                                        self.log_debug("vCardResourcesForAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
+                                        self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
  
                         # get a record for dsRecordAttributes 
-                        dsRecord = VCardResource(self.directoryBackedAddressBook, dsRecordAttributes, defaultNodeName=None, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
+                        dsRecord = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, defaultNodeName=None, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
                         vCardText = dsRecord.vCardText()
                     except:
                         traceback.print_exc()
                         self.log_info("Could not get vcard for ds record %s" % (dsRecord,))
                     else:
-                        self.log_debug("vCardResourcesForAddressBookQuery: VCard text =\n%s" % (vCardText, ))
+                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (vCardText, ))
                         queryRecords.append(dsRecord)
                 
                 # only get requested number of record results

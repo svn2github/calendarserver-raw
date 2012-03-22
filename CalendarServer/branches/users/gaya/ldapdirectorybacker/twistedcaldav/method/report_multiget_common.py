@@ -275,7 +275,7 @@ def multiget_common(self, request, multiget, collection_type):
                 
                 #get vCards and filter
                 limit = config.DirectoryAddressBook.MaxQueryResults
-                vCardResources, limited = (yield self.directory.vCardResourcesForAddressBookQuery( addressBookFilter, propertyreq, limit ))
+                results, limited = (yield self.directory.doAddressBookQuery( addressBookFilter, propertyreq, limit ))
                 if limited:
                     log.err("Too many results in multiget report: %d" % len(resources))
                     raise HTTPError(ErrorResponse(
@@ -286,7 +286,7 @@ def multiget_common(self, request, multiget, collection_type):
                
                 for href in valid_hrefs:
                     matchingResource = None
-                    for vCardResource in vCardResources:
+                    for vCardResource in results:
                         if href == vCardResource.hRef(): # might need to compare urls instead - also case sens ok?
                             matchingResource = vCardResource
                             break;

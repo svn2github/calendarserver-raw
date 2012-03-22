@@ -38,7 +38,7 @@ from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav.directory.directory import DirectoryRecord
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 
-from twistedcaldav.directory.opendirectorybacker import VCardResource, dsFilterFromAddressBookFilter
+from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter
 from calendarserver.platform.darwin.od import dsattributes, dsquery
 
 
@@ -121,7 +121,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
         
         super(XMLDirectoryBackingService, self).__init__(params)
         
-         ### self.defaultNodeName used by VCardResource.
+         ### self.defaultNodeName used by ABDirectoryQueryResult.
         # get this now once
         hostname = getfqdn()
         if hostname:
@@ -151,7 +151,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                         
 
     @inlineCallbacks
-    def vCardResourcesForAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
+    def doAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
         """
         Get vCards for a given addressBookFilter and addressBookQuery
         """
@@ -171,7 +171,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
             dirRecordAttrToDSAttrMap = queryMap["dirRecordAttrToDSAttrMap"]
 
             allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap );
-            self.log_debug("vCardResourcesForAddressBookQuery: queryType=\"%s\" LDAP allRecords=%s, filterAttributes=%s, query=%s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
+            self.log_debug("doAddressBookQuery: queryType=\"%s\" LDAP allRecords=%s, filterAttributes=%s, query=%s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
             
             if allRecords:
@@ -240,16 +240,16 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                                 
                 # walk the expression tree
                 xmlDirectoryRecords = (yield recordsForDSFilter(dsFilter, queryType))
-                self.log_debug("vCardResourcesForAddressBookQuery: #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords) if xmlDirectoryRecords is not None else xmlDirectoryRecords, ))
+                self.log_debug("doAddressBookQuery: #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords) if xmlDirectoryRecords is not None else xmlDirectoryRecords, ))
                 
                 if xmlDirectoryRecords is None:
                     xmlDirectoryRecords = (yield self.listRecords(queryType))
-                    self.log_debug("vCardResourcesForAddressBookQuery: all #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords), ))
+                    self.log_debug("doAddressBookQuery: all #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords), ))
                 
                 # apply limit
                 if len(xmlDirectoryRecords) > maxRecords:
                     xmlDirectoryRecords = set(list(xmlDirectoryRecords)[:maxRecords])
-                self.log_debug("vCardResourcesForAddressBookQuery: #xmlDirectoryRecords after max %s" % (len(xmlDirectoryRecords), ))
+                self.log_debug("doAddressBookQuery: #xmlDirectoryRecords after max %s" % (len(xmlDirectoryRecords), ))
                    
                 for xmlDirectoryRecord in xmlDirectoryRecords:
                     
@@ -267,14 +267,14 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                     dsRecord = None
                     dsRecordAttributes = dsRecordAttributesFromDirectoryRecord( xmlDirectoryRecord )
                     try:
-                        dsRecord = VCardResource(self.directoryBackedAddressBook, dsRecordAttributes,)
+                        dsRecord = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes,)
                         vCardText = dsRecord.vCardText()
                    
                     except:
                         traceback.print_exc()
                         self.log_info("Could not get vcard for ds record %s" % (dsRecord,))
                     else:
-                        self.log_debug("vCardResourcesForAddressBookQuery: VCard text =\n%s" % (vCardText, ))
+                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (vCardText, ))
                         queryRecords.append(dsRecord)
                 
                 
