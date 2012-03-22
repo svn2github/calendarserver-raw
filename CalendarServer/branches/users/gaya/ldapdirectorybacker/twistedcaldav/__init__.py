@@ -33,16 +33,12 @@ File.contentTypes = loadMimeTypes(("/etc/apache2/mime.types", "/etc/httpd/mime.t
 # Register additional WebDAV XML elements
 #
 
-import twext.web2.dav.davxml
 import twistedcaldav.caldavxml
 import twistedcaldav.carddavxml
 import twistedcaldav.mkcolxml
 import twistedcaldav.customxml
 
-twext.web2.dav.davxml.registerElements(twistedcaldav.caldavxml)
-twext.web2.dav.davxml.registerElements(twistedcaldav.customxml)
-twext.web2.dav.davxml.registerElements(twistedcaldav.carddavxml)
-twext.web2.dav.davxml.registerElements(twistedcaldav.mkcolxml)
+twistedcaldav # Shhh.. pyflakes
 
 #
 # DefaultHTTPHandler

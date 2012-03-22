@@ -28,8 +28,8 @@ from twisted.internet.defer import deferredGenerator, maybeDeferred, waitForDefe
 from twisted.python import failure, log
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.web2 import responsecode
-from twext.web2.dav import davxml
-from twext.web2.dav.element.base import dav_namespace
+from txdav.xml import element as davxml
+from txdav.xml.base import dav_namespace
 from twext.web2.dav.fileop import copy, delete, put
 from twext.web2.dav.http import ErrorResponse
 from twext.web2.dav.resource import TwistedGETContentMD5

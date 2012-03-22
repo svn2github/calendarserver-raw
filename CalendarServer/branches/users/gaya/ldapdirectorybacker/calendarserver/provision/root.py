@@ -22,7 +22,7 @@ __all__ = [
 from twext.python.log import Logger
 from twext.web2 import responsecode
 from twext.web2.auth.wrapper import UnauthorizedResponse
-from twext.web2.dav import davxml
+from txdav.xml import element as davxml
 from twext.web2.dav.xattrprops import xattrPropertyStore
 from twext.web2.http import HTTPError, StatusResponse, RedirectResponse
 
@@ -105,7 +105,8 @@ class RootResource (ReadOnlyResourceMixIn, DirectoryPrincipalPropertySearchMixIn
         if not config.EnableKeepAlive:
             def addConnectionClose(request, response):
                 response.headers.setHeader("connection", ("close",))
-                request.chanRequest.channel.setReadPersistent(False)
+                if request.chanRequest is not None:
+                    request.chanRequest.channel.setReadPersistent(False)
                 return response
             self.contentFilters.append((addConnectionClose, True))
 

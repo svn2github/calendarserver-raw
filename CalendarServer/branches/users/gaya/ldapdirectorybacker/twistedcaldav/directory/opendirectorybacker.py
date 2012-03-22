@@ -40,8 +40,8 @@ from pycalendar.datetime import PyCalendarDateTime
 from socket import getfqdn
 
 from twisted.internet.defer import inlineCallbacks, returnValue, deferredGenerator, succeed
-from twext.web2.dav import davxml
-from twext.web2.dav.element.base import twisted_dav_namespace, dav_namespace, parse_date, twisted_private_namespace
+from txdav.xml import element as davxml
+from txdav.xml.base import twisted_dav_namespace, dav_namespace, parse_date, twisted_private_namespace
 from twext.web2.dav.resource import DAVPropertyMixIn
 from twext.web2.dav.util import joinURL
 from twext.web2.http_headers import MimeType, generateContentType, ETag

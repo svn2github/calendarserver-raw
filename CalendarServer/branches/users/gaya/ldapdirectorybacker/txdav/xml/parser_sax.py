@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2005-2012 Apple Computer, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,79 +18,20 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-#
-# DRI: Wilfredo Sanchez, wsanchez@apple.com
 ##
 
-"""
-WebDAV XML parsing.
-
-This module provides XML utilities for use with WebDAV.
-
-See RFC 2518: http://www.ietf.org/rfc/rfc2518.txt (WebDAV)
-"""
-
 __all__ = [
-    "registerElement",
-    "registerElements",
-    "lookupElement",
     "WebDAVDocument",
 ]
 
-import cStringIO as StringIO
 import xml.dom.minidom
 import xml.sax
 
-from twext.web2.dav.element.base import WebDAVElement, WebDAVUnknownElement, PCDATAElement
-from twext.web2.dav.element.util import PrintXML
+from txdav.xml.base import WebDAVUnknownElement, PCDATAElement
+from txdav.xml.base import _elements_by_qname
+from txdav.xml.parser_base import AbstractWebDAVDocument
+from txdav.xml.xmlext import Print as xmlPrint
 
-##
-# Parsing
-##
-
-def registerElements(module):
-    """
-    Register XML elements defined in the given module with the parser.
-    """
-    element_names = []
-
-    items = module.__all__ if hasattr(module, "__all__") else dir(module)
-    for element_class_name in items:
-        element_class = getattr(module, element_class_name)
-
-        if type(element_class) is type and issubclass(element_class, WebDAVElement):
-            if element_class.namespace is None: continue
-            if element_class.name is None: continue
-            if element_class.unregistered: continue
-
-            registerElement(element_class, element_names)
-
-    return element_names
-
-def registerElement(element_class, element_names=None):
-    """
-    Register the supplied XML elements with the parser.
-    """
-    qname = element_class.namespace, element_class.name
-    
-    if qname in elements_by_tag_name:
-        raise AssertionError(
-            "Attempting to register qname %s multiple times: (%r, %r)"
-            % (qname, elements_by_tag_name[qname], element_class)
-        )
-    
-    if not (qname in elements_by_tag_name and issubclass(element_class, elements_by_tag_name[qname])):
-        elements_by_tag_name[qname] = element_class
-        if element_names is not None:
-            element_names.append(element_class.__name__)
-
-def lookupElement(qname):
-    """
-    Return the element class for the element with the given qname.
-    """
-    return elements_by_tag_name[qname]
-
-elements_by_tag_name = {}
 
 class WebDAVContentHandler (xml.sax.handler.ContentHandler):
     def setDocumentLocator(self, locator): self.locator = locator
@@ -129,7 +70,6 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
         del(self.unknownElementClasses)
 
     def startElementNS(self, name, qname, attributes):
-
         if self._characterBuffer is not None:
             pcdata = PCDATAElement("".join(self._characterBuffer))
             self.stack[-1]["children"].append(pcdata)
@@ -143,8 +83,8 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
 
         tag_namespace, tag_name = name
 
-        if name in elements_by_tag_name:
-            element_class = elements_by_tag_name[name]
+        if name in _elements_by_qname:
+            element_class = _elements_by_qname[name]
         elif name in self.unknownElementClasses:
             element_class = self.unknownElementClasses[name]
         else:
@@ -163,7 +103,6 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
         })
 
     def endElementNS(self, name, qname):
-        
         if self._characterBuffer is not None:
             pcdata = PCDATAElement("".join(self._characterBuffer))
             self.stack[-1]["children"].append(pcdata)
@@ -186,7 +125,6 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
         self.stack[-1]["children"].append(element)
 
     def characters(self, content):
-        
         # Stash character data away in a list that we will "".join() when done
         if self._characterBuffer is None:
             self._characterBuffer = []
@@ -207,62 +145,27 @@ class WebDAVContentHandler (xml.sax.handler.ContentHandler):
     def skippedEntity(self, name):
         raise AssertionError("skipped entities are not allowed")
 
-class WebDAVDocument (object):
-    """
-    WebDAV XML document.
-    """
-    def _parse(source_is_string):
-        def parse(source):
-            handler = WebDAVContentHandler()
-            parser  = xml.sax.make_parser()
 
-            parser.setContentHandler(handler)
-            parser.setFeature(xml.sax.handler.feature_namespaces, True)
+class WebDAVDocument(AbstractWebDAVDocument):
+    @classmethod
+    def fromStream(cls, source):
+        handler = WebDAVContentHandler()
+        parser  = xml.sax.make_parser()
 
-            if source_is_string: source = StringIO.StringIO(source)
+        parser.setContentHandler(handler)
+        parser.setFeature(xml.sax.handler.feature_namespaces, True)
 
-            try:
-                parser.parse(source)
-            except xml.sax.SAXParseException, e:
-                raise ValueError(e)
+        try:
+            parser.parse(source)
+        except xml.sax.SAXParseException, e:
+            raise ValueError(e)
 
-            #handler.dom.root_element.validate()
+        #handler.dom.root_element.validate()
 
-            return handler.dom
-
-        return parse
+        return handler.dom
         
-    fromStream = staticmethod(_parse(False))
-    fromString = staticmethod(_parse(True ))
-
-    def __init__(self, root_element):
-        """
-        root_element must be a WebDAVElement instance.
-        """
-        super(WebDAVDocument, self).__init__()
-
-        if not isinstance(root_element, WebDAVElement):
-            raise ValueError("Not a WebDAVElement: %r" % (root_element,))
-
-        self.root_element = root_element
-
-    def __str__(self):
-        output = StringIO.StringIO()
-        self.writeXML(output)
-        return output.getvalue()
-
-    def __eq__(self, other):
-        if isinstance(other, WebDAVDocument):
-            return self.root_element == other.root_element
-        else:
-            return NotImplemented
-
     def writeXML(self, output):
         document = xml.dom.minidom.Document()
         self.root_element.addToDOM(document, None)
-        PrintXML(document, stream=output)
-
-    def toxml(self):
-        output = StringIO.StringIO()
-        self.writeXML(output)
-        return output.getvalue()
+        #document.normalize()
+        xmlPrint(document, output)

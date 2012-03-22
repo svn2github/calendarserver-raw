@@ -33,8 +33,8 @@ import time
 from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 from twext.web2 import responsecode
 from twext.web2.http import HTTPError, StatusResponse
-from twext.web2.dav import davxml
-from twext.web2.dav.element.base import dav_namespace
+from txdav.xml import element as davxml
+from txdav.xml.base import dav_namespace
 from twext.web2.dav.util import joinURL
 from twext.web2.dav.noneprops import NonePropertyStore
 

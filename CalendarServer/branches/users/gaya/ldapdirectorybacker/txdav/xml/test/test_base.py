@@ -1,8 +1,6 @@
-# Copyright (c) 2009 Twisted Matrix Laboratories.
-# See LICENSE for details.
-
 ##
-# Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2005-2012 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2009 Twisted Matrix Laboratories.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,13 +22,50 @@
 ##
 
 """
-Tests for L{twext.web2.dav.davxml}.
+Tests for L{txdav.xml.base}.
 """
 
 from twisted.trial.unittest import TestCase
-from twext.web2.dav.davxml import WebDAVDocument, WebDAVUnknownElement
-from twext.web2.dav.davxml import Response, HRef, MultiStatus, Status
-from twext.web2.dav.davxml import CurrentUserPrincipal
+from txdav.xml.base import decodeXMLName, encodeXMLName
+from txdav.xml.base import WebDAVUnknownElement
+from txdav.xml.parser import WebDAVDocument
+
+
+class NameEncodeTests(TestCase):
+    """
+    Name encoding tests.
+    """
+    def test_decodeXMLName(self):
+        # Empty name
+        self.assertRaises(ValueError, decodeXMLName, "") 
+        self.assertRaises(ValueError, decodeXMLName, "{}")
+        self.assertRaises(ValueError, decodeXMLName, "{x}")
+
+        # Weird bracket cases
+        self.assertRaises(ValueError, decodeXMLName, "{")
+        self.assertRaises(ValueError, decodeXMLName, "x{")
+        self.assertRaises(ValueError, decodeXMLName, "{x")
+        self.assertRaises(ValueError, decodeXMLName, "}")
+        self.assertRaises(ValueError, decodeXMLName, "x}")
+        self.assertRaises(ValueError, decodeXMLName, "}x")  
+        self.assertRaises(ValueError, decodeXMLName, "{{}")
+        self.assertRaises(ValueError, decodeXMLName, "{{}}")
+        self.assertRaises(ValueError, decodeXMLName, "x{}")
+
+        # Empty namespace is OK
+        self.assertEquals(decodeXMLName(  "x"), (None, "x"))
+        self.assertEquals(decodeXMLName("{}x"), (None, "x"))
+
+        # Normal case
+        self.assertEquals(decodeXMLName("{namespace}name"), ("namespace", "name"))
+
+    def test_encodeXMLName(self):
+        # No namespace
+        self.assertEquals(encodeXMLName(None, "name"), "name")
+        self.assertEquals(encodeXMLName(""  , "name"), "name")
+
+        # Normal case
+        self.assertEquals(encodeXMLName("namespace", "name"), "{namespace}name")
 
 
 class WebDAVElementTestsMixin:
@@ -57,49 +92,16 @@ class WebDAVElementTestsMixin:
             WebDAVDocument.fromString(document.toxml()))
 
 
-
-class MultiStatusTests(WebDAVElementTestsMixin, TestCase):
-    """
-    Tests for L{MultiStatus}
-    """
-    serialized = (
-        '<?xml version="1.0" encoding="utf-8" ?>'
-        '<D:multistatus xmlns:D="DAV:">'
-        '  <D:response>'
-        '    <D:href>http://webdav.sb.aol.com/webdav/secret</D:href>'
-        '    <D:status>HTTP/1.1 403 Forbidden</D:status>'
-        '  </D:response>'
-        '</D:multistatus>')
-
-    element = MultiStatus(
-        Response(
-            HRef("http://webdav.sb.aol.com/webdav/secret"),
-            Status("HTTP/1.1 403 Forbidden")))
-
-
-
 class WebDAVUnknownElementTests(WebDAVElementTestsMixin, TestCase):
     """
     Tests for L{WebDAVUnknownElement}.
     """
     serialized = (
-        '<?xml version="1.0" encoding="utf-8" ?>'
-        '<T:foo xmlns:T="http://twistedmatrix.com/"/>')
+        """<?xml version="1.0" encoding="utf-8" ?>"""
+        """<T:foo xmlns:T="http://twistedmatrix.com/"/>"""
+    )
 
-    element = WebDAVUnknownElement()
-    element.namespace = "http://twistedmatrix.com/"
-    element.name = "foo"
-
-
-
-class CurrentUserPrincipalTests(WebDAVElementTestsMixin, TestCase):
-    """
-    Tests for L{CurrentUserPrincipal}.
-    """
-    serialized = (
-        '<?xml version="1.0" encoding="utf-8" ?>'
-        '<D:current-user-principal xmlns:D="DAV:">'
-        '  <D:href>foo</D:href>'
-        '</D:current-user-principal>')
-
-    element = CurrentUserPrincipal(HRef("foo"))
+    element = WebDAVUnknownElement.withName(
+        "http://twistedmatrix.com/",
+        "foo"
+    )

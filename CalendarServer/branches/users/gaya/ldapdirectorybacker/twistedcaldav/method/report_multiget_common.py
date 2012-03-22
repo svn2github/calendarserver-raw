@@ -24,8 +24,8 @@ from urllib import unquote
 
 from twext.python.log import Logger
 from twext.web2 import responsecode
-from twext.web2.dav import davxml
-from twext.web2.dav.element.base import dav_namespace
+from txdav.xml import element as davxml
+from txdav.xml.base import dav_namespace
 from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 from twext.web2.dav.resource import AccessDeniedError
 from twext.web2.dav.util import joinURL

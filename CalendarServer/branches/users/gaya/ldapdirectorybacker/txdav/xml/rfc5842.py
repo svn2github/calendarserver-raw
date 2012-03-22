@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
+# Copyright (c) 2005-2012 Apple Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,12 +18,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-#
-# DRI: Cyrus Daboo, cdaboo@apple.com
 ##
-
-from twext.web2.dav.element.base import WebDAVTextElement, WebDAVElement,\
-    dav_namespace
 
 """
 RFC 5842 (Binding Extensions to WebDAV) XML Elements
@@ -33,6 +28,15 @@ This module provides XML element definitions for use with WebDAV.
 See RFC 5842: http://www.ietf.org/rfc/rfc5842.txt
 """
 
+__all__ = []
+
+
+from txdav.xml.base import WebDAVTextElement, WebDAVElement
+from txdav.xml.element import dav_namespace, registerElement, registerElementClass
+
+
+@registerElement
+@registerElementClass
 class ResourceID (WebDAVElement):
     """
     Unique identifier for a resource
@@ -43,6 +47,9 @@ class ResourceID (WebDAVElement):
 
     allowed_children = { (dav_namespace, "href"): (0, 1) }
 
+
+@registerElement
+@registerElementClass
 class ParentSet (WebDAVElement):
     """
     Identifies other bindings to a resource
@@ -53,6 +60,9 @@ class ParentSet (WebDAVElement):
 
     allowed_children = { (dav_namespace, "parent"): (0, 1) }
 
+
+@registerElement
+@registerElementClass
 class Parent (WebDAVElement):
 
     name = "parent"
@@ -62,13 +72,23 @@ class Parent (WebDAVElement):
         (dav_namespace, "segment") : (1, 1),
     }
 
+
+@registerElement
+@registerElementClass
 class Segment (WebDAVTextElement):
 
     name = "segment"
 
+
 # Problem: DAV:bind is also defined in RFC3744 but with our XML element parsing/mapping behavior
 # we are not allowed to have two class with the same qname(). So we are stuck.
+#
+# FIXME: redefine bind in rfc3744.py (with a note) to allow
+# sub-elements and so that can extend it here.
 
+
+#@registerElement
+#@registerElementClass
 #class BindResponse (WebDAVElement):
 #    """
 #    Response body for a BIND request
@@ -80,6 +100,9 @@ class Segment (WebDAVTextElement):
 #        # ANY
 #    }
 #
+#
+#@registerElement
+#@registerElementClass
 #class UnbindRequest (WebDAVElement):
 #    """
 #    Request body for a UNBIND request
@@ -91,6 +114,9 @@ class Segment (WebDAVTextElement):
 #        (dav_namespace, "segment") : (1, 1),
 #    }
 #
+#
+#@registerElement
+#@registerElementClass
 #class Unbind (WebDAVElement):
 #    """
 #    Response body for a UNBIND request
@@ -102,6 +128,9 @@ class Segment (WebDAVTextElement):
 #        # ANY
 #    }
 #
+#
+#@registerElement
+#@registerElementClass
 #class RebindRequest (WebDAVElement):
 #    """
 #    Request body for a REBIND request
@@ -114,6 +143,9 @@ class Segment (WebDAVTextElement):
 #        (dav_namespace, "href")    : (1, 1),
 #    }
 #
+#
+#@registerElement
+#@registerElementClass
 #class Rebind (WebDAVElement):
 #    """
 #    Response body for a UNBIND request

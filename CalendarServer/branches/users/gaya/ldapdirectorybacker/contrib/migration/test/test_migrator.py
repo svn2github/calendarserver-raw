@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2011 Apple Inc. All rights reserved.
+# Copyright (c) 2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -390,6 +390,43 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
             "Authentication": {
                 "Wiki" : {
                     "Enabled" : True,
+                },
+            },
+            "BindHTTPPorts": [8008, 8800],
+            "BindSSLPorts": [8443, 8843],
+            "EnableSSL" : False,
+            "HTTPPort": 8008,
+            "RedirectHTTPToHTTPS": False,
+            "SSLAuthorityChain": "",
+            "SSLCertificate": "",
+            "SSLPort": 8443,
+            "SSLPrivateKey": "",
+        }
+        newCombined = { }
+        mergePlist(oldCalDAV, oldCardDAV, newCombined)
+        self.assertEquals(newCombined, expected)
+
+
+    def test_disableXMPPNotifier(self):
+
+        # Ensure XMPPNotifier is disabled
+
+        oldCalDAV = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : True,
+                    },
+                },
+            },
+        }
+        oldCardDAV = { }
+        expected = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : False,
+                    },
                 },
             },
             "BindHTTPPorts": [8008, 8800],

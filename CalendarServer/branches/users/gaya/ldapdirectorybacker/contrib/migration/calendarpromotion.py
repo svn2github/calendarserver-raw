@@ -14,10 +14,12 @@ import os
 import shutil
 from pwd import getpwnam
 from grp import getgrnam
+from plistlib import readPlist, writePlist
 
 SRC_CONFIG_DIR = "/Applications/Server.app/Contents/ServerRoot/private/etc/caldavd"
 CALENDAR_SERVER_ROOT = "/Library/Server/Calendar and Contacts"
 DEST_CONFIG_DIR = "%s/Config" % (CALENDAR_SERVER_ROOT,)
+CALDAVD_PLIST = "caldavd.plist"
 USER_NAME = "calendar"
 GROUP_NAME = "calendar"
 LOG_DIR = "/var/log/caldavd"
@@ -33,6 +35,26 @@ def main():
     except OSError:
         # Already exists
         pass
+
+    plistPath = os.path.join(DEST_CONFIG_DIR, CALDAVD_PLIST)
+    if os.path.exists(plistPath):
+        try:
+            plistData = readPlist(plistPath)
+
+            # Turn off services in case this is a re-promotion
+            plistData["EnableCalDAV"] = False
+            plistData["EnableCardDAV"] = False
+
+            # Disable XMPPNotifier now that we're directly talking to APNS
+            try:
+                if plistData["Notifications"]["Services"]["XMPPNotifier"]["Enabled"]:
+                    plistData["Notifications"]["Services"]["XMPPNotifier"]["Enabled"] = False
+            except KeyError:
+                pass
+
+            writePlist(plistData, plistPath)
+        except Exception, e:
+            print "Unable to disable services in %s: %s" % (plistPath, e)
 
     # Create log directory
     try:

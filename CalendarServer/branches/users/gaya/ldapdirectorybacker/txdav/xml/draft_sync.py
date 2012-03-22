@@ -1,8 +1,5 @@
-# Copyright (c) 2009 Twisted Matrix Laboratories.
-# See LICENSE for details.
-
 ##
-# Copyright (c) 2005-2012 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2009-2012 Apple Computer, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -10,10 +7,10 @@
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-#
+# 
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-#
+# 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -21,61 +18,34 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-#
 ##
 
 """
-Implementation of draft-sanchez-webdav-current-principal-02.
+draft-daboo-webdav-sync (Collection Synchronization for WebDAV) XML
+Elements
+
+This module provides XML element definitions for use with WebDAV
+Synchronization.
+
+See draft-daboo-webdav-sync: http://tools.ietf.org/html/draft-daboo-webdav-sync
+
+Last draft referenced: -08
 """
 
-__all__ = [
-    "CurrentUserPrincipal",
-    "ErrorDescription",
-    "AddMember",
-    "SyncCollection",
-    "SyncToken",
-    "SyncLevel",
-]
-
-from twext.web2.dav.element.base import WebDAVElement, WebDAVTextElement
-from twext.web2.dav.element.base import dav_namespace, twisted_dav_namespace
+__all__ = []
 
 
-class CurrentUserPrincipal(WebDAVElement):
-    """
-    Current principal information
-    """
-    name = "current-user-principal"
+from txdav.xml.base import WebDAVElement, WebDAVTextElement, dav_namespace
+from txdav.xml.element import registerElement, registerElementClass
+from txdav.xml.rfc2518 import MultiStatus
 
-    allowed_children = {
-        (dav_namespace, "href" )                : (0, 1),
-        (dav_namespace, "unauthenticated" )     : (0, 1),
-    }
 
-class ErrorDescription(WebDAVTextElement):
-    """
-    The human-readable description of a failed precondition
-    """
-    namespace = twisted_dav_namespace
-    name = "error-description"
-    protected = True
-
-class AddMember (WebDAVElement):
-    """
-    A property on a collection to allow for "anonymous" creation of resources.
-    (draft-reschke-webdav-post)
-    """
-    name = "add-member"
-    hidden = True
-    protected = True
-
-    allowed_children = { (dav_namespace, "href"): (0, 1) }
-
+@registerElement
+@registerElementClass
 class SyncCollection (WebDAVElement):
     """
-    DAV report used to retrieve specific calendar component items via their
-    URIs.
-    (draft-daboo-webdav-sync)
+    DAV report used to retrieve specific calendar component items via
+    their URIs.
     """
     name = "sync-collection"
 
@@ -108,6 +78,9 @@ class SyncCollection (WebDAVElement):
                     raise ValueError("Only one of DAV:prop allowed")
                 self.property = child
 
+
+@registerElement
+@registerElementClass
 class SyncToken (WebDAVTextElement):
     """
     Synchronization token used in report and as a property.
@@ -116,8 +89,15 @@ class SyncToken (WebDAVTextElement):
     hidden = True
     protected = True
 
+
+@registerElement
+@registerElementClass
 class SyncLevel (WebDAVTextElement):
     """
     Synchronization level used in report.
     """
     name = "sync-level"
+
+
+# Extend MultiStatus, to add sync-token
+MultiStatus.allowed_children[(dav_namespace, "sync-token")] = (0, 1)
