@@ -275,7 +275,7 @@ def multiget_common(self, request, multiget, collection_type):
                 
                 #get vCards and filter
                 limit = config.DirectoryAddressBook.MaxQueryResults
-                vCardRecords, limited = (yield self.directory.vCardRecordsForAddressBookQuery( addressBookFilter, propertyreq, limit ))
+                vCardResources, limited = (yield self.directory.vCardResourcesForAddressBookQuery( addressBookFilter, propertyreq, limit ))
                 if limited:
                     log.err("Too many results in multiget report: %d" % len(resources))
                     raise HTTPError(ErrorResponse(
@@ -285,14 +285,14 @@ def multiget_common(self, request, multiget, collection_type):
                     ))
                
                 for href in valid_hrefs:
-                    matchingRecord = None
-                    for vCardRecord in vCardRecords:
-                        if href == vCardRecord.hRef(): # might need to compare urls instead - also case sens ok?
-                            matchingRecord = vCardRecord
+                    matchingResource = None
+                    for vCardResource in vCardResources:
+                        if href == vCardResource.hRef(): # might need to compare urls instead - also case sens ok?
+                            matchingResource = vCardResource
                             break;
 
-                    if matchingRecord:
-                        yield report_common.responseForHref(request, responses, href, matchingRecord, propertiesForResource, propertyreq, vcard=matchingRecord.vCard())
+                    if matchingResource:
+                        yield report_common.responseForHref(request, responses, href, matchingResource, propertiesForResource, propertyreq, vcard=matchingResource.vCard())
                     else:
                         responses.append(davxml.StatusResponse(href, davxml.Status.fromResponseCode(responsecode.NOT_FOUND)))
             finally:

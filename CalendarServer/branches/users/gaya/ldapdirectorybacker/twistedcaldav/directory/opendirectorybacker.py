@@ -20,7 +20,7 @@ Apple Open Directory directory service implementation for backing up directory-b
 """
 
 __all__ = [
-    "OpenDirectoryBackingService", "VCardRecord",
+    "OpenDirectoryBackingService", "VCardResource",
 ]
 
 import traceback
@@ -57,6 +57,8 @@ from xmlrpclib import datetime
 
 from calendarserver.platform.darwin.od import dsattributes, dsquery
 from twisted.python.reflect import namedModule
+
+from twext.python.log import LoggingMixIn
 
 class OpenDirectoryBackingService(DirectoryService):
     """
@@ -158,17 +160,17 @@ class OpenDirectoryBackingService(DirectoryService):
         # filter allows attributes, but make sure there are a minimum of attributes for functionality
         if allowedAttributes:
             self.allowedDSQueryAttributes = sorted(list(set(
-                                                [attr for attr in VCardRecord.allDSQueryAttributes
+                                                [attr for attr in VCardResource.allDSQueryAttributes
                                                     if (isinstance(attr, str) and attr in allowedAttributes) or
                                                        (isinstance(attr, tuple) and attr[0] in allowedAttributes)] +
-                                                VCardRecord.dsqueryAttributesForProperty.get("X-INTERNAL-REQUIRED")
+                                                VCardResource.dsqueryAttributesForProperty.get("X-INTERNAL-REQUIRED")
                                                 )))
-            if (self.allowedDSQueryAttributes != VCardRecord.allDSQueryAttributes):
+            if (self.allowedDSQueryAttributes != VCardResource.allDSQueryAttributes):
                 self.log_info("Allowed DS query attributes = %r" % (self.allowedDSQueryAttributes, ))
         else:
-            self.allowedDSQueryAttributes = VCardRecord.allDSQueryAttributes
+            self.allowedDSQueryAttributes = VCardResource.allDSQueryAttributes
         
-        #self.returnedAttributes = VCardRecord.allDSQueryAttributes
+        #self.returnedAttributes = VCardResource.allDSQueryAttributes
         self.returnedAttributes = self.allowedDSQueryAttributes
         
             
@@ -230,7 +232,7 @@ class OpenDirectoryBackingService(DirectoryService):
             self._dsLocalRecords = []        
             for (recordShortName, value) in results: #@UnusedVariable
                 
-                record = VCardRecord(self, value, "/Local/Default")
+                record = VCardResource(self.directoryBackedAddressBook, value, "/Local/Default")
 
                 if self.ignoreSystemRecords:
                     # remove system users and people
@@ -267,8 +269,8 @@ class OpenDirectoryBackingService(DirectoryService):
     @inlineCallbacks
     def _getDirectoryRecords(self, query=None, attributes=None, maxRecords=0 ):
         """
-        Get a list of filtered VCardRecord for the given query with the given attributes.
-        query == None gets all records. attribute == None gets VCardRecord.allDSQueryAttributes
+        Get a list of filtered VCardResource for the given query with the given attributes.
+        query == None gets all records. attribute == None gets VCardResource.allDSQueryAttributes
         """
         limited = False
         queryResults = (yield self._queryDirectory(query, attributes, maxRecords ))
@@ -283,7 +285,7 @@ class OpenDirectoryBackingService(DirectoryService):
         
         for (recordShortName, value) in queryResults: #@UnusedVariable
             
-            record = VCardRecord(self, value, defaultNodeName=self.defaultNodeName, 
+            record = VCardResource(self.directoryBackedAddressBook, value, defaultNodeName=self.defaultNodeName, 
                                  generateSimpleUIDs=self.generateSimpleUIDs, 
                                  addDSAttrXProperties=self.addDSAttrXProperties,
                                  appleInternalServer=self.appleInternalServer,
@@ -413,21 +415,21 @@ class OpenDirectoryBackingService(DirectoryService):
             propertyNames.append("X-INTERNAL-MINIMUM-VCARD-PROPERTIES") # these properties are required to make a vCard
             queryAttributes = []
             for prop in propertyNames:
-                if prop in VCardRecord.dsqueryAttributesForProperty:
-                    #print("adding attributes %r" % VCardRecord.dsqueryAttributesForProperty.get(prop))
-                    queryAttributes += VCardRecord.dsqueryAttributesForProperty.get(prop)
+                if prop in VCardResource.dsqueryAttributesForProperty:
+                    #print("adding attributes %r" % VCardResource.dsqueryAttributesForProperty.get(prop))
+                    queryAttributes += VCardResource.dsqueryAttributesForProperty.get(prop)
 
             return list(set(queryAttributes).intersection(set(self.returnedAttributes)))
 
     
 
     @inlineCallbacks
-    def vCardRecordsForAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
+    def vCardResourcesForAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
         """
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap=VCardRecord.dsqueryAttributesForProperty, allowedAttributes=self.allowedDSQueryAttributes );
+        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap=VCardResource.dsqueryAttributesForProperty, allowedAttributes=self.allowedDSQueryAttributes );
         #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
         
         # testing:
@@ -642,13 +644,13 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
                         # special case UID's formed from node and record name
                         if propFilter.filter_name == "UID":
                             matchString = matchStrings[0]
-                            seperatorIndex = matchString.find(VCardRecord.peopleUIDSeparator)
+                            seperatorIndex = matchString.find(VCardResource.peopleUIDSeparator)
                             if seperatorIndex > 1:
-                                recordNameStart = seperatorIndex + len(VCardRecord.peopleUIDSeparator)
+                                recordNameStart = seperatorIndex + len(VCardResource.peopleUIDSeparator)
                             else:
-                                seperatorIndex = matchString.find(VCardRecord.userUIDSeparator)                        
+                                seperatorIndex = matchString.find(VCardResource.userUIDSeparator)                        
                                 if seperatorIndex > 1:
-                                    recordNameStart = seperatorIndex + len(VCardRecord.userUIDSeparator)
+                                    recordNameStart = seperatorIndex + len(VCardResource.userUIDSeparator)
                                 else:
                                     recordNameStart = sys.maxint
     
@@ -700,7 +702,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
                 
 
             # get attribute strings from dsqueryAttributesForProperty list 
-            #queryAttributes = list(set(VCardRecord.dsqueryAttributesForProperty.get(propFilter.filter_name, [])).intersection(set(self.allowedDSQueryAttributes)))
+            #queryAttributes = list(set(VCardResource.dsqueryAttributesForProperty.get(propFilter.filter_name, [])).intersection(set(self.allowedDSQueryAttributes)))
             queryAttributes = vcardPropToLdapAttrMap.get(propFilter.filter_name, [])
             if isinstance(queryAttributes, str):
                 queryAttributes = [queryAttributes,]
@@ -716,7 +718,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
                     stringAttrStrs.append(attr)
             allAttrStrings = stringAttrStrs + binaryAttrStrs
                                     
-            constant = VCardRecord.constantProperties.get(propFilter.filter_name)
+            constant = VCardResource.constantProperties.get(propFilter.filter_name)
             if not constant and not allAttrStrings: 
                 return (False, [], [])
             
@@ -805,7 +807,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
     
                         
 
-class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
+class VCardResource(DAVPropertyMixIn, LoggingMixIn):
     """
     Open Directory implementation of L{IDirectoryRecord}.
     """
@@ -977,27 +979,27 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
         }
 
     
-    def __init__(self, service, recordAttributes, defaultNodeName=None, generateSimpleUIDs=False, addDSAttrXProperties=False, appleInternalServer=False, ):
+    def __init__(self, directoryBackedAddressBook, recordAttributes, defaultNodeName=None, generateSimpleUIDs=False, addDSAttrXProperties=False, appleInternalServer=False, ):
         
 
-        self.log_debug("service=%s, attributes=%s"    % (service, recordAttributes))
+        self.log_debug("directoryBackedAddressBook=%s, attributes=%s"    % (directoryBackedAddressBook, recordAttributes))
 
         #save off for debugging
         self.addDSAttrXProperties = addDSAttrXProperties;
         if addDSAttrXProperties:
             self.originalAttributes = recordAttributes.copy()
-        self.generateSimpleUIDs = generateSimpleUIDs
         self.appleInternalServer = appleInternalServer
 
-        self.directoryBackedAddressBook = service.directoryBackedAddressBook
+        self._directoryBackedAddressBook = directoryBackedAddressBook
         self._vCard = None
         self._vCardText = None
         self._uriName = None
         self._hRef = None
         
+        #clean attributes
         self.attributes = {}
         for key, values in recordAttributes.items():
-            if key in VCardRecord.stringDSAttributeStrs:
+            if key in VCardResource.stringDSAttributeStrs:
                 if isinstance(values, list):
                     self.attributes[key] = [removeControlChars(val).decode("utf8") for val in values]
                 else:
@@ -1005,32 +1007,10 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
             else:
                 self.attributes[key] = values
                 
-        # super needs recordname
-        recordName = self.firstValueForAttribute(dsattributes.kDSNAttrRecordName)
-        if not recordName:
-            recordName = self.firstValueForAttribute(dsattributes.kDS1AttrDistinguishedName)
-            if not recordName:
-                recordName = self.firstValueForAttribute(dsattributes.kDS1AttrLastName)
-            if not recordName:
-                recordName = self.firstValueForAttribute(dsattributes.kDS1AttrFirstName)
-            if not recordName:
-                recordName = self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)
-            recordAttributes[dsattributes.kDSNAttrRecordName] = recordName
-            self.attributes[dsattributes.kDSNAttrRecordName] = recordName
-
-        # fill in  missing essential attributes used for filtering
-        fullName = self.firstValueForAttribute(dsattributes.kDS1AttrDistinguishedName)
-        if not fullName:
-            fullName = self.firstValueForAttribute(dsattributes.kDSNAttrRecordName)
-            self.attributes[dsattributes.kDS1AttrDistinguishedName] = fullName
-            
-        node = self.firstValueForAttribute(dsattributes.kDSNAttrMetaNodeLocation)
+        if self.firstValueForAttribute(dsattributes.kDS1AttrLastName) == "99":
+            del self.attributes[dsattributes.kDS1AttrLastName]
         
-        # use a better node name -- makes better synthetic GUIDS
-        if not node or node == "/LDAPv3/127.0.0.1":
-            node = defaultNodeName if defaultNodeName else service.realmName
-            self.attributes[dsattributes.kDSNAttrMetaNodeLocation] = node
-        
+        # find a GUID
         guid = self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)
         if not guid:
             if generateSimpleUIDs:
@@ -1039,47 +1019,25 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
                 nodeUUIDStr = "%x" % abs(hash(node))
             nameUUIDStr = "".join(self.firstValueForAttribute(dsattributes.kDSNAttrRecordName).encode("utf8").encode("base64").split("\n"))
             if self.firstValueForAttribute(dsattributes.kDSNAttrRecordType) != dsattributes.kDSStdRecordTypePeople:
-                guid =  VCardRecord.userUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
+                guid =  VCardResource.userUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
             else:
-                guid =  VCardRecord.peopleUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
-
+                guid =  VCardResource.peopleUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
             
-        # since guid is used as file name, normalize so uid uniqueness == fine name uniqueness
-        #guid = "/".join(guid.split(":")).upper()
-        self.attributes[dsattributes.kDS1AttrGeneratedUID] = guid
+            self.attributes[dsattributes.kDS1AttrGeneratedUID] = guid
+        self.guid = guid
+            
         
-        if self.firstValueForAttribute(dsattributes.kDS1AttrLastName) == "99":
-            del self.attributes[dsattributes.kDS1AttrLastName]
-        
-        if self.firstValueForAttribute(dsattributes.kDSNAttrRecordType) != dsattributes.kDSStdRecordTypePeople:
-            recordType = DirectoryService.recordType_users
-        else:
-            recordType = DirectoryService.recordType_people
-                        
-        super(VCardRecord, self).__init__(
-            service               = service,
-            recordType            = recordType,
-            guid                  = guid,
-            shortNames            = tuple(self.valuesForAttribute(dsattributes.kDSNAttrRecordName)),
-            fullName              = fullName,
-            firstName             = self.firstValueForAttribute(dsattributes.kDS1AttrFirstName, None),
-            lastName              = self.firstValueForAttribute(dsattributes.kDS1AttrLastName, None),
-            emailAddresses        = (),
-            calendarUserAddresses = (),
-            autoSchedule          = False,
-            enabledForCalendaring = False,
-        )
         
 
 
     def __repr__(self):
-        return "<%s[%s(%s)] %s(%s) %r>" % (
+        return "<%s[%s(%s)] %s" % (
             self.__class__.__name__,
             self.firstValueForAttribute(dsattributes.kDSNAttrRecordType),
             self.firstValueForAttribute(dsattributes.kDSNAttrMetaNodeLocation),
             self.guid,
-            self.shortNames,
-            self.fullName
+            #self.shortNames,
+            #self.fullName
         )
     
     def __hash__(self):
@@ -1221,13 +1179,13 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
                         self.log_error("addPropertiesAndLabelsForPrefixedAttribute(): Trouble parsing attribute %s, with value \"%s\".  Error = %s" % (attrType, attrValue, e,))
 
             
-            #print("VCardRecord.vCard")
+            #print("VCardResource.vCard")
             # create vCard
             vcard = Component("VCARD")
             groupCount = [0]
             
             # add constant properties - properties that are the same regardless of the record attributes
-            for key, value in VCardRecord.constantProperties.items():
+            for key, value in VCardResource.constantProperties.items():
                 vcard.addProperty(Property(key, value))
     
             # 3.1 IDENTIFICATION TYPES http://tools.ietf.org/html/rfc2426#section-3.1
@@ -1717,10 +1675,10 @@ class VCardRecord(DirectoryRecord, DAVPropertyMixIn):
                 return result
 
         elif namespace == twisted_dav_namespace:
-            return super(VCardRecord, self).readProperty(property, request)
+            return super(VCardResource, self).readProperty(property, request)
             #return DAVPropertyMixIn.readProperty(self, property, request)
 
-        return self.directoryBackedAddressBook.readProperty(property, request)
+        return self._directoryBackedAddressBook.readProperty(property, request)
 
     def listProperties(self, request):
         #print("VCardResource.listProperties()")

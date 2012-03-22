@@ -22,6 +22,7 @@
 		667574D7151168C400BE9C7C /* shell.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = shell.sh; sourceTree = SOURCE_ROOT; };
 		667574D8151168C400BE9C7C /* submit */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = submit; sourceTree = SOURCE_ROOT; };
 		667574DC151168C400BE9C7C /* version.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = version.py; sourceTree = SOURCE_ROOT; };
+		66D312CA151A71DB00743E4F /* xmldirectorybacker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = xmldirectorybacker.py; sourceTree = "<group>"; };
 		66EAD03D150AF4EB00B8C5A7 /* benchmark */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = benchmark; path = ../benchmark; sourceTree = "<group>"; };
 		66EAD03E150AF4EB00B8C5A7 /* benchreport */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = benchreport; path = ../benchreport; sourceTree = "<group>"; };
 		66EAD040150AF4EB00B8C5A7 /* _calendarserver_preamble.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = _calendarserver_preamble.py; sourceTree = "<group>"; };
@@ -3049,6 +3050,7 @@
 				66EAD315150AF4EB00B8C5A7 /* util.py */,
 				66EAD316150AF4EB00B8C5A7 /* wiki.py */,
 				66EAD317150AF4EB00B8C5A7 /* xmlaccountsparser.py */,
+				66D312CA151A71DB00743E4F /* xmldirectorybacker.py */,
 				66EAD318150AF4EB00B8C5A7 /* xmlaugmentsparser.py */,
 				66EAD319150AF4EB00B8C5A7 /* xmlfile.py */,
 			);
