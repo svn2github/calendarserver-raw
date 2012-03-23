@@ -521,7 +521,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
                         if len(matchList) > 1:
                             expr = dsquery.expression( dsquery.expression.OR, matchList )
                         else:
-                            expr = matchList
+                            expr = matchList[0]
                         return (False, queryAttributes, [dsquery.expression( dsquery.expression.NOT, expr),])
                 #end isNotDefinedExpression()
 
@@ -691,7 +691,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
                             if len(matchList) > 1:
                                 expr = dsquery.expression( dsquery.expression.OR, matchList )
                             else:
-                                expr = matchList
+                                expr = matchList[0]
                             return (False, queryAttributes, [dsquery.expression( dsquery.expression.NOT, expr),])
                         else:
                             return andOrExpression(propFilterAllOf, queryAttributes, matchList)
