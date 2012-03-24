@@ -179,21 +179,27 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                 
             # stop query for all
             clear = not allRecords and not dsFilter
-            
+                        
             if not clear:
                 
                 @inlineCallbacks
                 def recordsForDSFilter(dsFilter, recordType):
                     
                     """
-                        Whist this tests the dsFilter expression tree and recordsMatchingFields() it make little difference to the resutl of
+                        Although this exercises the dsFilter expression tree and recordsMatchingFields() it make little difference to the result of
                         a addressbook query because of post filtering.
                     """
-                    self.log_debug("recordsForDSFilter:  dsFilter=%s" % (dsFilter.generate(), ))
-                    if dsFilter.operator == dsquery.expression.NOT:
+                    #returnValue(None) # dsquery.expression.NOT not supported by recordsMatchingFields()
+
+                    if not isinstance(dsFilter, dsquery.expression):
+                        #change  match list  into an expression and recurse
+                        returnValue((yield recordsForDSFilter(dsquery.expression( dsquery.expression.OR, (dsFilter,)), recordType)))
+                        
+                    elif dsFilter.operator == dsquery.expression.NOT:
                         self.log_debug("recordsForDSFilter:  dsFilter-%s NOT NONE" % (dsFilter.generate(), ))
                         returnValue(None) # dsquery.expression.NOT not supported by recordsMatchingFields()
                     else:
+                        self.log_debug("recordsForDSFilter:  dsFilter=%s" % (dsFilter.generate(), ))
                         self.log_debug("recordsForDSFilter: #subs %s" % (len(dsFilter.subexpressions), ))
                         
                         # evaluate matches
@@ -239,7 +245,10 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                     returnValue(result)
                                 
                 # walk the expression tree
-                xmlDirectoryRecords = (yield recordsForDSFilter(dsFilter, queryType))
+                if allRecords:
+                    xmlDirectoryRecords = None
+                else:
+                    xmlDirectoryRecords = (yield recordsForDSFilter(dsFilter, queryType))
                 self.log_debug("doAddressBookQuery: #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords) if xmlDirectoryRecords is not None else xmlDirectoryRecords, ))
                 
                 if xmlDirectoryRecords is None:
