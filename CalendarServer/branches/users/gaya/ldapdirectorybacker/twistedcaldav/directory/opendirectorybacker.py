@@ -629,7 +629,8 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
 
                 if constant:
                     # do the match right now!  Return either all or none.
-                    return( textMatchElement.test([constant,]), [], [] )
+                    #FIXME: match is not implemented in twisteddaldav.query.addressbookqueryfilter.TextMatch so use _match for now
+                    return( textMatchElement._match([constant,]), [], [] )
                 else:
 
                     matchStrings = getMatchStrings(propFilter, textMatchElement.text)
@@ -719,8 +720,10 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
             allAttrStrings = stringAttrStrs + binaryAttrStrs
                                     
             constant = ABDirectoryQueryResult.constantProperties.get(propFilter.filter_name)
-            if not constant and not allAttrStrings: 
-                return (False, [], [])
+            if not constant and not allAttrStrings:
+            	# not AllAttrStrings means propFilter.filter_name is not mapped
+            	# return True to try to match all results later on
+                return (not constant, [], [])
             
             if propFilter.qualifier and isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
                 return definedExpression(False, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)

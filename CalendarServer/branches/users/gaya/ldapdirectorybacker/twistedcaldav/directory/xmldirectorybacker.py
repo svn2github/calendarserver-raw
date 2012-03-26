@@ -209,7 +209,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                             self.log_debug("recordsForDSFilter: match=%s" % (match.generate(), ))
                             xmlMatchType = {
                                 dsattributes.eDSExact :        "exact",
-                                dsattributes.eDSStartsWith :   "start-with",
+                                dsattributes.eDSStartsWith :   "starts-with",
                                 dsattributes.eDSContains :     "contains",
                             }.get(match.matchType)
                             if not xmlMatchType:
@@ -220,7 +220,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                             self.log_debug("recordsForDSFilter: fields=%s" % (fields,))
                         
                         # if there were matches, call get records that match
-                        result = set()
+                        result = None
                         if len(fields):
                             operand = "and" if dsFilter.operator == dsquery.expression.AND else "or"
                             self.log_debug("recordsForDSFilter: recordsMatchingFields(fields=%s, operand=%s, recordType=%s)" % (fields, operand, recordType,))
@@ -236,7 +236,9 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                             if subresult is None:
                                 returnValue(None)
                             
-                            if dsFilter.operator == dsquery.expression.OR:
+                            if result is None:
+                                result = subresult
+                            elif dsFilter.operator == dsquery.expression.OR:
                                 result = result.union(subresult)
                             else:
                                 result = result.intersection(subresult)
@@ -257,7 +259,9 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                 
                 # apply limit
                 if len(xmlDirectoryRecords) > maxRecords:
-                    xmlDirectoryRecords = set(list(xmlDirectoryRecords)[:maxRecords])
+                    #sort so that CalDAVTester can have consistent results when it uses limits
+                    xmlDirectoryRecords = sorted(list(xmlDirectoryRecords), key=lambda x:x.guid)
+                    xmlDirectoryRecords = xmlDirectoryRecords[:maxRecords]
                 self.log_debug("doAddressBookQuery: #xmlDirectoryRecords after max %s" % (len(xmlDirectoryRecords), ))
                    
                 for xmlDirectoryRecord in xmlDirectoryRecords:
