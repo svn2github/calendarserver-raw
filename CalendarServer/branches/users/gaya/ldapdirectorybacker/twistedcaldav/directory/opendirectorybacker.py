@@ -718,13 +718,12 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
                 else:
                     stringAttrStrs.append(attr)
             allAttrStrings = stringAttrStrs + binaryAttrStrs
+            if not allAttrStrings:
+            	# not AllAttrStrings means propFilter.filter_name is not mapped
+            	# return None to try to match all items if this is the only property filter
+                return (None, [], [])
                                     
             constant = ABDirectoryQueryResult.constantProperties.get(propFilter.filter_name)
-            if not constant and not allAttrStrings:
-            	# not AllAttrStrings means propFilter.filter_name is not mapped
-            	# return True to try to match all results later on
-                return (not constant, [], [])
-            
             if propFilter.qualifier and isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
                 return definedExpression(False, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
             
@@ -772,18 +771,26 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
         @param propFilters: the C{list} of L{ComponentFilter} elements.
         @return: (needsAllRecords, espressionAttributes, expression) tuple
         """
-        needsAllRecords = filterAllOf
+        needsAllRecords = None
         attributes = []
         expressions = []
         for propFilter in propFilters:
             
             propNeedsAllRecords, propExpressionAttributes, propExpression = propFilterExpression(filterAllOf, propFilter)
-            if filterAllOf:
-                needsAllRecords &= propNeedsAllRecords
-            else:
-                needsAllRecords |= propNeedsAllRecords
+            if needsAllRecords is None:
+                needsAllRecords = propNeedsAllRecords
+            elif propNeedsAllRecords is not None:
+                if filterAllOf:
+                    needsAllRecords &= propNeedsAllRecords
+                else:
+                    needsAllRecords |= propNeedsAllRecords
             attributes += propExpressionAttributes
             expressions += propExpression
+        # propFilterExpression()'s returned propNeedsAllRecords is only None if a propFilter.filter_name is not not mapped
+        # needsAllRecords is None if there was only one propFilter that returned None
+        # set needsAllRecords True in the case
+        if needsAllRecords is None:
+            needsAllRecords = not filterAllOf
 
         if len(expressions) > 1:
             expr = dsquery.expression(dsquery.expression.AND if filterAllOf else dsquery.expression.OR , list(set(expressions))) # remove duplicates
