@@ -723,6 +723,7 @@ class CalDAVServiceMaker (LoggingMixIn):
         service = CalDAVService(logObserver)
 
         rootResource = getRootResource(config, store, additional)
+        service.rootResource = rootResource
 
         underlyingSite = Site(rootResource)
         
