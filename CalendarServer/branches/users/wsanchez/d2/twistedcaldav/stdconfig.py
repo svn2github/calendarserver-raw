@@ -877,6 +877,12 @@ DEFAULT_CONFIG = {
         "UseExternalProxies" : False,
     },
 
+    "Manhole": {
+        "Enabled": False,
+        "StartingPortNumber": 5000,
+        "PasswordFilePath": "",
+    },
+
     "EnableKeepAlive": True,
 
     "EnableResponseCache":  True,
