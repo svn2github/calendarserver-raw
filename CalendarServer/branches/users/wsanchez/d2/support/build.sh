@@ -744,6 +744,12 @@ dependencies () {
     "pytz" "pytz" "pytz-2011g" \
     "http://pypi.python.org/packages/source/p/pytz/pytz-2011g.tar.gz";
 
+  local pv="2.5";
+  local pc="pycrypto-${pv}";
+  py_dependency -o -v "${pv}" -m "783e45d4a1a309e03ab378b00f97b291" \
+    "PyCrypto" "pycrypto" "${pc}" \
+    "http://ftp.dlitz.net/pub/dlitz/crypto/pycrypto/${pc}.tar.gz";
+
   svn_get "CalDAVTester" "${top}/CalDAVTester" \
       "${svn_uri_base}/CalDAVTester/trunk" HEAD;
 
