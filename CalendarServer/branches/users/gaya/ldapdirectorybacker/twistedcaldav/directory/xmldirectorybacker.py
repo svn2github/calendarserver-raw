@@ -79,7 +79,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                      "dirRecordAttrToDSAttrMap" : { 
                         "guid" :            dsattributes.kDS1AttrGeneratedUID,
                         "fullName" :        dsattributes.kDS1AttrDistinguishedName,
-                        "shortNames" :      dsattributes.kDSNAttrRecordName,
+                        #"shortNames" :      dsattributes.kDSNAttrRecordName,
                         "firstName" :       dsattributes.kDS1AttrFirstName,
                         "lastName" :        dsattributes.kDS1AttrLastName,
                         "emailAddresses" :  dsattributes.kDSNAttrEMailAddress,
@@ -257,12 +257,15 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                     xmlDirectoryRecords = (yield self.listRecords(queryType))
                     self.log_debug("doAddressBookQuery: all #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords), ))
                 
+                #sort so that CalDAVTester can have consistent results when it uses limits
+                xmlDirectoryRecords = sorted(list(xmlDirectoryRecords), key=lambda x:x.guid)
+                
+                """ no good reason to use limit here, let caller do it
                 # apply limit
                 if len(xmlDirectoryRecords) > maxRecords:
-                    #sort so that CalDAVTester can have consistent results when it uses limits
-                    xmlDirectoryRecords = sorted(list(xmlDirectoryRecords), key=lambda x:x.guid)
-                    xmlDirectoryRecords = xmlDirectoryRecords[:maxRecords]
-                self.log_debug("doAddressBookQuery: #xmlDirectoryRecords after max %s" % (len(xmlDirectoryRecords), ))
+                     xmlDirectoryRecords = xmlDirectoryRecords[:maxRecords]
+                     self.log_debug("doAddressBookQuery: #xmlDirectoryRecords after max %s" % (len(xmlDirectoryRecords), ))
+                """
                    
                 for xmlDirectoryRecord in xmlDirectoryRecords:
                     
