@@ -1027,7 +1027,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                 nodeUUIDStr = "00000000"
             else:
                 nodeUUIDStr = "%x" % abs(hash(node))
-            nameUUIDStr = "".join(self.firstValueForAttribute(dsattributes.kDSNAttrRecordName).encode("utf8").encode("base64").split("\n"))
+            nameUUIDStr = "".join(self.firstValueForAttribute(dsattributes.kDSNAttrRecordName).encode("base64").split("\n"))
             if self.firstValueForAttribute(dsattributes.kDSNAttrRecordType) != dsattributes.kDSStdRecordTypePeople:
                 guid =  ABDirectoryQueryResult.userUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
             else:
