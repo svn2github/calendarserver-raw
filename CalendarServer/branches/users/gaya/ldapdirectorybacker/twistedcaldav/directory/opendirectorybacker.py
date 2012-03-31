@@ -232,25 +232,28 @@ class OpenDirectoryBackingService(DirectoryService):
             self._dsLocalRecords = []        
             for (recordShortName, value) in results: #@UnusedVariable
                 
-                record = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, "/Local/Default")
-
-                if self.ignoreSystemRecords:
-                    # remove system users and people
-                    if record.guid.startswith("FFFFEEEE-DDDD-CCCC-BBBB-AAAA"):
-                        self.log_info("Ignoring vcard for system record %s"  % (record,))
-                        continue
-
-                if record.guid in records:
-                    self.log_info("Record skipped due to conflict (duplicate uuid): %s" % (record,))
+                try:
+                    record = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, "/Local/Default")
+                except:
+                    traceback.print_exc()
+                    self.log_info("Could not get vcard for record %s" % (record,))
+                    
                 else:
-                    try:
-                        vCardText = record.vCardText()
-                    except:
-                        traceback.print_exc()
-                        self.log_info("Could not get vcard for record %s" % (record,))
-                    else:
-                        self.log_debug("VCard text =\n%s" % (vCardText, ))
-                        records[record.guid] = record                   
+                    uid = record.vCard().getProperty("UID").value()
+
+                    if self.ignoreSystemRecords:
+                        # remove system users and people
+                        if uid.startswith("FFFFEEEE-DDDD-CCCC-BBBB-AAAA"):
+                            self.log_info("Ignoring vcard for system record %s"  % (record,))
+                            continue
+
+                    if uid in records:
+                        self.log_info("Record skipped due to duplicate UID: %s" % (record,))
+                        continue
+                        
+                    self.log_debug("VCard text =\n%s" % (record.vCardText(), ))
+                    records[uid] = record                   
+
     
             return records
         
@@ -285,22 +288,32 @@ class OpenDirectoryBackingService(DirectoryService):
         
         for (recordShortName, value) in queryResults: #@UnusedVariable
             
-            record = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, defaultNodeName=self.defaultNodeName, 
-                                 generateSimpleUIDs=self.generateSimpleUIDs, 
-                                 addDSAttrXProperties=self.addDSAttrXProperties,
-                                 appleInternalServer=self.appleInternalServer,
-                                 )
-
-            if self.ignoreSystemRecords:
-                # remove system users and people
-                if record.guid.startswith("FFFFEEEE-DDDD-CCCC-BBBB-AAAA"):
-                    self.log_info("Ignoring vcard for system record %s"  % (record,))
-                    continue
-        
-            if record.guid in records:
-                self.log_info("Ignoring vcard for record due to conflict (duplicate uuid): %s" % (record,))
+            try:
+                record = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, 
+                                     defaultNodeName=self.defaultNodeName, 
+                                     generateSimpleUIDs=self.generateSimpleUIDs, 
+                                     addDSAttrXProperties=self.addDSAttrXProperties,
+                                     appleInternalServer=self.appleInternalServer,
+                                     )
+            except:
+                traceback.print_exc()
+                self.log_info("Could not get vcard for record %s" % (record,))
+                
             else:
-                records[record.guid] = record                   
+                uid = record.vCard().getProperty("UID").value()
+
+                if self.ignoreSystemRecords:
+                    # remove system users and people
+                    if uid.startswith("FFFFEEEE-DDDD-CCCC-BBBB-AAAA"):
+                        self.log_info("Ignoring vcard for system record %s"  % (record,))
+                        continue
+
+                if uid in records:
+                    self.log_info("Record skipped due to duplicate UID: %s" % (record,))
+                    continue
+                    
+                self.log_debug("VCard text =\n%s" % (record.vCardText(), ))
+                records[uid] = record                   
         
         self.log_debug("After filtering, %s records (limited=%s)." % (len(records), limited))
         returnValue((records, limited, ))
@@ -450,20 +463,11 @@ class OpenDirectoryBackingService(DirectoryService):
             maxRecords = int(maxResults * 1.2)
             if self.maxDSQueryRecords and maxRecords > self.maxDSQueryRecords:
                 maxRecords = self.maxDSQueryRecords
-
+            
             records, limited = (yield self._getDirectoryRecords(dsFilter, attributes, maxRecords))
             
-            #filter out bad records --- should only happen during development
             for record in records.values():
-                try:
-                    vCardText = record.vCardText()
-                except:
-                    traceback.print_exc()
-                    self.log_info("Could not get vcard for record %s" % (record,))
-                else:
-                    if not record.firstValueForAttribute(dsattributes.kDSNAttrMetaNodeLocation).startswith("/Local"):
-                        self.log_debug("VCard text =\n%s" % (vCardText, ))
-                    queryRecords.append(record)
+                queryRecords.append(record)
                         
         returnValue((queryRecords, limited,))        
 
@@ -1002,9 +1006,6 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
 
         self._directoryBackedAddressBook = directoryBackedAddressBook
         self._vCard = None
-        self._vCardText = None
-        self._uriName = None
-        self._hRef = None
         
         #clean attributes
         self.attributes = {}
@@ -1034,20 +1035,17 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                 guid =  ABDirectoryQueryResult.peopleUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
             
             self.attributes[dsattributes.kDS1AttrGeneratedUID] = guid
-        self.guid = guid
-            
         
+        #generate a vCard here.  May throw an exception
+        self.vCard()
         
 
 
     def __repr__(self):
-        return "<%s[%s(%s)] %s" % (
+        return "<%s[%s(%s)]>" % (
             self.__class__.__name__,
-            self.firstValueForAttribute(dsattributes.kDSNAttrRecordType),
-            self.firstValueForAttribute(dsattributes.kDSNAttrMetaNodeLocation),
-            self.guid,
-            #self.shortNames,
-            #self.fullName
+            self.vCard().getProperty("FN").value(),
+            self.vCard().getProperty("UID").value()
         )
     
     def __hash__(self):
@@ -1057,12 +1055,6 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
               ])
         return hash(s)
 
-    """
-    def nextFileName(self):
-        self.renameCounter += 1
-        self.fileName = self.baseFileName + "-" + str(self.renameCounter)
-        self.fileNameLower = self.fileName.lower()
-    """
     
     def hasAttribute(self, attributeName ):
         return self.valuesForAttribute(attributeName, None) is not None
@@ -1468,8 +1460,9 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             # dsattributes.kDS1AttrGeneratedUID,        # Used for 36 character (128 bit) unique ID. Usually found in user, 
                                                         #      group, and computer records. An example value is "A579E95E-CDFE-4EBC-B7E7-F2158562170F".
                                                         #      The standard format contains 32 hex characters and four hyphen characters.
-            # !! don't use self.guid which is URL encoded
+                                                        
             vcard.addProperty(Property("UID", self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)))
+    
     
             # 3.6.8 URL Type Definition 
             # dsattributes.kDSNAttrURL,                    # List of URLs.
@@ -1601,25 +1594,16 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
         return self._vCard
     
     def vCardText(self):
-        if not self._vCardText:
-            self._vCardText = str(self.vCard())
-        
-        return self._vCardText
-
-    def uriName(self):
-        if not self._uriName:
-            self._uriName = self.vCard().getProperty("UID").value() + ".vcf"
-        #print("uriName():self._uriName=%s" % self._uriName)
-        return self._uriName
-        
+        return str(self.vCard())
     
+    def uriName(self):
+        return self.vCard().getProperty("UID").value() + ".vcf"
+        
     def hRef(self, parentURI="/directory/"):
-        if not self._hRef:
-            self._hRef = davxml.HRef.fromString(joinURL(parentURI, self.uriName()))
-            
-        return self._hRef
-
-
+        # FIXME: Get the parent URI from self._directoryBackedAddressBook
+        return davxml.HRef.fromString(joinURL(parentURI, self.uriName()))
+ 
+                       
     def readProperty(self, property, request):
         
         if type(property) is tuple:
