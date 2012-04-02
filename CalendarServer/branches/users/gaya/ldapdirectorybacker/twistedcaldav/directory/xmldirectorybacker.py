@@ -272,18 +272,16 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                                 pass
                         return dsRecordAttributes
 
-                    dsRecord = None
+                    result = None
                     dsRecordAttributes = dsRecordAttributesFromDirectoryRecord( xmlDirectoryRecord )
                     try:
-                        dsRecord = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes,)
-                        vCardText = dsRecord.vCardText()
-                   
+                        result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes,)
                     except:
                         traceback.print_exc()
-                        self.log_info("Could not get vcard for ds record %s" % (dsRecord,))
+                        self.log_info("Could not get vcard for %s" % (xmlDirectoryRecord,))
                     else:
-                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (vCardText, ))
-                        queryResults.append(dsRecord)
+                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (result.vCardText(),))
+                        queryResults.append(result)
                 
                 
                 # only get requested number of record results

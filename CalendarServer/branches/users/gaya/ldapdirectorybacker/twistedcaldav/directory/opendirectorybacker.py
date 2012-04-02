@@ -206,11 +206,11 @@ class OpenDirectoryBackingService(DirectoryService):
     def createCache(self):
          succeed(None)
 
-    def _getDSLocalRecords(self):
+    def _getAllDSLocalResults(self):
         
-        def generateDSLocalRecords():
+        def generateDSLocalResults():
                         
-            records = {}
+            resultsDictionary = {}
             
             recordTypes = [dsattributes.kDSStdRecordTypePeople, dsattributes.kDSStdRecordTypeUsers, ]
             try:
@@ -220,7 +220,7 @@ class OpenDirectoryBackingService(DirectoryService):
                         recordTypes,
                         self.returnedAttributes,
                     ))
-                results = list(self.odModule.listAllRecordsWithAttributes_list(
+                records = list(self.odModule.listAllRecordsWithAttributes_list(
                         localNodeDirectory,
                         recordTypes,
                         self.returnedAttributes,
@@ -230,39 +230,39 @@ class OpenDirectoryBackingService(DirectoryService):
                 raise
             
             self._dsLocalRecords = []        
-            for (recordShortName, value) in results: #@UnusedVariable
+            for (recordShortName, value) in records: #@UnusedVariable
                 
                 try:
-                    record = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, "/Local/Default")
+                    result = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, defaultNodeName="/Local/Default")
                 except:
                     traceback.print_exc()
-                    self.log_info("Could not get vcard for record %s" % (record,))
+                    self.log_info("Could not get vcard for record %s" % (recordShortName,))
                     
                 else:
-                    uid = record.vCard().getProperty("UID").value()
+                    uid = result.vCard().getProperty("UID").value()
 
                     if self.ignoreSystemRecords:
                         # remove system users and people
                         if uid.startswith("FFFFEEEE-DDDD-CCCC-BBBB-AAAA"):
-                            self.log_info("Ignoring vcard for system record %s"  % (record,))
+                            self.log_info("Ignoring vcard for system record %s"  % (recordShortName,))
                             continue
 
-                    if uid in records:
-                        self.log_info("Record skipped due to duplicate UID: %s" % (record,))
+                    if uid in resultsDictionary:
+                        self.log_info("Record skipped due to duplicate UID: %s" % (recordShortName,))
                         continue
                         
-                    self.log_debug("VCard text =\n%s" % (record.vCardText(), ))
-                    records[uid] = record                   
+                    self.log_debug("VCard text =\n%s" % (result.vCardText(), ))
+                    resultsDictionary[uid] = result                   
 
     
-            return records
+            return resultsDictionary
         
 
         if not self.queryDSLocal:
             return {}
         
         if time.time() > self._nextDSLocalQueryTime:
-            self._dsLocalRecords = generateDSLocalRecords()
+            self._dsLocalRecords = generateDSLocalResults()
             # Add jitter/fuzz factor 
             self._nextDSLocalQueryTime = time.time() + self.dsLocalCacheTimeout * (random() + 0.5)  * 60
 
@@ -270,26 +270,26 @@ class OpenDirectoryBackingService(DirectoryService):
     
 
     @inlineCallbacks
-    def _getDirectoryRecords(self, query=None, attributes=None, maxRecords=0 ):
+    def _getDirectoryQueryResults(self, query=None, attributes=None, maxRecords=0 ):
         """
         Get a list of filtered ABDirectoryQueryResult for the given query with the given attributes.
         query == None gets all records. attribute == None gets ABDirectoryQueryResult.allDSQueryAttributes
         """
         limited = False
-        queryResults = (yield self._queryDirectory(query, attributes, maxRecords ))
-        if maxRecords and len(queryResults) >= maxRecords:
+        records = (yield self._queryDirectory(query, attributes, maxRecords ))
+        if maxRecords and len(records) >= maxRecords:
             limited = True
             self.log_debug("Directory address book record limit (= %d) reached." % (maxRecords, ))
 
-        self.log_debug("Query done. Inspecting %s results" % len(queryResults))
+        self.log_debug("Query done. Inspecting %s records" % len(records))
 
-        records = self._getDSLocalRecords().copy()
-        self.log_debug("Adding %s DSLocal results" % len(records.keys()))
+        resultsDictionary = self._getAllDSLocalResults().copy()
+        self.log_debug("Adding %s DSLocal results" % len(resultsDictionary.keys()))
         
-        for (recordShortName, value) in queryResults: #@UnusedVariable
+        for (recordShortName, value) in records: #@UnusedVariable
             
             try:
-                record = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, 
+                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, 
                                      defaultNodeName=self.defaultNodeName, 
                                      generateSimpleUIDs=self.generateSimpleUIDs, 
                                      addDSAttrXProperties=self.addDSAttrXProperties,
@@ -297,26 +297,26 @@ class OpenDirectoryBackingService(DirectoryService):
                                      )
             except:
                 traceback.print_exc()
-                self.log_info("Could not get vcard for record %s" % (record,))
+                self.log_info("Could not get vcard for record %s" % (recordShortName,))
                 
             else:
-                uid = record.vCard().getProperty("UID").value()
+                uid = result.vCard().getProperty("UID").value()
 
                 if self.ignoreSystemRecords:
                     # remove system users and people
                     if uid.startswith("FFFFEEEE-DDDD-CCCC-BBBB-AAAA"):
-                        self.log_info("Ignoring vcard for system record %s"  % (record,))
+                        self.log_info("Ignoring vcard for system record %s"  % (recordShortName,))
                         continue
 
-                if uid in records:
-                    self.log_info("Record skipped due to duplicate UID: %s" % (record,))
+                if uid in resultsDictionary:
+                    self.log_info("Record skipped due to duplicate UID: %s" % (recordShortName,))
                     continue
                     
-                self.log_debug("VCard text =\n%s" % (record.vCardText(), ))
-                records[uid] = record                   
+                self.log_debug("VCard text =\n%s" % (result.vCardText(), ))
+                resultsDictionary[uid] = result                   
         
-        self.log_debug("After filtering, %s records (limited=%s)." % (len(records), limited))
-        returnValue((records, limited, ))
+        self.log_debug("After filtering, %s results (limited=%s)." % (len(resultsDictionary), limited))
+        returnValue((resultsDictionary.values(), limited, ))
 
 
     def _queryDirectory(self, query=None, attributes=None, maxRecords=0 ):
@@ -452,10 +452,24 @@ class OpenDirectoryBackingService(DirectoryService):
             dsFilter = None #  None expression == all Records
         clear = not allRecords and not dsFilter
         
-        queryRecords = []
+        results = []
         limited = False
 
         if not clear:
+            
+            # add filter to ignore system records rather than post filtering
+            # but this appears to be broken in open directory
+            '''
+            if self.ignoreSystemRecords:
+                ignoreExpression = dsquery.expression( dsquery.expression.NOT, 
+                                                       dsquery.match(dsattributes.kDS1AttrGeneratedUID, "FFFFEEEE-DDDD-CCCC-BBBB-AAAA", dsattributes.eDSStartsWith)
+                                                       )
+                filterAttributes = list(set(filterAttributes).union(dsattributes.kDS1AttrGeneratedUID))
+                
+                dsFilter = dsquery.expression( dsquery.expression.AND, (dsFilter, ignoreExpression,) ) if dsFilter else ignoreExpression
+                #dsFilter = ignoreExpression
+            '''
+
             queryAttributes = self._attributesForAddressBookQuery( addressBookQuery )
             attributes = filterAttributes + queryAttributes
             
@@ -464,12 +478,9 @@ class OpenDirectoryBackingService(DirectoryService):
             if self.maxDSQueryRecords and maxRecords > self.maxDSQueryRecords:
                 maxRecords = self.maxDSQueryRecords
             
-            records, limited = (yield self._getDirectoryRecords(dsFilter, attributes, maxRecords))
-            
-            for record in records.values():
-                queryRecords.append(record)
+            results, limited = (yield self._getDirectoryQueryResults(dsFilter, attributes, maxRecords))
                         
-        returnValue((queryRecords, limited,))        
+        returnValue((results, limited,))        
 
 
 #utility
@@ -520,6 +531,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
                 else:
                     matchList = list(set([dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in allAttrStrings]))
                     if defined:
+                        # TODO:  Investigate what happens when andOrExpresion() does not return an expression
                         return andOrExpression(allOf, queryAttributes, matchList)
                     else:
                         if len(matchList) > 1:

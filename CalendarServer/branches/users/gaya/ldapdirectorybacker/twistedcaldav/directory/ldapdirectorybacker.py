@@ -75,7 +75,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
             },
             "appleInternalServer":False,    # does magic in ABDirectoryQueryResult
-            "maxQueryRecords":0,            # max records returned
+            "maxQueryResults":0,            # max records returned
             "fakeETag":True,                # eTag is fake, otherwise it is md5(all attributes)
             "generateSimpleUIDs":False,     # if UID is faked, use simple method for generating
        }
@@ -97,8 +97,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         del params["directoryBackedAddressBook"]
         appleInternalServer=params["appleInternalServer"]
         del params["appleInternalServer"] 
-        maxQueryRecords=params["maxQueryRecords"]
-        del params["maxQueryRecords"]
+        maxQueryResults=params["maxQueryResults"]
+        del params["maxQueryResults"]
         fakeETag=params["fakeETag"]
         del params["fakeETag"]
         generateSimpleUIDs=params["generateSimpleUIDs"]
@@ -133,7 +133,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         assert directoryBackedAddressBook is not None
         self.directoryBackedAddressBook = directoryBackedAddressBook
         
-        self.maxQueryRecords = maxQueryRecords
+        self.maxQueryResults = maxQueryResults
 
                 
         self.realmName = None # needed for super        
@@ -197,13 +197,13 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        queryRecords = []
+        queryResults = []
         limited = False
 
-         #calc maxRecords from passed in maxResults allowing extra for second stage filtering in caller
-        maxRecords = int(maxResults * 1.2)
-        if self.maxQueryRecords and maxRecords > self.maxQueryRecords:
-            maxRecords = self.maxQueryRecords
+         #calc maxResults from passed in maxResults allowing extra for second stage filtering in caller
+        maxResults = int(maxResults * 1.2)
+        if self.maxQueryResults and maxResults > self.maxQueryResults:
+            maxResults = self.maxQueryResults
 
         for queryMap in self.rdnSchema["queries"]:
 
@@ -242,18 +242,18 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 elif dsFilter:
                     filterstr = dsFilter.generate()
                 
-                # can't resist also using a timeout, 1 sec per requested record for now
-                timeout = maxRecords
+                # can't resist also using a timeout, 1 sec per request result for now
+                timeout = maxResults
 
-                self.log_debug("doAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s resultLimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxRecords))
+                self.log_debug("doAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s resultLimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxResults))
                 
-                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeoutSeconds=timeout, resultLimit=maxRecords))
+                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeoutSeconds=timeout, resultLimit=maxResults))
     
                 self.log_debug("doAddressBookQuery: ldapSearchResult=%s" % (ldapSearchResult,))
                 
                 for dn, ldapAttributes in ldapSearchResult:
                     #dn = normalizeDNstr(dn)
-                    dsRecord = None
+                    result = None
                     try:
                         # make a dsRecordAttributes dict from the ldap attributes
                         dsRecordAttributes = {}
@@ -285,22 +285,21 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                         self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
  
                         # get a record for dsRecordAttributes 
-                        dsRecord = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, defaultNodeName=None, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
-                        vCardText = dsRecord.vCardText()
+                        result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, defaultNodeName=None, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
                     except:
                         traceback.print_exc()
-                        self.log_info("Could not get vcard for ds record %s" % (dsRecord,))
+                        self.log_info("Could not get vcard for %s" % (dn,))
                     else:
-                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (vCardText, ))
-                        queryRecords.append(dsRecord)
+                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (result.vCardText(),))
+                        queryResults.append(result)
                 
                 # only get requested number of record results
-                maxRecords -= len(ldapSearchResult)
-                if maxRecords <= 0:
+                maxResults -= len(ldapSearchResult)
+                if maxResults <= 0:
                     limited = True
                     break
 
                          
-        self.log_info("limited  %s len(queryRecords) %s" % (limited,len(queryRecords),))
-        returnValue((queryRecords, limited,))        
+        self.log_info("limited  %s len(queryResults) %s" % (limited,len(queryResults),))
+        returnValue((queryResults, limited,))        
 
