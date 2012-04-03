@@ -935,7 +935,9 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                 (dsattributes.kDS1AttrUserPKCS12Data, "base64"),
                 (dsattributes.kDS1AttrUserSMIMECertificate, "base64"),
                 ],
-         # too bad this is not one X-Attribute with params.     Would make searching easier
+         "XMPP" : [
+                dsattributes.kDSNAttrIMHandle,
+                ],
          "X-AIM" : [
                 dsattributes.kDSNAttrIMHandle,
                 ],
@@ -1148,7 +1150,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                 vcard.addProperty(Property("X-ABLabel", label, group=groupPrefix))
 
             # for attributes of the form  param:value
-            def addPropertiesAndLabelsForPrefixedAttribute(groupCount, propertyPrefix, propertyName, defaultLabel, nolabelParamTypes, labelMap, attrType):
+            def addPropertiesAndLabelsForPrefixedAttribute(groupCount, propertyPrefix, propertyName, attrType, defaultLabel, nolabelParamTypes=(), labelMap={}, specialParamType=None):
                 preferred = True
                 for attrValue in self.valuesForAttribute(attrType):
                     try:
@@ -1168,11 +1170,16 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                         labelString = attrValue[:colonIndex] if colonIndex > 0 else defaultLabel
                         paramTypeString = labelString.upper()
                         
-                        # add PREF to first prop's parameters
-                        paramTypeStrings = [paramTypeString,]
-                        if preferred and "PREF" != paramTypeString:
-                            paramTypeStrings += ["PREF",]
-                        parameters = { "TYPE": paramTypeStrings, }
+                        if specialParamType:
+                            parameters = { specialParamType: (paramTypeString,) }
+                            if preferred:
+                                parameters["TYPE"] = ("PREF",)
+                        else:
+                            # add PREF to first prop's parameters
+                            paramTypeStrings = [paramTypeString,]
+                            if preferred and "PREF" != paramTypeString:
+                                paramTypeStrings += ["PREF",]
+                            parameters = { "TYPE": paramTypeStrings, }
 
                         #special case for IMHandles which the param is the last part of the property like X-AIM or X-JABBER 
                         if propertyPrefix:
@@ -1183,8 +1190,8 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                             addUniqueProperty(vcard, Property(propertyName, attrValue[colonIndex+1:], params=parameters), None, attrValue, attrType)
                         else:
                             # use special localizable addressbook labels where possible
-                            abLabelString = labelMap.get(labelString, labelString)
-                            addPropertyAndLabel(groupCount, abLabelString, propertyName, propertyValue, parameters)
+                            localizedABLabelString = labelMap.get(labelString, labelString)
+                            addPropertyAndLabel(groupCount, localizedABLabelString, propertyName, propertyValue, parameters)
                         preferred = False
 
                     except Exception, e:
@@ -1369,9 +1376,9 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                 addUniqueProperty(vcard, Property("TEL", phone, params=params), (("TYPE", "PREF"),), phone, dsattributes.kDSNAttrHomePhoneNumber)
                 params = { "TYPE": ["HOME", "VOICE",], }
                     
-            addPropertiesAndLabelsForPrefixedAttribute(groupCount, None, "TEL", "work",
-                                                        ["VOICE", "CELL", "FAX", "PAGER",], {},
-                                                        dsattributes.kDSNAttrPhoneContacts, )
+            addPropertiesAndLabelsForPrefixedAttribute(groupCount=groupCount, propertyPrefix=None, propertyName="TEL", defaultLabel="work",
+                                                        nolabelParamTypes=("VOICE", "CELL", "FAX", "PAGER",),
+                                                        attrType=dsattributes.kDSNAttrPhoneContacts, )
 
             """
             # EXTEND:  Use this attribute
@@ -1394,9 +1401,9 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                                                         #      Example: home:johndoe@mymail.com
     
             # check to see if parameters type are open ended. Could be any string
-            addPropertiesAndLabelsForPrefixedAttribute(groupCount, None, "EMAIL", "work",
-                                                        ["WORK", "HOME",], {}, 
-                                                        dsattributes.kDSNAttrEMailContacts, )
+            addPropertiesAndLabelsForPrefixedAttribute(groupCount=groupCount, propertyPrefix=None, propertyName="EMAIL", defaultLabel="work",
+                                                        nolabelParamTypes=("WORK", "HOME",), 
+                                                        attrType=dsattributes.kDSNAttrEMailContacts, )
     
             """
             # UNIMPLEMENTED:
@@ -1532,19 +1539,27 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                                                         #      Values should be prefixed with the appropriate IM type
                                                         #       ie. AIM:, Jabber:, MSN:, Yahoo:, or ICQ:
                                                         #       Usually found in user records (kDSStdRecordTypeUsers).
-    
-            addPropertiesAndLabelsForPrefixedAttribute(groupCount, "X-", None, "aim",
-                                                        ["AIM", "JABBER", "MSN", "YAHOO", "ICQ"], 
-                                                        {}, 
-                                                        dsattributes.kDSNAttrIMHandle,)
+            imNolabelParamTypes=("AIM", "FACEBOOK", "GAGU-GAGU", "GOOGLE TALK", "ICQ", "JABBER", "MSN", "QQ", "SKYPE", "YAHOO",)
+            addPropertiesAndLabelsForPrefixedAttribute(groupCount=groupCount, propertyPrefix="X-", propertyName=None, defaultLabel="aim",
+                                                        nolabelParamTypes=imNolabelParamTypes, 
+                                                        attrType=dsattributes.kDSNAttrIMHandle,)
+            
+            
+
+            # IMPP
+            # Address Book's implementation of http://tools.ietf.org/html/rfc6350#section-6.4.3
+            # adding IMPP property allows ab query report search on one property
+            addPropertiesAndLabelsForPrefixedAttribute(groupCount=groupCount, propertyPrefix=None, propertyName="IMPP", defaultLabel="aim",
+                                                        specialParamType = "X-SERVICE-TYPE",
+                                                        nolabelParamTypes=imNolabelParamTypes, 
+                                                        attrType=dsattributes.kDSNAttrIMHandle,)
                     
             # X-ABRELATEDNAMES
             # dsattributes.kDSNAttrRelationships,        #      multi-valued attribute that defines the relationship to the record type .
                                                         #      found in user records (kDSStdRecordTypeUsers). 
                                                         #      Example: brother:John
-            addPropertiesAndLabelsForPrefixedAttribute(groupCount, None, "X-ABRELATEDNAMES", "friend",
-                                                        [],  
-                                                        {   "FATHER":"_$!<Father>!$_",
+            addPropertiesAndLabelsForPrefixedAttribute(groupCount=groupCount, propertyPrefix=None, propertyName="X-ABRELATEDNAMES", defaultLabel="friend",
+                                                        labelMap={   "FATHER":"_$!<Father>!$_",
                                                             "MOTHER":"_$!<Mother>!$_",
                                                             "PARENT":"_$!<Parent>!$_",
                                                             "BROTHER":"_$!<Brother>!$_",
@@ -1555,7 +1570,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                                                             "PARTNER":"_$!<Partner>!$_",
                                                             "ASSISTANT":"_$!<Assistant>!$_",
                                                             "MANAGER":"_$!<Manager>!$_", },
-                                                        dsattributes.kDSNAttrRelationships, )
+                                                        attrType=dsattributes.kDSNAttrRelationships, )
             
             
             # special case for Apple
