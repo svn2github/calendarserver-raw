@@ -176,17 +176,9 @@ class OpenDirectoryBackingService(DirectoryService):
             
         
         
-        self._dsLocalRecords = []
+        self._dsLocalResults = {}
         self._nextDSLocalQueryTime = 0
         
-        # get this now once
-        hostname = getfqdn()
-        if hostname:
-            self.defaultNodeName = "/LDAPv3/" + hostname
-        else:
-            self.defaultNodeName = None
-        
-
     def __cmp__(self, other):
         if not isinstance(other, DirectoryRecord):
             return super(DirectoryRecord, self).__eq__(other)
@@ -229,11 +221,10 @@ class OpenDirectoryBackingService(DirectoryService):
                 self.log_error("Open Directory (node=%s) error: %s" % ("/Local/Default", str(ex)))
                 raise
             
-            self._dsLocalRecords = []        
             for (recordShortName, value) in records: #@UnusedVariable
                 
                 try:
-                    result = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, defaultNodeName="/Local/Default")
+                    result = ABDirectoryQueryResult(self.directoryBackedAddressBook, value)
                 except:
                     traceback.print_exc()
                     self.log_info("Could not get vcard for record %s" % (recordShortName,))
@@ -262,11 +253,11 @@ class OpenDirectoryBackingService(DirectoryService):
             return {}
         
         if time.time() > self._nextDSLocalQueryTime:
-            self._dsLocalRecords = generateDSLocalResults()
+            self._dsLocalResults = generateDSLocalResults()
             # Add jitter/fuzz factor 
             self._nextDSLocalQueryTime = time.time() + self.dsLocalCacheTimeout * (random() + 0.5)  * 60
 
-        return self._dsLocalRecords
+        return self._dsLocalResults
     
 
     @inlineCallbacks
@@ -290,7 +281,6 @@ class OpenDirectoryBackingService(DirectoryService):
             
             try:
                 result = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, 
-                                     defaultNodeName=self.defaultNodeName, 
                                      generateSimpleUIDs=self.generateSimpleUIDs, 
                                      addDSAttrXProperties=self.addDSAttrXProperties,
                                      appleInternalServer=self.appleInternalServer,
@@ -935,7 +925,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                 (dsattributes.kDS1AttrUserPKCS12Data, "base64"),
                 (dsattributes.kDS1AttrUserSMIMECertificate, "base64"),
                 ],
-         "XMPP" : [
+         "IMPP" : [
                 dsattributes.kDSNAttrIMHandle,
                 ],
          "X-AIM" : [
@@ -1007,7 +997,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
         }
 
     
-    def __init__(self, directoryBackedAddressBook, recordAttributes, defaultNodeName=None, generateSimpleUIDs=False, addDSAttrXProperties=False, appleInternalServer=False, ):
+    def __init__(self, directoryBackedAddressBook, recordAttributes, generateSimpleUIDs=False, addDSAttrXProperties=False, appleInternalServer=False, ):
         
 
         self.log_debug("directoryBackedAddressBook=%s, attributes=%s"    % (directoryBackedAddressBook, recordAttributes))

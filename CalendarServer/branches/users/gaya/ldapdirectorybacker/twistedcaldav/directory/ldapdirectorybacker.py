@@ -145,14 +145,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
  
         super(LdapDirectoryBackingService, self).__init__(params)
         
-         ### self.defaultNodeName used by ABDirectoryQueryResult.
-        # get this now once
-        hostname = getfqdn()
-        if hostname:
-            self.defaultNodeName = "/LDAPv3/" + hostname
-        else:
-            self.defaultNodeName = None
-        
  
     def __hash__(self):
         h = hash(self.__class__.__name__)
@@ -285,7 +277,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                         self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
  
                         # get a record for dsRecordAttributes 
-                        result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, defaultNodeName=None, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
+                        result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
                     except:
                         traceback.print_exc()
                         self.log_info("Could not get vcard for %s" % (dn,))
