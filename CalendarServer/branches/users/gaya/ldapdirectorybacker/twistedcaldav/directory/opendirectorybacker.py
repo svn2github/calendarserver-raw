@@ -534,7 +534,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
 
             def andOrExpression(propFilterAllOf, queryAttributes, matchList):
                 #print("andOrExpression(propFilterAllOf=%r, queryAttributes%r, matchList%r)" % (propFilterAllOf, queryAttributes, matchList))
-                if propFilterAllOf and len(matchList):
+                if propFilterAllOf and len(matchList) > 1:
                     # add OR expression because parent will AND
                     return (False, queryAttributes, [dsquery.expression( dsquery.expression.OR, matchList),])
                 else:
@@ -735,7 +735,12 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToLdapAttrMap, all
             
             paramFilterElements = [paramFilterElement for paramFilterElement in propFilter.filters if isinstance(paramFilterElement, addressbookqueryfilter.ParameterFilter)]
             textMatchElements = [textMatchElement for textMatchElement in propFilter.filters if isinstance(textMatchElement, addressbookqueryfilter.TextMatch)]
-            propFilterAllOf = propFilter.propfilter_test == "allof"
+            
+            # if only one propFilter, then use filterAllOf as propFilterAllOf to reduce subexpressions and simplify generated query string
+            if len(propFilter.filters) == 1:
+                propFilterAllOf = filterAllOf
+            else:
+                propFilterAllOf = propFilter.propfilter_test == "allof"
             
             # handle parameter filter elements
             if len(paramFilterElements) > 0:
