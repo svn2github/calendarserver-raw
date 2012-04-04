@@ -1153,6 +1153,16 @@
                             <string>mail</string>
                             <key>TEL</key>
                             <string>telephoneNumber</string>
+                            <key>ADR</key>
+                            <array>
+                                <string>buildingName</string>
+                                <string>destinationIndicator</string>
+                                <string>street</string>
+                                <string>l</string>
+                                <string>st</string>
+                            </array>
+                            <key>ORG</key>
+                            <string>ou</string>
                             <key>UID</key>
                             <string>appleDSID</string>
                         </dict>
@@ -1164,12 +1174,11 @@
     						<key>sn</key>
     						<string>LastName</string>
     						<key>cn</key>
-    						<array>
-    							<string>RealName</string>
-    							<string>RecordName</string>
-    						</array>
+    						<string>RealName</string>
+                            <!-- PHOTO  -->
     						<key>applePhotoPreferred-jpeg</key>
     						<string>JPEGPhoto</string>
+                            <!-- ADR  -->
     						<key>buildingName</key>
     						<string>Building</string>
     						<key>destinationIndicator</key>
@@ -1184,7 +1193,8 @@
     						<string>PostalCode</string>
     						<key>co</key>
     						<string>Country</string>
-    						<key>telephoneNumber</key>
+                            <!-- TEL  -->
+   						    <key>telephoneNumber</key>
     						<string>PhoneNumber</string>
     						<key>appleSecondaryPhone</key>
     						<string>PhoneNumber</string>
@@ -1194,18 +1204,22 @@
     						<string>PagerNumber</string>
     						<key>mobile</key>
     						<string>MobileNumber</string>
+                            <!-- EMAIL  -->
     						<key>mail</key>
     						<string>EMailAddress</string>
     						<key>applePreferredEmail</key>
     						<string>EMailAddress</string>
     						<key>appleNotificationEmail</key>
     						<string>EMailAddress</string>
+                            <!-- UID  -->
     						<key>appleDSID</key>
     						<string>GeneratedUID</string>
+                            <!-- ORG  -->
     						<key>o</key>
     						<string>OrganizationName</string>
     						<key>ou</key>
     						<string>Department</string>
+                            <!-- IMPP  -->
     						<key>appleAIMPreferred</key>
     						<string>IMHandle</string>
     						<key>appleAIMOfficial</key>
