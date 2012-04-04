@@ -230,7 +230,7 @@ class OpenDirectoryBackingService(DirectoryService):
                     self.log_info("Could not get vcard for record %s" % (recordShortName,))
                     
                 else:
-                    uid = result.vCard().getProperty("UID").value()
+                    uid = result.vCard().propertyValue("UID")
 
                     if self.ignoreSystemRecords:
                         # remove system users and people
@@ -277,10 +277,14 @@ class OpenDirectoryBackingService(DirectoryService):
         resultsDictionary = self._getAllDSLocalResults().copy()
         self.log_debug("Adding %s DSLocal results" % len(resultsDictionary.keys()))
         
-        for (recordShortName, value) in records: #@UnusedVariable
+        for (recordShortName, recordAttributes) in records: #@UnusedVariable
             
             try:
-                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, value, 
+                # fix ds strangeness
+                if recordAttributes.get(dsattributes.kDS1AttrLastName, "") == "99":
+                    del recordAttributes[dsattributes.kDS1AttrLastName]
+        
+                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, recordAttributes, 
                                      generateSimpleUIDs=self.generateSimpleUIDs, 
                                      addDSAttrXProperties=self.addDSAttrXProperties,
                                      appleInternalServer=self.appleInternalServer,
@@ -290,7 +294,7 @@ class OpenDirectoryBackingService(DirectoryService):
                 self.log_info("Could not get vcard for record %s" % (recordShortName,))
                 
             else:
-                uid = result.vCard().getProperty("UID").value()
+                uid = result.vCard().propertyValue("UID")
 
                 if self.ignoreSystemRecords:
                     # remove system users and people
@@ -1027,9 +1031,6 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             else:
                 self.attributes[key] = values
                 
-        if self.firstValueForAttribute(dsattributes.kDS1AttrLastName) == "99":
-            del self.attributes[dsattributes.kDS1AttrLastName]
-        
         # find a GUID
         guid = self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)
         if not guid:
@@ -1053,8 +1054,8 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
     def __repr__(self):
         return "<%s[%s(%s)]>" % (
             self.__class__.__name__,
-            self.vCard().getProperty("FN").value(),
-            self.vCard().getProperty("UID").value()
+            self.vCard().propertyValue("FN"),
+            self.vCard().propertyValue("UID")
         )
     
     def __hash__(self):
