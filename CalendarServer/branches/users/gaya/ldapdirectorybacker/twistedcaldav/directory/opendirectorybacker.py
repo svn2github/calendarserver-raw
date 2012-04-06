@@ -90,8 +90,9 @@ class OpenDirectoryBackingService(DirectoryService):
         generateSimpleUIDs = False,       # use simple synthetic UIDs --- good for testing
         appleInternalServer=False,
         
-        additionalAttributes=[],
-        allowedAttributes=[],
+        additionalAttributes=None,
+        allowedAttributes=None,
+        searchAttributes=None,
         directoryBackedAddressBook=None
     ):
         """
@@ -156,29 +157,69 @@ class OpenDirectoryBackingService(DirectoryService):
         self.generateSimpleUIDs = generateSimpleUIDs
         self.appleInternalServer = appleInternalServer
         
-        if ignoreSystemRecords:
-            # needed for sytem record test, but not has no part in generating in vCard properties
-            additionalAttributes += [dsattributes.kDS1AttrUniqueID,]
         
-        self.additionalAttributes = additionalAttributes
-        # filter allows attributes, but make sure there are a minimum of attributes for functionality
+        if searchAttributes is None:
+            # this is the intersection of ds default indexed attributes and ABDirectoryQueryResult.vcardPropToDSAttrMap.values()
+            # so, not all indexed attributes are below
+            searchAttributes = [
+                dsattributes.kDS1AttrGeneratedUID,
+                dsattributes.kDS1AttrDistinguishedName,
+                dsattributes.kDS1AttrFirstName,
+                dsattributes.kDS1AttrLastName,
+                dsattributes.kDSNAttrPhoneNumber,
+                dsattributes.kDSNAttrMobileNumber,
+                dsattributes.kDSNAttrDepartment,
+                dsattributes.kDSNAttrCompany,
+                dsattributes.kDSNAttrStreet,
+                dsattributes.kDSNAttrState,
+                dsattributes.kDSNAttrCity,
+                dsattributes.kDSNAttrCountry,
+                ]
+        elif not searchAttributes:
+            # if search Attributes is [], don't restrict searching (but no binary)
+            searchAttributes = stringDSAttrNames
+        self.log_debug("self.searchAttributes=%s" % (searchAttributes, ))
+        
+        # calculate search map
+        vCardPropToSearchableDSAttrMap = {}
+        for prop, dsAttributeList in ABDirectoryQueryResult.vcardPropToDSAttrMap.iteritems():
+            dsIndexedAttributeList = [attr for attr in dsAttributeList if attr in searchAttributes]
+            if len(dsIndexedAttributeList):
+                vCardPropToSearchableDSAttrMap[prop] = dsIndexedAttributeList
+        
+        self.vCardPropToSearchableDSAttrMap = vCardPropToSearchableDSAttrMap
+        self.log_debug("self.vCardPropToSearchableDSAttrMap=%s" % (self.vCardPropToSearchableDSAttrMap, ))
+        
+        
+        #get attributes required for needed for valid vCard
+        requiredAttributes = [attr for prop in ("UID", "FN", "N") for attr in ABDirectoryQueryResult.vcardPropToDSAttrMap[prop]]
+        requiredAttributes += [dsattributes.kDS1AttrModificationTimestamp, dsattributes.kDS1AttrCreationTimestamp,] # for VCardResult property mix in
+        self.requiredAttributes = list(set(requiredAttributes))
+        self.log_debug("self.requiredAttributes=%s" % (self.requiredAttributes, ))
+           
+        # get returned attributes
+        #allowedAttributes = [dsattributes.kDS1AttrUniqueID,]
         if allowedAttributes:
-            self.allowedDSQueryAttributes = sorted(list(set(
-                                                [attr for attr in ABDirectoryQueryResult.allDSQueryAttributes
-                                                    if (isinstance(attr, str) and attr in allowedAttributes) or
-                                                       (isinstance(attr, tuple) and attr[0] in allowedAttributes)] +
-                                                ABDirectoryQueryResult.dsqueryAttributesForProperty.get("X-INTERNAL-REQUIRED")
-                                                )))
-            if (self.allowedDSQueryAttributes != ABDirectoryQueryResult.allDSQueryAttributes):
-                self.log_info("Allowed DS query attributes = %r" % (self.allowedDSQueryAttributes, ))
-        else:
-            self.allowedDSQueryAttributes = ABDirectoryQueryResult.allDSQueryAttributes
-        
-        #self.returnedAttributes = ABDirectoryQueryResult.allDSQueryAttributes
-        self.returnedAttributes = self.allowedDSQueryAttributes
-        
             
+            returnedAttributes = [attr for attr in ABDirectoryQueryResult.allDSQueryAttributes
+                                                    if (isinstance(attr, str) and attr in allowedAttributes) or
+                                                       (isinstance(attr, tuple) and attr[0] in allowedAttributes)]
+            self.log_debug("allowedAttributes%s" % (allowedAttributes, ))
+        else:
+            returnedAttributes = ABDirectoryQueryResult.allDSQueryAttributes
+            
+        # add required
+        returnedAttributes += self.requiredAttributes
         
+        if additionalAttributes:
+            returnedAttributes += addtionalAttributes
+        
+        if ignoreSystemRecords:
+            returnedAttributes += [dsattributes.kDS1AttrUniqueID,]
+        
+        self.returnedAttributes = list(set(returnedAttributes))
+        self.log_debug("self.returnedAttributes=%s" % (self.returnedAttributes, ))
+              
         
         self._dsLocalResults = {}
         self._nextDSLocalQueryTime = 0
@@ -226,16 +267,15 @@ class OpenDirectoryBackingService(DirectoryService):
             recordTypes = [dsattributes.kDSStdRecordTypePeople, dsattributes.kDSStdRecordTypeUsers, ]
             try:
                 localNodeDirectory = self.odModule.odInit("/Local/Default")
-                returnedAttributes = list(set(self.returnedAttributes + self.additionalAttributes))
                 self.log_debug("opendirectory.listAllRecordsWithAttributes_list(%r,%r,%r)" % (
                         "/DSLocal",
                         recordTypes,
-                        returnedAttributes,
+                        self.returnedAttributes,
                     ))
                 records = list(self.odModule.listAllRecordsWithAttributes_list(
                         localNodeDirectory,
                         recordTypes,
-                        returnedAttributes,
+                        self.returnedAttributes,
                     ))
             except self.odModule.ODError, ex:
                 self.log_error("Open Directory (node=%s) error: %s" % ("/Local/Default", str(ex)))
@@ -338,9 +378,7 @@ class OpenDirectoryBackingService(DirectoryService):
         
         if not attributes:
             attributes = self.returnedAttributes
-            
-        attributes = list(set(attributes + self.additionalAttributes)) # remove duplicates
-        
+                    
         directoryAndRecordTypes = []
         if self.peopleDirectory == self.userDirectory:
             # use single ds query if possible for best performance
@@ -437,14 +475,13 @@ class OpenDirectoryBackingService(DirectoryService):
             return self.returnedAttributes
         
         else:
-            propertyNames.append("X-INTERNAL-MINIMUM-VCARD-PROPERTIES") # these properties are required to make a vCard
-            queryAttributes = []
+            queryAttributes = self.requiredAttributes
             for prop in propertyNames:
-                if prop in ABDirectoryQueryResult.dsqueryAttributesForProperty:
-                    #print("adding attributes %r" % ABDirectoryQueryResult.dsqueryAttributesForProperty.get(prop))
-                    queryAttributes += ABDirectoryQueryResult.dsqueryAttributesForProperty.get(prop)
-
-            return list(set(queryAttributes).intersection(set(self.returnedAttributes)))
+                attributes = self.vCardPropToSearchableDSAttrMap.get(prop)
+                if attributes:
+                    queryAttributes += attributes
+                    
+            return list(set(queryAttributes))
 
     
 
@@ -454,7 +491,7 @@ class OpenDirectoryBackingService(DirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDSAttrMap=ABDirectoryQueryResult.vcardPropToDSAttrMap, allowedAttributes=self.allowedDSQueryAttributes );
+        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDSAttrMap=self.vCardPropToSearchableDSAttrMap );
         #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
         
         # testing:
@@ -519,7 +556,7 @@ def propertiesInAddressBookQuery( addressBookQuery ):
     return (etagRequested, propertyNames if len(propertyNames) else None)
 
 
-def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap, allowedAttributes=None):
+def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
     """
     Convert the supplied addressbook-query into a ds expression tree.
 
@@ -734,8 +771,6 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap, allow
             queryAttributes = vcardPropToDSAttrMap.get(propFilter.filter_name, [])
             if isinstance(queryAttributes, str):
                 queryAttributes = [queryAttributes,]
-            if allowedAttributes:
-                queryAttributes = list(set(queryAttributes).intersection(set(allowedAttributes)))
             
             binaryAttrNames = []
             stringAttrNames = []
@@ -954,29 +989,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                 ],
          "X-ABRELATEDNAMES" :  [
                 dsattributes.kDSNAttrRelationships,
-                ],
-          "X-INTERNAL-MINIMUM-VCARD-PROPERTIES" : [
-                dsattributes.kDS1AttrGeneratedUID,
-                dsattributes.kDS1AttrFirstName, 
-                dsattributes.kDS1AttrLastName, 
-                dsattributes.kDS1AttrMiddleName,
-                dsattributes.kDSNAttrNamePrefix,
-                dsattributes.kDSNAttrNameSuffix,
-                dsattributes.kDS1AttrDistinguishedName,
-                dsattributes.kDSNAttrRecordName,
-                dsattributes.kDSNAttrRecordType,
-                dsattributes.kDS1AttrModificationTimestamp,
-                dsattributes.kDS1AttrCreationTimestamp,
-                ],
-          "X-INTERNAL-REQUIRED" : [
-                dsattributes.kDS1AttrGeneratedUID,
-                dsattributes.kDS1AttrDistinguishedName,
-                dsattributes.kDSNAttrRecordName,
-                dsattributes.kDS1AttrFirstName, 
-                dsattributes.kDS1AttrLastName, 
-                dsattributes.kDSNAttrRecordType,
-                ],
-  
+                ],  
     }
     
     allDSQueryAttributes = list(set([attr for lookupAttributes in vcardPropToDSAttrMap.values()

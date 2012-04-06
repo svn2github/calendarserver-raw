@@ -1057,7 +1057,7 @@
           </array>
           -->
           <!-- add this key to limit directory service attributes used to make vCard properties
-          		When using directory service templates, list should include only mapped attributes.
+                  When using directory service templates, list should include only mapped attributes.
           <key>allowedAttributes</key>
           <array>
             <string>dsAttrTypeStandard:AddressLine1</string>
@@ -1103,7 +1103,26 @@
             <string>dsAttrTypeStandard:UserPKCS12Data</string>
             <string>dsAttrTypeStandard:UserSMIMECertificate</string>
             <string>dsAttrTypeStandard:WeblogURI</string>
-          </array>
+           </array>
+           -->
+           <!-- add this key to change directory service query attributes.
+                Missing defaults to od indexed attributes
+                Use an empty array not to restrict the query.
+          <key>searchAttributes</key>
+          <array>
+            <string>dsAttrTypeStandard:GeneratedUID</string>
+            <string>dsAttrTypeStandard:RealName</string>
+            <string>dsAttrTypeStandard:FirstName</string>
+            <string>dsAttrTypeStandard:LastName</string>
+            <string>dsAttrTypeStandard:PhoneNumber</string>
+            <string>dsAttrTypeStandard:MobileNumber</string>
+            <string>dsAttrTypeStandard:Department</string>
+            <string>dsAttrTypeStandard:Company</string>
+            <string>dsAttrTypeStandard:Street</string>
+            <string>dsAttrTypeStandard:State</string>
+            <string>dsAttrTypeStandard:City</string>
+            <string>dsAttrTypeStandard:Country</string>
+           </array>
           -->
         </dict>
         <!-- twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService ->

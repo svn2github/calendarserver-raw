@@ -225,8 +225,9 @@ directoryAddressBookBackingServiceDefaultParams = {
         "generateSimpleUIDs": False,
         "addDSAttrXProperties": False,
         "appleInternalServer": False,
-        "additionalAttributes" : [],
-        "allowedAttributes" : [],
+        "additionalAttributes" : None,
+        "allowedAttributes" : None,
+        "searchAttributes" : None,
     },
     "twistedcaldav.directory.ldapdirectorybacker.LdapDirectoryBackingService": {
         "appleInternalServer": False,

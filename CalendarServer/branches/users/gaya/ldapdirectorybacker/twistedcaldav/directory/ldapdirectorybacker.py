@@ -266,7 +266,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                     for dsAttributeName in dsAttributeNames:
                                         
                                         # base64 encode binary attributes
-                                        if dsAttributeName in ABDirectoryQueryResult.binaryDSAttributeStrs:
+                                        if dsAttributeName in ABDirectoryQueryResult.binaryDSAttrNames:
                                             ldapAttributeValues = [attr.encode('base64') for attr in ldapAttributeValues]
                                         
                                         # add to dsRecordAttributes
