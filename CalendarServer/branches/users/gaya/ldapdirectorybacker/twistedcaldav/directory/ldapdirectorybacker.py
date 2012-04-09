@@ -302,11 +302,10 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                     queryStr = queryFilter
                 elif dsFilter:
                     queryStr = dsFilter.generate()
-                    
-                
+
                 
                 # keep trying ldap query till we get results based on filter.  Especially when doing "all results" query
-                remainingMaxResults = maxResults - len(results)
+                remainingMaxResults = maxResults - len(results) if maxResults else 0
                 maxLdapResults = int(remainingMaxResults * 1.2)
     
                 while True:
@@ -342,6 +341,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                         maxLdapResults = self.maxQueryResults
                     
                 results += filteredResults
+                if maxResults and len(results) > maxResults:
+                    break
                 
         
         limited = maxResults and len(results) >= maxResults
