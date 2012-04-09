@@ -137,13 +137,8 @@ class XMLDirectoryBackingService(XMLDirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        queryResults = []
+        results = []
         limited = False
-
-         #calc maxResults from passed in maxResults allowing extra for second stage filtering in caller
-        maxResults = int(maxResults * 1.2)
-        if self.maxQueryResults and maxResults > self.maxQueryResults:
-            maxResults = self.maxQueryResults
 
         for queryType in self.recordTypes():
 
@@ -168,7 +163,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                     
                     """
                         Although this exercises the dsFilter expression tree and recordsMatchingFields() it make little difference to the result of
-                        a addressbook query because of post filtering.
+                        a addressbook query because of filtering.
                     """
 
                     if not isinstance(dsFilter, dsquery.expression):
@@ -248,17 +243,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                     xmlDirectoryRecords = (yield self.listRecords(queryType))
                     self.log_debug("doAddressBookQuery: all #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords), ))
                 
-                #sort so that CalDAVTester can have consistent results when it uses limits
-                if self.sortResults:
-                    xmlDirectoryRecords = sorted(list(xmlDirectoryRecords), key=lambda x:x.guid)
                 
-                """ no good reason to use limit here, let caller do it
-                # apply limit
-                if len(xmlDirectoryRecords) > maxResults:
-                     xmlDirectoryRecords = xmlDirectoryRecords[:maxResults]
-                     self.log_debug("doAddressBookQuery: #xmlDirectoryRecords after max %s" % (len(xmlDirectoryRecords), ))
-                """
-                   
                 for xmlDirectoryRecord in xmlDirectoryRecords:
                     
                     def dsRecordAttributesFromDirectoryRecord( xmlDirectoryRecord ):
@@ -280,17 +265,21 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                         traceback.print_exc()
                         self.log_info("Could not get vcard for %s" % (xmlDirectoryRecord,))
                     else:
-                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (result.vCardText(),))
-                        queryResults.append(result)
+                        if addressBookFilter.match(result.vCard()):
+                            self.log_debug("doAddressBookQuery: VCard text =\n%s" % (result.vCard(),))
+                            results.append(result)
+                        else:
+                            # should also filter for duplicate UIDs
+                            self.log_debug("doAddressBookQuery did not match filter: %s (%s)" % (result.vCard().propertyValue("FN"), result.vCard().propertyValue("UID"),))
                 
-                
-                # only get requested number of record results
-                maxResults -= len(xmlDirectoryRecords)
-                if maxResults <= 0:
+                if len(results) >= maxResults:
                     limited = True
                     break
-
                          
-        self.log_info("limited  %s len(queryResults) %s" % (limited,len(queryResults),))
-        returnValue((queryResults, limited,))        
+        #sort results so that CalDAVTester can have consistent results when it uses limits
+        if self.sortResults:
+            results = sorted(list(results), key=lambda result:result.vCard().propertyValue("UID"))
+
+        self.log_info("limited  %s len(results) %s" % (limited,len(results),))
+        returnValue((results, limited,))        
 

@@ -1114,6 +1114,7 @@
             <string>dsAttrTypeStandard:RealName</string>
             <string>dsAttrTypeStandard:FirstName</string>
             <string>dsAttrTypeStandard:LastName</string>
+            <string>dsAttrTypeStandard:kDSNAttrEMailAddress</string>
             <string>dsAttrTypeStandard:PhoneNumber</string>
             <string>dsAttrTypeStandard:MobileNumber</string>
             <string>dsAttrTypeStandard:Department</string>

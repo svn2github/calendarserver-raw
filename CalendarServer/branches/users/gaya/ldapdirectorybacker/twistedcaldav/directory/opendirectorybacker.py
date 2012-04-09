@@ -154,8 +154,9 @@ class OpenDirectoryBackingService(DirectoryService):
         self.fakeETag = fakeETag
                 
         self.addDSAttrXProperties = addDSAttrXProperties
-        self.generateSimpleUIDs = generateSimpleUIDs
+        self.generateSimpleUIDs = generateSimpleUIDs # for testing
         self.appleInternalServer = appleInternalServer
+        self.sortResults = generateSimpleUIDs # for testing: TODO: make separate param 
         
         
         if searchAttributes is None:
@@ -166,6 +167,7 @@ class OpenDirectoryBackingService(DirectoryService):
                 dsattributes.kDS1AttrDistinguishedName,
                 dsattributes.kDS1AttrFirstName,
                 dsattributes.kDS1AttrLastName,
+                dsattributes.kDSNAttrEMailAddress,
                 dsattributes.kDSNAttrPhoneNumber,
                 dsattributes.kDSNAttrMobileNumber,
                 dsattributes.kDSNAttrDepartment,
@@ -177,7 +179,7 @@ class OpenDirectoryBackingService(DirectoryService):
                 ]
         elif not searchAttributes:
             # if search Attributes is [], don't restrict searching (but no binary)
-            searchAttributes = stringDSAttrNames
+            searchAttributes = ABDirectoryQueryResult.stringDSAttrNames
         self.log_debug("self.searchAttributes=%s" % (searchAttributes, ))
         
         # calculate search map
@@ -216,6 +218,8 @@ class OpenDirectoryBackingService(DirectoryService):
         
         if ignoreSystemRecords:
             returnedAttributes += [dsattributes.kDS1AttrUniqueID,]
+        if not self.queryDSLocal:
+            returnedAttributes += [dsattributes.kDSNAttrMetaNodeLocation,]
         
         self.returnedAttributes = list(set(returnedAttributes))
         self.log_debug("self.returnedAttributes=%s" % (self.returnedAttributes, ))
@@ -323,7 +327,7 @@ class OpenDirectoryBackingService(DirectoryService):
     @inlineCallbacks
     def _getDirectoryQueryResults(self, query=None, attributes=None, maxRecords=0 ):
         """
-        Get a list of filtered ABDirectoryQueryResult for the given query with the given attributes.
+        Get a list of ABDirectoryQueryResult for the given query with the given attributes.
         query == None gets all records. attribute == None gets ABDirectoryQueryResult.allDSQueryAttributes
         """
         limited = False
@@ -347,6 +351,12 @@ class OpenDirectoryBackingService(DirectoryService):
                 if self.ignoreSystemRecords:
                     if self._isSystemRecord(recordShortName, recordAttributes):
                         continue
+                    
+                if not self.queryDSLocal:
+                    # skip records in local node which happens for non-complex od queries
+                    if recordAttributes.get(dsattributes.kDSNAttrMetaNodeLocation, "").startswith("/Local/"):
+                        self.log_info("Record from local node %s ignored" % (recordShortName,))
+                        continue
 
                 result = ABDirectoryQueryResult(self.directoryBackedAddressBook, recordAttributes, 
                                      generateSimpleUIDs=self.generateSimpleUIDs, 
@@ -367,7 +377,7 @@ class OpenDirectoryBackingService(DirectoryService):
                 self.log_debug("VCard text =\n%s" % (result.vCardText(), ))
                 resultsDictionary[uid] = result                   
         
-        self.log_debug("After filtering, %s results (limited=%s)." % (len(resultsDictionary), limited))
+        self.log_debug("_getDirectoryQueryResults: %s results (limited=%s)." % (len(resultsDictionary), limited))
         returnValue((resultsDictionary.values(), limited, ))
 
 
@@ -492,8 +502,8 @@ class OpenDirectoryBackingService(DirectoryService):
         """
     
         allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDSAttrMap=self.vCardPropToSearchableDSAttrMap );
-        #print("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
-        
+        self.log_debug("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
+
         # testing:
         # allRecords = True
         
@@ -506,7 +516,7 @@ class OpenDirectoryBackingService(DirectoryService):
 
         if not clear:
             
-            # add filter to ignore system records rather than post filtering
+            # change query to ignore system records rather than post filtering
             # but this appears to be broken in open directory
             '''
             if self.ignoreSystemRecords:
@@ -516,19 +526,53 @@ class OpenDirectoryBackingService(DirectoryService):
                 filterAttributes = list(set(filterAttributes).union(dsattributes.kDS1AttrGeneratedUID))
                 
                 dsFilter = dsquery.expression( dsquery.expression.AND, (dsFilter, ignoreExpression,) ) if dsFilter else ignoreExpression
-                #dsFilter = ignoreExpression
             '''
 
             queryAttributes = self._attributesForAddressBookQuery( addressBookQuery )
             attributes = filterAttributes + queryAttributes
             
-            #calc maxRecords from passed in maxResults allowing extra for second stage filtering in caller
             maxRecords = int(maxResults * 1.2)
-            if self.maxDSQueryRecords and maxRecords > self.maxDSQueryRecords:
-                maxRecords = self.maxDSQueryRecords
+
+            # keep trying query till we get results based on filter.  Especially when doing "all results" query
+            while True:
+                dsQueryResults, dsQueryLimited = (yield self._getDirectoryQueryResults(dsFilter, attributes, maxRecords))
+                
+                filteredResults = []
+                for dsQueryResult in dsQueryResults:
+                    if addressBookFilter.match(dsQueryResult.vCard()):
+                        filteredResults.append(dsQueryResult)
+                    else:
+                        self.log_debug("doAddressBookQuery: result did not match filter: %s (%s)" % (dsQueryResult.vCard().propertyValue("FN"), dsQueryResult.vCard().propertyValue("UID"),))
+                
+                #no more results    
+                if not dsQueryLimited:
+                    break;
+                
+                # more than requested results
+                if maxResults and len(filteredResults) > maxResults:
+                    break
+                
+                # more than max report results
+                if len(filteredResults) > config.MaxQueryWithDataResults:
+                    break
+                
+                # more than self limit
+                if self.maxDSQueryRecords and maxRecords >= self.maxDSQueryRecords:
+                    break
+                
+                # try again with 2x
+                maxRecords *= 2
+                if self.maxDSQueryRecords and maxRecords > self.maxDSQueryRecords:
+                    maxRecords = self.maxDSQueryRecords
+                
             
-            results, limited = (yield self._getDirectoryQueryResults(dsFilter, attributes, maxRecords))
+            results = filteredResults
+            limited = maxResults and len(results) >= maxResults
                         
+        if self.sortResults:
+            results = sorted(list(results), key=lambda result:result.vCard().propertyValue("UID"))
+
+        self.log_debug("doAddressBookQuery: %s results (limited=%s)." % (len(results), limited))
         returnValue((results, limited,))        
 
 
@@ -1630,7 +1674,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
         return str(self.vCard())
     
     def uriName(self):
-        return self.vCard().getProperty("UID").value() + ".vcf"
+        return self.vCard().propertyValue("UID") + ".vcf"
         
     def hRef(self, parentURI="/directory/"):
         # FIXME: Get the parent URI from self._directoryBackedAddressBook

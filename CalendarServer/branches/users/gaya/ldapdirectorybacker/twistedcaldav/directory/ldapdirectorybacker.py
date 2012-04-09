@@ -184,19 +184,88 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
  
     @inlineCallbacks
+    def _getLdapQueryResults(self, base, queryStr, attributes=None, maxResults=0, ldapAttrToDSAttrMap={} ):
+        """
+        Get a list of filtered ABDirectoryQueryResult for the given query with the given attributes.
+        query == None gets all records. attribute == None gets ABDirectoryQueryResult.allDSQueryAttributes
+        """
+        limited = False
+        resultsDictionary = {}
+        
+        # can't resist also using a timeout, 1 sec per request result for now
+        timeout = maxResults
+
+        self.log_debug("_getLdapQueryResults: LDAP query base=%s and filter=%s and attributes=%s timeout=%s resultLimit=%s" % (ldap.dn.dn2str(base), queryStr, attributes, timeout, maxResults))
+        
+        ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=queryStr, attrlist=attributes, timeoutSeconds=timeout, resultLimit=maxResults))
+        self.log_debug("_getLdapQueryResults: ldapSearchResult=%s" % (ldapSearchResult,))
+        
+        if maxResults and len(ldapSearchResult) >= maxResults:
+            limited = True
+            self.log_debug("_getLdapQueryResults: limit (= %d) reached." % (maxResults, ))
+
+        for dn, ldapAttributes in ldapSearchResult:
+            #dn = normalizeDNstr(dn)
+            result = None
+            try:
+                # make a dsRecordAttributes dict from the ldap attributes
+                dsRecordAttributes = {}
+                for ldapAttributeName, ldapAttributeValues in ldapAttributes.iteritems():
+
+                    #self.log_debug("inspecting ldapAttributeName %s with values %s" % (ldapAttributeName, ldapAttributeValues,))
+
+                    # get rid of '' values
+                    ldapAttributeValues = [attr for attr in ldapAttributeValues if len(attr)]
+                    
+                    if len(ldapAttributeValues):
+                        dsAttributeNames = ldapAttrToDSAttrMap.get(ldapAttributeName)
+                        if dsAttributeNames:
+                            
+                            if not isinstance(dsAttributeNames, list):
+                                dsAttributeNames = [dsAttributeNames,]
+                                
+                            for dsAttributeName in dsAttributeNames:
+                                
+                                # base64 encode binary attributes
+                                if dsAttributeName in ABDirectoryQueryResult.binaryDSAttrNames:
+                                    ldapAttributeValues = [attr.encode('base64') for attr in ldapAttributeValues]
+                                
+                                # add to dsRecordAttributes
+                                if dsAttributeName not in dsRecordAttributes:
+                                    dsRecordAttributes[dsAttributeName] = list()
+                                    
+                                dsRecordAttributes[dsAttributeName] = list(set(dsRecordAttributes[dsAttributeName] + ldapAttributeValues))
+                                self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
+
+                # get a record for dsRecordAttributes 
+                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
+            except:
+                traceback.print_exc()
+                self.log_info("Could not get vcard for %s" % (dn,))
+            else:
+                uid = result.vCard().propertyValue("UID")
+
+                if uid in resultsDictionary:
+                    self.log_info("Record skipped due to duplicate UID: %s" % (dn,))
+                    continue
+                    
+                self.log_debug("VCard text =\n%s" % (result.vCardText(), ))
+                resultsDictionary[uid] = result                   
+
+        self.log_debug("%s results (limited=%s)." % (len(resultsDictionary), limited))
+        returnValue((resultsDictionary.values(), limited, ))
+
+    @inlineCallbacks
     def doAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
         """
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        queryResults = []
+        results = []
         limited = False
-
-         #calc maxResults from passed in maxResults allowing extra for second stage filtering in caller
-        maxResults = int(maxResults * 1.2)
-        if self.maxQueryResults and maxResults > self.maxQueryResults:
-            maxResults = self.maxQueryResults
-
+        remainingMaxResults = maxResults
+        
+        #one ldap query for each rnd in queries
         for queryMap in self.rdnSchema["queries"]:
 
             rdn = queryMap["rdn"]
@@ -224,74 +293,59 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                    
                 base =  ldap.dn.str2dn(rdn) + self.base
                 
-                filterstr = "(cn=*)"    # all query
+                queryStr = "(cn=*)"    # all results query  - should make a param
                 #add additional filter from config
                 queryFilter = queryMap.get("filter")
                 if dsFilter and queryFilter:
-                    filterstr = "(&%s%s)" % (queryFilter, dsFilter.generate())
+                    queryStr = "(&%s%s)" % (queryFilter, dsFilter.generate())
                 elif queryFilter:
-                    filterstr = queryFilter
+                    queryStr = queryFilter
                 elif dsFilter:
-                    filterstr = dsFilter.generate()
+                    queryStr = dsFilter.generate()
+                    
                 
-                # can't resist also using a timeout, 1 sec per request result for now
-                timeout = maxResults
-
-                self.log_debug("doAddressBookQuery:LDAP query base=%s and filter=%s and attributes=%s timeout=%s resultLimit=%s" % (ldap.dn.dn2str(base), filterstr, attributes, timeout, maxResults))
                 
-                ldapSearchResult = (yield self.timedSearch(ldap.dn.dn2str(base), ldap.SCOPE_SUBTREE, filterstr=filterstr, attrlist=attributes, timeoutSeconds=timeout, resultLimit=maxResults))
+                # keep trying ldap query till we get results based on filter.  Especially when doing "all results" query
+                remainingMaxResults = maxResults - len(results)
+                maxLdapResults = int(remainingMaxResults * 1.2)
     
-                self.log_debug("doAddressBookQuery: ldapSearchResult=%s" % (ldapSearchResult,))
+                while True:
+                    ldapQueryResults, ldapQueryLimited = (yield self._getLdapQueryResults(base=base, queryStr=queryStr, attributes=attributes, maxResults=maxLdapResults, ldapAttrToDSAttrMap=ldapAttrToDSAttrMap))
+                    
+                    filteredResults = []
+                    for ldapQueryResult in ldapQueryResults:
+                        # to do:  filter duplicate UIDs
+                        if addressBookFilter.match(ldapQueryResult.vCard()):
+                            filteredResults.append(ldapQueryResult)
+                        else:
+                            self.log_debug("doAddressBookQuery did not match filter: %s (%s)" % (ldapQueryResult.vCard().propertyValue("FN"), ldapQueryResult.vCard().propertyValue("UID"),))
+                    
+                    #no more results    
+                    if not ldapQueryLimited:
+                        break;
+                    
+                    # more than requested results
+                    if maxResults and len(filteredResults) > remainingMaxResults:
+                        break
+                    
+                    # more than max report results
+                    if len(filteredResults) > config.MaxQueryWithDataResults:
+                        break
+                    
+                    # more than self limit
+                    if self.maxQueryResults and maxLdapResults >= self.maxQueryResults:
+                        break
+                    
+                    # try again with 2x
+                    maxLdapResults *= 2
+                    if self.maxQueryResults and maxLdapResults > self.maxQueryResults:
+                        maxLdapResults = self.maxQueryResults
+                    
+                results += filteredResults
                 
-                for dn, ldapAttributes in ldapSearchResult:
-                    #dn = normalizeDNstr(dn)
-                    result = None
-                    try:
-                        # make a dsRecordAttributes dict from the ldap attributes
-                        dsRecordAttributes = {}
-                        for ldapAttributeName, ldapAttributeValues in ldapAttributes.iteritems():
-    
-                            #self.log_debug("inspecting ldapAttributeName %s with values %s" % (ldapAttributeName, ldapAttributeValues,))
-    
-                            # get rid of '' values
-                            ldapAttributeValues = [attr for attr in ldapAttributeValues if len(attr)]
-                            
-                            if len(ldapAttributeValues):
-                                dsAttributeNames = ldapAttrToDSAttrMap.get(ldapAttributeName)
-                                if dsAttributeNames:
-                                    
-                                    if not isinstance(dsAttributeNames, list):
-                                        dsAttributeNames = [dsAttributeNames,]
-                                        
-                                    for dsAttributeName in dsAttributeNames:
-                                        
-                                        # base64 encode binary attributes
-                                        if dsAttributeName in ABDirectoryQueryResult.binaryDSAttrNames:
-                                            ldapAttributeValues = [attr.encode('base64') for attr in ldapAttributeValues]
-                                        
-                                        # add to dsRecordAttributes
-                                        if dsAttributeName not in dsRecordAttributes:
-                                            dsRecordAttributes[dsAttributeName] = list()
-                                            
-                                        dsRecordAttributes[dsAttributeName] = list(set(dsRecordAttributes[dsAttributeName] + ldapAttributeValues))
-                                        self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
- 
-                        # get a record for dsRecordAttributes 
-                        result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
-                    except:
-                        traceback.print_exc()
-                        self.log_info("Could not get vcard for %s" % (dn,))
-                    else:
-                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (result.vCardText(),))
-                        queryResults.append(result)
-                
-                # only get requested number of record results
-                maxResults -= len(ldapSearchResult)
-                if maxResults <= 0:
-                    limited = True
-                    break
-
+        
+        limited = maxResults and len(results) >= maxResults
                          
-        self.log_info("limited  %s len(queryResults) %s" % (limited,len(queryResults),))
-        returnValue((queryResults, limited,))        
+        self.log_info("limited  %s len(results) %s" % (limited,len(results),))
+        returnValue((results, limited,))        
 
