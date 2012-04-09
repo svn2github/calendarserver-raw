@@ -159,34 +159,24 @@ def report_urn_ietf_params_xml_ns_carddav_addressbook_query(self, request, addre
         def queryDirectoryBackedAddressBook(directoryBackedAddressBook, addressBookFilter):
             """
             """
-            
-            # doAddressBookQuery() results may not match the filter but be limited.
-            # if that happens, try again with a larger maxResults
-            maxResults = max_number_of_results[0]
-            while True:
-                results, limited[0] = (yield directoryBackedAddressBook.directory.doAddressBookQuery( addressBookFilter, query, maxResults ))
-                for vCardResult in results:
-                    
-                    # match against original filter
-                    if filter.match((yield vCardResult.vCard())):
-     
-                        # Check size of results is within limit
-                        checkMaxResults()
-                       
-                        try:
-                            yield report_common.responseForHref(request, responses, vCardResult.hRef(), vCardResult, propertiesForResource, query, vcard=(yield vCardResult.vCard()))
-                        except ConcurrentModification:
-                            # This can happen because of a race-condition between the
-                            # time we determine which resources exist and the deletion
-                            # of one of these resources in another request.  In this
-                            # case, we ignore the now missing resource rather
-                            # than raise an error for the entire report.
-                            log.err("Missing resource during sync: %s" % (vCardResult.hRef(),))
+            results, limited[0] = (yield directoryBackedAddressBook.directory.doAddressBookQuery( addressBookFilter, query, max_number_of_results[0] ))
+            for vCardResult in results:
                 
-                # query again if no matches and limited
-                if matchcount[0] or not limited[0] or maxResults > config.MaxQueryWithDataResults:
-                    break
-                maxResults *= 2
+                # match against original filter
+                if filter.match((yield vCardResult.vCard())):
+ 
+                    # Check size of results is within limit
+                    checkMaxResults()
+                   
+                    try:
+                        yield report_common.responseForHref(request, responses, vCardResult.hRef(), vCardResult, propertiesForResource, query, vcard=(yield vCardResult.vCard()))
+                    except ConcurrentModification:
+                        # This can happen because of a race-condition between the
+                        # time we determine which resources exist and the deletion
+                        # of one of these resources in another request.  In this
+                        # case, we ignore the now missing resource rather
+                        # than raise an error for the entire report.
+                        log.err("Missing resource during sync: %s" % (vCardResult.hRef(),))
  
             
 
