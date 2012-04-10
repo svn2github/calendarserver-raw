@@ -554,11 +554,11 @@ class OpenDirectoryBackingService(DirectoryService):
                     break;
                 
                 # more than requested results
-                if maxResults and len(filteredResults) > maxResults:
+                if maxResults and len(filteredResults) >= maxResults:
                     break
                 
                 # more than max report results
-                if len(filteredResults) > config.MaxQueryWithDataResults:
+                if len(filteredResults) >= config.MaxQueryWithDataResults:
                     break
                 
                 # more than self limit
