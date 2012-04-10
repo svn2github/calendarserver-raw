@@ -44,6 +44,7 @@ from calendarserver.platform.darwin.od import dsattributes, dsquery
 
 class XMLDirectoryBackingService(XMLDirectoryService):
     """
+    Directory backer for L{XMLDirectoryService}.
     """
     
     node="/Search"
@@ -162,7 +163,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                 def recordsForDSFilter(dsFilter, recordType):
                     
                     """
-                        Although this exercises the dsFilter expression tree and recordsMatchingFields() it make little difference to the result of
+                        recordsForDSFilter() exercises the dsFilter expression tree and recordsMatchingFields() it make little difference to the result of
                         a addressbook query because of filtering.
                     """
 

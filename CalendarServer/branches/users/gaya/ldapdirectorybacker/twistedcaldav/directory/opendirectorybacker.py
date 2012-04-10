@@ -62,7 +62,7 @@ from twext.python.log import LoggingMixIn
 
 class OpenDirectoryBackingService(DirectoryService):
     """
-    Open Directory implementation of L{IDirectoryService}.
+    Directory backer for L{IDirectoryService}.
     """
 
     baseGUID = "BF07A1A2-5BB5-4A4D-A59A-67260EA7E143"
@@ -263,7 +263,10 @@ class OpenDirectoryBackingService(DirectoryService):
 
   
     def _getAllDSLocalResults(self):
-        
+        """
+        Get a dictionary of ABDirectoryQueryResult by enumerating the local directory
+        """
+       
         def generateDSLocalResults():
                         
             resultsDictionary = {}
@@ -474,7 +477,9 @@ class OpenDirectoryBackingService(DirectoryService):
         return succeed(allResults)
     
     def _attributesForAddressBookQuery(self, addressBookQuery ):
-    
+        """
+        Get dsattributes attributes needed by an address book query
+        """
         etagRequested, propertyNames = propertiesInAddressBookQuery( addressBookQuery )
         
         if etagRequested and not self.fakeETag:
@@ -578,6 +583,9 @@ class OpenDirectoryBackingService(DirectoryService):
 
 #utility
 def propertiesInAddressBookQuery( addressBookQuery ):
+    """
+    Get the vCard properties requested by a given query
+    """
     
     etagRequested = False
     propertyNames = [] 
