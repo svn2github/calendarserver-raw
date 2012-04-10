@@ -257,7 +257,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 resultsDictionary[uid] = result                   
 
         self.log_debug("%s results (limited=%s)." % (len(resultsDictionary), limited))
-        returnValue((resultsDictionary.values(), limited, ))
+        returnValue((resultsDictionary, limited, ))
 
     @inlineCallbacks
     def doAddressBookQuery(self, addressBookFilter, addressBookQuery, maxResults ):
@@ -265,9 +265,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        results = []
+        resultsDictionary = {}
         limited = False
-        remainingMaxResults = maxResults
         
         #one ldap query for each rnd in queries
         for queryMap in self.rdnSchema["queries"]:
@@ -309,30 +308,35 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
                 
                 # keep trying ldap query till we get results based on filter.  Especially when doing "all results" query
-                remainingMaxResults = maxResults - len(results) if maxResults else 0
+                remainingMaxResults = maxResults - len(resultsDictionary) if maxResults else 0
                 maxLdapResults = int(remainingMaxResults * 1.2)
     
                 while True:
-                    ldapQueryResults, ldapQueryLimited = (yield self._getLdapQueryResults(base=base, queryStr=queryStr, attributes=attributes, maxResults=maxLdapResults, ldapAttrToDSAttrMap=ldapAttrToDSAttrMap))
+                    ldapQueryResultsDictionary, ldapQueryLimited = (yield self._getLdapQueryResults(base=base, queryStr=queryStr, attributes=attributes, maxResults=maxLdapResults, ldapAttrToDSAttrMap=ldapAttrToDSAttrMap))
                     
-                    filteredResults = []
-                    for ldapQueryResult in ldapQueryResults:
-                        # to do:  filter duplicate UIDs
-                        if addressBookFilter.match(ldapQueryResult.vCard()):
-                            filteredResults.append(ldapQueryResult)
-                        else:
-                            self.log_debug("doAddressBookQuery did not match filter: %s (%s)" % (ldapQueryResult.vCard().propertyValue("FN"), ldapQueryResult.vCard().propertyValue("UID"),))
+                    for uid, ldapQueryResult in ldapQueryResultsDictionary.iteritems():
+
+                        if uid in resultsDictionary:
+                            self.log_info("Record skipped due to duplicate UID: %s" % (dn,))
+                            continue
+                    
+                        if not addressBookFilter.match(ldapQueryResult.vCard()):
+                            self.log_debug("doAddressBookQuery did not match filter: %s (%s)" % (ldapQueryResult.vCard().propertyValue("FN"), uid,))
+                            continue
+                           
+                        resultsDictionary[uid] = ldapQueryResult                   
+
                     
                     #no more results    
                     if not ldapQueryLimited:
                         break;
                     
                     # more than requested results
-                    if maxResults and len(filteredResults) > remainingMaxResults:
+                    if maxResults and len(resultsDictionary) >= maxResults:
                         break
                     
                     # more than max report results
-                    if len(filteredResults) > config.MaxQueryWithDataResults:
+                    if len(resultsDictionary) >= config.MaxQueryWithDataResults:
                         break
                     
                     # more than self limit
@@ -344,13 +348,12 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                     if self.maxQueryResults and maxLdapResults > self.maxQueryResults:
                         maxLdapResults = self.maxQueryResults
                     
-                results += filteredResults
-                if maxResults and len(results) > maxResults:
+                if maxResults and len(resultsDictionary) >= maxResults:
                     break
                 
         
-        limited = maxResults and len(results) >= maxResults
+        limited = maxResults and len(resultsDictionary) >= maxResults
                          
-        self.log_info("limited  %s len(results) %s" % (limited,len(results),))
-        returnValue((results, limited,))        
+        self.log_info("limited  %s len(resultsDictionary) %s" % (limited,len(resultsDictionary),))
+        returnValue((resultsDictionary.values(), limited,))        
 
