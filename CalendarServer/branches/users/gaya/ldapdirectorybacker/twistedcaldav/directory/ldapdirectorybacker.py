@@ -44,6 +44,7 @@ from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, 
 
 class LdapDirectoryBackingService(LdapDirectoryService):
     """
+    Directory backer for L{LdapDirectoryService}.
     """
     
     node="/Search"
@@ -157,6 +158,9 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                         
 
     def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapAttrToDSAttrMap ):
+        """
+        Get ldap attributes needed by an address book query
+        """
                         
         etagRequested, propertyNames = propertiesInAddressBookQuery( addressBookQuery )
         
@@ -186,7 +190,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
     @inlineCallbacks
     def _getLdapQueryResults(self, base, queryStr, attributes=None, maxResults=0, ldapAttrToDSAttrMap={} ):
         """
-        Get a list of filtered ABDirectoryQueryResult for the given query with the given attributes.
+        Get a list of ABDirectoryQueryResult for the given query with the given attributes.
         query == None gets all records. attribute == None gets ABDirectoryQueryResult.allDSQueryAttributes
         """
         limited = False
