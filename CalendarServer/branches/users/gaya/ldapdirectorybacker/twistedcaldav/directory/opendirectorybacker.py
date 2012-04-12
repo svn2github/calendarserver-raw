@@ -26,18 +26,14 @@ __all__ = [
 import traceback
 import hashlib
 
-import os
 import sys
 import time
 
-from os.path import join
 from random import random
 
 from pycalendar.n import N
 from pycalendar.adr import Adr
 from pycalendar.datetime import PyCalendarDateTime
-
-from socket import getfqdn
 
 from twisted.internet.defer import inlineCallbacks, returnValue, deferredGenerator, succeed
 from txdav.xml import element as davxml
@@ -78,6 +74,8 @@ class OpenDirectoryBackingService(DirectoryService):
         peopleNode = "/Search/Contacts",
         queryUserRecords=True, 
         userNode = "/Search",
+        queryGroupRecords=True, 
+        groupNode = "/Search",
         maxDSQueryRecords = 0,            # maximum number of records requested for any ds query
         
         queryDSLocal = False,             #query in DSLocal -- debug
@@ -115,36 +113,47 @@ class OpenDirectoryBackingService(DirectoryService):
         self.userDirectory = None
         self.userNode = None
         
-        self.realmName = None # needed for super
 
-        self.odModule = namedModule(config.OpenDirectoryModule)
-        
-        if queryPeopleRecords or not queryUserRecords:
-            self.peopleNode = peopleNode
-            try:
-                self.peopleDirectory = self.odModule.odInit(peopleNode)
-            except self.odModule.ODError, e:
-                self.log_error("Open Directory (node=%s) Initialization error: %s" % (peopleNode, e))
-                raise
-            self.realmName = peopleNode
+        # get node to record type map
+        def addNodesToNodeRecordTypeMap(nodeList, recordType):
+            for node in nodeList if isinstance(nodeList, list) else (nodeList,):
+                if not node in nodeRecordTypeMap:
+                     nodeRecordTypeMap[node] = []
+                nodeRecordTypeMap[node] += [recordType,]
 
+        nodeRecordTypeMap = {}
+        if queryPeopleRecords:
+            addNodesToNodeRecordTypeMap(peopleNode, dsattributes.kDSStdRecordTypePeople,)
         if queryUserRecords:
-            if self.peopleNode == userNode:          # use sane directory and node if they are equal
-                self.userNode = self.peopleNode
-                self.userDirectory = self.peopleDirectory
-            else:
-                self.userNode = userNode
-                try:
-                    self.userDirectory = self.odModule.odInit(userNode)
-                except self.odModule.ODError, e:
-                    self.log_error("Open Directory (node=%s) Initialization error: %s" % (userNode, e))
-                    raise
-                if self.realmName:
-                    self.realmName += "+" + userNode
-                else:
-                    self.realmName = userNode
+             addNodesToNodeRecordTypeMap(userNode, dsattributes.kDSStdRecordTypeUsers,)
+        if queryGroupRecords:
+            addNodesToNodeRecordTypeMap(groupNode, dsattributes.kDSStdRecordTypeGroups,)
+        
+        # get query info
+        nodeDirectoryRecordTypeMap = {}
+        self.odModule = namedModule(config.OpenDirectoryModule)
+        for node in nodeRecordTypeMap:
+            queryInfo = {"recordTypes":nodeRecordTypeMap[node]}
+            try:
+                queryInfo["directory"] = self.odModule.odInit(node)
+            except self.odModule.ODError, e:
+                self.log_error("Open Directory (node=%s) Initialization error: %s" % (node, e))
+                raise
+            
+            nodeDirectoryRecordTypeMap[node] = queryInfo
+        
+        self.nodeDirectoryRecordTypeMap = nodeDirectoryRecordTypeMap
         
         
+        # calc realm name
+        realmName = None
+        for node in nodeDirectoryRecordTypeMap:
+            realmName = realmName + "+" + node if realmName else node
+        self.realmName = realmName # needed for super
+        
+        self.queryPeopleRecords = queryPeopleRecords
+        self.queryUserRecords = queryUserRecords
+        self.queryGroupRecords = queryGroupRecords
         self.maxDSQueryRecords = maxDSQueryRecords
 
         self.ignoreSystemRecords = ignoreSystemRecords
@@ -214,13 +223,15 @@ class OpenDirectoryBackingService(DirectoryService):
         returnedAttributes += self.requiredAttributes
         
         if additionalAttributes:
-            returnedAttributes += addtionalAttributes
+            returnedAttributes += additionalAttributes
         
         if ignoreSystemRecords:
             returnedAttributes += [dsattributes.kDS1AttrUniqueID,]
-        if not self.queryDSLocal:
+        if not queryDSLocal:
             returnedAttributes += [dsattributes.kDSNAttrMetaNodeLocation,]
-        
+        if queryGroupRecords:
+        	returnedAttributes += [dsattributes.kDSNAttrGroupMembers,]
+
         self.returnedAttributes = list(set(returnedAttributes))
         self.log_debug("self.returnedAttributes=%s" % (self.returnedAttributes, ))
               
@@ -249,16 +260,21 @@ class OpenDirectoryBackingService(DirectoryService):
 
     def _isSystemRecord(self, recordShortName, recordAttributes):
         
+        recordType = recordAttributes.get(dsattributes.kDSNAttrRecordType)
         guid = recordAttributes.get(dsattributes.kDS1AttrGeneratedUID)
         if guid and guid.startswith("FFFFEEEE-DDDD-CCCC-BBBB-AAAA"):
-            self.log_info("Ignoring system record %s with %s %s"  % (recordShortName, dsattributes.kDS1AttrGeneratedUID, guid,))
+            self.log_info("Ignoring record %s (type %s) with %s %s"  % (recordShortName, recordType, dsattributes.kDS1AttrGeneratedUID, guid,))
             return True
     
         uniqueID = recordAttributes.get(dsattributes.kDS1AttrUniqueID)
-        if uniqueID and (int(uniqueID) < 500 or int(uniqueID) == 1000):
-            self.log_info("Ignoring system record %s with %s %s"  % (recordShortName, dsattributes.kDS1AttrUniqueID, uniqueID,))
+        if uniqueID and (int(uniqueID) < 500 or (recordType == dsattributes.kDSStdRecordTypeUsers and int(uniqueID) == 1000)):
+            self.log_info("Ignoring record %s (type %s) with %s %s"  % (recordShortName, recordType, dsattributes.kDS1AttrUniqueID, uniqueID,))
             return True
 
+        if recordShortName.startswith("_"):
+            self.log_info("Ignoring record %s (type %s) with %s %s"  % (recordShortName, recordType, dsattributes.kDSNAttrRecordName, recordShortName,))
+            return True
+        
         return False
 
   
@@ -357,8 +373,10 @@ class OpenDirectoryBackingService(DirectoryService):
                     
                 if not self.queryDSLocal:
                     # skip records in local node which happens for non-complex od queries
-                    if recordAttributes.get(dsattributes.kDSNAttrMetaNodeLocation, "").startswith("/Local/"):
-                        self.log_info("Record from local node %s ignored" % (recordShortName,))
+                    node = recordAttributes.get(dsattributes.kDSNAttrMetaNodeLocation)
+                    if node and node.startswith("/Local/"):
+                        recordType = recordAttributes.get(dsattributes.kDSNAttrRecordType)
+                        self.log_info("Ignoring record %s (type %s) with %s %s"  % (recordShortName, recordType, dsattributes.kDSNAttrMetaNodeLocation, recordAttributes.get(dsattributes.kDSNAttrMetaNodeLocation),))
                         continue
 
                 result = ABDirectoryQueryResult(self.directoryBackedAddressBook, recordAttributes, 
@@ -387,23 +405,13 @@ class OpenDirectoryBackingService(DirectoryService):
     def _queryDirectory(self, query=None, attributes=None, maxRecords=0 ):
         
         startTime = time.time()
-
-        
         if not attributes:
             attributes = self.returnedAttributes
                     
-        directoryAndRecordTypes = []
-        if self.peopleDirectory == self.userDirectory:
-            # use single ds query if possible for best performance
-            directoryAndRecordTypes.append( (self.peopleDirectory, self.peopleNode, (dsattributes.kDSStdRecordTypePeople, dsattributes.kDSStdRecordTypeUsers) ) )
-        else:
-            if self.peopleDirectory:
-                directoryAndRecordTypes.append( (self.peopleDirectory, self.peopleNode, dsattributes.kDSStdRecordTypePeople) )
-            if self.userDirectory:
-                directoryAndRecordTypes.append( (self.userDirectory, self.userNode, dsattributes.kDSStdRecordTypeUsers) )
-        
         allResults = []
-        for directory, node, recordType in directoryAndRecordTypes:
+        for node, queryInfo in self.nodeDirectoryRecordTypeMap.iteritems():
+            recordTypes = queryInfo["recordTypes"]
+            directory = queryInfo["directory"]
             try:
                 if query:
                     if isinstance(query, dsquery.match) and query.value is not "":
@@ -413,7 +421,7 @@ class OpenDirectoryBackingService(DirectoryService):
                             query.value,
                             query.matchType,
                             False,
-                            recordType,
+                            recordTypes,
                             attributes,
                             maxRecords,
                         ))
@@ -424,7 +432,7 @@ class OpenDirectoryBackingService(DirectoryService):
                                 query.value,
                                 query.matchType,
                                 False,
-                                recordType,
+                                recordTypes,
                                 attributes,
                                 maxRecords,
                             ))
@@ -433,7 +441,7 @@ class OpenDirectoryBackingService(DirectoryService):
                             node,
                             query.generate(),
                             False,
-                            recordType,
+                            recordTypes,
                             attributes,
                             maxRecords,
                         ))
@@ -442,21 +450,21 @@ class OpenDirectoryBackingService(DirectoryService):
                                 directory,
                                 query.generate(),
                                 False,
-                                recordType,
+                                recordTypes,
                                 attributes,
                                 maxRecords,
                             ))
                 else:
                     self.log_debug("opendirectory.listAllRecordsWithAttributes_list(%r,%r,%r,%r)" % (
                         node,
-                        recordType,
+                        recordTypes,
                         attributes,
                         maxRecords,
                     ))
                     results = list(
                         self.odModule.listAllRecordsWithAttributes_list(
                             directory,
-                            recordType,
+                            recordTypes,
                             attributes,
                             maxRecords,
                         ))
@@ -1266,7 +1274,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             # add constant properties - properties that are the same regardless of the record attributes
             for key, value in ABDirectoryQueryResult.constantProperties.items():
                 vcard.addProperty(Property(key, value))
-    
+                
             # 3.1 IDENTIFICATION TYPES http://tools.ietf.org/html/rfc2426#section-3.1
             # 3.1.1 FN Type Definition
             # dsattributes.kDS1AttrDistinguishedName,      # Users distinguished or real name
@@ -1643,6 +1651,14 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                         managerValue = manager
                     addPropertyAndLabel( groupCount, "_$!<Manager>!$_", "X-ABRELATEDNAMES", managerValue, parameters={ "TYPE": ["Manager",]} )
             
+ 
+            # add apple-defined group vcard properties if record type is group
+            if self.firstValueForAttribute(dsattributes.kDSNAttrRecordType) == dsattributes.kDSStdRecordTypeGroups:
+                vcard.addProperty(Property("X-ADDRESSBOOKSERVER-KIND", "group"))
+                
+                for memberguid in self.valuesForAttribute(dsattributes.kDSNAttrGroupMembers):
+                    vcard.addProperty(Property("X-ADDRESSBOOKSERVER-MEMBER", "urn:uuid:" + memberguid))
+    
             """
             # UNIMPLEMENTED: X- attributes
             

@@ -1019,9 +1019,17 @@
      	  <!-- Search for people records -->
           <key>queryPeopleRecords</key>
           <true/>
-     	  <!-- Search for people records in this directory service node -->
+     	  <!-- Search for people records in these directory service nodes -->
           <key>peopleNode</key>
-          <string>/Search/Contacts</string>
+          <array>
+            <string>/Search/Contacts</string>
+          </array>
+          <key>queryGroupRecords</key>
+          <true/>
+          <key>groupNode</key>
+          <array>
+            <string>/Search</string>
+          </array>
      	  <!-- Search for user records -->
           <key>queryUserRecords</key>
           <true/>
@@ -1037,7 +1045,7 @@
      	  <!-- approx. maximum number of records returned from a directory service query -->
           <key>maxDSQueryRecords</key>
           <integer>0</integer> <!-- use 0 to have server calculate the maximum based on MaxAddressBookQueryResults, MaxAddressBookMultigetHrefs keys -->
-     	  <!-- ignore system records like "root" when creating vCards -->
+     	  <!-- ignore system records like "root" -->
           <key>ignoreSystemRecords</key>
           <true/>
        	  <!-- fake the eTag.  If false all directory service attributes are used to calculate the eTag -->
