@@ -24,20 +24,8 @@ __all__ = [
 ]
 
 import traceback
-import hashlib
-
-import os
-import sys
-import time
-
-from socket import getfqdn
-
-from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
-
-from twistedcaldav.directory.directory import DirectoryRecord
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
-
 from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter
 from calendarserver.platform.darwin.od import dsattributes, dsquery
 
@@ -93,8 +81,6 @@ class XMLDirectoryBackingService(XMLDirectoryService):
 
         #params = self.getParams(params, defaults, ignored)
         def addDefaults(params, defaults, remove=None):
-            keys = set(params.keys())
-
             for key in defaults:
                 if not key in params:
                     params[key] = defaults[key]

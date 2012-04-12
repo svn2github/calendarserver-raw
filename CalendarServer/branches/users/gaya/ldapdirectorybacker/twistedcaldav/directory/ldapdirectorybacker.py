@@ -24,18 +24,12 @@ __all__ = [
 ]
 
 import traceback
-import hashlib
 
-import os
 import sys
-import time
 
-from socket import getfqdn
-
-from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
-from twistedcaldav.directory.directory import DirectoryRecord
+from twistedcaldav.config import config
 from twistedcaldav.directory.ldapdirectory import LdapDirectoryService
 
 import ldap
@@ -83,8 +77,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
         #params = self.getParams(params, defaults, ignored)
         def addDefaults(params, defaults, remove=None):
-            keys = set(params.keys())
-
             for key in defaults:
                 if not key in params:
                     params[key] = defaults[key]
@@ -317,7 +309,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                     for uid, ldapQueryResult in ldapQueryResultsDictionary.iteritems():
 
                         if uid in resultsDictionary:
-                            self.log_info("Record skipped due to duplicate UID: %s" % (dn,))
+                            self.log_info("Record skipped due to duplicate UID: %s" % (uid,))
                             continue
                     
                         if not addressBookFilter.match(ldapQueryResult.vCard()):
