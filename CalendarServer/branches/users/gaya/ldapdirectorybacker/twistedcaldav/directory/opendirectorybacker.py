@@ -54,7 +54,8 @@ from xmlrpclib import datetime
 from calendarserver.platform.darwin.od import dsattributes, dsquery
 from twisted.python.reflect import namedModule
 
-from twext.python.log import LoggingMixIn
+from twext.python.log import LoggingMixIn, Logger
+log = Logger()
 
 class OpenDirectoryBackingService(DirectoryService):
     """
@@ -784,7 +785,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
                                 try:
                                     recordNameQualifier = matchString[recordNameStart:].decode("base64").decode("utf8")
                                 except Exception, e:
-                                    self.log_debug("Could not decode UID string %r in %r: %r" % (matchString[recordNameStart:], matchString, e,))
+                                    log.debug("Could not decode UID string %r in %r: %r" % (matchString[recordNameStart:], matchString, e,))
                                 else:
                                     if textMatchElement.negate:
                                         return (False, queryAttributes, 
