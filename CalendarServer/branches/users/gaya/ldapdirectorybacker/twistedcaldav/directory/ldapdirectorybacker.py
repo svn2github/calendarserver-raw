@@ -24,15 +24,13 @@ __all__ = [
 ]
 
 import traceback
-
+import ldap
 import sys
 
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
 from twistedcaldav.config import config
 from twistedcaldav.directory.ldapdirectory import LdapDirectoryService
-
-import ldap
 from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter, propertiesInAddressBookQuery
 
 
@@ -72,7 +70,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             "appleInternalServer":False,    # does magic in ABDirectoryQueryResult
             "maxQueryResults":0,            # max records returned
             "fakeETag":True,                # eTag is fake, otherwise it is md5(all attributes)
-            "generateSimpleUIDs":False,     # if UID is faked, use simple method for generating
        }
 
         #params = self.getParams(params, defaults, ignored)
@@ -94,8 +91,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         del params["maxQueryResults"]
         fakeETag=params["fakeETag"]
         del params["fakeETag"]
-        generateSimpleUIDs=params["generateSimpleUIDs"]
-        del params["generateSimpleUIDs"]
 
         
         #standardize ds attributes type names
@@ -133,7 +128,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         
         ### params for ABDirectoryQueryResult()
         self.fakeETag = fakeETag
-        self.generateSimpleUIDs = generateSimpleUIDs
         self.appleInternalServer = appleInternalServer
  
         super(LdapDirectoryBackingService, self).__init__(params)
@@ -234,7 +228,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                 self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
 
                 # get a record for dsRecordAttributes 
-                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, generateSimpleUIDs=self.generateSimpleUIDs, appleInternalServer=self.appleInternalServer)
+                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, appleInternalServer=self.appleInternalServer)
             except:
                 traceback.print_exc()
                 self.log_info("Could not get vcard for %s" % (dn,))

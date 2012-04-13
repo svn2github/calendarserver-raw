@@ -24,10 +24,12 @@ __all__ = [
 ]
 
 import traceback
+
+from calendarserver.platform.darwin.od import dsattributes, dsquery
+
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter
-from calendarserver.platform.darwin.od import dsattributes, dsquery
 
 
 class XMLDirectoryBackingService(XMLDirectoryService):
