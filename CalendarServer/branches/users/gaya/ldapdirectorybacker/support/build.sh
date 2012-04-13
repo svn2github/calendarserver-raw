@@ -547,7 +547,6 @@ c_dependency () {
 
   www_get ${f_hash} "${name}" "${srcdir}" "${uri}";
 
-
   export              PATH="${dstroot}/bin:${PATH}";
   export    C_INCLUDE_PATH="${dstroot}/include:${C_INCLUDE_PATH:-}";
   export   LD_LIBRARY_PATH="${dstroot}/lib:${LD_LIBRARY_PATH:-}";
@@ -555,13 +554,17 @@ c_dependency () {
   export           LDFLAGS="-L${dstroot}/lib ${LDFLAGS:-} ";
   export DYLD_LIBRARY_PATH="${dstroot}/lib:${DYLD_LIBRARY_PATH:-}";
 
-  if "${do_setup}" && (
-      "${force_setup}" || "${do_bundle}" || [ ! -d "${dstroot}" ]); then
-    echo "Building ${name}...";
-    cd "${srcdir}";
-    ./configure --prefix="${dstroot}" "$@";
-    jmake;
-    jmake install;
+  if "${do_setup}"; then
+    if "${force_setup}" || "${do_bundle}" || [ ! -d "${dstroot}" ]; then
+      echo "Building ${name}...";
+      cd "${srcdir}";
+      ./configure --prefix="${dstroot}" "$@";
+      jmake;
+      jmake install;
+    else
+      echo "Using built ${name}.";
+      echo "";
+    fi;
   fi;
 }
 
@@ -614,7 +617,10 @@ dependencies () {
     init_py;
   fi;
 
-  if ! type -P memcached > /dev/null; then
+  if type -P memcached > /dev/null; then
+    echo "Using system memcached.";
+    echo "";
+  else
     local le="libevent-2.0.17-stable";
     local mc="memcached-1.4.13";
     c_dependency -m "dad64aaaaff16b5fbec25160c06fee9a" \
@@ -625,7 +631,10 @@ dependencies () {
       "http://memcached.googlecode.com/files/${mc}.tar.gz";
   fi;
 
-  if ! type -P postgres > /dev/null; then
+  if type -P postgres > /dev/null; then
+    echo "Using system Postgres.";
+    echo "";
+  else
     local pgv="9.1.2";
     local pg="postgresql-${pgv}";
 
@@ -642,7 +651,10 @@ dependencies () {
     :;
   fi;
 
-  if ! find_header ldap.h; then
+  if find_header ldap.h; then
+    echo "Using system OpenLDAP.";
+    echo "";
+  else
     c_dependency -m "ec63f9c2add59f323a0459128846905b" \
       "OpenLDAP" "openldap-2.4.25" \
       "http://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-2.4.25.tgz" \
@@ -672,8 +684,8 @@ dependencies () {
     "Zope Interface" "zope.interface" "${zi}" \
     "http://www.zope.org/Products/ZopeInterface/${zv}/${zi}.tar.gz";
 
-  local po="pyOpenSSL-0.13";
-  py_dependency -v 0.13 -m "767bca18a71178ca353dff9e10941929" \
+  local po="pyOpenSSL-0.10";
+  py_dependency -v 0.9 -m "34db8056ec53ce80c7f5fc58bee9f093" \
     "PyOpenSSL" "OpenSSL" "${po}" \
     "http://pypi.python.org/packages/source/p/pyOpenSSL/${po}.tar.gz";
 
@@ -721,7 +733,7 @@ dependencies () {
     "${pypi}/p/python-ldap/${ld}.tar.gz";
 
   # XXX actually PyCalendar should be imported in-place.
-  py_dependency -fe -i "src" -r 189 \
+  py_dependency -fe -i "src" -r 190 \
     "pycalendar" "pycalendar" "pycalendar" \
     "http://svn.mulberrymail.com/repos/PyCalendar/branches/server";
 
@@ -751,6 +763,18 @@ dependencies () {
   py_dependency -o -m "75ffdc113a4bcca8096ab953df746391" \
     "pytz" "pytz" "${tz}" \
     "http://pypi.python.org/packages/source/p/pytz/${tz}.tar.gz";
+
+  local pv="2.5";
+  local pc="pycrypto-${pv}";
+  py_dependency -o -v "${pv}" -m "783e45d4a1a309e03ab378b00f97b291" \
+    "PyCrypto" "pycrypto" "${pc}" \
+    "http://ftp.dlitz.net/pub/dlitz/crypto/pycrypto/${pc}.tar.gz";
+
+  local v="0.1.2";
+  local p="pyasn1-${v}";
+  py_dependency -o -v "${v}" -m "a7c67f5880a16a347a4d3ce445862a47" \
+    "pyasn1" "pyasn1" "${p}" \
+    "http://pypi.python.org/packages/source/p/pyasn1/pyasn1-0.1.2.tar.gz";
 
   svn_get "CalDAVTester" "${top}/CalDAVTester" \
       "${svn_uri_base}/CalDAVTester/trunk" HEAD;

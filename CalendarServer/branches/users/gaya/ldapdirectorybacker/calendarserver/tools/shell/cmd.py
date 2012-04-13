@@ -18,6 +18,13 @@
 Data store commands.
 """
 
+__all__ = [
+    "UsageError",
+    "UnknownArguments",
+    "CommandsBase",
+    "Commands",
+]
+
 #from twisted.python import log
 from twisted.internet.defer import succeed
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -27,7 +34,9 @@ from twisted.conch.manhole import ManholeInterpreter
 from txdav.common.icommondatastore import NotFoundError
 
 from calendarserver.tools.tables import Table
-from calendarserver.tools.shell.vfs import Folder
+from calendarserver.tools.shell.vfs import Folder, RootFolder
+from calendarserver.tools.shell.directory import findRecords, summarizeRecords, recordInfo
+
 
 class UsageError(Exception):
     """
@@ -45,8 +54,14 @@ class UnknownArguments(UsageError):
 
 
 class CommandsBase(object):
-    def __init__(self, wd):
-        self.wd = wd
+    def __init__(self, protocol):
+        self.protocol = protocol
+
+        self.wd = RootFolder(protocol.service)
+
+    @property
+    def terminal(self):
+        return self.protocol.terminal
 
     #
     # Utilities
@@ -60,6 +75,10 @@ class CommandsBase(object):
 
     @inlineCallbacks
     def getTargets(self, tokens):
+        """
+        For each given C{token}, locate a File to operate on.
+        @return: iterable of File objects.
+        """
         if tokens:
             result = []
             for token in tokens:
@@ -68,31 +87,66 @@ class CommandsBase(object):
         else:
             returnValue((self.wd,))
 
-    def commands(self):
+    def commands(self, showHidden=False):
+        """
+        @return: an iterable of C{(name, method)} tuples, where
+        C{name} is the name of the command and C{method} is the method
+        that implements it.
+        """
         for attr in dir(self):
             if attr.startswith("cmd_"):
                 m = getattr(self, attr)
-                if not hasattr(m, "hidden"):
+                if showHidden or not hasattr(m, "hidden"):
                     yield (attr[4:], m)
 
     @staticmethod
     def complete(word, items):
+        """
+        List completions for the given C{word} from the given
+        C{items}.
+
+        Completions are the remaining portions of words in C{items}
+        that start with C{word}.
+
+        For example, if C{"foobar"} and C{"foo"} are in C{items}, then
+        C{""} and C{"bar"} are completions when C{word} C{"foo"}.
+
+        @return: an iterable of completions.
+        """
         for item in items:
             if item.startswith(word):
                 yield item[len(word):]
 
     def complete_commands(self, word):
-        return self.complete(word, (name for name, method in self.commands()))
+        """
+        @return: an iterable of command name completions.
+        """
+        def complete(showHidden):
+            return self.complete(
+                word,
+                (name for name, method in self.commands(showHidden=showHidden))
+            )
+
+        completions = tuple(complete(False))
+
+        # If no completions are found, try hidden commands.
+        if not completions:
+            completions = complete(True)
+
+        return completions
 
     @inlineCallbacks
     def complete_files(self, tokens, filter=None):
+        """
+        @return: an iterable of C{File} path completions.
+        """
         if filter is None:
-            filter = lambda items: True
+            filter = lambda item: True
 
         files = (
-            self.listEntryToString(item)
-            for item in (yield self.wd.list())
-            if filter(item)
+            entry.toString()
+            for entry in (yield self.wd.list())
+            if filter(entry)
         )
 
         if len(tokens) == 0:
@@ -102,21 +156,27 @@ class CommandsBase(object):
         else:
             returnValue(())
 
-    @staticmethod
-    def listEntryToString(entry):
-        klass = entry[0]
-        name  = entry[1]
-
-        if issubclass(klass, Folder):
-            return "%s/" % (name,)
-        else:
-            return name
-
 
 class Commands(CommandsBase):
     """
     Data store commands.
     """
+
+    #
+    # Basic CLI tools
+    #
+
+    def cmd_exit(self, tokens):
+        """
+        Exit the shell.
+
+        usage: exit
+        """
+        if tokens:
+            raise UnknownArguments(tokens)
+
+        self.protocol.exit()
+
 
     def cmd_help(self, tokens):
         """
@@ -199,8 +259,8 @@ class Commands(CommandsBase):
         usage: emulate editor
         """
         if not tokens:
-            if self.emulate:
-                self.terminal.write("Emulating %s.\n" % (self.emulate,))
+            if self.protocol.emulate:
+                self.terminal.write("Emulating %s.\n" % (self.protocol.emulate,))
             else:
                 self.terminal.write("Emulation disabled.\n")
             return
@@ -213,25 +273,61 @@ class Commands(CommandsBase):
         if editor == "none":
             self.terminal.write("Disabling emulation.\n")
             editor = None
-        elif editor in self.emulation_modes:
+        elif editor in self.protocol.emulation_modes:
             self.terminal.write("Emulating %s.\n" % (editor,))
         else:
             raise UsageError("Unknown editor: %s" % (editor,))
 
-        self.emulate = editor
+        self.protocol.emulate = editor
 
         # FIXME: Need to update key registrations
 
-    cmd_emulate.hidden = "Incomplete"
+    cmd_emulate.hidden = "incomplete"
 
     def complete_emulate(self, tokens):
         if len(tokens) == 0:
-            return self.emulation_modes
+            return self.protocol.emulation_modes
         elif len(tokens) == 1:
-            return self.complete(tokens[0], self.emulation_modes)
+            return self.complete(tokens[0], self.protocol.emulation_modes)
         else:
             return ()
 
+
+    def cmd_log(self, tokens):
+        """
+        Enable logging.
+
+        usage: log [file]
+        """
+        if hasattr(self, "_logFile"):
+            self.terminal.write("Already logging to file: %s\n" % (self._logFile,))
+            return
+
+        if tokens:
+            fileName = tokens.pop(0)
+        else:
+            fileName = "/tmp/shell.log"
+
+        if tokens:
+            raise UnknownArguments(tokens)
+
+        from twisted.python.log import startLogging
+        try:
+            f = open(fileName, "w")
+        except (IOError, OSError), e:
+            self.terminal.write("Unable to open file %s: %s\n" % (fileName, e))
+            return
+
+        startLogging(f)
+
+        self._logFile = fileName
+
+    cmd_log.hidden = "debug tool"
+
+
+    #
+    # Filesystem tools
+    #
 
     def cmd_pwd(self, tokens):
         """
@@ -252,10 +348,10 @@ class Commands(CommandsBase):
 
         usage: cd [folder]
         """
-        if not tokens:
+        if tokens:
+            dirname = tokens.pop(0)
+        else:
             return
-
-        dirname = tokens.pop(0)
 
         if tokens:
             raise UnknownArguments(tokens)
@@ -273,7 +369,7 @@ class Commands(CommandsBase):
     def complete_cd(self, tokens):
         returnValue((yield self.complete_files(
             tokens,
-            filter = lambda item: issubclass(item[0], Folder)
+            filter = lambda item: True #issubclass(item[0], Folder)
         )))
 
 
@@ -288,14 +384,14 @@ class Commands(CommandsBase):
         multiple = len(targets) > 0
 
         for target in targets:
-            rows = (yield target.list())
+            entries = (yield target.list())
             #
             # FIXME: this can be ugly if, for example, there are zillions
             # of entries to output. Paging would be good.
             #
             table = Table()
-            for row in rows:
-                table.addRow((self.listEntryToString(row),) + tuple(row[2:]))
+            for entry in entries:
+                table.addRow(entry.toFields())
 
             if multiple:
                 self.terminal.write("%s:\n" % (target,))
@@ -340,17 +436,62 @@ class Commands(CommandsBase):
     complete_cat = CommandsBase.complete_files
 
 
-    def cmd_exit(self, tokens):
-        """
-        Exit the shell.
+    #
+    # Principal tools
+    #
 
-        usage: exit
+    @inlineCallbacks
+    def cmd_find_principals(self, tokens):
         """
+        Search for matching principals
+
+        usage: find_principal term
+        """
+        if not tokens:
+            raise UsageError("No search term")
+
+        directory = self.protocol.service.directory
+
+        records = (yield findRecords(directory, tokens))
+
+        if records:
+            self.terminal.write((yield summarizeRecords(directory, records)))
+        else:
+            self.terminal.write("No matching principals found.")
+
+        self.terminal.nextLine()
+
+
+    @inlineCallbacks
+    def cmd_print_principal(self, tokens):
+        """
+        Print information about a principal
+
+        usage: print_principal uid
+        """
+        if tokens:
+            uid = tokens.pop(0)
+        else:
+            raise UsageError("UID required")
+
         if tokens:
             raise UnknownArguments(tokens)
 
-        self.exit()
+        directory = self.protocol.service.directory
 
+        record = directory.recordWithUID(uid)
+
+        if record:
+            self.terminal.write((yield recordInfo(directory, record)))
+        else:
+            self.terminal.write("No such principal.")
+
+        self.terminal.nextLine()
+
+
+    #
+    # Python prompt, for the win
+    #
 
     def cmd_python(self, tokens):
         """
@@ -368,7 +509,7 @@ class Commands(CommandsBase):
 
             localVariables = dict(
                 self   = self,
-                store  = self.service.store,
+                store  = self.protocol.service.store,
                 schema = schema,
             )
 
@@ -377,41 +518,49 @@ class Commands(CommandsBase):
                 if not key.startswith("_"):
                     localVariables[key] = value
 
-            self._interpreter = ManholeInterpreter(self, localVariables)
+            class Handler(object):
+                def addOutput(innerSelf, bytes, async=False):
+                    """
+                    This is a delegate method, called by ManholeInterpreter.
+                    """
+                    if async:
+                        self.terminal.write("... interrupted for Deferred ...\n")
+                    self.terminal.write(bytes)
+                    if async:
+                        self.terminal.write("\n")
+                        self.protocol.drawInputLine()
+
+            self._interpreter = ManholeInterpreter(Handler(), localVariables)
 
         def evalSomePython(line):
             if line == "exit":
                 # Return to normal command mode.
-                del self.lineReceived
-                del self.ps
-                del self.pn
-                self.drawInputLine()
+                del self.protocol.lineReceived
+                del self.protocol.ps
+                try:
+                    del self.protocol.pn
+                except AttributeError:
+                    pass
+                self.protocol.drawInputLine()
                 return
 
             more = self._interpreter.push(line)
-            self.pn = bool(more)
+            self.protocol.pn = bool(more)
+
             lw = self.terminal.lastWrite
             if not (lw.endswith("\n") or lw.endswith("\x1bE")):
                 self.terminal.write("\n")
-            self.drawInputLine()
+            self.protocol.drawInputLine()
 
-        self.lineReceived = evalSomePython
-        self.ps = (">>> ", "... ")
+        self.protocol.lineReceived = evalSomePython
+        self.protocol.ps = (">>> ", "... ")
 
-    cmd_python.hidden = "Still experimental / untested."
+    cmd_python.hidden = "debug tool"
 
 
-    def addOutput(self, bytes, async=False):
-        """
-        This is a delegate method, called by ManholeInterpreter.
-        """
-        if async:
-            self.terminal.write("... interrupted for Deferred ...\n")
-        self.terminal.write(bytes)
-        if async:
-            self.terminal.write("\n")
-            self.drawInputLine()
-
+    #
+    # SQL prompt, for not as winning
+    #
 
     def cmd_sql(self, tokens):
         """
@@ -424,36 +573,14 @@ class Commands(CommandsBase):
 
         raise NotImplementedError("")
 
-    cmd_sql.hidden = "Not implemented."
+    cmd_sql.hidden = "not implemented"
 
 
-    def cmd_log(self, tokens):
-        """
-        Enable logging.
+    #
+    # Test tools
+    #
 
-        usage: log [file]
-        """
-        if hasattr(self, "_logFile"):
-            self.terminal.write("Already logging to file: %s\n" % (self._logFile,))
-            return
+    def cmd_raise(self, tokens):
+        raise RuntimeError(" ".join(tokens))
 
-        if tokens:
-            fileName = tokens.pop(0)
-        else:
-            fileName = "/tmp/shell.log"
-
-        if tokens:
-            raise UnknownArguments(tokens)
-
-        from twisted.python.log import startLogging
-        try:
-            f = open(fileName, "w")
-        except (IOError, OSError), e:
-            self.terminal.write("Unable to open file %s: %s\n" % (fileName, e))
-            return
-
-        startLogging(f)
-
-        self._logFile = fileName
-
-    cmd_log.hidden = "Debug tool"
+    cmd_raise.hidden = "test tool"

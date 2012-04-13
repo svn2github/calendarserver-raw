@@ -18,6 +18,15 @@
 Interactive shell for terminals.
 """
 
+__all__ = [
+    "usage",
+    "ShellOptions",
+    "ShellService",
+    "ShellProtocol",
+    "main",
+]
+
+
 import string
 import os
 import sys
@@ -42,7 +51,6 @@ from twistedcaldav.stdconfig import DEFAULT_CONFIG_FILE
 from calendarserver.tools.cmdline import utilityMain
 from calendarserver.tools.util import getDirectory
 from calendarserver.tools.shell.cmd import Commands, UsageError as CommandUsageError
-from calendarserver.tools.shell.vfs import Folder, RootFolder
 
 
 def usage(e=None):
@@ -114,7 +122,7 @@ class ShellService(Service, object):
         os.write(self.terminalFD, "\r\x1bc\r")
 
 
-class ShellProtocol(ReceiveLineProtocol, Commands):
+class ShellProtocol(ReceiveLineProtocol):
     """
     Data store shell protocol.
     """
@@ -127,11 +135,11 @@ class ShellProtocol(ReceiveLineProtocol, Commands):
 
     emulation_modes = ("emacs", "none")
 
-    def __init__(self, service):
+    def __init__(self, service, commandsClass=Commands):
         ReceiveLineProtocol.__init__(self)
-        Commands.__init__(self, RootFolder(service))
         self.service = service
         self.inputLines = []
+        self.commands = commandsClass(self)
         self.activeCommand = None
         self.emulate = "emacs"
 
@@ -156,6 +164,18 @@ class ShellProtocol(ReceiveLineProtocol, Commands):
             self.keyHandlers['\x06'] = self.handle_RIGHT  # Control-F
             self.keyHandlers['\x01'] = self.handle_HOME   # Control-A
             self.keyHandlers['\x05'] = self.handle_END    # Control-E
+
+        def observer(event):
+            if not event["isError"]:
+                return
+
+            text = log.textFromEventDict(event)
+            if text is None:
+                return
+
+            self.service.reactor.callFromThread(self.terminal.write, text)
+
+        log.startLoggingWithObserver(observer)
 
     def handle_INT(self):
         """
@@ -209,7 +229,7 @@ class ShellProtocol(ReceiveLineProtocol, Commands):
         if cmd and (tokens or word == ""):
             # Completing arguments
 
-            m = getattr(self, "complete_%s" % (cmd,), None)
+            m = getattr(self.commands, "complete_%s" % (cmd,), None)
             if not m:
                 return
             completions = tuple((yield m(tokens)))
@@ -217,7 +237,7 @@ class ShellProtocol(ReceiveLineProtocol, Commands):
             log.msg("COMPLETIONS: %r" % (completions,))
         else:
             # Completing command name
-            completions = tuple(self._complete_commands(cmd))
+            completions = tuple(self.commands.complete_commands(cmd))
 
         if len(completions) == 1:
             for completion in completions:
@@ -240,15 +260,6 @@ class ShellProtocol(ReceiveLineProtocol, Commands):
         self.terminal.loseConnection()
         self.service.reactor.stop()
 
-    @staticmethod
-    def _listEntryToString(entry):
-        klass = entry[0]
-        name  = entry[1]
-
-        if issubclass(klass, Folder):
-            return "%s/" % (name,)
-        else:
-            return name
 
     #
     # Command dispatch
@@ -265,7 +276,7 @@ class ShellProtocol(ReceiveLineProtocol, Commands):
             cmd = tokens.pop(0)
             #print "Arguments: %r" % (tokens,)
 
-            m = getattr(self, "cmd_%s" % (cmd,), None)
+            m = getattr(self.commands, "cmd_%s" % (cmd,), None)
             if m:
                 def handleUsageError(f):
                     f.trap(CommandUsageError)

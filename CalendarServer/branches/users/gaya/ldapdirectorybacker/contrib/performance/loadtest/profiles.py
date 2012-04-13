@@ -90,8 +90,15 @@ class ProfileBase(object):
         lag = context.get('lag', None)
 
         before = self._reactor.seconds()
-        msg(type="operation", phase="start",
-            user=self._client.record.uid, label=label, lag=lag)
+        msg(
+            type="operation",
+            phase="start",
+            user=self._client.record.uid,
+            client_type=self._client._client_type,
+            client_id=self._client._client_id,
+            label=label,
+            lag=lag,
+        )
 
         def finished(passthrough):
             success = not isinstance(passthrough, Failure)
@@ -99,8 +106,16 @@ class ProfileBase(object):
                 passthrough.trap(IncorrectResponseCode)
                 passthrough = passthrough.value.response
             after = self._reactor.seconds()
-            msg(type="operation", phase="end", duration=after - before,
-                user=self._client.record.uid, label=label, success=success)
+            msg(
+                type="operation",
+                phase="end",
+                duration=after - before,
+                user=self._client.record.uid,
+                client_type=self._client._client_type,
+                client_id=self._client._client_id,
+                label=label,
+                success=success,
+            )
             return passthrough
         deferred.addBoth(finished)
         return deferred
@@ -122,7 +137,10 @@ def loopWithDistribution(reactor, distribution, function):
 
     def iterate():
         d = function()
-        d.addCallbacks(repeat, result.errback)
+        if d is not None:
+            d.addCallbacks(repeat, result.errback)
+        else:
+            repeat(None)
 
     repeat(None)
     return result
@@ -198,6 +216,10 @@ class Inviter(ProfileBase):
             otherwise a L{Deferred} which fires when the attendee
             change has been made.
         """
+        
+        if not self._client.started:
+            return succeed(None)
+            
         # Find calendars which are eligible for invites
         calendars = self._calendarsOfType(caldavxml.calendar, "VEVENT")
 
@@ -341,6 +363,10 @@ END:VCALENDAR
             otherwise a L{Deferred} which fires when the attendee
             change has been made.
         """
+
+        if not self._client.started:
+            return succeed(None)
+            
         # Find calendars which are eligible for invites
         calendars = self._calendarsOfType(caldavxml.calendar, "VEVENT")
 
@@ -491,15 +517,16 @@ class Accepter(ProfileBase):
 
     def _handleReply(self, href):
         d = self._client.deleteEvent(href)
-        def finished(passthrough):
-            self._accepting.remove(href)
-            if isinstance(passthrough, Failure):
-                passthrough.trap(IncorrectResponseCode)
-                passthrough = passthrough.response
-            return passthrough
-        d.addBoth(finished)
+        d.addBoth(self._finishRemoveAccepting, href)
         return self._newOperation("reply done", d)
 
+
+    def _finishRemoveAccepting(self, passthrough, href):
+        self._accepting.remove(href)
+        if isinstance(passthrough, Failure):
+            passthrough.trap(IncorrectResponseCode)
+            passthrough = passthrough.value.response
+        return passthrough
 
     def _handleCancel(self, href):
 
@@ -514,13 +541,7 @@ class Accepter(ProfileBase):
                         if uid == event.getUID():
                             return self._client.deleteEvent(event.url)
         d.addCallback(removed)
-        def finished(passthrough):
-            self._accepting.remove(href)
-            if isinstance(passthrough, Failure):
-                passthrough.trap(IncorrectResponseCode)
-                passthrough = passthrough.response
-            return passthrough
-        d.addBoth(finished)
+        d.addBoth(self._finishRemoveAccepting, href)
         return self._newOperation("cancelled", d)
 
 
@@ -578,6 +599,9 @@ END:VCALENDAR
 
 
     def _addEvent(self):
+        if not self._client.started:
+            return succeed(None)
+            
         calendars = self._calendarsOfType(caldavxml.calendar, "VEVENT")
 
         while calendars:
@@ -639,6 +663,9 @@ END:VCALENDAR
 
 
     def _addTask(self):
+        if not self._client.started:
+            return succeed(None)
+            
         calendars = self._calendarsOfType(caldavxml.calendar, "VTODO")
 
         while calendars:
@@ -674,15 +701,33 @@ class OperationLogger(SummarizingMixin):
 
     lagFormat = u'{lag %5.2f ms}'
 
+    # the response time thresholds to display together with failing % count threshold
+    _thresholds = (
+        (0.5, 100.0),  
+        (  1, 100.0),  
+        (  3, 100.0),  
+        (  5, 100.0),
+        ( 10, 100.0),
+    )
+    _lag_cut_off = 1.0      # Maximum allowed median scheduling latency, seconds 
+    _fail_cut_off = 1.0     # % of total count at which failed requests will cause a failure 
+
     _fields = [
-        ('operation', 10, '%10s'),
+        ('operation', -20, '%-20s'),
         ('count', 8, '%8s'),
         ('failed', 8, '%8s'),
-        ('>3sec', 8, '%8s'),
+    ]
+    
+    for threshold, _ignore_fail_at in _thresholds:
+        _fields.append(('>%g sec' % (threshold,), 10, '%10s'))
+
+    _fields.extend([
         ('mean', 8, '%8.4f'),
         ('median', 8, '%8.4f'),
-        ('avglag (ms)', 8, '%8.4f'),
-        ]
+        ('stddev', 8, '%8.4f'),
+        ('avglag (ms)', 12, '%12.4f'),
+        ('STATUS', 8, '%8s'),
+    ])
 
     def __init__(self, outfile=None):
         self._perOperationTimes = {}
@@ -713,16 +758,17 @@ class OperationLogger(SummarizingMixin):
 
     def _summarizeData(self, operation, data):
         avglag = mean(self._perOperationLags.get(operation, [0.0])) * 1000.0
-        return SummarizingMixin._summarizeData(self, operation, data) + (avglag,)
+        data = SummarizingMixin._summarizeData(self, operation, data)
+        return data[:-1] + (avglag,) + data[-1:]
 
 
-    def report(self):
-        print
-        self.printHeader([
+    def report(self, output):
+        output.write("\n")
+        self.printHeader(output, [
                 (label, width)
                 for (label, width, _ignore_fmt)
                 in self._fields])
-        self.printData(
+        self.printData(output,
             [fmt for (label, width, fmt) in self._fields],
             sorted(self._perOperationTimes.items()))
 
@@ -732,21 +778,15 @@ class OperationLogger(SummarizingMixin):
     def failures(self):
         reasons = []
 
-        # Maximum allowed median scheduling latency, seconds
-        lagCutoff = 1.0
-
-        # Maximum allowed ratio of failed operations
-        failCutoff = 0.01
-
         for operation, lags in self._perOperationLags.iteritems():
-            if median(lags) > lagCutoff:
+            if median(lags) > self._lag_cut_off:
                 reasons.append(self._LATENCY_REASON % dict(
-                        operation=operation.upper(), cutoff=lagCutoff * 1000))
+                        operation=operation.upper(), cutoff=self._lag_cut_off * 1000))
 
         for operation, times in self._perOperationTimes.iteritems():
             failures = len([success for (success, _ignore_duration) in times if not success])
-            if failures / len(times) > failCutoff:
+            if failures * 100.0 / len(times) > self._fail_cut_off:
                 reasons.append(self._FAILED_REASON % dict(
-                        operation=operation.upper(), cutoff=failCutoff * 100))
+                        operation=operation.upper(), cutoff=self._fail_cut_off))
 
         return reasons

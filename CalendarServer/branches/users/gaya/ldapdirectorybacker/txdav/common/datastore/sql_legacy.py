@@ -41,7 +41,7 @@ from twistedcaldav.query.sqlgenerator import sqlgenerator
 from twistedcaldav.sharing import Invite
 
 from txdav.common.icommondatastore import (
-    IndexedSearchException, ReservationError)
+    IndexedSearchException, ReservationError, NoSuchObjectResourceError)
 
 from twext.enterprise.dal.syntax import Update, SavepointAction
 from twext.enterprise.dal.syntax import Insert
@@ -1156,9 +1156,37 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
         with a longer expansion.
         """
         obj = yield self.calendar.calendarObjectWithName(name)
-        yield obj.updateDatabase(
-            (yield obj.component()), expand_until=expand_until, reCreate=True
-        )
+        
+        # Use a new transaction to do this update quickly without locking the row for too long. However, the original
+        # transaction may have the row locked, so use wait=False and if that fails, fall back to using the original txn. 
+        
+        newTxn = obj.transaction().store().newTransaction()
+        try:
+            yield obj.lock(wait=False, txn=newTxn)
+        except NoSuchObjectResourceError:
+            yield newTxn.commit()
+            returnValue(None)
+        except:
+            yield newTxn.abort()
+            newTxn = None
+
+        # Now do the re-expand using the appropriate transaction
+        try:
+            if newTxn is None:
+                rmax = None
+            else:
+                rmax = (yield obj.recurrenceMax(txn=newTxn))
+
+            if rmax is None or rmax < expand_until:
+                yield obj.updateDatabase(
+                    (yield obj.component()),
+                    expand_until=expand_until,
+                    reCreate=True,
+                    txn=newTxn,
+                )
+        finally:
+            if newTxn is not None:
+                yield newTxn.commit()
 
 
     @inlineCallbacks

@@ -21,57 +21,64 @@ from twisted.internet.defer import inlineCallbacks
 from txdav.common.icommondatastore import NotFoundError
 
 from calendarserver.tools.shell.cmd import CommandsBase
-from calendarserver.tools.shell.vfs import RootFolder
+from calendarserver.tools.shell.terminal import ShellProtocol
 
 
 class TestCommandsBase(twisted.trial.unittest.TestCase):
+    def setUp(self):
+        self.protocol = ShellProtocol(None, commandsClass=CommandsBase)
+        self.commands = self.protocol.commands
 
     @inlineCallbacks
     def test_getTargetNone(self):
-        cmd = CommandsBase(RootFolder(None))
-        target = (yield cmd.getTarget([]))
-        self.assertEquals(target, cmd.wd)
+        target = (yield self.commands.getTarget([]))
+        self.assertEquals(target, self.commands.wd)
 
     def test_getTargetMissing(self):
-        cmd = CommandsBase(RootFolder(None))
-        self.assertFailure(cmd.getTarget(["/foo"]), NotFoundError)
+        self.assertFailure(self.commands.getTarget(["/foo"]), NotFoundError)
 
     @inlineCallbacks
     def test_getTargetOne(self):
-        cmd = CommandsBase(RootFolder(None))
-        target = (yield cmd.getTarget(["users"]))
-        match = (yield cmd.wd.locate(["users"]))
+        target = (yield self.commands.getTarget(["users"]))
+        match = (yield self.commands.wd.locate(["users"]))
         self.assertEquals(target, match)
 
     @inlineCallbacks
     def test_getTargetSome(self):
-        cmd = CommandsBase(RootFolder(None))
-        target = (yield cmd.getTarget(["users", "blah"]))
-        match = (yield cmd.wd.locate(["users"]))
+        target = (yield self.commands.getTarget(["users", "blah"]))
+        match = (yield self.commands.wd.locate(["users"]))
         self.assertEquals(target, match)
 
     def test_commandsNone(self):
-        cmd = CommandsBase(RootFolder(None))
-        commands = cmd.commands()
+        allCommands = self.commands.commands()
+        self.assertEquals(sorted(allCommands), [])
 
-        self.assertEquals(sorted(commands), [])
+        allCommands = self.commands.commands(showHidden=True)
+        self.assertEquals(sorted(allCommands), [])
 
     def test_commandsSome(self):
-        class SomeCommands(CommandsBase):
-            def cmd_a(self, tokens):
-                pass
-            def cmd_b(self, tokens):
-                pass
-            def cmd_hidden(self, tokens):
-                pass
-            cmd_hidden.hidden = "Hidden"
+        protocol = ShellProtocol(None, commandsClass=SomeCommands)
+        commands = protocol.commands
 
-        cmd = SomeCommands(RootFolder(None))
-        commands = cmd.commands()
+        allCommands = commands.commands()
 
         self.assertEquals(
-            sorted(commands),
-            [ ("a", cmd.cmd_a), ("b", cmd.cmd_b) ]
+            sorted(allCommands),
+            [
+                ("a", commands.cmd_a),
+                ("b", commands.cmd_b),
+            ]
+        )
+
+        allCommands = commands.commands(showHidden=True)
+
+        self.assertEquals(
+            sorted(allCommands),
+            [
+                ("a", commands.cmd_a),
+                ("b", commands.cmd_b),
+                ("hidden", commands.cmd_hidden),
+            ]
         )
 
     def test_complete(self):
@@ -86,6 +93,7 @@ class TestCommandsBase(twisted.trial.unittest.TestCase):
         def c(word):
             return sorted(CommandsBase.complete(word, items))
 
+        self.assertEquals(c(""       ), sorted(items))
         self.assertEquals(c("f"      ), ["oo", "oobar"])
         self.assertEquals(c("foo"    ), ["", "bar"])
         self.assertEquals(c("foobar" ), [""])
@@ -93,3 +101,42 @@ class TestCommandsBase(twisted.trial.unittest.TestCase):
         self.assertEquals(c("baz"    ), [""])
         self.assertEquals(c("q"      ), ["uux"])
         self.assertEquals(c("xyzzy"  ), [])
+
+    def test_completeCommands(self):
+        protocol = ShellProtocol(None, commandsClass=SomeCommands)
+        commands = protocol.commands
+
+        def c(word):
+            return sorted(commands.complete_commands(word))
+
+        self.assertEquals(c("" ), ["a", "b"])
+        self.assertEquals(c("a"), [""])
+        self.assertEquals(c("h"), ["idden"])
+        self.assertEquals(c("f"), [])
+
+    def test_completeFiles(self):
+        protocol = ShellProtocol(None, commandsClass=SomeCommands)
+        commands = protocol.commands
+
+        def c(word):
+            return sorted(commands.complete_files(word))
+
+        raise NotImplementedError()
+
+    test_completeFiles.todo = "Not implemented."
+
+    def test_listEntryToString(self):
+        raise NotImplementedError()
+        self.assertEquals(CommandsBase.listEntryToString(file, "stuff"), "")
+
+    test_listEntryToString.todo = "Not implemented"
+
+
+class SomeCommands(CommandsBase):
+    def cmd_a(self, tokens):
+        pass
+    def cmd_b(self, tokens):
+        pass
+    def cmd_hidden(self, tokens):
+        pass
+    cmd_hidden.hidden = "Hidden"

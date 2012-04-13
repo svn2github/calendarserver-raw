@@ -18,7 +18,26 @@
 Virtual file system for data store objects.
 """
 
+__all__ = [
+    "File",
+    "Folder",
+    "RootFolder",
+    "UIDsFolder",
+    "RecordFolder",
+    "UsersFolder",
+    "LocationsFolder",
+    "ResourcesFolder",
+    "GroupsFolder",
+    "PrincipalHomeFolder",
+    "CalendarHomeFolder",
+    "CalendarFolder",
+    "CalendarObject",
+    "AddressBookHomeFolder",
+]
+
+
 from cStringIO import StringIO
+from time import strftime, localtime
 
 from twisted.python import log
 from twisted.internet.defer import succeed
@@ -29,6 +48,47 @@ from txdav.common.icommondatastore import NotFoundError
 from twistedcaldav.ical import InvalidICalendarDataError
 
 from calendarserver.tools.tables import Table
+from calendarserver.tools.shell.directory import recordInfo
+
+
+class ListEntry(object):
+    """
+    Information about a C{File} as returned by C{File.list()}.
+    """
+    def __init__(self, Class, Name, **fields):
+        self.fileClass = Class
+        self.fileName  = Name
+        self.fields    = fields
+
+        fields["Name"] = Name
+
+    def __str__(self):
+        return self.toString()
+
+    def isFolder(self):
+        return issubclass(self.fileClass, Folder)
+
+    def toString(self):
+        if self.isFolder():
+            return "%s/" % (self.fileName,)
+        else:
+            return self.fileName
+
+    @property
+    def fieldNames(self):
+        if not hasattr(self, "_fieldNames"):
+            if hasattr(self.fileClass.list, "fieldNames"):
+                if "Name" in self.fileClass.list.fieldNames:
+                    self._fieldNames = tuple(self.fileClass.list.fieldNames)
+                else:
+                    self._fieldNames = ("Name",) + tuple(self.fileClass.list.fieldNames)
+            else:
+                self._fieldNames = ["Name"] + sorted(n for n in self.fields if n != "Name")
+
+        return self._fieldNames
+
+    def toFields(self):
+        return tuple(self.fields[fieldName] for fieldName in self.fieldNames)
 
 
 class File(object):
@@ -57,7 +117,9 @@ class File(object):
         return succeed("%s (%s)" % (self, self.__class__.__name__))
 
     def list(self):
-        return succeed((File, str(self)))
+        return succeed((
+            ListEntry(self.__class__, self.path[-1]),
+        ))
 
 
 class Folder(File):
@@ -78,6 +140,9 @@ class Folder(File):
 
     @inlineCallbacks
     def locate(self, path):
+        if path and path[-1] == "":
+            path.pop()
+
         if not path:
             returnValue(RootFolder(self.service))
 
@@ -117,9 +182,9 @@ class Folder(File):
     def list(self):
         result = set()
         for name in self._children:
-            result.add((self._children[name].__class__, name))
+            result.add(ListEntry(self._children[name].__class__, name))
         for name in self._childClasses:
-            result.add((self._childClasses[name], name))
+            result.add(ListEntry(self._childClasses[name], name))
         return succeed(result)
 
 
@@ -173,7 +238,7 @@ class UIDsFolder(Folder):
         # FIXME: Add directory info (eg. name) to listing
 
         for txn, home in (yield self.service.store.eachCalendarHome()):
-            result.add((PrincipalHomeFolder, home.uid()))
+            result.add(ListEntry(PrincipalHomeFolder, home.uid()))
 
         returnValue(result)
 
@@ -203,6 +268,7 @@ class RecordFolder(Folder):
         result = set()
 
         # FIXME ...?
+        yield 1
 
         returnValue(result)
 
@@ -254,7 +320,7 @@ class PrincipalHomeFolder(Folder):
     @inlineCallbacks
     def _initChildren(self):
         if not hasattr(self, "_didInitChildren"):
-            txn  = self.service.store.newTransaction()
+            txn = self.service.store.newTransaction()
 
             if (
                 self.record is not None and
@@ -265,12 +331,27 @@ class PrincipalHomeFolder(Folder):
             else:
                 create = False
 
-            home = (yield txn.calendarHomeWithUID(self.uid, create=create))
+            # Try assuming it exists
+            home = (yield txn.calendarHomeWithUID(self.uid, create=False))
+
+            if home is None and create:
+                # Doesn't exist, so create it in a different
+                # transaction, to avoid having to commit the live
+                # transaction.
+                txnTemp = self.service.store.newTransaction()
+                home = (yield txnTemp.calendarHomeWithUID(self.uid, create=True))
+                (yield txnTemp.commit())
+
+                # Fetch the home again. This time we expect it to be there.
+                home = (yield txn.calendarHomeWithUID(self.uid, create=False))
+                assert home
+
             if home:
                 self._children["calendars"] = CalendarHomeFolder(
                     self.service,
                     self.path + ("calendars",),
                     home,
+                    self.record,
                 )
 
             if (
@@ -282,12 +363,25 @@ class PrincipalHomeFolder(Folder):
             else:
                 create = False
 
+            # Again, assume it exists
             home = (yield txn.addressbookHomeWithUID(self.uid))
+
+            if not home and create:
+                # Repeat the above dance.
+                txnTemp = self.service.store.newTransaction()
+                home = (yield txnTemp.addressbookHomeWithUID(self.uid, create=True))
+                (yield txnTemp.commit())
+
+                # Fetch the home again. This time we expect it to be there.
+                home = (yield txn.addressbookHomeWithUID(self.uid, create=False))
+                assert home
+
             if home:
                 self._children["addressbooks"] = AddressBookHomeFolder(
                     self.service,
                     self.path + ("addressbooks",),
                     home,
+                    self.record,
                 )
 
         self._didInitChildren = True
@@ -307,115 +401,19 @@ class PrincipalHomeFolder(Folder):
     def list(self):
         return Folder.list(self)
 
-    @inlineCallbacks
     def describe(self):
-        result = []
-        result.append("Principal home for UID: %s\n" % (self.uid,))
-
-        if self.record is not None:
-            #
-            # Basic record info
-            #
-
-            rows = []
-
-            def add(name, value):
-                if value:
-                    rows.append((name, value))
-
-            add("Service"    , self.record.service   )
-            add("Record Type", self.record.recordType)
-
-            for shortName in self.record.shortNames:
-                add("Short Name", shortName)
-
-            add("GUID"      , self.record.guid     )
-            add("Full Name" , self.record.fullName )
-            add("First Name", self.record.firstName)
-            add("Last Name" , self.record.lastName )
-
-            for email in self.record.emailAddresses:
-                add("Email Address", email)
-
-            for cua in self.record.calendarUserAddresses:
-                add("Calendar User Address", cua)
-
-            add("Server ID"           , self.record.serverID              )
-            add("Partition ID"        , self.record.partitionID           )
-            add("Enabled"             , self.record.enabled               )
-            add("Enabled for Calendar", self.record.enabledForCalendaring )
-            add("Enabled for Contacts", self.record.enabledForAddressBooks)
-
-            if rows:
-                result.append("Directory Record:")
-                result.append(tableString(rows, header=("Name", "Value")))
-
-            #
-            # Group memberships
-            #
-            rows = []
-
-            for group in self.record.groups():
-                rows.append((group.uid, group.shortNames[0], group.fullName))
-
-            if rows:
-                def sortKey(row):
-                    return (row[1], row[2])
-                result.append("Group Memberships:")
-                result.append(tableString(
-                    sorted(rows, key=sortKey),
-                    header=("UID", "Short Name", "Full Name")
-                ))
-
-            #
-            # Proxy for...
-            #
-
-            # FIXME: This logic should be in the DirectoryRecord.
-
-            def meAndMyGroups(record=self.record, groups=set((self.record,))):
-                for group in record.groups():
-                    groups.add(group)
-                    meAndMyGroups(group, groups)
-                return groups
-                
-            # FIXME: This module global is really gross.
-            from twistedcaldav.directory.calendaruserproxy import ProxyDBService
-
-            rows = []
-            proxyInfoSeen = set()
-            for record in meAndMyGroups():
-                proxyUIDs = (yield ProxyDBService.getMemberships(record.uid))
-
-                for proxyUID in proxyUIDs:
-                    # These are of the form: F153A05B-FF27-4B6C-BD6D-D1239D0082B0#calendar-proxy-read
-                    # I don't know how to get DirectoryRecord objects for the proxyUID here, so, let's cheat for now.
-                    proxyUID, proxyType = proxyUID.split("#")
-                    if (proxyUID, proxyType) not in proxyInfoSeen:
-                        proxyRecord = self.service.directory.recordWithUID(proxyUID)
-                        rows.append((proxyUID, proxyRecord.recordType, proxyRecord.shortNames[0], proxyRecord.fullName, proxyType))
-                        proxyInfoSeen.add((proxyUID, proxyType))
-
-            if rows:
-                def sortKey(row):
-                    return (row[1], row[2], row[4])
-                result.append("Proxy Access:")
-                result.append(tableString(
-                    sorted(rows, key=sortKey),
-                    header=("UID", "Record Type", "Short Name", "Full Name", "Access")
-                ))
-
-        returnValue("\n".join(result))
+        return recordInfo(self.service.directory, self.record)
 
 
 class CalendarHomeFolder(Folder):
     """
     Calendar home folder.
     """
-    def __init__(self, service, path, home):
+    def __init__(self, service, path, home, record):
         Folder.__init__(self, service, path)
 
-        self.home = home
+        self.home   = home
+        self.record = record
 
     @inlineCallbacks
     def child(self, name):
@@ -428,34 +426,29 @@ class CalendarHomeFolder(Folder):
     @inlineCallbacks
     def list(self):
         calendars = (yield self.home.calendars())
-        returnValue(((CalendarFolder, c.name()) for c in calendars))
+        returnValue((ListEntry(CalendarFolder, c.name()) for c in calendars))
 
     @inlineCallbacks
     def describe(self):
-        # created() -> int
-        # modified() -> int
-        # properties -> IPropertyStore
+        description = ["Calendar home:\n"]
 
+        #
+        # Attributes
+        #
         uid          = (yield self.home.uid())
         created      = (yield self.home.created())
         modified     = (yield self.home.modified())
         quotaUsed    = (yield self.home.quotaUsedBytes())
         quotaAllowed = (yield self.home.quotaAllowedBytes())
-        properties   = (yield self.home.properties())
 
-        result = []
-        result.append("Calendar home for UID: %s\n" % (uid,))
+        recordType      = (yield self.record.recordType)
+        recordShortName = (yield self.record.shortNames[0])
 
-        #
-        # Attributes
-        #
         rows = []
-        if created is not None:
-            # FIXME: convert to formatted string
-            rows.append(("Created", str(created)))
-        if modified is not None:
-            # FIXME: convert to formatted string
-            rows.append(("Last modified", str(modified)))
+        rows.append(("UID", uid))
+        rows.append(("Owner", "(%s)%s" % (recordType, recordShortName)))
+        rows.append(("Created"      , timeString(created)))
+        rows.append(("Last modified", timeString(modified)))
         if quotaUsed is not None:
             rows.append((
                 "Quota",
@@ -463,21 +456,17 @@ class CalendarHomeFolder(Folder):
                 % (quotaUsed, quotaAllowed, quotaUsed / quotaAllowed)
             ))
 
-        if len(rows):
-            result.append("Attributes:")
-            result.append(tableString(rows, header=("Name", "Value")))
+        description.append("Attributes:")
+        description.append(tableString(rows))
 
         #
         # Properties
         #
+        properties = (yield self.home.properties())
         if properties:
-            result.append("Properties:")
-            result.append(tableString(
-                ((name, properties[name]) for name in sorted(properties)),
-                header=("Name", "Value")
-            ))
+            description.append(tableStringForProperties(properties))
 
-        returnValue("\n".join(result))
+        returnValue("\n".join(description))
 
 
 class CalendarFolder(Folder):
@@ -514,6 +503,32 @@ class CalendarFolder(Folder):
             result.append(items[0])
 
         returnValue(result)
+
+    @inlineCallbacks
+    def describe(self):
+        description = ["Calendar:\n"]
+
+        #
+        # Attributes
+        #
+        ownerHome = (yield self.calendar.ownerCalendarHome()) # FIXME: Translate into human
+        syncToken = (yield self.calendar.syncToken())
+
+        rows = []
+        rows.append(("Owner"     , ownerHome))
+        rows.append(("Sync Token", syncToken))
+
+        description.append("Attributes:")
+        description.append(tableString(rows))
+
+        #
+        # Properties
+        #
+        properties = (yield self.calendar.properties())
+        if properties:
+            description.append(tableStringForProperties(properties))
+
+        returnValue("\n".join(description))
 
 
 class CalendarObject(File):
@@ -552,7 +567,12 @@ class CalendarObject(File):
     @inlineCallbacks
     def list(self):
         (yield self.lookup())
-        returnValue(((CalendarObject, self.uid, self.componentType, self.summary.replace("\n", " ")),))
+        returnValue((ListEntry(CalendarObject, self.uid, {
+            "Component Type": self.componentType,
+            "Summary": self.summary.replace("\n", " "),
+        }),))
+
+    list.fieldNames = ("Component Type", "Summary")
 
     @inlineCallbacks
     def text(self):
@@ -563,6 +583,11 @@ class CalendarObject(File):
     def describe(self):
         (yield self.lookup())
 
+        description = ["Calendar object:\n"]
+
+        #
+        # Calendar object attributes
+        #
         rows = []
 
         rows.append(("UID", self.uid))
@@ -579,21 +604,51 @@ class CalendarObject(File):
 
             rows.append(("Organizer", "%s%s%s" % (organizer.value(), name, email)))
 
+        rows.append(("Created" , timeString(self.object.created())))
+        rows.append(("Modified", timeString(self.object.modified())))
+
+        description.append("Attributes:")
+        description.append(tableString(rows))
+
         #
         # Attachments
         #
-#       attachments = (yield self.object.attachments())
-#       log.msg("%r" % (attachments,))
-#       for attachment in attachments:
-#           log.msg("%r" % (attachment,))
-#           # FIXME: Not getting any results here
+        attachments = (yield self.object.attachments())
+        for attachment in attachments:
+            contentType = attachment.contentType()
+            contentType = "%s/%s" % (contentType.mediaType, contentType.mediaSubtype)
 
-        returnValue("Calendar object:\n%s" % tableString(rows))
+            rows = []
+            rows.append(("Name"        , attachment.name()))
+            rows.append(("Size"        , "%s bytes" % (attachment.size(),)))
+            rows.append(("Content Type", contentType))
+            rows.append(("MD5 Sum"     , attachment.md5()))
+            rows.append(("Created"     , timeString(attachment.created())))
+            rows.append(("Modified"    , timeString(attachment.modified())))
+
+            description.append("Attachment:")
+            description.append(tableString(rows))
+
+        #
+        # Properties
+        #
+        properties = (yield self.object.properties())
+        if properties:
+            description.append(tableStringForProperties(properties))
+
+        returnValue("\n".join(description))
+
 
 class AddressBookHomeFolder(Folder):
     """
     Address book home folder.
     """
+    def __init__(self, service, path, home, record):
+        Folder.__init__(self, service, path)
+
+        self.home   = home
+        self.record = record
+
     # FIXME
 
 
@@ -607,3 +662,27 @@ def tableString(rows, header=None):
     output = StringIO()
     table.printTable(os=output)
     return output.getvalue()
+
+
+def tableStringForProperties(properties):
+    return "Properties:\n%s" % (tableString((
+        (name.toString(), truncateAtNewline(properties[name]))
+        for name in sorted(properties)
+    )))
+
+
+def timeString(time):
+    if time is None:
+        return "(unknown)"
+
+    return strftime("%a, %d %b %Y %H:%M:%S %z(%Z)", localtime(time))
+
+
+def truncateAtNewline(text):
+    text = str(text)
+    try:
+        index = text.index("\n")
+    except ValueError:
+        return text
+
+    return text[:index] + "..."

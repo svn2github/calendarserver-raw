@@ -445,10 +445,6 @@
       <!-- <string>/principals/__uids__/983C8238-FB6B-4D92-9242-89C0A39E5F81/</string> -->
     </array>
 
-    <!-- Principals that can pose as other principals -->
-    <key>SudoersFile</key>
-    <string>sudoers.plist</string>
-
     <!-- Create "proxy access" principals -->
     <key>EnableProxyPrincipals</key>
     <true/>
@@ -946,8 +942,19 @@
       	<!-- Optional extra logging for posgres -->
       	<!-- <string>-c log_lock_waits=TRUE</string> -->
       	<!-- <string>-c log_statement=all</string> -->
-      	<!-- <string>-c log_line_prefix='%p.%x '</string> -->
+      	<!-- <string>-c log_line_prefix='%t [%p]: [%l] '</string> -->
       </array>
+    </dict>
+
+    <!-- SQL Query Caching -->
+    <key>QueryCaching</key>
+    <dict>
+      <key>Enabled</key>
+      <true/>
+      <key>MemcachedPool</key>
+      <string>Default</string>
+      <key>ExpireSeconds</key>
+      <integer>3600</integer>
     </dict>
 
     <!-- Group Membership Caching -->
@@ -998,7 +1005,7 @@
         Directory Address Book
       -->
     
-    <!--  Disable Directory Address Book-->
+    <!--  Disable Directory Address Book -->
     <!--
       <key>DirectoryAddressBook</key>
       <false/>

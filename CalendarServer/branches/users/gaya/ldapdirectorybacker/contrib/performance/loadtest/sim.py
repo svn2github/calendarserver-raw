@@ -1,6 +1,6 @@
 # -*- test-case-name: contrib.performance.loadtest.test_sim -*-
 ##
-# Copyright (c) 2011 Apple Inc. All rights reserved.
+# Copyright (c) 2011-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 #
 ##
 
-from os import environ
-from xml.parsers.expat import ExpatError
-from sys import argv, stdout
-from random import Random
-from plistlib import readPlist
 from collections import namedtuple
+from os import environ
+from plistlib import readPlist
+from random import Random
+from sys import argv, stdout
+from xml.parsers.expat import ExpatError
 
 from twisted.python import context
 from twisted.python.filepath import FilePath
@@ -32,15 +32,17 @@ from twisted.python.reflect import namedAny
 from twisted.application.service import Service
 from twisted.application.service import MultiService
 
+from twisted.internet.defer import Deferred
+from twisted.internet.defer import gatherResults
+from twisted.internet.defer import inlineCallbacks
 from twisted.internet.protocol import ProcessProtocol
 
-from contrib.performance.loadtest.ical import SnowLeopard
+from contrib.performance.loadtest.ical import OS_X_10_6
 from contrib.performance.loadtest.profiles import Eventer, Inviter, Accepter
 from contrib.performance.loadtest.population import (
     Populator, ProfileType, ClientType, PopulationParameters, SmoothRampUp,
     CalendarClientSimulator)
-from twisted.internet.defer import Deferred
-from twisted.internet.defer import gatherResults
+from contrib.performance.loadtest.webadmin import LoadSimAdminResource
 
 
 class _DirectoryRecord(object):
@@ -176,6 +178,8 @@ class SimOptions(Options):
 Arrival = namedtuple('Arrival', 'factory parameters')
 
 
+from twisted.web import server
+
 class LoadSimulator(object):
     """
     A L{LoadSimulator} simulates some configuration of calendar
@@ -189,15 +193,17 @@ class LoadSimulator(object):
         user information about the accounts on the server being put
         under load.
     """
-    def __init__(self, server, arrival, parameters, observers=None,
+    def __init__(self, server, webadminPort, arrival, parameters, observers=None,
                  records=None, reactor=None, runtime=None, workers=None,
                  configTemplate=None, workerID=None, workerCount=1):
         if reactor is None:
             from twisted.internet import reactor
         self.server = server
+        self.webadminPort = webadminPort
         self.arrival = arrival
         self.parameters = parameters
         self.observers = observers
+        self.reporter = None
         self.records = records
         self.reactor = LagTrackingReactor(reactor)
         self.runtime = runtime
@@ -235,8 +241,14 @@ class LoadSimulator(object):
             workerCount = config.get("workerCount", 1)
             configTemplate = None
             server = 'http://127.0.0.1:8008/'
+            webadminPort = None
+
             if 'server' in config:
                 server = config['server']
+
+            if 'webadmin' in config:
+                if config['webadmin']['enabled']:
+                    webadminPort = config['webadmin']['HTTPPort']
 
             if 'arrival' in config:
                 arrival = Arrival(
@@ -260,11 +272,12 @@ class LoadSimulator(object):
                              for profile in clientConfig["profiles"]]))
             if not parameters.clients:
                 parameters.addClient(1,
-                                     ClientType(SnowLeopard, {},
+                                     ClientType(OS_X_10_6, {},
                                                 [Eventer, Inviter, Accepter]))
         else:
             # Manager / observer process.
             server = ''
+            webadminPort = None
             arrival = None
             parameters = None
             workerID = 0
@@ -283,7 +296,7 @@ class LoadSimulator(object):
             records.extend(namedAny(loader)(**params))
             output.write("Loaded {0} accounts.\n".format(len(records)))
 
-        return cls(server, arrival, parameters, observers=observers,
+        return cls(server, webadminPort, arrival, parameters, observers=observers,
                    records=records, runtime=runtime, reactor=reactor,
                    workers=workers, configTemplate=configTemplate,
                    workerID=workerID, workerCount=workerCount)
@@ -351,26 +364,39 @@ class LoadSimulator(object):
 
 
     def attachServices(self, output):
-        ms = MultiService()
+        self.ms = MultiService()
         for svcclass in self.serviceClasses():
-            svcclass(self, output).setServiceParent(ms)
-        attachService(self.reactor, ms)
+            svcclass(self, output).setServiceParent(self.ms)
+        attachService(self.reactor, self, self.ms)
 
 
     def run(self, output=stdout):
         self.attachServices(output)
         if self.runtime is not None:
             self.reactor.callLater(self.runtime, self.reactor.stop)
+        if self.webadminPort:
+            self.reactor.listenTCP(self.webadminPort, server.Site(LoadSimAdminResource(self)))
         self.reactor.run()
 
 
-def attachService(reactor, service):
+    def stop(self):
+        if self.ms.running:
+            self.ms.stopService()
+            self.reactor.callLater(5, self.reactor.stop)
+
+
+    def shutdown(self):
+        if self.ms.running:
+            return self.ms.stopService()
+
+
+def attachService(reactor, loadsim, service):
     """
     Attach a given L{IService} provider to the given L{IReactorCore}; cause it
     to be started when the reactor starts, and stopped when the reactor stops.
     """
     reactor.callWhenRunning(service.startService)
-    reactor.addSystemEventTrigger('before', 'shutdown', service.stopService)
+    reactor.addSystemEventTrigger('before', 'shutdown', loadsim.shutdown)
 
 
 
@@ -402,7 +428,7 @@ class ObserverService(SimService):
 
 
     def stopService(self):
-        super(ObserverService, self).startService()
+        super(ObserverService, self).stopService()
         for obs in self.loadsim.observers:
             removeObserver(obs.observe)
 
@@ -421,9 +447,10 @@ class SimulatorService(SimService):
         arrivalPolicy.run(self.clientsim)
 
 
+    @inlineCallbacks
     def stopService(self):
-        super(SimulatorService, self).stopService()
-        return self.clientsim.stop()
+        yield super(SimulatorService, self).stopService()
+        yield self.clientsim.stop()
 
 
 
@@ -433,22 +460,36 @@ class ReporterService(SimService):
     simulator when it is stopped.
     """
 
+    def startService(self):
+        """
+        Start observing.
+        """
+        super(ReporterService, self).startService()
+        self.loadsim.reporter = self
+
+
     def stopService(self):
         """
         Emit the report to the specified output file.
         """
         super(ReporterService, self).stopService()
+        self.generateReport(self.output)
+
+
+    def generateReport(self, output):
+        """
+        Emit the report to the specified output file.
+        """
         failures = []
         for obs in self.loadsim.observers:
-            obs.report()
+            obs.report(output)
             failures.extend(obs.failures())
         if failures:
-            self.output.write('FAIL\n')
-            self.output.write('\n'.join(failures))
-            self.output.write('\n')
+            output.write('\n*** FAIL\n')
+            output.write('\n'.join(failures))
+            output.write('\n')
         else:
-            self.output.write('PASS\n')
-
+            output.write('\n*** PASS\n')
 
 
 class ProcessProtocolBridge(ProcessProtocol):

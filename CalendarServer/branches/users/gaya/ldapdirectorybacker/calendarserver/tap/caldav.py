@@ -124,6 +124,36 @@ def getid(uid, gid):
 
 
 
+def conflictBetweenIPv4AndIPv6():
+    """
+    Is there a conflict between binding an IPv6 and an IPv4 port?  Return True
+    if there is, False if there isn't.
+
+    This is a temporary workaround until maybe Twisted starts setting
+    C{IPPROTO_IPV6 / IPV6_V6ONLY} on IPv6 sockets.
+
+    @return: C{True} if listening on IPv4 conflicts with listening on IPv6.
+    """
+    s4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s6 = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    try:
+        s4.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s4.bind(("", 0))
+        s4.listen(1)
+        usedport = s4.getsockname()[1]
+        try:
+            s6.bind(("::", usedport))
+        except socket.error:
+            return True
+        else:
+            return False
+    finally:
+        s4.close()
+        s6.close()
+
+
+
 def _computeEnvVars(parent):
     """
     Compute environment variables to be propagated to child processes.
@@ -650,6 +680,29 @@ class CalDAVServiceMaker (LoggingMixIn):
         result = self.requestProcessingService(options, store)
         if pool is not None:
             pool.setServiceParent(result)
+
+        # Optionally enable Manhole access
+        if config.Manhole.Enabled:
+            try:
+                from twisted.conch.manhole_tap import makeService as manholeMakeService
+                portString = "tcp:%d:interface=127.0.0.1" % (config.Manhole.StartingPortNumber + int(config.LogID) + 1,)
+                manholeService = manholeMakeService({
+                    "sshPort" : None,
+                    "telnetPort" : portString,
+                    "namespace" : {
+                        "config" : config,
+                        "service" : result,
+                        "store" : store,
+                        "directory" : result.rootResource.getDirectory(),
+                        },
+                    "passwd" : config.Manhole.PasswordFilePath,
+                })
+                manholeService.setServiceParent(result)
+                # Using print because logging isn't ready at this point
+                print "Manhole access enabled: %s" % (portString,)
+            except ImportError:
+                print "Manhole access could not enabled because manhole_tap could not be imported"
+
         return result
 
 
@@ -702,6 +755,7 @@ class CalDAVServiceMaker (LoggingMixIn):
         service = CalDAVService(logObserver)
 
         rootResource = getRootResource(config, store, additional)
+        service.rootResource = rootResource
 
         underlyingSite = Site(rootResource)
         
@@ -838,11 +892,21 @@ class CalDAVServiceMaker (LoggingMixIn):
     def _allBindAddresses(self):
         """
         An empty array for the config value of BindAddresses should be
-        equivalent a BindAddresses with a single empty string, meaning "bind
-        everything".
+        equivalent to an array containing two BindAddresses; one with a single
+        empty string, and one with "::", meaning "bind everything on both IPv4
+        and IPv6".
         """
         if not config.BindAddresses:
-            config.BindAddresses = [""]
+            if getattr(socket, "has_ipv6", False):
+                if conflictBetweenIPv4AndIPv6():
+                    # If there's a conflict between v4 and v6, then almost by
+                    # definition, v4 is mapped into the v6 space, so we will
+                    # listen "only" on v6.
+                    config.BindAddresses = ["::"]
+                else:
+                    config.BindAddresses = ["", "::"]
+            else:
+                config.BindAddresses = [""]
         return config.BindAddresses
 
 
@@ -1115,6 +1179,26 @@ class CalDAVServiceMaker (LoggingMixIn):
         )
         statsService.setName("stats")
         statsService.setServiceParent(s)
+
+        # Optionally enable Manhole access
+        if config.Manhole.Enabled:
+            try:
+                from twisted.conch.manhole_tap import makeService as manholeMakeService
+                portString = "tcp:%d:interface=127.0.0.1" % (config.Manhole.StartingPortNumber,)
+                manholeService = manholeMakeService({
+                    "sshPort" : None,
+                    "telnetPort" : portString,
+                    "namespace" : {
+                        "config" : config,
+                        "service" : s,
+                        },
+                    "passwd" : config.Manhole.PasswordFilePath,
+                })
+                manholeService.setServiceParent(s)
+                # Using print because logging isn't ready at this point
+                print "Manhole access enabled: %s" % (portString,)
+            except ImportError:
+                print "Manhole access could not enabled because manhole_tap could not be imported"
 
         # Finally, let's get the real show on the road.  Create a service that
         # will spawn all of our worker processes when started, and wrap that

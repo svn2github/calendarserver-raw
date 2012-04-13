@@ -43,6 +43,8 @@ from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
 from twisted.application.service import Service
 
+from txdav.base.datastore.util import QueryCacher
+
 from twext.internet.decorate import memoizedKey
 
 from txdav.common.datastore.sql_legacy import PostgresLegacyNotificationsEmulator
@@ -136,7 +138,9 @@ class CommonDataStore(Service, object):
                  enableCalendars=True, enableAddressBooks=True,
                  label="unlabeled", quota=(2 ** 20),
                  logLabels=False, logStats=False, logSQL=False,
-                 logTransactionWaits=0, timeoutTransactions=0):
+                 logTransactionWaits=0, timeoutTransactions=0,
+                 cacheQueries=True, cachePool="Default",
+                 cacheExpireSeconds=3600):
         assert enableCalendars or enableAddressBooks
 
         self.sqlTxnFactory = sqlTxnFactory
@@ -153,6 +157,12 @@ class CommonDataStore(Service, object):
         self.timeoutTransactions = timeoutTransactions
         self._migrating = False
         self._enableNotifications = True
+
+        if cacheQueries:
+            self.queryCacher = QueryCacher(cachePool=cachePool,
+                cacheExpireSeconds=cacheExpireSeconds)
+        else:
+            self.queryCacher = None
 
 
     def eachCalendarHome(self):
@@ -2018,12 +2028,24 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @return: an L{CommonHomeChild} or C{None} if no such child
             exists.
         """
-        if owned:
-            query = cls._resourceIDOwnedByHomeByName
-        else:
-            query = cls._resourceIDSharedToHomeByName
-        data = yield query.on(home._txn,
-                              objectName=name, homeID=home._resourceID)
+        data = None
+        queryCacher = home._txn.store().queryCacher
+        # Only caching non-shared objects so that we don't need to invalidate
+        # in sql_legacy
+        if owned and queryCacher:
+            data = yield queryCacher.getObjectWithName(home._resourceID, name)
+
+        if data is None:
+            if owned:
+                query = cls._resourceIDOwnedByHomeByName
+            else:
+                query = cls._resourceIDSharedToHomeByName
+            data = yield query.on(home._txn,
+                                  objectName=name, homeID=home._resourceID)
+            if owned and data and queryCacher:
+                queryCacher.setObjectWithName(home._txn, home._resourceID,
+                    name, data)
+
         if not data:
             returnValue(None)
         resourceID = data[0][0]
@@ -2219,6 +2241,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @return: a L{Deferred} which fires when the modification is complete.
         """
         oldName = self._name
+
+        queryCacher = self._home._txn.store().queryCacher
+        if queryCacher:
+            queryCacher.invalidateObjectWithName(self._home._txn,
+                self._home._resourceID, oldName)
+
         yield self._renameQuery.on(self._txn, name=name,
                                    resourceID=self._resourceID,
                                    homeID=self._home._resourceID)
@@ -2246,6 +2274,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
     @inlineCallbacks
     def remove(self):
+
+        queryCacher = self._home._txn.store().queryCacher
+        if queryCacher:
+            queryCacher.invalidateObjectWithName(self._home._txn,
+                self._home._resourceID, self._name)
+
         yield self._deletedSyncToken()
         yield self._deleteQuery.on(self._txn, NoSuchHomeChildError,
                                    resourceID=self._resourceID)
@@ -2694,7 +2728,8 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
         self._created = None
         self._modified = None
         self._objectText = None
-
+        
+        self._locked = False
 
 
     @classproperty
@@ -2904,8 +2939,41 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
     def _txn(self):
         return self._parentCollection._txn
 
+
     def transaction(self):
         return self._parentCollection._txn
+
+
+    @classmethod
+    def _selectForUpdateQuery(cls, nowait): #@NoSelf
+        """
+        DAL statement to lock a L{CommonObjectResource} by its resource ID.
+        """
+        return Select(From=cls._objectSchema, ForUpdate=True, NoWait=nowait, Where=cls._objectSchema.RESOURCE_ID == Parameter("resourceID"))
+
+
+    @inlineCallbacks
+    def lock(self, wait=True, txn=None):
+        """
+        Attempt to obtain a row lock on the object resource. 'wait' determines whether the DB call will
+        block on any existing lock held by someone else. Lock will remain until
+        transaction is complete, or fail if resource is missing, or it is already locked
+        and wait=False is used. Occasionally we need to lock via a separate transaction so we
+        pass that in too.
+
+        @param wait: whether or not to wait on someone else's lock
+        @type wait: C{bool}
+        @param txn: alternative transaction to use
+        @type txn: L{CommonStoreTransaction}
+        
+        @raise: L{NoSuchObjectResourceError} if resource does not exist, other L{Exception}
+                if already locked and NOWAIT is used.
+        """
+        
+        txn = txn if txn is not None else self._txn
+        yield self._selectForUpdateQuery(not wait).on(txn, NoSuchObjectResourceError, resourceID=self._resourceID)
+        self._locked = True
+
 
     def setComponent(self, component, inserting=False):
         raise NotImplementedError

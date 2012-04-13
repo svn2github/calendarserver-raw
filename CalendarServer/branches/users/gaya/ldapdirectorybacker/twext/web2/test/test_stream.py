@@ -11,6 +11,7 @@ from zope.interface import implements
 
 from twisted.python.util import sibpath
 sibpath # sibpath is *not* unused - the doctests use it.
+from twisted.python.hashlib import md5
 from twisted.internet import reactor, defer, interfaces
 from twisted.trial import unittest
 from twext.web2 import stream
@@ -164,39 +165,6 @@ And into my garden stole
 When the night had veil'd the pole:
 In the morning glad I see
 My foe outstretch'd beneath the tree"""
-
-class TestSubstream(unittest.TestCase):
-
-    def setUp(self):
-        self.data = testdata
-        self.s = stream.MemoryStream(self.data)
-
-    def suckTheMarrow(self, s):
-        return ''.join(map(str, list(iter(s.read, None))))
-
-    def testStart(self):
-        s = stream.substream(self.s, 0, 11)
-        self.assertEquals('I was angry', self.suckTheMarrow(s))
-
-    def testNotStart(self):
-        s = stream.substream(self.s, 12, 26)
-        self.assertEquals('with my friend', self.suckTheMarrow(s))
-
-    def testReverseStartEnd(self):
-        self.assertRaises(ValueError, stream.substream, self.s, 26, 12)
-
-    def testEmptySubstream(self):
-        s = stream.substream(self.s, 11, 11)
-        self.assertEquals('', self.suckTheMarrow(s))
-
-    def testEnd(self):
-        size = len(self.data)
-        s = stream.substream(self.s, size-4, size)
-        self.assertEquals('tree', self.suckTheMarrow(s))
-
-    def testPastEnd(self):
-        size = len(self.data)
-        self.assertRaises(ValueError, stream.substream, self.s, size-4, size+8)
 
 
 class TestBufferedStream(unittest.TestCase):
@@ -613,6 +581,99 @@ class CompoundStreamTest:
     0
 
     """
+
+
+class AsynchronousDummyStream(object):
+    """
+    An L{IByteStream} implementation which always returns a
+    L{defer.Deferred} from C{read} and lets an external driver fire
+    them.
+    """
+    def __init__(self):
+        self._readResults = []
+
+    def read(self):
+        result = defer.Deferred()
+        self._readResults.append(result)
+        return result
+
+    def _write(self, bytes):
+        self._readResults.pop(0).callback(bytes)
+
+class MD5StreamTest(unittest.TestCase):
+    """
+    Tests for L{stream.MD5Stream}.
+    """
+    data = "I am sorry Dave, I can't do that.\n--HAL 9000"
+    digest = md5(data).hexdigest()
+
+    def test_synchronous(self):
+        """
+        L{stream.MD5Stream} computes the MD5 hash of the contents of the stream
+        around which it is wrapped.  It supports L{IByteStream} providers which
+        return C{str} from their C{read} method.
+        """
+        dataStream = stream.MemoryStream(self.data)
+        md5Stream = stream.MD5Stream(dataStream)
+
+        self.assertEquals(str(md5Stream.read()), self.data)
+        self.assertIdentical(md5Stream.read(), None)
+        md5Stream.close()
+
+        self.assertEquals(self.digest, md5Stream.getMD5())
+
+    def test_asynchronous(self):
+        """
+        L{stream.MD5Stream} also supports L{IByteStream} providers which return
+        L{Deferreds} from their C{read} method.
+        """
+        dataStream = AsynchronousDummyStream()
+        md5Stream = stream.MD5Stream(dataStream)
+
+        result = md5Stream.read()
+        dataStream._write(self.data)
+        result.addCallback(self.assertEquals, self.data)
+
+        def cbRead(ignored):
+            result = md5Stream.read()
+            dataStream._write(None)
+            result.addCallback(self.assertIdentical, None)
+            return result
+        result.addCallback(cbRead)
+
+        def cbClosed(ignored):
+            md5Stream.close()
+            self.assertEquals(md5Stream.getMD5(), self.digest)
+        result.addCallback(cbClosed)
+
+        return result
+
+    def test_getMD5FailsBeforeClose(self):
+        """
+        L{stream.MD5Stream.getMD5} raises L{RuntimeError} if called before
+        L{stream.MD5Stream.close}.
+        """
+        dataStream = stream.MemoryStream(self.data)
+        md5Stream = stream.MD5Stream(dataStream)
+        self.assertRaises(RuntimeError, md5Stream.getMD5)
+
+    def test_initializationFailsWithoutStream(self):
+        """
+        L{stream.MD5Stream.__init__} raises L{ValueError} if passed C{None} as
+        the stream to wrap.
+        """
+        self.assertRaises(ValueError, stream.MD5Stream, None)
+
+    def test_readAfterClose(self):
+        """
+        L{stream.MD5Stream.read} raises L{RuntimeError} if called after
+        L{stream.MD5Stream.close}.
+        """
+        dataStream = stream.MemoryStream(self.data)
+        md5Stream = stream.MD5Stream(dataStream)
+        md5Stream.close()
+        self.assertRaises(RuntimeError, md5Stream.read)
+
 
 
 __doctests__ = ['twext.web2.test.test_stream', 'twext.web2.stream']
