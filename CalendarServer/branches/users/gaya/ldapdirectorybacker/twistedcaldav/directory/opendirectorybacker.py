@@ -25,23 +25,25 @@ __all__ = [
 
 import traceback
 import hashlib
-
 import sys
 import time
-
 from random import random
 
+from calendarserver.platform.darwin.od import dsattributes, dsquery
 from pycalendar.n import N
 from pycalendar.adr import Adr
 from pycalendar.datetime import PyCalendarDateTime
 
 from twisted.internet.defer import inlineCallbacks, returnValue, deferredGenerator, succeed
+from twisted.python.reflect import namedModule
+
 from txdav.xml import element as davxml
 from txdav.xml.base import twisted_dav_namespace, dav_namespace, parse_date, twisted_private_namespace
+
+from twext.python.log import LoggingMixIn, Logger
 from twext.web2.dav.resource import DAVPropertyMixIn
 from twext.web2.dav.util import joinURL
 from twext.web2.http_headers import MimeType, generateContentType, ETag
-
 
 from twistedcaldav import carddavxml
 from twistedcaldav.config import config
@@ -51,10 +53,6 @@ from twistedcaldav.vcard import Component, Property, vCardProductID
 
 from xmlrpclib import datetime
 
-from calendarserver.platform.darwin.od import dsattributes, dsquery
-from twisted.python.reflect import namedModule
-
-from twext.python.log import LoggingMixIn, Logger
 log = Logger()
 
 class OpenDirectoryBackingService(DirectoryService):
@@ -86,7 +84,6 @@ class OpenDirectoryBackingService(DirectoryService):
         fakeETag = True,                  # eTag is not reliable if True 
                 
         addDSAttrXProperties=False,       # add dsattributes to vcards as "X-" attributes
-        generateSimpleUIDs = False,       # use simple synthetic UIDs --- good for testing
         appleInternalServer=False,
         
         additionalAttributes=None,
@@ -101,8 +98,6 @@ class OpenDirectoryBackingService(DirectoryService):
             NumberOfMatchesWithinLimits exception or returning results
         @dsLocalCacheTimeout: how log to keep cache of DSLocal records
         @fakeETag: C{True} to use a fake eTag; allows ds queries with partial attributes
-        @generateSimpleUIDs: C{True} when creating synthetic UID (==f(Node, Type, Record Name)), 
-            use a standard Node name. This allows testing with the same UID on different hosts
         @allowedAttributes: list of DSAttributes that are used to create VCards
 
         """
@@ -134,7 +129,7 @@ class OpenDirectoryBackingService(DirectoryService):
         nodeDirectoryRecordTypeMap = {}
         self.odModule = namedModule(config.OpenDirectoryModule)
         for node in nodeRecordTypeMap:
-            queryInfo = {"recordTypes":nodeRecordTypeMap[node]}
+            queryInfo = {"recordTypes":nodeRecordTypeMap[node],}
             try:
                 queryInfo["directory"] = self.odModule.odInit(node)
             except self.odModule.ODError, e:
@@ -147,9 +142,7 @@ class OpenDirectoryBackingService(DirectoryService):
         
         
         # calc realm name
-        realmName = None
-        for node in nodeDirectoryRecordTypeMap:
-            realmName = realmName + "+" + node if realmName else node
+        realmName = "+".join(nodeDirectoryRecordTypeMap.keys())
         self.realmName = realmName # needed for super
         
         self.queryPeopleRecords = queryPeopleRecords
@@ -164,9 +157,7 @@ class OpenDirectoryBackingService(DirectoryService):
         self.fakeETag = fakeETag
                 
         self.addDSAttrXProperties = addDSAttrXProperties
-        self.generateSimpleUIDs = generateSimpleUIDs # for testing
         self.appleInternalServer = appleInternalServer
-        self.sortResults = generateSimpleUIDs # for testing: TODO: make separate param 
         
         
         if searchAttributes is None:
@@ -205,7 +196,7 @@ class OpenDirectoryBackingService(DirectoryService):
         
         #get attributes required for needed for valid vCard
         requiredAttributes = [attr for prop in ("UID", "FN", "N") for attr in ABDirectoryQueryResult.vcardPropToDSAttrMap[prop]]
-        requiredAttributes += [dsattributes.kDS1AttrModificationTimestamp, dsattributes.kDS1AttrCreationTimestamp,] # for VCardResult property mix in
+        requiredAttributes += [dsattributes.kDS1AttrModificationTimestamp, dsattributes.kDS1AttrCreationTimestamp,] # for VCardResult DAVPropertyMixIn
         self.requiredAttributes = list(set(requiredAttributes))
         self.log_debug("self.requiredAttributes=%s" % (self.requiredAttributes, ))
            
@@ -232,6 +223,9 @@ class OpenDirectoryBackingService(DirectoryService):
             returnedAttributes += [dsattributes.kDSNAttrMetaNodeLocation,]
         if queryGroupRecords:
         	returnedAttributes += [dsattributes.kDSNAttrGroupMembers,]
+        
+        #for debugging
+        returnedAttributes += [dsattributes.kDSNAttrRecordType,]
 
         self.returnedAttributes = list(set(returnedAttributes))
         self.log_debug("self.returnedAttributes=%s" % (self.returnedAttributes, ))
@@ -381,7 +375,6 @@ class OpenDirectoryBackingService(DirectoryService):
                         continue
 
                 result = ABDirectoryQueryResult(self.directoryBackedAddressBook, recordAttributes, 
-                                     generateSimpleUIDs=self.generateSimpleUIDs, 
                                      addDSAttrXProperties=self.addDSAttrXProperties,
                                      appleInternalServer=self.appleInternalServer,
                                      )
@@ -583,8 +576,8 @@ class OpenDirectoryBackingService(DirectoryService):
             results = filteredResults
             limited = maxResults and len(results) >= maxResults
                         
-        if self.sortResults:
-            results = sorted(list(results), key=lambda result:result.vCard().propertyValue("UID"))
+        #if self.sortResults:
+        #    results = sorted(list(results), key=lambda result:result.vCard().propertyValue("UID"))
 
         self.log_debug("doAddressBookQuery: %s results (limited=%s)." % (len(results), limited))
         returnValue((results, limited,))        
@@ -771,30 +764,24 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
                         # special case UID's formed from node and record name
                         if propFilter.filter_name == "UID":
                             matchString = matchStrings[0]
-                            seperatorIndex = matchString.find(ABDirectoryQueryResult.peopleUIDSeparator)
+                            seperatorIndex = matchString.find(ABDirectoryQueryResult.uidSeparator)
                             if seperatorIndex > 1:
-                                recordNameStart = seperatorIndex + len(ABDirectoryQueryResult.peopleUIDSeparator)
-                            else:
-                                seperatorIndex = matchString.find(ABDirectoryQueryResult.userUIDSeparator)                        
-                                if seperatorIndex > 1:
-                                    recordNameStart = seperatorIndex + len(ABDirectoryQueryResult.userUIDSeparator)
-                                else:
-                                    recordNameStart = sys.maxint
-    
-                            if recordNameStart < len(matchString)-1:
-                                try:
-                                    recordNameQualifier = matchString[recordNameStart:].decode("base64").decode("utf8")
-                                except Exception, e:
-                                    log.debug("Could not decode UID string %r in %r: %r" % (matchString[recordNameStart:], matchString, e,))
-                                else:
-                                    if textMatchElement.negate:
-                                        return (False, queryAttributes, 
-                                                [dsquery.expression(dsquery.expression.NOT, dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact)),]
-                                                )
+                                recordNameStart = seperatorIndex + len(ABDirectoryQueryResult.uidSeparator)
+                                
+                                if recordNameStart < len(matchString)-1:
+                                    try:
+                                        recordNameQualifier = matchString[recordNameStart:].decode("base64").decode("utf8")
+                                    except Exception, e:
+                                        log.debug("Could not decode UID string %r in %r: %r" % (matchString[recordNameStart:], matchString, e,))
                                     else:
-                                        return (False, queryAttributes, 
-                                                [dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact),]
-                                                )
+                                        if textMatchElement.negate:
+                                            return (False, queryAttributes, 
+                                                    [dsquery.expression(dsquery.expression.NOT, dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact)),]
+                                                    )
+                                        else:
+                                            return (False, queryAttributes, 
+                                                    [dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact),]
+                                                    )
                         
                         # use match_type where possible depending on property/attribute mapping
                         # Note that case sensitive negate will not work
@@ -1032,7 +1019,6 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
          "UID" : [
                 dsattributes.kDS1AttrGeneratedUID,
                 dsattributes.kDSNAttrRecordName,
-                dsattributes.kDSNAttrRecordType,
                 ],
          "URL" : [
                 dsattributes.kDS1AttrWeblogURI,
@@ -1064,9 +1050,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
 
     allDSAttrNames = stringDSAttrNames + binaryDSAttrNames
    
-    #peopleUIDSeparator = "-" + OpenDirectoryBackingService.baseGUID + "-"
-    userUIDSeparator = "-bf07a1a2-"
-    peopleUIDSeparator = "-cf07a1a2-"
+    uidSeparator = "-cf07a1a2-"
 
     
     constantProperties = {
@@ -1077,8 +1061,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
         }
 
     
-    def __init__(self, directoryBackedAddressBook, recordAttributes, generateSimpleUIDs=False, addDSAttrXProperties=False, appleInternalServer=False, ):
-        
+    def __init__(self, directoryBackedAddressBook, recordAttributes, addDSAttrXProperties=False, appleInternalServer=False, ):
 
         self.log_debug("directoryBackedAddressBook=%s, attributes=%s"    % (directoryBackedAddressBook, recordAttributes))
 
@@ -1102,18 +1085,11 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             else:
                 self.attributes[key] = values
                 
-        # find a GUID
+        # find or create guid 
         guid = self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)
         if not guid:
-            if generateSimpleUIDs:
-                nodeUUIDStr = "00000000"
-            else:
-                nodeUUIDStr = "%x" % abs(hash(node))
             nameUUIDStr = "".join(self.firstValueForAttribute(dsattributes.kDSNAttrRecordName).encode("base64").split("\n"))
-            if self.firstValueForAttribute(dsattributes.kDSNAttrRecordType) != dsattributes.kDSStdRecordTypePeople:
-                guid =  ABDirectoryQueryResult.userUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
-            else:
-                guid =  ABDirectoryQueryResult.peopleUIDSeparator.join([nodeUUIDStr, nameUUIDStr,])
+            guid =  ABDirectoryQueryResult.uidSeparator.join(["d9a8e41b", nameUUIDStr,])
             
             self.attributes[dsattributes.kDS1AttrGeneratedUID] = guid
         
