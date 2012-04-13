@@ -25,7 +25,6 @@ __all__ = [
 
 import traceback
 import hashlib
-import sys
 import time
 from random import random
 
@@ -47,7 +46,7 @@ from twext.web2.http_headers import MimeType, generateContentType, ETag
 
 from twistedcaldav import carddavxml
 from twistedcaldav.config import config
-from twistedcaldav.directory.directory import DirectoryService, DirectoryRecord
+from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.query import addressbookqueryfilter
 from twistedcaldav.vcard import Component, Property, vCardProductID
 
@@ -142,8 +141,7 @@ class OpenDirectoryBackingService(DirectoryService):
         
         
         # calc realm name
-        realmName = "+".join(nodeDirectoryRecordTypeMap.keys())
-        self.realmName = realmName # needed for super
+        self.realmName = "+".join(nodeDirectoryRecordTypeMap.keys())
         
         self.queryPeopleRecords = queryPeopleRecords
         self.queryUserRecords = queryUserRecords
@@ -234,22 +232,7 @@ class OpenDirectoryBackingService(DirectoryService):
         self._dsLocalResults = {}
         self._nextDSLocalQueryTime = 0
         
-    def __cmp__(self, other):
-        if not isinstance(other, DirectoryRecord):
-            return super(DirectoryRecord, self).__eq__(other)
 
-        for attr in ("directory", "node"):
-            diff = cmp(getattr(self, attr), getattr(other, attr))
-            if diff != 0:
-                return diff
-        return 0
-
-    def __hash__(self):
-        h = hash(self.__class__.__name__)
-        for attr in ("node",):
-            h = (h + hash(getattr(self, attr))) & sys.maxint
-        return h
-    
     def createCache(self):
          succeed(None)
 

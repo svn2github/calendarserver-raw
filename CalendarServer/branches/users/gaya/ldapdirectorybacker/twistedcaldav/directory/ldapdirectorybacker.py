@@ -25,7 +25,6 @@ __all__ = [
 
 import traceback
 import ldap
-import sys
 
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
@@ -38,11 +37,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
     """
     Directory backer for L{LdapDirectoryService}.
     """
-    
-    node="/Search"
-
-    def __repr__(self):
-        return "<%s %r>" % (self.__class__.__name__, self.realmName, )
 
     def __init__(self, params):
         self._actuallyConfigure(**params)
@@ -122,9 +116,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         self.directoryBackedAddressBook = directoryBackedAddressBook
         
         self.maxQueryResults = maxQueryResults
-
-                
-        self.realmName = None # needed for super        
         
         ### params for ABDirectoryQueryResult()
         self.fakeETag = fakeETag
@@ -133,12 +124,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         super(LdapDirectoryBackingService, self).__init__(params)
         
  
-    def __hash__(self):
-        h = hash(self.__class__.__name__)
-        for attr in ("node",):
-            h = (h + hash(getattr(self, attr))) & sys.maxint
-        return h
-    
     def createCache(self):
          succeed(None)
                         

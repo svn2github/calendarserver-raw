@@ -37,10 +37,6 @@ class XMLDirectoryBackingService(XMLDirectoryService):
     Directory backer for L{XMLDirectoryService}.
     """
     
-    node="/Search"
-    def __repr__(self):
-        return "<%s %r>" % (self.__class__.__name__, self.realmName, )
-
     def __init__(self, params):
         self._actuallyConfigure(**params)
 
