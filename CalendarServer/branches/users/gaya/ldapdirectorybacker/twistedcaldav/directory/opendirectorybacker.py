@@ -1044,9 +1044,17 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
         }
 
     
-    def __init__(self, directoryBackedAddressBook, recordAttributes, addDSAttrXProperties=False, appleInternalServer=False, ):
+    def __init__(self, directoryBackedAddressBook, recordAttributes, additionalVCardProps=None, addDSAttrXProperties=False, appleInternalServer=False, ):
 
-        self.log_debug("directoryBackedAddressBook=%s, attributes=%s"    % (directoryBackedAddressBook, recordAttributes))
+        self.log_debug("directoryBackedAddressBook=%s, attributes=%s, additionalVCardProps=%s" % (directoryBackedAddressBook, recordAttributes, additionalVCardProps,))
+        
+        constantProperties = ABDirectoryQueryResult.constantProperties.copy()
+        if additionalVCardProps:
+            for key, value in additionalVCardProps.iteritems():
+                if key not in constantProperties:
+                    constantProperties[key] = value
+        self.constantProperties = constantProperties
+        self.log_debug("directoryBackedAddressBook=%s, attributes=%s, self.constantProperties=%s" % (directoryBackedAddressBook, recordAttributes, self.constantProperties,))
 
         #save off for debugging
         self.addDSAttrXProperties = addDSAttrXProperties;
@@ -1232,7 +1240,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             groupCount = [0]
             
             # add constant properties - properties that are the same regardless of the record attributes
-            for key, value in ABDirectoryQueryResult.constantProperties.items():
+            for key, value in self.constantProperties.items():
                 vcard.addProperty(Property(key, value))
                 
             # 3.1 IDENTIFICATION TYPES http://tools.ietf.org/html/rfc2426#section-3.1
@@ -1480,12 +1488,10 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             # 3.6.2 NOTE Type Definition
             # dsattributes.kDS1AttrComment,               # Attribute used for unformatted comment.
             # dsattributes.kDS1AttrNote,                  # Note attribute. Commonly used in printer records.
-            for comment in self.valuesForAttribute(dsattributes.kDS1AttrComment):
-                addUniqueProperty(vcard, Property("NOTE", comment), None, dsattributes.kDS1AttrComment, comment)
+            notes = self.valuesForAttribute(dsattributes.kDS1AttrComment, []) + self.valuesForAttribute(dsattributes.kDS1AttrNote, []);
+            if len(notes):
+                vcard.addProperty(Property("NOTE", "\n".join(notes),))
     
-            for note in self.valuesForAttribute(dsattributes.kDS1AttrNote):
-                addUniqueProperty(vcard, Property("NOTE", note), None, dsattributes.kDS1AttrNote, note)
-            
             # 3.6.3 PRODID Type Definition
             #vcard.addProperty(Property("PRODID", vCardProductID + "//BUILD %s" % twistedcaldav.__version__))
             #vcard.addProperty(Property("PRODID", vCardProductID))
@@ -1615,9 +1621,10 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             # add apple-defined group vcard properties if record type is group
             if self.firstValueForAttribute(dsattributes.kDSNAttrRecordType) == dsattributes.kDSStdRecordTypeGroups:
                 vcard.addProperty(Property("X-ADDRESSBOOKSERVER-KIND", "group"))
-                
-                for memberguid in self.valuesForAttribute(dsattributes.kDSNAttrGroupMembers):
-                    vcard.addProperty(Property("X-ADDRESSBOOKSERVER-MEMBER", "urn:uuid:" + memberguid))
+            
+            # add members
+            for memberguid in self.valuesForAttribute(dsattributes.kDSNAttrGroupMembers):
+                vcard.addProperty(Property("X-ADDRESSBOOKSERVER-MEMBER", "urn:uuid:" + memberguid))
     
             """
             # UNIMPLEMENTED: X- attributes

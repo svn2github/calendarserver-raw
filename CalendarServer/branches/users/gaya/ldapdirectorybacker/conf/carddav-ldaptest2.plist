@@ -1142,132 +1142,132 @@
 			<key>rdnSchema</key>
 			<dict>
 				<key>base</key>
-				<string>o=apple</string>
+                <string>o=apple.com,o=email</string>
                 <key>queries</key>
                 <array>
-                    <!-- user vCards  -->
-    				<dict>
+                    <!-- people vCards for another server. -->
+                    <dict>
                         <key>rdn</key>
-                        <string>ou=people</string>
+                        <string>ou=People</string>
                         <key>filter</key>
                         <string></string>
                         <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
+                        <key>ldapAttrToDSAttrMap</key>
+                        <dict>
+                            <key>givenName</key>
+                            <string>FirstName</string>
+                            <key>sn</key>
+                            <string>LastName</string>
+                            <key>cn</key>
+                            <array>
+                                <string>RealName</string>
+                                <string>RecordName</string>
+                            </array>
+                            <key>mail</key>
+                            <string>EMailAddress</string>
+                            <key>uid</key>
+                            <string>GeneratedUID</string>
+                        </dict>
                         <key>vcardPropToLdapAttrMap</key>
                         <dict>
                             <key>FN</key>
                             <string>cn</string>
                             <key>EMAIL</key>
                             <string>mail</string>
-                            <key>TEL</key>
-                            <string>telephoneNumber</string>
-                            <key>ADR</key>
-                            <array>
-                                <string>buildingName</string>
-                                <string>destinationIndicator</string>
-                                <string>street</string>
-                                <string>l</string>
-                                <string>st</string>
-                            </array>
-                            <key>ORG</key>
-                            <string>ou</string>
                             <key>UID</key>
-                            <string>appleDSID</string>
+                            <string>uid</string>
                         </dict>
-                        <!-- map ldap attributes to ds attribute types.  -->
-    					<key>ldapAttrToDSAttrMap</key>
-    					<dict>
-    						<key>givenName</key>
-    						<string>FirstName</string>
-    						<key>sn</key>
-    						<string>LastName</string>
-    						<key>cn</key>
-    						<string>RealName</string>
-                            <!-- PHOTO  -->
-    						<key>applePhotoPreferred-jpeg</key>
-    						<string>JPEGPhoto</string>
-                            <!-- ADR  -->
-    						<key>buildingName</key>
-    						<string>Building</string>
-    						<key>destinationIndicator</key>
-    						<string>Building</string>
-    						<key>street</key>
-    						<string>Street</string>
-    						<key>l</key>
-    						<string>City</string>
-    						<key>st</key>
-    						<string>State</string>
-    						<key>postalCode</key>
-    						<string>PostalCode</string>
-    						<key>co</key>
-    						<string>Country</string>
-                            <!-- TEL  -->
-   						    <key>telephoneNumber</key>
-    						<string>PhoneNumber</string>
-    						<key>appleSecondaryPhone</key>
-    						<string>PhoneNumber</string>
-    						<key>facsimileTelephoneNumber</key>
-    						<string>FaxNumber</string>
-    						<key>pager</key>
-    						<string>PagerNumber</string>
-    						<key>mobile</key>
-    						<string>MobileNumber</string>
-                            <!-- EMAIL  -->
-    						<key>mail</key>
-    						<string>EMailAddress</string>
-    						<key>applePreferredEmail</key>
-    						<string>EMailAddress</string>
-    						<key>appleNotificationEmail</key>
-    						<string>EMailAddress</string>
-                            <!-- UID  -->
-    						<key>appleDSID</key>
-    						<string>GeneratedUID</string>
-                            <!-- ORG  -->
-    						<key>o</key>
-    						<string>OrganizationName</string>
-    						<key>ou</key>
-    						<string>Department</string>
-                            <!-- IMPP  -->
-    						<key>appleAIMPreferred</key>
-    						<string>IMHandle</string>
-    						<key>appleAIMOfficial</key>
-    						<string>IMHandle</string>
-    						<key>appleManager</key>
-    						<string>dsAttrTypeNative:appleManager</string>
-    					</dict>
-    				</dict>
-                    <!-- mailing list vCards.  Should mark as company-->
-    				<dict>
-    					<key>rdn</key>
-    					<string>ou=groups</string>
-    					<key>filter</key>
-    					<string>(objectClass=appleGroup)</string>
-    					<key>getAllAttributes</key>
-    					<false/>
-    					<key>vcardPropToLdapAttrMap</key>
-    					<dict>
-    						<key>EMAIL</key>
-    						<string>appleGroupEmail</string>
-    						<key>FN</key>
-    						<string>description</string>
-    						<key>UID</key>
-    						<string>appleDSID</string>
-    					</dict>
-    					<key>ldapAttrToDSAttrMap</key>
-    					<dict>
-    						<key>cn</key>
-    						<string>RecordName</string>
-    						<key>description</key>
-    						<array>
-    							<string>RealName</string>
-    							<string>OrganizationName</string>
-    						</array>
-    						<key>appleDSID</key>
-    						<string>GeneratedUID</string>
-    						<key>appleGroupContact</key>
-    						<string>dsAttrTypeNative:appleManager</string>
-    						<key>appleGroupEmail</key>
-    						<string>EMailAddress</string>
-    					</dict>
+                    </dict>
+                    <!-- group vCards for another server.
+                    <dict>
+                        <key>rdn</key>
+                        <string>ou=Groups</string>
+                        <key>filter</key>
+                        <string></string>
+                        <key>additionalVCardProps</key>
+                         <dict>
+                            <key>X-ADDRESSBOOKSERVER-KIND</key>
+                            <string>group</string>
+                        </dict>
+                        <key>ldapAttrTransforms</key>
+                        <dict>
+                            <key>uniqueMember</key>
+                            <array>
+                                <string>uid</string>
+                                <string>cn</string>
+                            </array>
+                        </dict>
+                        <key>ldapAttrToDSAttrMap</key>
+                        <dict>
+                            <key>givenName</key>
+                            <string>FirstName</string>
+                            <key>sn</key>
+                            <string>LastName</string>
+                            <key>description</key>
+                            <array>
+                                <string>RealName</string>
+                            </array>
+                            <key>cn</key>
+                            <array>
+                                <string>GeneratedUID</string>
+                            </array>
+                            <key>mail</key>
+                            <string>EMailAddress</string>
+                            <key>uniqueMember</key>
+                            <string>GroupMembers</string>
+                        </dict>
+                        <key>vcardPropToLdapAttrMap</key>
+                        <dict>
+                            <key>FN</key>
+                            <string>cn</string>
+                            <key>EMAIL</key>
+                            <string>mail</string>
+                            <key>UID</key>
+                            <string>cn</string>
+                        </dict>
+                    </dict>
+                    -->
+                    <!-- distribution list vCards for another server. Cannot use with groups because UID/href is not unique -->
+                    <dict>
+                        <key>rdn</key>
+                        <string>ou=Groups</string>
+                        <key>filter</key>
+                        <string></string>
+                        <key>additionalVCardProps</key>
+                         <dict>
+                            <key>X-ABShowAs</key>
+                            <string>COMPANY</string>
+                        </dict>
+                        <key>ldapAttrToDSAttrMap</key>
+                        <dict>
+                            <key>givenName</key>
+                            <string>FirstName</string>
+                            <key>sn</key>
+                            <string>LastName</string>
+                            <key>description</key>
+                            <array>
+                                <string>RealName</string>
+                            </array>
+                            <key>cn</key>
+                            <array>
+                                <string>GeneratedUID</string>
+                            </array>
+                            <key>mail</key>
+                            <string>EMailAddress</string>
+                            <key>uniqueMember</key>
+                            <string>Comment</string>
+                        </dict>
+                        <key>vcardPropToLdapAttrMap</key>
+                        <dict>
+                            <key>FN</key>
+                            <array>
+                                <string>cn</string>
+                            </array>
+                            <key>EMAIL</key>
+                            <string>mail</string>
+                            <key>UID</key>
+                            <string>cn</string>
+                        </dict>
                     </dict>
                 </array>
 			</dict>

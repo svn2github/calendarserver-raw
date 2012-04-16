@@ -57,6 +57,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                         "ldapAttrToDSAttrMap" : { # maps ldap attributes to ds attribute types
                             "cn" : "dsAttrTypeStandard:RealName",
                          },
+                        "additionalVCardProps":None,
                     },
                 ),
 
@@ -114,7 +115,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
  
         assert directoryBackedAddressBook is not None
         self.directoryBackedAddressBook = directoryBackedAddressBook
-        
+       
         self.maxQueryResults = maxQueryResults
         
         ### params for ABDirectoryQueryResult()
@@ -159,7 +160,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
  
     @inlineCallbacks
-    def _getLdapQueryResults(self, base, queryStr, attributes=None, maxResults=0, ldapAttrToDSAttrMap={} ):
+    def _getLdapQueryResults(self, base, queryStr, attributes=None, maxResults=0, ldapAttrToDSAttrMap=None, ldapAttrTransforms=None, additionalVCardProps=None ):
         """
         Get a list of ABDirectoryQueryResult for the given query with the given attributes.
         query == None gets all records. attribute == None gets ABDirectoryQueryResult.allDSQueryAttributes
@@ -193,8 +194,40 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                     ldapAttributeValues = [attr for attr in ldapAttributeValues if len(attr)]
                     
                     if len(ldapAttributeValues):
+                                                
+                        
                         dsAttributeNames = ldapAttrToDSAttrMap.get(ldapAttributeName)
                         if dsAttributeNames:
+                            
+                            if ldapAttrTransforms:
+                            
+                                # do value transforms
+                                # need to expand this to cover all cases
+                                # All this does now is to pull part of an ldap string out
+                                # e.g: uid=renuka,ou=People,o=apple.com,o=email -> renuka
+                                transforms = ldapAttrTransforms.get(ldapAttributeName)
+                                if transforms:
+                                    if not isinstance(transforms, list):
+                                        transforms = [transforms,]
+                                    
+                                    transformedValues = []
+                                    for ldapAttributeValue in ldapAttributeValues:
+                                        transformedValue = ldapAttributeValue
+                                        for valuePart in ldapAttributeValue.lower().split(","):
+                                            kvPair = valuePart.split("=")
+                                            if len(kvPair) == 2:
+                                                for transform in transforms:
+                                                    if transform.lower() == kvPair[0]:
+                                                        transformedValue = kvPair[1]
+                                                        break
+                                                    
+                                        transformedValues += [transformedValue,]
+                                    
+                                    if (ldapAttributeValues != transformedValues):
+                                        self.log_debug("_getLdapQueryResults: %s %s transformed to %s" % (ldapAttributeName, ldapAttributeValues, transformedValues))
+                                        ldapAttributeValues = transformedValues
+                                                
+                                        
                             
                             if not isinstance(dsAttributeNames, list):
                                 dsAttributeNames = [dsAttributeNames,]
@@ -213,7 +246,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                 self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
 
                 # get a record for dsRecordAttributes 
-                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, appleInternalServer=self.appleInternalServer)
+                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, additionalVCardProps=additionalVCardProps, appleInternalServer=self.appleInternalServer)
             except:
                 traceback.print_exc()
                 self.log_info("Could not get vcard for %s" % (dn,))
@@ -245,6 +278,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             rdn = queryMap["rdn"]
             vcardPropToLdapAttrMap = queryMap["vcardPropToLdapAttrMap"]
             ldapAttrToDSAttrMap = queryMap["ldapAttrToDSAttrMap"]
+            additionalVCardProps = queryMap.get("additionalVCardProps")
+            ldapAttrTransforms = queryMap.get("ldapAttrTransforms")
 
             allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap );
             self.log_debug("doAddressBookQuery: rdn=%s LDAP allRecords=%s, filterAttributes=%s, query=%s" % (rdn, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
@@ -283,7 +318,13 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 maxLdapResults = int(remainingMaxResults * 1.2)
     
                 while True:
-                    ldapQueryResultsDictionary, ldapQueryLimited = (yield self._getLdapQueryResults(base=base, queryStr=queryStr, attributes=attributes, maxResults=maxLdapResults, ldapAttrToDSAttrMap=ldapAttrToDSAttrMap))
+                    ldapQueryResultsDictionary, ldapQueryLimited = (yield self._getLdapQueryResults(base=base, 
+                                                                                                    queryStr=queryStr, 
+                                                                                                    attributes=attributes, 
+                                                                                                    maxResults=maxLdapResults, 
+                                                                                                    ldapAttrToDSAttrMap=ldapAttrToDSAttrMap, 
+                                                                                                    ldapAttrTransforms=ldapAttrTransforms, 
+                                                                                                    additionalVCardProps=additionalVCardProps))
                     
                     for uid, ldapQueryResult in ldapQueryResultsDictionary.iteritems():
 
