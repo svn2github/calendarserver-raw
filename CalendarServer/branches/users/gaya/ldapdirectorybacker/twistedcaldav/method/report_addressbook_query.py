@@ -162,8 +162,8 @@ def report_urn_ietf_params_xml_ns_carddav_addressbook_query(self, request, addre
             results, limited[0] = (yield directoryBackedAddressBook.directory.doAddressBookQuery( addressBookFilter, query, max_number_of_results[0] ))
             for vCardResult in results:
                 
-                # match against original filter
-                if filter.match((yield vCardResult.vCard())):
+                # match against original filter if different from addressBookFilter
+                if addressBookFilter is filter or filter.match((yield vCardResult.vCard())):
  
                     # Check size of results is within limit
                     checkMaxResults()
