@@ -45,10 +45,11 @@ class DirectoryBackedAddressBookResource (CalDAVResource):
     Directory-backed address book
     """
 
-    def __init__(self, principalCollections):
+    def __init__(self, principalCollections, uri):
 
         CalDAVResource.__init__(self, principalCollections=principalCollections)
-
+        
+        self.uri = uri
         self.directory = None       # creates directory attribute
 
         # create with permissions, similar to CardDAVOptions in tap.py

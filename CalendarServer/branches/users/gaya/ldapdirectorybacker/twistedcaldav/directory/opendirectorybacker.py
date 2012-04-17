@@ -1667,9 +1667,8 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
     def uriName(self):
         return self.vCard().propertyValue("UID") + ".vcf"
         
-    def hRef(self, parentURI="/directory/"):
-        # FIXME: Get the parent URI from self._directoryBackedAddressBook
-        return davxml.HRef.fromString(joinURL(parentURI, self.uriName()))
+    def hRef(self, parentURI=None):
+        return davxml.HRef.fromString(joinURL(parentURI if parentURI else  self._directoryBackedAddressBook.uri, self.uriName()))
  
                        
     def readProperty(self, property, request):
