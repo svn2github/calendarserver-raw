@@ -1018,103 +1018,6 @@
     <dict>
         <key>Enabled</key>
         <true/>
-        <!-- twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService ->
-        <key>type</key>
-        <string>twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService</string>
-        <key>params</key>
-        <dict>
-     	  <!- - Search for people records ->
-          <key>queryPeopleRecords</key>
-          <true/>
-     	  <!- Search for people records in this directory service node ->
-          <key>peopleNode</key>
-          <string>/Search/Contacts</string>
-     	  <!- Search for user records ->
-          <key>queryUserRecords</key>
-          <true/>
-          <key>userNode</key>
-     	  <!- Search for user records in this directory service node ->
-          <string>/Search</string>
-      	  <!- query in directory service local node ->
-          <key>queryDSLocal</key>
-          <false/>
-      	  <!- minutes to keep directory service local node in memory before refresh ->
-          <key>dsLocalCacheTimeout</key>
-          <integer>30</integer>
-     	  <!- approx. maximum number of records returned from a directory service query ->
-          <key>maxDSQueryRecords</key>
-          <integer>0</integer> <!- use 0 to have server calculate the maximum based on MaxAddressBookQueryResults, MaxAddressBookMultigetHrefs keys ->
-     	  <!- ignore system records like "root" when creating vCards ->
-          <key>ignoreSystemRecords</key>
-          <true/>
-       	  <!- fake the eTag.  If false all directory service attributes are used to calculate the eTag ->
-          <key>fakeETag</key>
-          <true/>
-          <key>generateSimpleUIDs</key>
-          <true/>
-          <key>appleInternalServer</key>
-          <false/>
-          <key>addDSAttrXProperties</key>
-          <false/>
-          <!- add this key to use additional directory service attributes in queries.  Needed for some queries with directory service templates.
-          <key>additionalAttributes</key>
-          <array>
-            <string>dsAttrTypeNative:appleAIMPreferred</string>
-            <string>dsAttrTypeNative:appleManager</string>
-          </array>
-          ->
-          <!- add this key to limit directory service attributes used to make vCard properties
-          		When using directory service templates, list should include only mapped attributes.
-          <key>allowedAttributes</key>
-          <array>
-            <string>dsAttrTypeStandard:AddressLine1</string>
-            <string>dsAttrTypeStandard:AddressLine2</string>
-            <string>dsAttrTypeStandard:AddressLine3</string>
-            <string>dsAttrTypeStandard:Birthday</string>
-            <string>dsAttrTypeStandard:Building</string>
-            <string>dsAttrTypeStandard:City</string>
-            <string>dsAttrTypeStandard:Comment</string>
-            <string>dsAttrTypeStandard:Country</string>
-            <string>dsAttrTypeStandard:CreationTimestamp</string>
-            <string>dsAttrTypeStandard:Department</string>
-            <string>dsAttrTypeStandard:EMailAddress</string>
-            <string>dsAttrTypeStandard:EMailContacts</string>
-            <string>dsAttrTypeStandard:FirstName</string>
-            <string>dsAttrTypeStandard:HomePhoneNumber</string>
-            <string>dsAttrTypeStandard:IMHandle</string>
-            <string>dsAttrTypeStandard:JPEGPhoto</string>
-            <string>dsAttrTypeStandard:JobTitle</string>
-            <string>dsAttrTypeStandard:LastName</string>
-            <string>dsAttrTypeStandard:MapCoordinates</string>
-            <string>dsAttrTypeStandard:MiddleName</string>
-            <string>dsAttrTypeStandard:MobileNumber</string>
-            <string>dsAttrTypeStandard:ModificationTimestamp</string>
-            <string>dsAttrTypeStandard:NamePrefix</string>
-            <string>dsAttrTypeStandard:NameSuffix</string>
-            <string>dsAttrTypeStandard:NickName</string>
-            <string>dsAttrTypeStandard:Note</string>
-            <string>dsAttrTypeStandard:OrganizationInfo</string>
-            <string>dsAttrTypeStandard:OrganizationName</string>
-            <string>dsAttrTypeStandard:PGPPublicKey</string>
-            <string>dsAttrTypeStandard:PagerNumber</string>
-            <string>dsAttrTypeStandard:PhoneContacts</string>
-            <string>dsAttrTypeStandard:PhoneNumber</string>
-            <string>dsAttrTypeStandard:PostalAddress</string>
-            <string>dsAttrTypeStandard:PostalAddressContacts</string>
-            <string>dsAttrTypeStandard:PostalCode</string>
-            <string>dsAttrTypeStandard:Relationships</string>
-            <string>dsAttrTypeStandard:State</string>
-            <string>dsAttrTypeStandard:Street</string>
-            <string>dsAttrTypeStandard:URL</string>
-            <string>dsAttrTypeStandard:UserCertificate</string>
-            <string>dsAttrTypeStandard:UserPKCS12Data</string>
-            <string>dsAttrTypeStandard:UserSMIMECertificate</string>
-            <string>dsAttrTypeStandard:WeblogURI</string>
-          </array>
-          ->
-        </dict>
-        -->
-        <!-- twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService -->
  		<key>type</key>
 		<string>twistedcaldav.directory.ldapdirectorybacker.LdapDirectoryBackingService</string>
 		<key>params</key>
@@ -1145,50 +1048,64 @@
                 <string>o=apple.com,o=email</string>
                 <key>queries</key>
                 <array>
-                    <!-- people vCards for another server. -->
+                    <!-- people vCards -->
                     <dict>
-                        <key>rdn</key>
-                        <string>ou=People</string>
-                        <key>filter</key>
-                        <string></string>
+                        <key>rdn</key>  <string>ou=People</string>
+                        <key>filter</key>   <string></string>
                         <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
+                         <key>additionalVCardProps</key>
+                            <dict>
+                                <key>KIND</key>         <string>individual</string>
+                                <key>NOTE</key>         <string>individual</string>
+                            </dict>
                         <key>ldapAttrToDSAttrMap</key>
                         <dict>
-                            <key>givenName</key>
-                            <string>FirstName</string>
-                            <key>sn</key>
-                            <string>LastName</string>
-                            <key>cn</key>
-                            <array>
-                                <string>RealName</string>
-                                <string>RecordName</string>
-                            </array>
-                            <key>mail</key>
-                            <string>EMailAddress</string>
-                            <key>uid</key>
-                            <string>GeneratedUID</string>
+                            <key>givenName</key>    <string>FirstName</string>
+                            <key>sn</key>           <string>LastName</string>
+                            <key>cn</key>           <string>RealName</string>
+                            <key>mail</key>         <string>EMailAddress</string>
+                            <key>uid</key>          <string>GeneratedUID</string>
                         </dict>
                         <key>vcardPropToLdapAttrMap</key>
                         <dict>
-                            <key>FN</key>
-                            <string>cn</string>
-                            <key>EMAIL</key>
-                            <string>mail</string>
-                            <key>UID</key>
-                            <string>uid</string>
+                            <key>FN</key>       <string>cn</string>
+                            <key>EMAIL</key>    <string>mail</string>
+                            <key>UID</key>      <string>uid</string>
                         </dict>
                     </dict>
-                    <!-- group vCards for another server.
+                    <!-- distribution list (group) vCards shown by 10.6-7 clients as persons. Members are in NOTE. Does not hide groups below because UID different -->
                     <dict>
-                        <key>rdn</key>
-                        <string>ou=Groups</string>
-                        <key>filter</key>
-                        <string></string>
+                        <key>rdn</key>      <string>ou=Groups</string>
+                        <key>filter</key>   <string>(|(mail=*)(uniqueMember=*))</string> <!-- add a filter to skip uninteresting groups -->
+                        <key>additionalVCardProps</key>
+                            <dict>
+                                <key>KIND</key>         <string>group</string>
+                            </dict>
+                        <key>ldapAttrToDSAttrMap</key>
+                        <dict>
+                            <key>givenName</key>    <string>FirstName</string>
+                            <key>sn</key>           <string>LastName</string>
+                            <key>description</key>  <string>RealName</string>
+                            <key>cn</key>           <string>RecordName</string>
+                            <key>mail</key>         <string>EMailAddress</string>
+                            <key>uniqueMember</key> <string>Comment</string>
+                        </dict>
+                        <key>vcardPropToLdapAttrMap</key>
+                        <dict>
+                            <key>FN</key>       <string>cn</string>
+                            <key>EMAIL</key>    <string>mail</string>
+                            <key>UID</key>      <string>cn</string>
+                        </dict>
+                    </dict>
+                    <!-- group vCards NOT shown 10.6-7 clients. Hopefully, future client will show these. Client can expand members with exact query on group member UID -->
+                    <dict>
+                        <key>rdn</key>      <string>ou=Groups</string>
+                        <key>filter</key>   <string>(|(mail=*)(uniqueMember=*))</string> <!-- add a filter to skip uninteresting groups -->
                         <key>additionalVCardProps</key>
                          <dict>
-                            <key>X-ADDRESSBOOKSERVER-KIND</key>
-                            <string>group</string>
-                        </dict>
+                            <key>X-ADDRESSBOOKSERVER-KIND</key> <string>group</string>
+                            <key>KIND</key>                     <string>group</string>
+                       </dict>
                         <key>ldapAttrTransforms</key>
                         <dict>
                             <key>uniqueMember</key>
@@ -1199,74 +1116,62 @@
                         </dict>
                         <key>ldapAttrToDSAttrMap</key>
                         <dict>
-                            <key>givenName</key>
-                            <string>FirstName</string>
-                            <key>sn</key>
-                            <string>LastName</string>
-                            <key>description</key>
-                            <array>
-                                <string>RealName</string>
-                            </array>
-                            <key>cn</key>
-                            <array>
-                                <string>GeneratedUID</string>
-                            </array>
-                            <key>mail</key>
-                            <string>EMailAddress</string>
-                            <key>uniqueMember</key>
-                            <string>GroupMembers</string>
+                            <key>givenName</key>    <string>FirstName</string>
+                            <key>sn</key>           <string>LastName</string>
+                            <key>description</key>  <string>RealName</string>
+                            <key>cn</key>           <string>GeneratedUID</string>
+                            <key>mail</key>         <string>EMailAddress</string>
+                            <key>uniqueMember</key> <string>GroupMembers</string>
                         </dict>
                         <key>vcardPropToLdapAttrMap</key>
                         <dict>
-                            <key>FN</key>
-                            <string>cn</string>
-                            <key>EMAIL</key>
-                            <string>mail</string>
-                            <key>UID</key>
-                            <string>cn</string>
+                            <key>FN</key>       <string>cn</string>
+                            <key>EMAIL</key>    <string>mail</string>
+                            <key>UID</key>      <string>cn</string>
                         </dict>
                     </dict>
-                    -->
-                    <!-- distribution list vCards for another server. Cannot use with groups because UID/href is not unique -->
+                    <!-- group vCards shown by 10.6-7 clients as persons.  Future client should show as location.  Need to add Map URL or GEO -->
                     <dict>
-                        <key>rdn</key>
-                        <string>ou=Groups</string>
-                        <key>filter</key>
-                        <string></string>
-                        <key>additionalVCardProps</key>
-                         <dict>
-                            <key>X-ABShowAs</key>
-                            <string>COMPANY</string>
-                        </dict>
+                        <key>rdn</key>      <string>ou=places</string>
+                        <key>filter</key>   <string>(objectClass=apple-resource)</string>
+                        <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
+                         <key>additionalVCardProps</key>
+                            <dict>
+                                <key>KIND</key> <string>location</string>
+                                <key>NOTE</key> <string>location</string>
+                            </dict>
                         <key>ldapAttrToDSAttrMap</key>
                         <dict>
-                            <key>givenName</key>
-                            <string>FirstName</string>
-                            <key>sn</key>
-                            <string>LastName</string>
-                            <key>description</key>
-                            <array>
-                                <string>RealName</string>
-                            </array>
-                            <key>cn</key>
-                            <array>
-                                <string>GeneratedUID</string>
-                            </array>
-                            <key>mail</key>
-                            <string>EMailAddress</string>
-                            <key>uniqueMember</key>
-                            <string>Comment</string>
+                            <key>apple-realname</key>       <string>RealName</string>
+                            <key>apple-generateduid</key>   <string>GeneratedUID</string>
+                            <key>apple-mapguid</key>        <string>URL</string>
+                            <key>apple-capacity</key>       <string>URL</string>
                         </dict>
                         <key>vcardPropToLdapAttrMap</key>
                         <dict>
-                            <key>FN</key>
-                            <array>
-                                <string>cn</string>
-                            </array>
-                            <key>EMAIL</key>
-                            <string>mail</string>
-                            <key>UID</key>
-                            <string>cn</string>
+                            <key>FN</key>       <string>apple-realname</string>
+                            <key>UID</key>      <string>uid</string>
+                        </dict>
+                    </dict>
+                    <!-- calendarresource vCards shown by 10.6-7 clients as persons.  Just for testing only, at this point in time -->
+                    <dict>
+                        <key>rdn</key>      <string>ou=resources</string>
+                        <key>filter</key>   <string>(objectClass=apple-resource)</string>
+                         <key>additionalVCardProps</key>
+                            <dict>
+                                <key>KIND</key> <string>calendarresource</string>
+                                <key>NOTE</key> <string>location</string>
+                            </dict>
+                        <key>ldapAttrToDSAttrMap</key>
+                        <dict>
+                            <key>apple-realname</key>       <string>RealName</string>
+                            <key>apple-generateduid</key>   <string>GeneratedUID</string>
+                        </dict>
+                        <key>vcardPropToLdapAttrMap</key>
+                        <dict>
+                            <key>FN</key>       <string>cn</string>
+                            <key>EMAIL</key>    <string>mail</string>
+                            <key>UID</key>      <string>uid</string>
                         </dict>
                     </dict>
                 </array>

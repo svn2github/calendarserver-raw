@@ -29,7 +29,7 @@ import ldap
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 
 from twistedcaldav.config import config
-from twistedcaldav.directory.ldapdirectory import LdapDirectoryService
+from twistedcaldav.directory.ldapdirectory import LdapDirectoryService, normalizeDNstr
 from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter, propertiesInAddressBookQuery
 
 
@@ -62,6 +62,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 ),
 
             },
+            "removeDuplicateUIDs":True,      # remove vCards with duplicate UIDs
             "appleInternalServer":False,    # does magic in ABDirectoryQueryResult
             "maxQueryResults":0,            # max records returned
             "fakeETag":True,                # eTag is fake, otherwise it is md5(all attributes)
@@ -86,6 +87,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         del params["maxQueryResults"]
         fakeETag=params["fakeETag"]
         del params["fakeETag"]
+        removeDuplicateUIDs=params["removeDuplicateUIDs"]
+        del params["removeDuplicateUIDs"]
 
         
         #standardize ds attributes type names
@@ -121,6 +124,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         ### params for ABDirectoryQueryResult()
         self.fakeETag = fakeETag
         self.appleInternalServer = appleInternalServer
+        self.removeDuplicateUIDs = removeDuplicateUIDs
  
         super(LdapDirectoryBackingService, self).__init__(params)
         
@@ -184,6 +188,9 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             #dn = normalizeDNstr(dn)
             result = None
             try:
+                if "dn" not in ldapAttributes:
+                    ldapAttributes["dn"] = [normalizeDNstr(dn),]
+                
                 # make a dsRecordAttributes dict from the ldap attributes
                 dsRecordAttributes = {}
                 for ldapAttributeName, ldapAttributeValues in ldapAttributes.iteritems():
@@ -213,7 +220,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                     transformedValues = []
                                     for ldapAttributeValue in ldapAttributeValues:
                                         transformedValue = ldapAttributeValue
-                                        for valuePart in ldapAttributeValue.lower().split(","):
+                                        for valuePart in normalizeDNstr(ldapAttributeValue).split(","):
                                             kvPair = valuePart.split("=")
                                             if len(kvPair) == 2:
                                                 for transform in transforms:
@@ -269,7 +276,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        resultsDictionary = {}
+        results = {} if self.removeDuplicateUIDs else []
         limited = False
         
         #one ldap query for each rnd in queries
@@ -314,7 +321,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
                 
                 # keep trying ldap query till we get results based on filter.  Especially when doing "all results" query
-                remainingMaxResults = maxResults - len(resultsDictionary) if maxResults else 0
+                remainingMaxResults = maxResults - len(results) if maxResults else 0
                 maxLdapResults = int(remainingMaxResults * 1.2)
     
                 while True:
@@ -328,15 +335,18 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                     
                     for uid, ldapQueryResult in ldapQueryResultsDictionary.iteritems():
 
-                        if uid in resultsDictionary:
+                        if self.removeDuplicateUIDs and uid in results:
                             self.log_info("Record skipped due to duplicate UID: %s" % (uid,))
                             continue
                     
                         if not addressBookFilter.match(ldapQueryResult.vCard()):
                             self.log_debug("doAddressBookQuery did not match filter: %s (%s)" % (ldapQueryResult.vCard().propertyValue("FN"), uid,))
                             continue
-                           
-                        resultsDictionary[uid] = ldapQueryResult                   
+                        
+                        if self.removeDuplicateUIDs:
+                            results[uid] = ldapQueryResult
+                        else:
+                            results += [ldapQueryResult,]              
 
                     
                     #no more results    
@@ -344,11 +354,11 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                         break;
                     
                     # more than requested results
-                    if maxResults and len(resultsDictionary) >= maxResults:
+                    if maxResults and len(results) >= maxResults:
                         break
                     
                     # more than max report results
-                    if len(resultsDictionary) >= config.MaxQueryWithDataResults:
+                    if len(results) >= config.MaxQueryWithDataResults:
                         break
                     
                     # more than self limit
@@ -360,12 +370,12 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                     if self.maxQueryResults and maxLdapResults > self.maxQueryResults:
                         maxLdapResults = self.maxQueryResults
                     
-                if maxResults and len(resultsDictionary) >= maxResults:
+                if maxResults and len(results) >= maxResults:
                     break
                 
         
-        limited = maxResults and len(resultsDictionary) >= maxResults
+        limited = maxResults and len(results) >= maxResults
                          
-        self.log_info("limited  %s len(resultsDictionary) %s" % (limited,len(resultsDictionary),))
-        returnValue((resultsDictionary.values(), limited,))        
+        self.log_info("limited  %s len(results) %s" % (limited,len(results),))
+        returnValue((results.values() if self.removeDuplicateUIDs else results, limited,))        
 
