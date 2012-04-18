@@ -54,6 +54,8 @@ from xmlrpclib import datetime
 
 log = Logger()
 
+addSourceProperty = False
+
 class OpenDirectoryBackingService(DirectoryService):
     """
     Directory backer for L{IDirectoryService}.
@@ -612,7 +614,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
             """
             
             def definedExpression( defined, allOf, filterName, constant, queryAttributes, allAttrStrings):
-                if constant or filterName in ("N" , "FN", "UID", ):
+                if constant or filterName in ("N" , "FN", "UID", "SOURCE",):
                     return (defined, [], [])     # all records have this property so no records do not have it
                 else:
                     matchList = list(set([dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in allAttrStrings]))
@@ -897,7 +899,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
         else:
             expr = None
         
-        return (needsAllRecords, attributes, expr)
+        return (needsAllRecords, list(set(attributes)), expr)
     
             
     #print("dsFilterFromAddressBookFilter")
@@ -1020,6 +1022,10 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
          "X-ABRELATEDNAMES" :  [
                 dsattributes.kDSNAttrRelationships,
                 ],  
+         "SOURCE" : [
+                dsattributes.kDS1AttrGeneratedUID,
+                dsattributes.kDSNAttrRecordName,
+                ],
     }
     
     allDSQueryAttributes = list(set([attr for lookupAttributes in vcardPropToDSAttrMap.values()
@@ -1647,6 +1653,24 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             
             """
             
+            # 2.1.4 SOURCE Type
+            #    If the SOURCE type is present, then its value provides information
+            #    how to find the source for the vCard.
+            uri = joinURL(self._directoryBackedAddressBook.uri, vcard.propertyValue("UID") + ".vcf")
+            
+            # seems like this should be in some standard place.
+            if config.EnableSSL and config.SSLPort:
+                if config.SSLPort == 443:
+                    source = "https://%s%s" % (config.ServerHostName, uri)
+                else:
+                    source = "https://%s:%s%s" % (config.ServerHostName, config.SSLPort, uri)
+            elif config.HTTPPort:
+                if config.HTTPPort == 80:
+                    source = "http://%s%s" % (config.ServerHostName, uri) 
+                else:
+                    source = "http://%s:%s%s" % (config.ServerHostName, config.HTTPPort, uri)
+            vcard.addProperty(Property("SOURCE", source))
+                       
             # debug, create x attributes for all ds attributes
             if self.addDSAttrXProperties:
                 for attribute in self.originalAttributes:
@@ -1664,11 +1688,11 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
     def vCardText(self):
         return str(self.vCard())
     
-    def uriName(self):
+    def uri(self):
         return self.vCard().propertyValue("UID") + ".vcf"
         
     def hRef(self, parentURI=None):
-        return davxml.HRef.fromString(joinURL(parentURI if parentURI else  self._directoryBackedAddressBook.uri, self.uriName()))
+        return davxml.HRef.fromString(joinURL(parentURI if parentURI else  self._directoryBackedAddressBook.uri, self.uri()))
  
                        
     def readProperty(self, property, request):
