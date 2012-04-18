@@ -259,8 +259,10 @@ def multiget_common(self, request, multiget, collection_type):
                     resource_name = unquote(resource_uri[resource_uri.rfind("/") + 1:])
                     if self._isChildURI(request, resource_uri) and resource_name.endswith(".vcf") and len(resource_name) > 4:
                         valid_hrefs.append(href)
+                        textMatchElement = carddavxml.TextMatch.fromString(resource_name[:-4])
+                        textMatchElement.attributes["match-type"] = "equals" # do equals compare. Default is "contains"
                         vCardFilters.append(carddavxml.PropertyFilter(
-                                                carddavxml.TextMatch.fromString(resource_name[:-4]), 
+                                                textMatchElement, 
                                                 name="UID", # attributes
                                             ))
                     else:
