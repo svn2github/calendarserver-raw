@@ -44,7 +44,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
         
         self.log_debug("_actuallyConfigure: params=%s" % (params,))
         defaults = {
-            "recordTypes": (self.recordType_users,), 
+            "recordTypes": (self.recordType_users, self.recordType_groups, ), 
             "rdnSchema": {
                 self.recordType_users : { 
                     "vcardPropToDirRecordAttrMap" : { 
@@ -71,6 +71,33 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                         "emailAddresses" :  dsattributes.kDSNAttrEMailAddress,
                      },
                 },
+                self.recordType_groups : { 
+                    "vcardPropToDirRecordAttrMap" : { 
+                        "FN" : (
+                                "fullName",
+                                "shortNames",
+                                "firstName",
+                                "lastName",
+                                ),
+                        "N" : (
+                                "fullName",
+                                "shortNames",
+                                "firstName",
+                                "lastName",
+                                ),
+                        "EMAIL" : "emailAddresses",
+                        "UID" : "guid",
+                        "X-ADDRESSBOOKSERVER-MEMBER" : "members",
+                     },
+                     "dirRecordAttrToDSAttrMap" : { 
+                        "guid" :            dsattributes.kDS1AttrGeneratedUID,
+                        "fullName" :        dsattributes.kDS1AttrDistinguishedName,
+                        "firstName" :       dsattributes.kDS1AttrFirstName,
+                        "lastName" :        dsattributes.kDS1AttrLastName,
+                        "emailAddresses" :  dsattributes.kDSNAttrEMailAddress,
+                        "members" :         dsattributes.kDSNAttrGroupMembers,
+                     },
+                },
             },
             "maxQueryResults":0,            # max records returned
             "sortResults":True,             # sort results by UID
@@ -83,10 +110,10 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                 if not key in params:
                     params[key] = defaults[key]
             return params
-            
+                    
         params = addDefaults(params, defaults)
         self.log_debug("_actuallyConfigure after addDefaults: params=%s" % (params,))
-        
+                
         # super does not like these extra params
         directoryBackedAddressBook=params["directoryBackedAddressBook"]
         #del params["directoryBackedAddressBook"]
@@ -98,7 +125,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
         del params["sortResults"]
         implementNot=params["implementNot"]
         del params["implementNot"]
-
+        
         
         assert directoryBackedAddressBook is not None
         self.directoryBackedAddressBook = directoryBackedAddressBook
@@ -243,17 +270,21 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                         dsRecordAttributes = {}
                         for attr in dirRecordAttrToDSAttrMap:
                             try:
-                                value = getattr(xmlDirectoryRecord, attr)
-                                dsRecordAttributes[dirRecordAttrToDSAttrMap[attr]] = value
+                                if attr == "members":
+                                    value = [member.guid for member in xmlDirectoryRecord.members()]
+                                else:
+                                    value = getattr(xmlDirectoryRecord, attr)
+                                if value:
+                                    dsRecordAttributes[dirRecordAttrToDSAttrMap[attr]] = value
                             except AttributeError:
-                                # No value
+                                self.log_info("Could not get attribute %s from record %s" % (attr, xmlDirectoryRecord, e,))
                                 pass
                         return dsRecordAttributes
 
                     result = None
                     dsRecordAttributes = dsRecordAttributesFromDirectoryRecord( xmlDirectoryRecord )
                     try:
-                        result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes,)
+                        result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, kind=kind)
                     except:
                         traceback.print_exc()
                         self.log_info("Could not get vcard for %s" % (xmlDirectoryRecord,))

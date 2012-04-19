@@ -209,7 +209,7 @@ DEFAULT_PROXYDB_PARAMS = {
 directoryAddressBookBackingServiceDefaultParams = {
     "twistedcaldav.directory.xmldirectorybacker.XMLDirectoryBackingService": {
         "xmlFile": "accounts.xml",
-        "recordTypes": ("users",),
+        "recordTypes": ("users", "groups"),
         "statSeconds" : 15,
     },
     "twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService": {
