@@ -184,14 +184,24 @@ class OpenDirectoryBackingService(DirectoryService):
         self.log_debug("self.searchAttributes=%s" % (searchAttributes, ))
         
         # calculate search map
-        vCardPropToSearchableDSAttrMap = {}
+        vcardPropToSearchableDSAttrMap = {}
         for prop, dsAttributeList in ABDirectoryQueryResult.vcardPropToDSAttrMap.iteritems():
             dsIndexedAttributeList = [attr for attr in dsAttributeList if attr in searchAttributes]
             if len(dsIndexedAttributeList):
-                vCardPropToSearchableDSAttrMap[prop] = dsIndexedAttributeList
+                vcardPropToSearchableDSAttrMap[prop] = dsIndexedAttributeList
         
-        self.vCardPropToSearchableDSAttrMap = vCardPropToSearchableDSAttrMap
-        self.log_debug("self.vCardPropToSearchableDSAttrMap=%s" % (self.vCardPropToSearchableDSAttrMap, ))
+        self.vcardPropToSearchableDSAttrMap = vcardPropToSearchableDSAttrMap
+        self.log_debug("self.vcardPropToSearchableDSAttrMap=%s" % (self.vcardPropToSearchableDSAttrMap, ))
+ 
+        # calculate unsearch map - a map of the binary attributes.  
+        vCardPropToUnsearchableDSAttrMap = {}
+        for prop, dsAttributeList in ABDirectoryQueryResult.vcardPropToDSAttrMap.iteritems():
+            for attr in dsAttributeList:
+                if isinstance(attr, tuple):
+                    vCardPropToUnsearchableDSAttrMap[prop] = dsAttributeList
+                    
+        self.vCardPropToUnsearchableDSAttrMap = vCardPropToUnsearchableDSAttrMap
+        self.log_debug("self.vCardPropToUnsearchableDSAttrMap=%s" % (self.vCardPropToUnsearchableDSAttrMap, ))
         
         
         #get attributes required for needed for valid vCard
@@ -479,7 +489,7 @@ class OpenDirectoryBackingService(DirectoryService):
         else:
             queryAttributes = self.requiredAttributes
             for prop in propertyNames:
-                attributes = self.vCardPropToSearchableDSAttrMap.get(prop)
+                attributes = self.vcardPropToSearchableDSAttrMap.get(prop)
                 if attributes:
                     queryAttributes += attributes
                     
@@ -493,7 +503,8 @@ class OpenDirectoryBackingService(DirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDSAttrMap=self.vCardPropToSearchableDSAttrMap );
+        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, self.vcardPropToSearchableDSAttrMap,
+                                                                                 constantProperties=ABDirectoryQueryResult.constantProperties );
         self.log_debug("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
 
         # testing:
@@ -595,13 +606,18 @@ def propertiesInAddressBookQuery( addressBookQuery ):
     return (etagRequested, propertyNames if len(propertyNames) else None)
 
 
-def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
+def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMap, vcardPropToUnsearchableAttrMap={}, constantProperties={}):
     """
     Convert the supplied addressbook-query into a ds expression tree.
 
     @param filter: the L{Filter} for the addressbook-query to convert.
-    @return: (needsAllRecords, espressionAttributes, expression) tuple
+    @return: (needsAllRecords, expressionAttributes, expression) tuple
     """
+    #TODO:  1. get rid of needsAllRecords: instead should be: expression==None means list all results, expression==False means no results
+    #       2. expressionAttributes returned is incorrect in many cases for "return (xxx, [], [])" below
+    #       3. vcardPropToUnsearchableAttrMap is unused by callers. In the past, vcardPropToUnsearchableAttrMap was that part of vCardProp map
+    #            containing binary attributes.
+    #
     def propFilterListQuery(filterAllOf, propFilters):
 
         def propFilterExpression(filterAllOf, propFilter):
@@ -610,16 +626,15 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
             Create an expression for a single prop-filter element.
             
             @param propFilter: the L{PropertyFilter} element.
-            @return: (needsAllRecords, espressionAttributes, expressions) tuple
+            @return: (needsAllRecords, expressionAttributes, expressions) tuple
             """
             
-            def definedExpression( defined, allOf, filterName, constant, queryAttributes, allAttrStrings):
+            def definedExpression( defined, allOf, filterName, constant, queryAttributes, allAttrNames):
                 if constant or filterName in ("N" , "FN", "UID", "SOURCE",):
                     return (defined, [], [])     # all records have this property so no records do not have it
                 else:
-                    matchList = list(set([dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in allAttrStrings]))
+                    matchList = [dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in allAttrNames]
                     if defined:
-                        # TODO:  Investigate what happens when andOrExpresion() does not return an expression
                         return andOrExpression(allOf, queryAttributes, matchList)
                     else:
                         if len(matchList) > 1:
@@ -627,7 +642,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
                         else:
                             expr = matchList[0]
                         return (False, queryAttributes, [dsquery.expression( dsquery.expression.NOT, expr),])
-                #end isNotDefinedExpression()
+                #end definedExpression()
 
 
             def andOrExpression(propFilterAllOf, queryAttributes, matchList):
@@ -739,10 +754,10 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
 
                     matchStrings = getMatchStrings(propFilter, textMatchElement.text)
 
-                    if not len(matchStrings) or binaryAttrNames:
+                    if not len(matchStrings) or unsearchableAttributes:
                         # no searching text in binary ds attributes, so change to defined/not defined case
                         if textMatchElement.negate:
-                            return definedExpression(False, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
+                            return definedExpression(False, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
                         # else fall through to attribute exists case below
                     else:
                         
@@ -769,8 +784,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
                                                     )
                         
                         # use match_type where possible depending on property/attribute mapping
-                        # Note that case sensitive negate will not work
-                        #        Should return all records in that case
+                        # FIXME: case-sensitive negate will not work.  This should return all all records in that case
                         matchType = dsattributes.eDSContains
                         if propFilter.filter_name in ("NICKNAME" , "TITLE" , "NOTE" , "UID", "URL", "N", "ADR", "ORG", "REV",  "LABEL", ):
                             if textMatchElement.match_type == "equals":
@@ -782,7 +796,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
                         
                         matchList = []
                         for matchString in matchStrings:
-                            matchList += [dsquery.match(attrName, matchString, matchType) for attrName in stringAttrNames]
+                            matchList += [dsquery.match(attrName, matchString, matchType) for attrName in searchableAttributes]
                         
                         matchList = list(set(matchList))
 
@@ -796,31 +810,37 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
                             return andOrExpression(propFilterAllOf, queryAttributes, matchList)
 
                 # attribute exists search
-                return definedExpression(True, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
+                return definedExpression(True, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
                 #end textMatchElementExpression()
                 
 
-            # get attribute strings
-            queryAttributes = vcardPropToDSAttrMap.get(propFilter.filter_name, [])
-            if isinstance(queryAttributes, str):
-                queryAttributes = [queryAttributes,]
+            # queryAttributes are attributes used by this query needed for building vCard and correct post-filtering
+            searchableAttributes = vcardPropToSearchableAttrMap.get(propFilter.filter_name, [])
+            if isinstance(searchableAttributes, str):
+                searchableAttributes = [searchableAttributes,]
+                
+            unsearchableAttributes = vcardPropToUnsearchableAttrMap.get(propFilter.filter_name, [])
+            if isinstance(unsearchableAttributes, str):
+                unsearchableAttributes = [unsearchableAttributes,]
             
-            binaryAttrNames = []
-            stringAttrNames = []
-            for attr in queryAttributes:
-                if isinstance(attr, tuple):
-                    binaryAttrNames.append(attr[0])
-                else:
-                    stringAttrNames.append(attr)
-            allAttrStrings = stringAttrNames + binaryAttrNames
-            if not allAttrStrings:
-            	# not AllAttrStrings means propFilter.filter_name is not mapped
-            	# return None to try to match all items if this is the only property filter
+            #log.debug("searchableAttributes=%s" % (searchableAttributes,))
+            #log.debug("unsearchableAttributes=%s" % (unsearchableAttributes,))
+            queryAttributes = list(searchableAttributes) + list(unsearchableAttributes)
+            if not queryAttributes:
+                # not allAttrNames means propFilter.filter_name is not mapped
+                # return None to try to match all items if this is the only property filter
                 return (None, [], [])
+            
+            allAttrNames = []
+            for attrName in queryAttributes:
+                if isinstance(attrName, tuple):
+                    allAttrNames.append(attrName[0])
+                else:
+                    allAttrNames.append(attrName)
                                     
-            constant = ABDirectoryQueryResult.constantProperties.get(propFilter.filter_name)
+            constant = constantProperties.get(propFilter.filter_name)
             if propFilter.qualifier and isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
-                return definedExpression(False, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
+                return definedExpression(False, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
             
             paramFilterElements = [paramFilterElement for paramFilterElement in propFilter.filters if isinstance(paramFilterElement, addressbookqueryfilter.ParameterFilter)]
             textMatchElements = [textMatchElement for textMatchElement in propFilter.filters if isinstance(textMatchElement, addressbookqueryfilter.TextMatch)]
@@ -835,7 +855,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
             if len(paramFilterElements) > 0:
                 if supportedParamter(propFilter.filter_name, paramFilterElements, propFilterAllOf ):
                     if len(textMatchElements) == 0:
-                        return definedExpression(True, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrStrings)
+                        return definedExpression(True, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
                 else:
                     if propFilterAllOf:
                         return (False, [], [])
@@ -869,7 +889,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToDSAttrMap):
         
         @param filterAllOf: the C{True} if parent filter test is "allof"
         @param propFilters: the C{list} of L{ComponentFilter} elements.
-        @return: (needsAllRecords, espressionAttributes, expression) tuple
+        @return: (needsAllRecords, expressionAttributes, expression) tuple
         """
         needsAllRecords = None
         attributes = []
@@ -1050,7 +1070,12 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
         }
 
     
-    def __init__(self, directoryBackedAddressBook, recordAttributes, additionalVCardProps=None, addDSAttrXProperties=False, appleInternalServer=False, ):
+    def __init__(self, directoryBackedAddressBook, recordAttributes, 
+                 kind=None, 
+                 additionalVCardProps=None, 
+                 addDSAttrXProperties=False, 
+                 appleInternalServer=False, 
+                 ):
 
         self.log_debug("directoryBackedAddressBook=%s, attributes=%s, additionalVCardProps=%s" % (directoryBackedAddressBook, recordAttributes, additionalVCardProps,))
         
@@ -1090,7 +1115,20 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             
             self.attributes[dsattributes.kDS1AttrGeneratedUID] = guid
         
-        #generate a vCard here.  May throw an exception
+        if not kind:
+            dsRecordTypeToKindMap = {
+                           #dsattributes.kDSStdRecordTypePeople:"individual",
+                           #dsattributes.kDSStdRecordTypeUsers:"individual",
+                           dsattributes.kDSStdRecordTypeGroups:"group",
+                           dsattributes.kDSStdRecordTypeLocations:"location",
+                           dsattributes.kDSStdRecordTypeResources:"device",
+                           }
+            recordType = self.firstValueForAttribute(dsattributes.kDSNAttrRecordType)
+            kind = dsRecordTypeToKindMap.get(recordType, "individual")
+        self.kind = kind.lower()
+
+
+       #generate a vCard here.  May throw an exception
         self.vCard()
         
 
@@ -1625,7 +1663,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             
  
             # add apple-defined group vcard properties if record type is group
-            if self.firstValueForAttribute(dsattributes.kDSNAttrRecordType) == dsattributes.kDSStdRecordTypeGroups:
+            if self.kind == "group":
                 vcard.addProperty(Property("X-ADDRESSBOOKSERVER-KIND", "group"))
             
             # add members
@@ -1653,9 +1691,12 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
             
             """
             
-            # 2.1.4 SOURCE Type
+            # 2.1.4 SOURCE Type http://tools.ietf.org/html/rfc2426#section-2.1.4
             #    If the SOURCE type is present, then its value provides information
             #    how to find the source for the vCard.
+            
+            # add the source, so that if the SOURCE is copied out and preserved, the client can refresh information
+            # However, client should really do a ab-query report matching UID on /directory/ not a multiget.
             uri = joinURL(self._directoryBackedAddressBook.uri, vcard.propertyValue("UID") + ".vcf")
             
             # seems like this should be in some standard place.
@@ -1671,7 +1712,19 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                     source = "http://%s:%s%s" % (config.ServerHostName, config.HTTPPort, uri)
             vcard.addProperty(Property("SOURCE", source))
                        
-            # debug, create x attributes for all ds attributes
+            #  in 4.0 spec: 
+            # 6.1.4.  KIND http://tools.ietf.org/html/rfc6350#section-6.1.4
+            # 
+            # see also: http://www.iana.org/assignments/vcard-elements/vcard-elements.xml
+            #
+            vcard.addProperty(Property("KIND", self.kind))
+            
+            # one more X- related to kind
+            if self.kind == "org":
+                vcard.addProperty(Property("X-ABShowAs", "COMPANY"))
+
+
+            # debug, create X-attributes for all ds attributes
             if self.addDSAttrXProperties:
                 for attribute in self.originalAttributes:
                     for value in self.valuesForAttribute(attribute):

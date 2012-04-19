@@ -164,7 +164,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
 
  
     @inlineCallbacks
-    def _getLdapQueryResults(self, base, queryStr, attributes=None, maxResults=0, ldapAttrToDSAttrMap=None, ldapAttrTransforms=None, additionalVCardProps=None ):
+    def _getLdapQueryResults(self, base, queryStr, attributes=None, maxResults=0, ldapAttrToDSAttrMap=None, ldapAttrTransforms=None, additionalVCardProps=None, kind=None ):
         """
         Get a list of ABDirectoryQueryResult for the given query with the given attributes.
         query == None gets all records. attribute == None gets ABDirectoryQueryResult.allDSQueryAttributes
@@ -253,7 +253,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                 self.log_debug("doAddressBookQuery: dsRecordAttributes[%s] = %s" % (dsAttributeName, dsRecordAttributes[dsAttributeName],))
 
                 # get a record for dsRecordAttributes 
-                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, additionalVCardProps=additionalVCardProps, appleInternalServer=self.appleInternalServer)
+                result = ABDirectoryQueryResult(self.directoryBackedAddressBook, dsRecordAttributes, kind=kind, additionalVCardProps=additionalVCardProps, appleInternalServer=self.appleInternalServer)
             except:
                 traceback.print_exc()
                 self.log_info("Could not get vcard for %s" % (dn,))
@@ -287,8 +287,18 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             ldapAttrToDSAttrMap = queryMap["ldapAttrToDSAttrMap"]
             additionalVCardProps = queryMap.get("additionalVCardProps")
             ldapAttrTransforms = queryMap.get("ldapAttrTransforms")
+            kind = queryMap.get("kind", "individual")
+            
+            # add constants and KIND
+            constantProperties = ABDirectoryQueryResult.constantProperties.copy()
+            if additionalVCardProps:
+                for key, value in additionalVCardProps.iteritems():
+                    if key not in constantProperties:
+                        constantProperties[key] = value
+            constantProperties["KIND"] = kind
+            
 
-            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap );
+            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap, constantProperties=constantProperties );
             self.log_debug("doAddressBookQuery: rdn=%s LDAP allRecords=%s, filterAttributes=%s, query=%s" % (rdn, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
             
@@ -329,6 +339,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                                                                                                     queryStr=queryStr, 
                                                                                                     attributes=attributes, 
                                                                                                     maxResults=maxLdapResults, 
+                                                                                                    kind=kind, 
                                                                                                     ldapAttrToDSAttrMap=ldapAttrToDSAttrMap, 
                                                                                                     ldapAttrTransforms=ldapAttrTransforms, 
                                                                                                     additionalVCardProps=additionalVCardProps))

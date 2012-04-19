@@ -130,8 +130,16 @@ class XMLDirectoryBackingService(XMLDirectoryService):
             queryMap = self.rdnSchema[queryType]
             vcardPropToDirRecordAttrMap = queryMap["vcardPropToDirRecordAttrMap"]
             dirRecordAttrToDSAttrMap = queryMap["dirRecordAttrToDSAttrMap"]
+            
+            kind = {self.recordType_groups:"group",
+                    self.recordType_locations:"location",
+                    self.recordType_resources:"calendarresource",
+                    }.get(queryType, "individual")
+        
+            constantProperties = ABDirectoryQueryResult.constantProperties.copy()
+            constantProperties["KIND"] = kind
 
-            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap );
+            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap, constantProperties=constantProperties );
             self.log_debug("doAddressBookQuery: queryType=\"%s\" LDAP allRecords=%s, filterAttributes=%s, query=%s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
     
             

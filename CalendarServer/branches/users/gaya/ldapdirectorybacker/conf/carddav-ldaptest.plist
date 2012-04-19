@@ -1018,102 +1018,6 @@
     <dict>
         <key>Enabled</key>
         <true/>
-        <!-- twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService ->
-        <key>type</key>
-        <string>twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService</string>
-        <key>params</key>
-        <dict>
-     	  <!- - Search for people records ->
-          <key>queryPeopleRecords</key>
-          <true/>
-     	  <!- Search for people records in this directory service node ->
-          <key>peopleNode</key>
-          <string>/Search/Contacts</string>
-     	  <!- Search for user records ->
-          <key>queryUserRecords</key>
-          <true/>
-          <key>userNode</key>
-     	  <!- Search for user records in this directory service node ->
-          <string>/Search</string>
-      	  <!- query in directory service local node ->
-          <key>queryDSLocal</key>
-          <false/>
-      	  <!- minutes to keep directory service local node in memory before refresh ->
-          <key>dsLocalCacheTimeout</key>
-          <integer>30</integer>
-     	  <!- approx. maximum number of records returned from a directory service query ->
-          <key>maxDSQueryRecords</key>
-          <integer>0</integer> <!- use 0 to have server calculate the maximum based on MaxAddressBookQueryResults, MaxAddressBookMultigetHrefs keys ->
-     	  <!- ignore system records like "root" when creating vCards ->
-          <key>ignoreSystemRecords</key>
-          <true/>
-       	  <!- fake the eTag.  If false all directory service attributes are used to calculate the eTag ->
-          <key>fakeETag</key>
-          <true/>
-          <key>generateSimpleUIDs</key>
-          <true/>
-          <key>appleInternalServer</key>
-          <false/>
-          <key>addDSAttrXProperties</key>
-          <false/>
-          <!- add this key to use additional directory service attributes in queries.  Needed for some queries with directory service templates.
-          <key>additionalAttributes</key>
-          <array>
-            <string>dsAttrTypeNative:appleAIMPreferred</string>
-            <string>dsAttrTypeNative:appleManager</string>
-          </array>
-          ->
-          <!- add this key to limit directory service attributes used to make vCard properties
-          		When using directory service templates, list should include only mapped attributes.
-          <key>allowedAttributes</key>
-          <array>
-            <string>dsAttrTypeStandard:AddressLine1</string>
-            <string>dsAttrTypeStandard:AddressLine2</string>
-            <string>dsAttrTypeStandard:AddressLine3</string>
-            <string>dsAttrTypeStandard:Birthday</string>
-            <string>dsAttrTypeStandard:Building</string>
-            <string>dsAttrTypeStandard:City</string>
-            <string>dsAttrTypeStandard:Comment</string>
-            <string>dsAttrTypeStandard:Country</string>
-            <string>dsAttrTypeStandard:CreationTimestamp</string>
-            <string>dsAttrTypeStandard:Department</string>
-            <string>dsAttrTypeStandard:EMailAddress</string>
-            <string>dsAttrTypeStandard:EMailContacts</string>
-            <string>dsAttrTypeStandard:FirstName</string>
-            <string>dsAttrTypeStandard:HomePhoneNumber</string>
-            <string>dsAttrTypeStandard:IMHandle</string>
-            <string>dsAttrTypeStandard:JPEGPhoto</string>
-            <string>dsAttrTypeStandard:JobTitle</string>
-            <string>dsAttrTypeStandard:LastName</string>
-            <string>dsAttrTypeStandard:MapCoordinates</string>
-            <string>dsAttrTypeStandard:MiddleName</string>
-            <string>dsAttrTypeStandard:MobileNumber</string>
-            <string>dsAttrTypeStandard:ModificationTimestamp</string>
-            <string>dsAttrTypeStandard:NamePrefix</string>
-            <string>dsAttrTypeStandard:NameSuffix</string>
-            <string>dsAttrTypeStandard:NickName</string>
-            <string>dsAttrTypeStandard:Note</string>
-            <string>dsAttrTypeStandard:OrganizationInfo</string>
-            <string>dsAttrTypeStandard:OrganizationName</string>
-            <string>dsAttrTypeStandard:PGPPublicKey</string>
-            <string>dsAttrTypeStandard:PagerNumber</string>
-            <string>dsAttrTypeStandard:PhoneContacts</string>
-            <string>dsAttrTypeStandard:PhoneNumber</string>
-            <string>dsAttrTypeStandard:PostalAddress</string>
-            <string>dsAttrTypeStandard:PostalAddressContacts</string>
-            <string>dsAttrTypeStandard:PostalCode</string>
-            <string>dsAttrTypeStandard:Relationships</string>
-            <string>dsAttrTypeStandard:State</string>
-            <string>dsAttrTypeStandard:Street</string>
-            <string>dsAttrTypeStandard:URL</string>
-            <string>dsAttrTypeStandard:UserCertificate</string>
-            <string>dsAttrTypeStandard:UserPKCS12Data</string>
-            <string>dsAttrTypeStandard:UserSMIMECertificate</string>
-            <string>dsAttrTypeStandard:WeblogURI</string>
-          </array>
-          ->
-        </dict>
-        -->
         <!-- twistedcaldav.directory.opendirectorybacker.OpenDirectoryBackingService -->
  		<key>type</key>
 		<string>twistedcaldav.directory.ldapdirectorybacker.LdapDirectoryBackingService</string>
@@ -1154,12 +1058,9 @@
                         <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
                         <key>vcardPropToLdapAttrMap</key>
                         <dict>
-                            <key>FN</key>
-                            <string>cn</string>
-                            <key>EMAIL</key>
-                            <string>mail</string>
-                            <key>TEL</key>
-                            <string>telephoneNumber</string>
+                            <key>FN</key>       <string>cn</string>
+                            <key>EMAIL</key>    <string>mail</string>
+                            <key>TEL</key>      <string>telephoneNumber</string>
                             <key>ADR</key>
                             <array>
                                 <string>buildingName</string>
@@ -1168,105 +1069,69 @@
                                 <string>l</string>
                                 <string>st</string>
                             </array>
-                            <key>ORG</key>
-                            <string>ou</string>
-                            <key>UID</key>
-                            <string>appleDSID</string>
+                            <key>ORG</key>  <string>ou</string>
+                            <key>UID</key>  <string>appleDSID</string>
                         </dict>
                         <!-- map ldap attributes to ds attribute types.  -->
     					<key>ldapAttrToDSAttrMap</key>
     					<dict>
-    						<key>givenName</key>
-    						<string>FirstName</string>
-    						<key>sn</key>
-    						<string>LastName</string>
-    						<key>cn</key>
-    						<string>RealName</string>
+    						<key>givenName</key>    <string>FirstName</string>
+    						<key>sn</key>           <string>LastName</string>
+    						<key>cn</key>           <string>RealName</string>
                             <!-- PHOTO  -->
-    						<key>applePhotoPreferred-jpeg</key>
-    						<string>JPEGPhoto</string>
+    						<key>applePhotoPreferred-jpeg</key>    <string>JPEGPhoto</string>
                             <!-- ADR  -->
-    						<key>buildingName</key>
-    						<string>Building</string>
-    						<key>destinationIndicator</key>
-    						<string>Building</string>
-    						<key>street</key>
-    						<string>Street</string>
-    						<key>l</key>
-    						<string>City</string>
-    						<key>st</key>
-    						<string>State</string>
-    						<key>postalCode</key>
-    						<string>PostalCode</string>
-    						<key>co</key>
-    						<string>Country</string>
+    						<key>buildingName</key>         <string>Building</string>
+    						<key>destinationIndicator</key> <string>Building</string>
+    						<key>street</key>               <string>Street</string>
+    						<key>l</key>                    <string>City</string>
+    						<key>st</key>                   <string>State</string>
+    						<key>postalCode</key>           <string>PostalCode</string>
+    						<key>co</key>                   <string>Country</string>
                             <!-- TEL  -->
-   						    <key>telephoneNumber</key>
-    						<string>PhoneNumber</string>
-    						<key>appleSecondaryPhone</key>
-    						<string>PhoneNumber</string>
-    						<key>facsimileTelephoneNumber</key>
-    						<string>FaxNumber</string>
-    						<key>pager</key>
-    						<string>PagerNumber</string>
-    						<key>mobile</key>
-    						<string>MobileNumber</string>
+   						    <key>telephoneNumber</key>          <string>PhoneNumber</string>
+    						<key>appleSecondaryPhone</key>      <string>PhoneNumber</string>
+    						<key>facsimileTelephoneNumber</key> <string>FaxNumber</string>
+    						<key>pager</key>                    <string>PagerNumber</string>
+    						<key>mobile</key>                   <string>MobileNumber</string>
                             <!-- EMAIL  -->
-    						<key>mail</key>
-    						<string>EMailAddress</string>
-    						<key>applePreferredEmail</key>
-    						<string>EMailAddress</string>
-    						<key>appleNotificationEmail</key>
-    						<string>EMailAddress</string>
+    						<key>mail</key>                     <string>EMailAddress</string>
+    						<key>applePreferredEmail</key>      <string>EMailAddress</string>
+    						<key>appleNotificationEmail</key>   <string>EMailAddress</string>
                             <!-- UID  -->
-    						<key>appleDSID</key>
-    						<string>GeneratedUID</string>
+    						<key>appleDSID</key>    <string>GeneratedUID</string>
                             <!-- ORG  -->
-    						<key>o</key>
-    						<string>OrganizationName</string>
-    						<key>ou</key>
-    						<string>Department</string>
+    						<key>o</key>            <string>OrganizationName</string>
+    						<key>ou</key>           <string>Department</string>
                             <!-- IMPP  -->
-    						<key>appleAIMPreferred</key>
-    						<string>IMHandle</string>
-    						<key>appleAIMOfficial</key>
-    						<string>IMHandle</string>
-    						<key>appleManager</key>
-    						<string>dsAttrTypeNative:appleManager</string>
+    						<key>appleAIMPreferred</key>    <string>IMHandle</string>
+    						<key>appleAIMOfficial</key>     <string>IMHandle</string>
+    						<key>appleManager</key>         <string>dsAttrTypeNative:appleManager</string>
     					</dict>
     				</dict>
                     <!-- mailing list vCards.  Should mark as company-->
     				<dict>
-    					<key>rdn</key>
-    					<string>ou=groups</string>
-    					<key>filter</key>
-    					<string>(objectClass=appleGroup)</string>
-    					<key>getAllAttributes</key>
-    					<false/>
+    					<key>rdn</key>                  <string>ou=groups</string>
+    					<key>kind</key>                  <string>org</string>
+    					<key>filter</key>               <string>(objectClass=appleGroup)</string>
+    					<key>getAllAttributes</key>     <false/>
     					<key>vcardPropToLdapAttrMap</key>
     					<dict>
-    						<key>EMAIL</key>
-    						<string>appleGroupEmail</string>
-    						<key>FN</key>
-    						<string>description</string>
-    						<key>UID</key>
-    						<string>appleDSID</string>
+    						<key>EMAIL</key>    <string>appleGroupEmail</string>
+    						<key>FN</key>       <string>description</string>
+    						<key>UID</key>      <string>appleDSID</string>
     					</dict>
     					<key>ldapAttrToDSAttrMap</key>
     					<dict>
-    						<key>cn</key>
-    						<string>RecordName</string>
+    						<key>cn</key>    <string>RecordName</string>
     						<key>description</key>
     						<array>
     							<string>RealName</string>
     							<string>OrganizationName</string>
     						</array>
-    						<key>appleDSID</key>
-    						<string>GeneratedUID</string>
-    						<key>appleGroupContact</key>
-    						<string>dsAttrTypeNative:appleManager</string>
-    						<key>appleGroupEmail</key>
-    						<string>EMailAddress</string>
+    						<key>appleDSID</key>            <string>GeneratedUID</string>
+    						<key>appleGroupContact</key>    <string>dsAttrTypeNative:appleManager</string>
+    						<key>appleGroupEmail</key>      <string>EMailAddress</string>
     					</dict>
                     </dict>
                 </array>

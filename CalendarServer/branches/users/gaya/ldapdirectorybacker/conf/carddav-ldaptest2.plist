@@ -1050,13 +1050,13 @@
                 <array>
                     <!-- people vCards -->
                     <dict>
-                        <key>rdn</key>  <string>ou=People</string>
+                        <key>rdn</key>      <string>ou=People</string>
+                        <key>kind</key>      <string>individual</string>
                         <key>filter</key>   <string></string>
                         <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
                          <key>additionalVCardProps</key>
                             <dict>
-                                <key>KIND</key>         <string>individual</string>
-                                <key>NOTE</key>         <string>individual</string>
+                                <key>NOTE</key>         <string>KIND: individual</string>
                             </dict>
                         <key>ldapAttrToDSAttrMap</key>
                         <dict>
@@ -1073,14 +1073,11 @@
                             <key>UID</key>      <string>uid</string>
                         </dict>
                     </dict>
-                    <!-- distribution list (group) vCards shown by 10.6-7 clients as persons. Members are in NOTE. Does not hide groups below because UID different -->
+                    <!-- distribution list (group) vCards shown by 10.6-7 clients as a company. Does not hide groups below because UIDs are different -->
                     <dict>
                         <key>rdn</key>      <string>ou=Groups</string>
+                        <key>kind</key>     <string>org</string>
                         <key>filter</key>   <string>(|(mail=*)(uniqueMember=*))</string> <!-- add a filter to skip uninteresting groups -->
-                        <key>additionalVCardProps</key>
-                            <dict>
-                                <key>KIND</key>         <string>group</string>
-                            </dict>
                         <key>ldapAttrToDSAttrMap</key>
                         <dict>
                             <key>givenName</key>    <string>FirstName</string>
@@ -1088,7 +1085,7 @@
                             <key>description</key>  <string>RealName</string>
                             <key>cn</key>           <string>RecordName</string>
                             <key>mail</key>         <string>EMailAddress</string>
-                            <key>uniqueMember</key> <string>Comment</string>
+                            <key>uniqueMember</key> <string>Comment</string>            <!-- debug only -->
                         </dict>
                         <key>vcardPropToLdapAttrMap</key>
                         <dict>
@@ -1100,12 +1097,8 @@
                     <!-- group vCards NOT shown 10.6-7 clients. Hopefully, future client will show these. Client can expand members with exact query on group member UID -->
                     <dict>
                         <key>rdn</key>      <string>ou=Groups</string>
+                        <key>kind</key>     <string>group</string>
                         <key>filter</key>   <string>(|(mail=*)(uniqueMember=*))</string> <!-- add a filter to skip uninteresting groups -->
-                        <key>additionalVCardProps</key>
-                         <dict>
-                            <key>X-ADDRESSBOOKSERVER-KIND</key> <string>group</string>
-                            <key>KIND</key>                     <string>group</string>
-                       </dict>
                         <key>ldapAttrTransforms</key>
                         <dict>
                             <key>uniqueMember</key>
@@ -1133,12 +1126,12 @@
                     <!-- group vCards shown by 10.6-7 clients as persons.  Future client should show as location.  Need to add Map URL or GEO -->
                     <dict>
                         <key>rdn</key>      <string>ou=places</string>
+                        <key>kind</key>     <string>location</string>
                         <key>filter</key>   <string>(objectClass=apple-resource)</string>
                         <!-- map from ab query to indexed ldap attribute.  If unindexed, too slow.  -->
                          <key>additionalVCardProps</key>
                             <dict>
-                                <key>KIND</key> <string>location</string>
-                                <key>NOTE</key> <string>location</string>
+                                <key>NOTE</key> <string>KIND:location</string>
                             </dict>
                         <key>ldapAttrToDSAttrMap</key>
                         <dict>
@@ -1156,11 +1149,11 @@
                     <!-- calendarresource vCards shown by 10.6-7 clients as persons.  Just for testing only, at this point in time -->
                     <dict>
                         <key>rdn</key>      <string>ou=resources</string>
+                        <key>kind</key>     <string>calendarresource</string>
                         <key>filter</key>   <string>(objectClass=apple-resource)</string>
                          <key>additionalVCardProps</key>
                             <dict>
-                                <key>KIND</key> <string>calendarresource</string>
-                                <key>NOTE</key> <string>location</string>
+                                <key>NOTE</key> <string>KIND: calendarresource</string>
                             </dict>
                         <key>ldapAttrToDSAttrMap</key>
                         <dict>
