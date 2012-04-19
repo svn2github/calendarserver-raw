@@ -610,13 +610,17 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
     """
     Convert the supplied addressbook-query into a ds expression tree.
 
-    @param filter: the L{Filter} for the addressbook-query to convert.
+    @param addressBookFilter: the L{Filter} for the addressbook-query to convert.
+    @param vcardPropToSearchableAttrMap: a mapping from vcard properties to query attributes.
+    @param vcardPropToUnsearchableAttrMap: a mapping from vcard properties to unsearchable query attributes. (unused)
+    @param constantProperties: a mapping of constant properties.  A query on a constant property will return all or None
     @return: (needsAllRecords, expressionAttributes, expression) tuple
     """
     #TODO:  1. get rid of needsAllRecords: instead should be: expression==None means list all results, expression==False means no results
-    #       2. expressionAttributes returned is incorrect in many cases for "return (xxx, [], [])" below
+    #       2. expressionAttributes returned is incorrect in many cases: e.g. "return (xxx, [], [])" below
+    #            but needs a full mapping. Perhaps this call should return a propFilter.filter_name list instead 
     #       3. vcardPropToUnsearchableAttrMap is unused by callers. In the past, vcardPropToUnsearchableAttrMap was that part of vCardProp map
-    #            containing binary attributes.
+    #            containing binary attributes.  Current behavior is that properties not in vcardPropToSearchableAttrMap are ignored.
     #
     def propFilterListQuery(filterAllOf, propFilters):
 
