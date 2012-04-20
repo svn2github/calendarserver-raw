@@ -193,17 +193,6 @@ class OpenDirectoryBackingService(DirectoryService):
         self.vcardPropToSearchableDSAttrMap = vcardPropToSearchableDSAttrMap
         self.log_debug("self.vcardPropToSearchableDSAttrMap=%s" % (self.vcardPropToSearchableDSAttrMap, ))
  
-        # calculate unsearch map - a map of the binary attributes.  
-        vCardPropToUnsearchableDSAttrMap = {}
-        for prop, dsAttributeList in ABDirectoryQueryResult.vcardPropToDSAttrMap.iteritems():
-            for attr in dsAttributeList:
-                if isinstance(attr, tuple):
-                    vCardPropToUnsearchableDSAttrMap[prop] = dsAttributeList
-                    
-        self.vCardPropToUnsearchableDSAttrMap = vCardPropToUnsearchableDSAttrMap
-        self.log_debug("self.vCardPropToUnsearchableDSAttrMap=%s" % (self.vCardPropToUnsearchableDSAttrMap, ))
-        
-        
         #get attributes required for needed for valid vCard
         requiredAttributes = [attr for prop in ("UID", "FN", "N") for attr in ABDirectoryQueryResult.vcardPropToDSAttrMap[prop]]
         requiredAttributes += [dsattributes.kDS1AttrModificationTimestamp, dsattributes.kDS1AttrCreationTimestamp,] # for VCardResult DAVPropertyMixIn
@@ -487,13 +476,13 @@ class OpenDirectoryBackingService(DirectoryService):
             return self.returnedAttributes
         
         else:
-            queryAttributes = self.requiredAttributes
+            queryAttributes = []
             for prop in propertyNames:
-                attributes = self.vcardPropToSearchableDSAttrMap.get(prop)
+                attributes = ABDirectoryQueryResult.vcardPropToDSAttrMap(prop)
                 if attributes:
                     queryAttributes += attributes
                     
-            return list(set(queryAttributes))
+            return list(set(queryAttributes + self.requiredAttributes).intersection(self.returnedAttributes))
 
     
 
@@ -503,7 +492,9 @@ class OpenDirectoryBackingService(DirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
     
-        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, self.vcardPropToSearchableDSAttrMap,
+        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, 
+                                                                                 self.vcardPropToSearchableDSAttrMap,
+                                                                                 ABDirectoryQueryResult.vcardPropToDSAttrMap,
                                                                                  constantProperties=ABDirectoryQueryResult.constantProperties );
         self.log_debug("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
 
@@ -606,21 +597,17 @@ def propertiesInAddressBookQuery( addressBookQuery ):
     return (etagRequested, propertyNames if len(propertyNames) else None)
 
 
-def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMap, vcardPropToUnsearchableAttrMap={}, constantProperties={}):
+def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMap, vcardPropToAttrMap={}, constantProperties={}):
     """
     Convert the supplied addressbook-query into a ds expression tree.
 
     @param addressBookFilter: the L{Filter} for the addressbook-query to convert.
-    @param vcardPropToSearchableAttrMap: a mapping from vcard properties to query attributes.
-    @param vcardPropToUnsearchableAttrMap: a mapping from vcard properties to unsearchable query attributes. (unused)
+    @param vcardPropToSearchableAttrMap: a mapping from vcard properties to searchable query attributes.
+    @param vcardPropToAttrMap: a mapping from vcard properties to all query attributes. Need for correct expressionAttributes below
     @param constantProperties: a mapping of constant properties.  A query on a constant property will return all or None
     @return: (needsAllRecords, expressionAttributes, expression) tuple
     """
-    #TODO:  1. get rid of needsAllRecords: instead should be: expression==None means list all results, expression==False means no results
-    #       2. expressionAttributes returned is incorrect in many cases: e.g. "return (xxx, [], [])" below
-    #            but needs a full mapping. Perhaps this call should return a propFilter.filter_name list instead 
-    #       3. vcardPropToUnsearchableAttrMap is unused by callers. In the past, vcardPropToUnsearchableAttrMap was that part of vCardProp map
-    #            containing binary attributes.  Current behavior is that properties not in vcardPropToSearchableAttrMap are ignored.
+    #TODO:  get rid of needsAllRecords: instead should be: expression==None means list all results, expression==False means no results
     #
     def propFilterListQuery(filterAllOf, propFilters):
 
@@ -633,29 +620,29 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
             @return: (needsAllRecords, expressionAttributes, expressions) tuple
             """
             
-            def definedExpression( defined, allOf, filterName, constant, queryAttributes, allAttrNames):
-                if constant or filterName in ("N" , "FN", "UID", "SOURCE",):
-                    return (defined, [], [])     # all records have this property so no records do not have it
+            def definedExpression( defined, allOf ):
+                if constant or propFilter.filter_name in ("N" , "FN", "UID", "SOURCE",):
+                    return (defined, propFilterAttrNames, [])     # all records have this property so no records do not have it
                 else:
-                    matchList = [dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in allAttrNames]
+                    matchList = [dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in searchablePropFilterAttrNames]
                     if defined:
-                        return andOrExpression(allOf, queryAttributes, matchList)
+                        return andOrExpression(allOf, matchList)
                     else:
                         if len(matchList) > 1:
                             expr = dsquery.expression( dsquery.expression.OR, matchList )
                         else:
                             expr = matchList[0]
-                        return (False, queryAttributes, [dsquery.expression( dsquery.expression.NOT, expr),])
+                        return (False, propFilterAttrNames, [dsquery.expression( dsquery.expression.NOT, expr),])
                 #end definedExpression()
 
 
-            def andOrExpression(propFilterAllOf, queryAttributes, matchList):
-                #print("andOrExpression(propFilterAllOf=%r, queryAttributes%r, matchList%r)" % (propFilterAllOf, queryAttributes, matchList))
+            def andOrExpression(propFilterAllOf, matchList):
+                #print("andOrExpression(propFilterAllOf=%r, propFilterAttrNames%r, matchList%r)" % (propFilterAllOf, propFilterAttrNames, matchList))
                 if propFilterAllOf and len(matchList) > 1:
                     # add OR expression because parent will AND
-                    return (False, queryAttributes, [dsquery.expression( dsquery.expression.OR, matchList),])
+                    return (False, propFilterAttrNames, [dsquery.expression( dsquery.expression.OR, matchList),])
                 else:
-                    return (False, queryAttributes, matchList)
+                    return (False, propFilterAttrNames, matchList)
                 #end andOrExpression()
                 
 
@@ -753,15 +740,15 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                 if constant:
                     # do the match right now!  Return either all or none.
                     #FIXME: match is not implemented in twisteddaldav.query.addressbookqueryfilter.TextMatch so use _match for now
-                    return( textMatchElement._match([constant,]), [], [] )
+                    return( textMatchElement._match([constant,]), propFilterAttrNames, [] )
                 else:
 
                     matchStrings = getMatchStrings(propFilter, textMatchElement.text)
 
-                    if not len(matchStrings) or unsearchableAttributes:
+                    if not len(matchStrings):
                         # no searching text in binary ds attributes, so change to defined/not defined case
                         if textMatchElement.negate:
-                            return definedExpression(False, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
+                            return definedExpression(False, propFilterAllOf)
                         # else fall through to attribute exists case below
                     else:
                         
@@ -779,11 +766,11 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                                         log.debug("Could not decode UID string %r in %r: %r" % (matchString[recordNameStart:], matchString, e,))
                                     else:
                                         if textMatchElement.negate:
-                                            return (False, queryAttributes, 
+                                            return (False, propFilterAttrNames, 
                                                     [dsquery.expression(dsquery.expression.NOT, dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact)),]
                                                     )
                                         else:
-                                            return (False, queryAttributes, 
+                                            return (False, propFilterAttrNames, 
                                                     [dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact),]
                                                     )
                         
@@ -809,42 +796,41 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                                 expr = dsquery.expression( dsquery.expression.OR, matchList )
                             else:
                                 expr = matchList[0]
-                            return (False, queryAttributes, [dsquery.expression( dsquery.expression.NOT, expr),])
+                            return (False, propFilterAttrNames, [dsquery.expression( dsquery.expression.NOT, expr),])
                         else:
-                            return andOrExpression(propFilterAllOf, queryAttributes, matchList)
+                            return andOrExpression(propFilterAllOf, matchList)
 
                 # attribute exists search
-                return definedExpression(True, propFilterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
+                return definedExpression(True, propFilterAllOf)
                 #end textMatchElementExpression()
                 
 
-            # queryAttributes are attributes used by this query needed for building vCard and correct post-filtering
+            # propFilterAttrNames are attributes to be used by this propfilter's expression
             searchableAttributes = vcardPropToSearchableAttrMap.get(propFilter.filter_name, [])
             if isinstance(searchableAttributes, str):
                 searchableAttributes = [searchableAttributes,]
-                
-            unsearchableAttributes = vcardPropToUnsearchableAttrMap.get(propFilter.filter_name, [])
-            if isinstance(unsearchableAttributes, str):
-                unsearchableAttributes = [unsearchableAttributes,]
+            searchablePropFilterAttrNames = list(searchableAttributes)
             
-            #log.debug("searchableAttributes=%s" % (searchableAttributes,))
-            #log.debug("unsearchableAttributes=%s" % (unsearchableAttributes,))
-            queryAttributes = list(searchableAttributes) + list(unsearchableAttributes)
-            if not queryAttributes:
+            # propFilterAttributes is full list of all attributes need to be returned from a future query to support post-filters for propfilter
+            propFilterAttributes = vcardPropToAttrMap.get(propFilter.filter_name, [])
+            if isinstance(propFilterAttributes, str):
+                searchableAttributes = [propFilterAttributes,]
+            propFilterAttrNames = []
+            for attrName in propFilterAttributes:
+                if isinstance(attrName, tuple):
+                    propFilterAttrNames.append(attrName[0])
+                else:
+                    propFilterAttrNames.append(attrName)
+            propFilterAttrNames = list(set(propFilterAttrNames + searchablePropFilterAttrNames))
+            
+            constant = constantProperties.get(propFilter.filter_name)
+            if not searchablePropFilterAttrNames and not constant:
                 # not allAttrNames means propFilter.filter_name is not mapped
                 # return None to try to match all items if this is the only property filter
-                return (None, [], [])
+                return (None, propFilterAttrNames, [])
             
-            allAttrNames = []
-            for attrName in queryAttributes:
-                if isinstance(attrName, tuple):
-                    allAttrNames.append(attrName[0])
-                else:
-                    allAttrNames.append(attrName)
-                                    
-            constant = constantProperties.get(propFilter.filter_name)
             if propFilter.qualifier and isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
-                return definedExpression(False, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
+                return definedExpression(False, filterAllOf)
             
             paramFilterElements = [paramFilterElement for paramFilterElement in propFilter.filters if isinstance(paramFilterElement, addressbookqueryfilter.ParameterFilter)]
             textMatchElements = [textMatchElement for textMatchElement in propFilter.filters if isinstance(textMatchElement, addressbookqueryfilter.TextMatch)]
@@ -859,14 +845,13 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
             if len(paramFilterElements) > 0:
                 if supportedParamter(propFilter.filter_name, paramFilterElements, propFilterAllOf ):
                     if len(textMatchElements) == 0:
-                        return definedExpression(True, filterAllOf, propFilter.filter_name, constant, queryAttributes, allAttrNames)
+                        return definedExpression(True, filterAllOf)
                 else:
                     if propFilterAllOf:
-                        return (False, [], [])
+                        return (False, propFilterAttrNames, [])
             
             # handle text match elements
             propFilterNeedsAllRecords = propFilterAllOf
-            propFilterAttributes = []
             propFilterExpressionList = []
             for textMatchElement in textMatchElements:
                 
@@ -875,7 +860,6 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                     propFilterNeedsAllRecords &= textMatchNeedsAllRecords
                 else:
                     propFilterNeedsAllRecords |= textMatchNeedsAllRecords
-                propFilterAttributes += textMatchExpressionAttributes
                 propFilterExpressionList += textMatchExpression
 
 
@@ -884,7 +868,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
             else:
                 propFilterExpressions = list(set(propFilterExpressionList))
             
-            return (propFilterNeedsAllRecords, propFilterAttributes, propFilterExpressions)
+            return (propFilterNeedsAllRecords, propFilterAttrNames, propFilterExpressions)
             #end propFilterExpression
 
         #print("propFilterListQuery: filterAllOf=%r, propFilters=%r" % (filterAllOf, propFilters,))
