@@ -478,7 +478,7 @@ class OpenDirectoryBackingService(DirectoryService):
         else:
             queryAttributes = []
             for prop in propertyNames:
-                attributes = ABDirectoryQueryResult.vcardPropToDSAttrMap(prop)
+                attributes = ABDirectoryQueryResult.vcardPropToDSAttrMap.get(prop)
                 if attributes:
                     queryAttributes += attributes
                     
