@@ -295,6 +295,8 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 for key, value in additionalVCardProps.iteritems():
                     if key not in constantProperties:
                         constantProperties[key] = value
+                        
+            # add KIND as constant so that query can be skipped if addressBookFilter needs a different kind
             constantProperties["KIND"] = kind
             
 

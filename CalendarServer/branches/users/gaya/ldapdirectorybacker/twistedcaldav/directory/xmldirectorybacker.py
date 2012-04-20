@@ -165,6 +165,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
         
             constantProperties = ABDirectoryQueryResult.constantProperties.copy()
             constantProperties["KIND"] = kind
+            # add KIND as constant so that query can be skipped if addressBookFilter needs a different kind
 
             allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap, constantProperties=constantProperties );
             self.log_debug("doAddressBookQuery: queryType=\"%s\" LDAP allRecords=%s, filterAttributes=%s, query=%s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))

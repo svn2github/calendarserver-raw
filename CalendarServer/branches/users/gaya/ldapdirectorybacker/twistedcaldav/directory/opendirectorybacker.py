@@ -491,7 +491,11 @@ class OpenDirectoryBackingService(DirectoryService):
         """
         Get vCards for a given addressBookFilter and addressBookQuery
         """
-    
+        
+        # TODO: optimization: call dsFilterFromAddressBookFilter with
+        # KIND as constant so that record type or query can be skipped if addressBookFilter needs a different kind
+        # Then combine like filters to do the query with an allowed type list
+
         allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, 
                                                                                  self.vcardPropToSearchableDSAttrMap,
                                                                                  ABDirectoryQueryResult.vcardPropToDSAttrMap,
