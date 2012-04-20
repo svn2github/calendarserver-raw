@@ -277,7 +277,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                                 if value:
                                     dsRecordAttributes[dirRecordAttrToDSAttrMap[attr]] = value
                             except AttributeError:
-                                self.log_info("Could not get attribute %s from record %s" % (attr, xmlDirectoryRecord, e,))
+                                self.log_info("Could not get attribute %s from record %s" % (attr, xmlDirectoryRecord,))
                                 pass
                         return dsRecordAttributes
 
