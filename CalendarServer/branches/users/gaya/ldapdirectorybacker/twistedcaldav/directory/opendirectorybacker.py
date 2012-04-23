@@ -492,27 +492,25 @@ class OpenDirectoryBackingService(DirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
         
+        constantProperties = ABDirectoryQueryResult.constantProperties.copy()
+
         # TODO: optimization: call dsFilterFromAddressBookFilter with
         # KIND as constant so that record type or query can be skipped if addressBookFilter needs a different kind
         # Then combine like filters to do the query with an allowed type list
+        # constantProperties["KIND"] = "group"
 
-        allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, 
+        filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, 
                                                                                  self.vcardPropToSearchableDSAttrMap,
                                                                                  ABDirectoryQueryResult.vcardPropToDSAttrMap,
-                                                                                 constantProperties=ABDirectoryQueryResult.constantProperties );
-        self.log_debug("allRecords = %s, query = %s" % (allRecords, "None" if dsFilter is None else dsFilter.generate(),))
-
-        # testing:
-        # allRecords = True
-        
-        if allRecords:
-            dsFilter = None #  None expression == all Records
-        clear = not allRecords and not dsFilter
+                                                                                 constantProperties=constantProperties );
+        self.log_debug("query = %s" % (dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(),))
         
         results = []
         limited = False
-
-        if not clear:
+        if dsFilter:
+            
+            if dsFilter is True:
+                dsFilter = None  # None means get all records hereafter
             
             # change query to ignore system records rather than post filtering
             # but this appears to be broken in open directory
@@ -609,11 +607,45 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
     @param vcardPropToSearchableAttrMap: a mapping from vcard properties to searchable query attributes.
     @param vcardPropToAttrMap: a mapping from vcard properties to all query attributes. Need for correct expressionAttributes below
     @param constantProperties: a mapping of constant properties.  A query on a constant property will return all or None
-    @return: (needsAllRecords, expressionAttributes, expression) tuple
+    @return: (expressionAttributes, expression) tuple.  expression==True means list all results, expression==False means no results
     """
-    #TODO:  get rid of needsAllRecords: instead should be: expression==None means list all results, expression==False means no results
-    #
     def propFilterListQuery(filterAllOf, propFilters):
+
+        def combineExpressionLists(expressionList, allOf, addedExpressions):
+            """
+            deal with the 4-state logic
+                addedExpressions=None means ignore
+                addedExpressions=True means all records
+                addedExpressions=False means no records
+                addedExpressions=[expressionlist] add to expression list
+            """
+             #def explen(exp): return len(exp) if isinstance(exp, list) else 0
+            # log.debug("propFilterListQuery(): allOf=%s, expressionList=%s (%s), addedExpressions=%s (%s)" % (allOf, expressionList, explen(expressionList), addedExpressions, explen(addedExpressions)))
+            if expressionList is None:
+                expressionList = addedExpressions
+            elif addedExpressions is not None:
+                if addedExpressions is True:
+                    if not allOf:
+                        expressionList = True # expressionList or True is True
+                    #else  expressionList and True is expressionList
+                elif addedExpressions is False:
+                    if allOf:
+                        expressionList = False # expressionList and False is False
+                    #else expressionList or False is expressionList
+                else:
+                    if expressionList is False:
+                        if not allOf:
+                            expressionList = addedExpressions # False or addedExpressions is addedExpressions
+                        #else False and addedExpressions is False
+                    elif expressionList is True:
+                        if allOf:
+                            expressionList = addedExpressions # False or addedExpressions is addedExpressions
+                        #else False and addedExpressions is False
+                    else:
+                        expressionList += addedExpressions
+            #log.debug("propFilterListQuery(): out expressionList=%s (%s)" % (expressionList, explen(expressionList)))
+            return expressionList
+            
 
         def propFilterExpression(filterAllOf, propFilter):
             #print("propFilterExpression")
@@ -621,12 +653,12 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
             Create an expression for a single prop-filter element.
             
             @param propFilter: the L{PropertyFilter} element.
-            @return: (needsAllRecords, expressionAttributes, expressions) tuple
+            @return: (expressionAttributes, expressions) tuple
             """
             
             def definedExpression( defined, allOf ):
                 if constant or propFilter.filter_name in ("N" , "FN", "UID", "SOURCE",):
-                    return (defined, propFilterAttrNames, [])     # all records have this property so no records do not have it
+                    return (propFilterAttrNames, defined)     # all records have this property so no records do not have it
                 else:
                     matchList = [dsquery.match(attrName, "", dsattributes.eDSStartsWith) for attrName in searchablePropFilterAttrNames]
                     if defined:
@@ -636,7 +668,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                             expr = dsquery.expression( dsquery.expression.OR, matchList )
                         else:
                             expr = matchList[0]
-                        return (False, propFilterAttrNames, [dsquery.expression( dsquery.expression.NOT, expr),])
+                        return (propFilterAttrNames, [dsquery.expression( dsquery.expression.NOT, expr),])
                 #end definedExpression()
 
 
@@ -644,9 +676,9 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                 #print("andOrExpression(propFilterAllOf=%r, propFilterAttrNames%r, matchList%r)" % (propFilterAllOf, propFilterAttrNames, matchList))
                 if propFilterAllOf and len(matchList) > 1:
                     # add OR expression because parent will AND
-                    return (False, propFilterAttrNames, [dsquery.expression( dsquery.expression.OR, matchList),])
+                    return (propFilterAttrNames, [dsquery.expression( dsquery.expression.OR, matchList),])
                 else:
-                    return (False, propFilterAttrNames, matchList)
+                    return (propFilterAttrNames, matchList)
                 #end andOrExpression()
                 
 
@@ -742,9 +774,8 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                     # end getMatchStrings
 
                 if constant:
-                    # do the match right now!  Return either all or none.
                     #FIXME: match is not implemented in twisteddaldav.query.addressbookqueryfilter.TextMatch so use _match for now
-                    return( textMatchElement._match([constant,]), propFilterAttrNames, [] )
+                    return( propFilterAttrNames, textMatchElement._match([constant,]) )
                 else:
 
                     matchStrings = getMatchStrings(propFilter, textMatchElement.text)
@@ -770,11 +801,11 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                                         log.debug("Could not decode UID string %r in %r: %r" % (matchString[recordNameStart:], matchString, e,))
                                     else:
                                         if textMatchElement.negate:
-                                            return (False, propFilterAttrNames, 
+                                            return (propFilterAttrNames, 
                                                     [dsquery.expression(dsquery.expression.NOT, dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact)),]
                                                     )
                                         else:
-                                            return (False, propFilterAttrNames, 
+                                            return (propFilterAttrNames, 
                                                     [dsquery.match(dsattributes.kDSNAttrRecordName, recordNameQualifier, dsattributes.eDSExact),]
                                                     )
                         
@@ -800,7 +831,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                                 expr = dsquery.expression( dsquery.expression.OR, matchList )
                             else:
                                 expr = matchList[0]
-                            return (False, propFilterAttrNames, [dsquery.expression( dsquery.expression.NOT, expr),])
+                            return (propFilterAttrNames, [dsquery.expression( dsquery.expression.NOT, expr),])
                         else:
                             return andOrExpression(propFilterAllOf, matchList)
 
@@ -831,7 +862,7 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
             if not searchablePropFilterAttrNames and not constant:
                 # not allAttrNames means propFilter.filter_name is not mapped
                 # return None to try to match all items if this is the only property filter
-                return (None, propFilterAttrNames, [])
+                return (propFilterAttrNames, None)
             
             if propFilter.qualifier and isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
                 return definedExpression(False, filterAllOf)
@@ -852,27 +883,22 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                         return definedExpression(True, filterAllOf)
                 else:
                     if propFilterAllOf:
-                        return (False, propFilterAttrNames, [])
+                        return (propFilterAttrNames, False)
             
             # handle text match elements
-            propFilterNeedsAllRecords = propFilterAllOf
-            propFilterExpressionList = []
+            propFilterExpressions = None
             for textMatchElement in textMatchElements:
                 
-                textMatchNeedsAllRecords, textMatchExpressionAttributes, textMatchExpression = textMatchElementExpression(propFilterAllOf, textMatchElement)
-                if propFilterAllOf:
-                    propFilterNeedsAllRecords &= textMatchNeedsAllRecords
-                else:
-                    propFilterNeedsAllRecords |= textMatchNeedsAllRecords
-                propFilterExpressionList += textMatchExpression
-
-
-            if (len(propFilterExpressionList) > 1) and (filterAllOf != propFilterAllOf):
-                propFilterExpressions = [dsquery.expression(dsquery.expression.AND if propFilterAllOf else dsquery.expression.OR , list(set(propFilterExpressionList)))] # remove duplicates
-            else:
-                propFilterExpressions = list(set(propFilterExpressionList))
+                textMatchExpressionAttributes, textMatchExpressions = textMatchElementExpression(propFilterAllOf, textMatchElement)
+                #ignore textMatchExpressionAttributes
+                propFilterExpressions = combineExpressionLists(propFilterExpressions, propFilterAllOf, textMatchExpressions)
+                
+            if isinstance(propFilterExpressions, list):
+                propFilterExpressions= list(set(propFilterExpressions))
+                if (len(propFilterExpressions) > 1) and (filterAllOf != propFilterAllOf):
+                    propFilterExpressions = [dsquery.expression(dsquery.expression.AND if propFilterAllOf else dsquery.expression.OR , propFilterExpressions)]
             
-            return (propFilterNeedsAllRecords, propFilterAttrNames, propFilterExpressions)
+            return (propFilterAttrNames, propFilterExpressions)
             #end propFilterExpression
 
         #print("propFilterListQuery: filterAllOf=%r, propFilters=%r" % (filterAllOf, propFilters,))
@@ -881,37 +907,32 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
         
         @param filterAllOf: the C{True} if parent filter test is "allof"
         @param propFilters: the C{list} of L{ComponentFilter} elements.
-        @return: (needsAllRecords, expressionAttributes, expression) tuple
+        @return: (expressionAttributes, expression) tuple
         """
-        needsAllRecords = None
         attributes = []
-        expressions = []
+        expressions = None
         for propFilter in propFilters:
             
-            propNeedsAllRecords, propExpressionAttributes, propExpression = propFilterExpression(filterAllOf, propFilter)
-            if needsAllRecords is None:
-                needsAllRecords = propNeedsAllRecords
-            elif propNeedsAllRecords is not None:
-                if filterAllOf:
-                    needsAllRecords &= propNeedsAllRecords
-                else:
-                    needsAllRecords |= propNeedsAllRecords
+            propExpressionAttributes, propExpressions = propFilterExpression(filterAllOf, propFilter)
             attributes += propExpressionAttributes
-            expressions += propExpression
-        # propFilterExpression()'s returned propNeedsAllRecords is only None if a propFilter.filter_name is not not mapped
-        # needsAllRecords is None if there was only one propFilter that returned None
-        # set needsAllRecords True in the case
-        if needsAllRecords is None:
-            needsAllRecords = not filterAllOf
-
-        if len(expressions) > 1:
-            expr = dsquery.expression(dsquery.expression.AND if filterAllOf else dsquery.expression.OR , list(set(expressions))) # remove duplicates
-        elif len(expressions):
-            expr = expressions[0]
-        else:
-            expr = None
+            expressions = combineExpressionLists(expressions, filterAllOf, propExpressions)
         
-        return (needsAllRecords, list(set(attributes)), expr)
+        # convert to needsAllRecords to return
+        if isinstance(expressions, list):
+            expressions = list(set(expressions))
+            if len(expressions) > 1:
+                expr = dsquery.expression(dsquery.expression.AND if filterAllOf else dsquery.expression.OR , expressions)
+            elif len(expressions):
+                expr = expressions[0]
+            else:
+                expr = not filterAllOf # empty expression list. should not happen
+        elif expressions is None:
+            expr = expr = not filterAllOf
+        else:
+            # True or False
+            expr = expressions
+
+        return (list(set(attributes)), expr)
     
             
     #print("dsFilterFromAddressBookFilter")
@@ -920,12 +941,12 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
     # Top-level filter contains zero or more prop-filters
     if addressBookFilter:
         filterAllOf = addressBookFilter.filter_test == "allof"
-        if len(addressBookFilter.children) > 0:
+        if len(addressBookFilter.children):
             return propFilterListQuery(filterAllOf, addressBookFilter.children)
         else:
-            return (filterAllOf, [], [])
+            return ([], not filterAllOf)
     else:
-        return (False, [], [])    
+        return ([], False)    
     
                         
 
@@ -1103,6 +1124,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
         guid = self.firstValueForAttribute(dsattributes.kDS1AttrGeneratedUID)
         if not guid:
             nameUUIDStr = "".join(self.firstValueForAttribute(dsattributes.kDSNAttrRecordName).encode("base64").split("\n"))
+            #guid =  ABDirectoryQueryResult.uidSeparator.join(["00000000", nameUUIDStr,])
             guid =  ABDirectoryQueryResult.uidSeparator.join(["d9a8e41b", nameUUIDStr,])
             
             self.attributes[dsattributes.kDS1AttrGeneratedUID] = guid

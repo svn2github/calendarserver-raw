@@ -167,18 +167,11 @@ class XMLDirectoryBackingService(XMLDirectoryService):
             constantProperties["KIND"] = kind
             # add KIND as constant so that query can be skipped if addressBookFilter needs a different kind
 
-            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap, constantProperties=constantProperties );
-            self.log_debug("doAddressBookQuery: queryType=\"%s\" LDAP allRecords=%s, filterAttributes=%s, query=%s" % (queryType, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
-    
-            
-            if allRecords:
-                dsFilter = None #  None expression == all Records
-                
-            # stop query for all
-            clear = not allRecords and not dsFilter
-                        
-            if not clear:
-                
+            filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap, constantProperties=constantProperties );
+            self.log_debug("doAddressBookQuery: rdn=%s query = %s" % (queryType, dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(),))
+
+            if dsFilter:
+                                
                 @inlineCallbacks
                 def recordsForDSFilter(dsFilter, recordType):
                     
@@ -254,7 +247,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                     returnValue(result)
                                 
                 # walk the expression tree
-                if allRecords:
+                if dsFilter is True:
                     xmlDirectoryRecords = None
                 else:
                     xmlDirectoryRecords = (yield recordsForDSFilter(dsFilter, queryType))
@@ -268,6 +261,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                 for xmlDirectoryRecord in xmlDirectoryRecords:
                     
                     def dsRecordAttributesFromDirectoryRecord( xmlDirectoryRecord ):
+                        #FIXME should filter based on request
                         dsRecordAttributes = {}
                         for attr in dirRecordAttrToDSAttrMap:
                             try:

@@ -150,6 +150,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         else:
             queryAttributes = []
             for prop in propertyNames:
+                #FIXME wrong mapping: Need vCard property to DS Attribute map
                 searchAttr = ldapAttrToDSAttrMap.get()
                 if searchAttr:
                     print("adding attributes %r" % searchAttr)
@@ -300,17 +301,13 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             constantProperties["KIND"] = kind
             
 
-            allRecords, filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap, constantProperties=constantProperties );
-            self.log_debug("doAddressBookQuery: rdn=%s LDAP allRecords=%s, filterAttributes=%s, query=%s" % (rdn, allRecords, filterAttributes, "None" if dsFilter is None else dsFilter.generate(),))
-    
-            
-            if allRecords:
-                dsFilter = None #  None expression == all Records
+            filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap, constantProperties=constantProperties );
+            self.log_debug("doAddressBookQuery: rdn=%s query = %s" % (rdn, dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(),))
+
+            if dsFilter:
+                if dsFilter is True:
+                    dsFilter = None
                 
-            # stop query all
-            clear = not allRecords and not dsFilter
-                    
-            if not clear:
                 queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapAttrToDSAttrMap )
                 attributes = filterAttributes + queryAttributes if queryAttributes else None
                 self.log_debug("doAddressBookQuery: attributes=%s, queryAttributes=%s" % (attributes, queryAttributes,))
