@@ -270,7 +270,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             constantProperties["KIND"] = kind
             
 
-            filterProperyNames, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap, constantProperties=constantProperties );
+            filterPropertyNames, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap, constantProperties=constantProperties );
             self.log_debug("doAddressBookQuery: rdn=%s, query=%s, propertyNames=%s" % (rdn, dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(), filterPropertyNames))
 
             if dsFilter:
