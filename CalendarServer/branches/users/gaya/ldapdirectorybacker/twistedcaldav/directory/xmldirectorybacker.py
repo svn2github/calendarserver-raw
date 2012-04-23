@@ -29,7 +29,7 @@ from calendarserver.platform.darwin.od import dsattributes, dsquery
 
 from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
-from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter
+from twistedcaldav.directory.opendirectorybacker import ABDirectoryQueryResult, dsFilterFromAddressBookFilter, propertiesInAddressBookQuery
 
 
 class XMLDirectoryBackingService(XMLDirectoryService):
@@ -152,23 +152,23 @@ class XMLDirectoryBackingService(XMLDirectoryService):
         results = []
         limited = False
 
-        for queryType in self.recordTypes():
+        for recordType in self.recordTypes():
 
-            queryMap = self.rdnSchema[queryType]
+            queryMap = self.rdnSchema[recordType]
             vcardPropToDirRecordAttrMap = queryMap["vcardPropToDirRecordAttrMap"]
             dirRecordAttrToDSAttrMap = queryMap["dirRecordAttrToDSAttrMap"]
             
             kind = {self.recordType_groups:"group",
                     self.recordType_locations:"location",
                     self.recordType_resources:"calendarresource",
-                    }.get(queryType, "individual")
+                    }.get(recordType, "individual")
         
             constantProperties = ABDirectoryQueryResult.constantProperties.copy()
             constantProperties["KIND"] = kind
             # add KIND as constant so that query can be skipped if addressBookFilter needs a different kind
 
-            filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap, constantProperties=constantProperties );
-            self.log_debug("doAddressBookQuery: rdn=%s query = %s" % (queryType, dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(),))
+            filterPropertyNames, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToDirRecordAttrMap, constantProperties=constantProperties );
+            self.log_debug("doAddressBookQuery: rdn=%s, query=%s, propertyNames=%s" % (recordType, dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(), filterPropertyNames))
 
             if dsFilter:
                                 
@@ -176,8 +176,8 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                 def recordsForDSFilter(dsFilter, recordType):
                     
                     """
-                        recordsForDSFilter() exercises the dsFilter expression tree and recordsMatchingFields() it make little difference to the result of
-                        a addressbook query because of filtering.
+                        Athough recordsForDSFilter() exercises the dsFilter expression tree and recordsMatchingFields(),
+                        it make little difference to the result of a addressbook query because of filtering.
                     """
 
                     if not isinstance(dsFilter, dsquery.expression):
@@ -215,7 +215,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                             #self.log_debug("recordsForDSFilter: result=%s" % (result,))
                             if dsFilter.operator == dsquery.expression.NOT:
                                 if self.implementNot:
-                                    result = (yield self.listRecords(queryType)).difference(result)
+                                    result = (yield self.listRecords(recordType)).difference(result)
                                 else:
                                     self.log_debug("recordsForDSFilter: NOT expression not supported" % (match.generate(), ))
                                     returnValue(None)
@@ -232,7 +232,7 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                             
                             if dsFilter.operator == dsquery.expression.NOT:
                                 if self.implementNot:
-                                    result = (yield self.listRecords(queryType)).difference(subresult)
+                                    result = (yield self.listRecords(recordType)).difference(subresult)
                                 else:
                                     self.log_debug("recordsForDSFilter: NOT expression not supported" % (match.generate(), ))
                                     returnValue(None)
@@ -246,15 +246,19 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                     #self.log_debug("recordsForDSFilter:  dsFilter=%s returning %s" % (dsFilter.generate(), result, ))
                     returnValue(result)
                                 
-                # walk the expression tree
+                # calculate minimum attributes needed for this query: results unused
+                etagRequested, queryPropNames = propertiesInAddressBookQuery( addressBookQuery )
+                self.log_debug("doAddressBookQuery: etagRequested=%s, queryPropNames=%s" % (etagRequested, queryPropNames,))
+
+               # walk the expression tree
                 if dsFilter is True:
                     xmlDirectoryRecords = None
                 else:
-                    xmlDirectoryRecords = (yield recordsForDSFilter(dsFilter, queryType))
+                    xmlDirectoryRecords = (yield recordsForDSFilter(dsFilter, recordType))
                 self.log_debug("doAddressBookQuery: #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords) if xmlDirectoryRecords is not None else xmlDirectoryRecords, ))
                 
                 if xmlDirectoryRecords is None:
-                    xmlDirectoryRecords = (yield self.listRecords(queryType))
+                    xmlDirectoryRecords = (yield self.listRecords(recordType))
                     self.log_debug("doAddressBookQuery: all #xmlDirectoryRecords %s" % (len(xmlDirectoryRecords), ))
                 
                 

@@ -133,37 +133,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
          succeed(None)
                         
 
-    def _ldapAttributesForAddressBookQuery(self, addressBookQuery, ldapAttrToDSAttrMap ):
-        """
-        Get ldap attributes needed by an address book query
-        """
-                        
-        etagRequested, propertyNames = propertiesInAddressBookQuery( addressBookQuery )
-        
-        if etagRequested and not self.fakeETag:
-            propertyNames = None
-        
-        if not propertyNames:
-            result = ldapAttrToDSAttrMap.keys()
-            self.log_debug("_ldapAttributesForAddressBookQuery returning all props=%s" % result)
-        
-        else:
-            queryAttributes = []
-            for prop in propertyNames:
-                #FIXME wrong mapping: Need vCard property to DS Attribute map
-                searchAttr = ldapAttrToDSAttrMap.get()
-                if searchAttr:
-                    print("adding attributes %r" % searchAttr)
-                    if not isinstance(searchAttr, tuple):
-                        searchAttr = (searchAttr, )
-                    queryAttributes += searchAttr
-
-            result = list(set(queryAttributes))
-            self.log_debug("_ldapAttributesForAddressBookQuery returning=%s" % result)
-        
-        return result
-
- 
     @inlineCallbacks
     def _getLdapQueryResults(self, base, queryStr, attributes=None, maxResults=0, ldapAttrToDSAttrMap=None, ldapAttrTransforms=None, additionalVCardProps=None, kind=None ):
         """
@@ -301,20 +270,36 @@ class LdapDirectoryBackingService(LdapDirectoryService):
             constantProperties["KIND"] = kind
             
 
-            filterAttributes, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap, constantProperties=constantProperties );
-            self.log_debug("doAddressBookQuery: rdn=%s query = %s" % (rdn, dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(),))
+            filterProperyNames, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, vcardPropToLdapAttrMap, constantProperties=constantProperties );
+            self.log_debug("doAddressBookQuery: rdn=%s, query=%s, propertyNames=%s" % (rdn, dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(), filterPropertyNames))
 
             if dsFilter:
                 if dsFilter is True:
                     dsFilter = None
                 
-                queryAttributes = self._ldapAttributesForAddressBookQuery( addressBookQuery, ldapAttrToDSAttrMap )
-                attributes = filterAttributes + queryAttributes if queryAttributes else None
-                self.log_debug("doAddressBookQuery: attributes=%s, queryAttributes=%s" % (attributes, queryAttributes,))
+                # calculate minimum attributes needed for this query
+                etagRequested, queryPropNames = propertiesInAddressBookQuery( addressBookQuery )
+            
+                if (etagRequested and not self.fakeETag) or not queryPropNames:
+                    queryAttributes = ldapAttrToDSAttrMap.keys()
+                elif queryPropNames:
+                    '''
+                    # To DO:  Need mapping from properties to returned attributes 
+                    queryPropNames += filterPropertyNames
+                    queryAttributes = []
+                    for prop in queryPropNames:
+                        attributes = ABDirectoryQueryResult.vcardPropToDSAttrMap.get(prop)
+                        if attributes:
+                            queryAttributes += attributes
+                    '''
+                            
+                    queryAttributes =  ldapAttrToDSAttrMap.keys()
+                    
+                self.log_debug("doAddressBookQuery: etagRequested=%s, queryPropNames=%s, queryAttributes=%s" % (etagRequested, queryPropNames, queryAttributes,))
                 
                 #get all ldap attributes -- for debug
                 if queryMap.get("getAllAttributes"):
-                    attributes = None
+                    queryAttributes = None
                    
                 base =  ldap.dn.str2dn(rdn) + self.base
                 
@@ -336,7 +321,7 @@ class LdapDirectoryBackingService(LdapDirectoryService):
                 while True:
                     ldapQueryResultsDictionary, ldapQueryLimited = (yield self._getLdapQueryResults(base=base, 
                                                                                                     queryStr=queryStr, 
-                                                                                                    attributes=attributes, 
+                                                                                                    attributes=queryAttributes, 
                                                                                                     maxResults=maxLdapResults, 
                                                                                                     kind=kind, 
                                                                                                     ldapAttrToDSAttrMap=ldapAttrToDSAttrMap, 
@@ -386,6 +371,6 @@ class LdapDirectoryBackingService(LdapDirectoryService):
         
         limited = maxResults and len(results) >= maxResults
                          
-        self.log_info("limited  %s len(results) %s" % (limited,len(results),))
+        self.log_info("limited %s len(results) %s" % (limited,len(results),))
         returnValue((results.values() if self.removeDuplicateUIDs else results, limited,))        
 
