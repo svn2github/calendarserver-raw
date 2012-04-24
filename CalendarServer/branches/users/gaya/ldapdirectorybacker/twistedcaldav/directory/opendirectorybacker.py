@@ -117,8 +117,10 @@ class OpenDirectoryBackingService(DirectoryService):
                 if not node in nodeRecordTypeMap:
                      nodeRecordTypeMap[node] = []
                 nodeRecordTypeMap[node] += [recordType,]
+            self.recordTypes += [recordType,]
 
         nodeRecordTypeMap = {}
+        self.recordTypes = []
         if queryPeopleRecords:
             addNodesToNodeRecordTypeMap(peopleNode, dsattributes.kDSStdRecordTypePeople,)
         if queryUserRecords:
@@ -266,17 +268,16 @@ class OpenDirectoryBackingService(DirectoryService):
                         
             resultsDictionary = {}
             
-            recordTypes = [dsattributes.kDSStdRecordTypePeople, dsattributes.kDSStdRecordTypeUsers, ]
             try:
                 localNodeDirectory = self.odModule.odInit("/Local/Default")
                 self.log_debug("opendirectory.listAllRecordsWithAttributes_list(%r,%r,%r)" % (
                         "/DSLocal",
-                        recordTypes,
+                        self.recordTypes,
                         self.returnedAttributes,
                     ))
                 records = list(self.odModule.listAllRecordsWithAttributes_list(
                         localNodeDirectory,
-                        recordTypes,
+                        self.recordTypes,
                         self.returnedAttributes,
                     ))
             except self.odModule.ODError, ex:
@@ -323,18 +324,18 @@ class OpenDirectoryBackingService(DirectoryService):
     
 
     @inlineCallbacks
-    def _getDirectoryQueryResults(self, query=None, attributes=None, maxRecords=0 ):
+    def _getDirectoryQueryResults(self, query=None, attributes=None, maxRecords=0, allowedRecordTypes=None ):
         """
         Get a list of ABDirectoryQueryResult for the given query with the given attributes.
         query == None gets all records. attribute == None gets ABDirectoryQueryResult.allDSQueryAttributes
         """
         limited = False
-        records = (yield self._queryDirectory(query, attributes, maxRecords ))
+        records = (yield self._queryDirectory(query, attributes, maxRecords, allowedRecordTypes=allowedRecordTypes ))
         if maxRecords and len(records) >= maxRecords:
             limited = True
             self.log_debug("Directory address book record limit (= %d) reached." % (maxRecords, ))
 
-        self.log_debug("Query done. Inspecting %s records" % len(records))
+        self.log_debug("Query done. Inspecting %s records" % (len(records),))
 
         resultsDictionary = self._getAllDSLocalResults().copy()
         self.log_debug("Adding %s DSLocal results" % len(resultsDictionary.keys()))
@@ -380,7 +381,7 @@ class OpenDirectoryBackingService(DirectoryService):
         returnValue((resultsDictionary.values(), limited, ))
 
 
-    def _queryDirectory(self, query=None, attributes=None, maxRecords=0 ):
+    def _queryDirectory(self, query=None, attributes=None, maxRecords=0, allowedRecordTypes=None ):
         
         startTime = time.time()
         if not attributes:
@@ -388,8 +389,13 @@ class OpenDirectoryBackingService(DirectoryService):
                     
         allResults = []
         for node, queryInfo in self.nodeDirectoryRecordTypeMap.iteritems():
-            recordTypes = queryInfo["recordTypes"]
             directory = queryInfo["directory"]
+            recordTypes = queryInfo["recordTypes"]
+            if not allowedRecordTypes is None:
+                recordTypes = list(set(recordTypes).intersection(set(allowedRecordTypes)))
+                if not recordTypes:
+                    continue
+            
             try:
                 if query:
                     if isinstance(query, dsquery.match) and query.value is not "":
@@ -469,17 +475,33 @@ class OpenDirectoryBackingService(DirectoryService):
         Get vCards for a given addressBookFilter and addressBookQuery
         """
         
-        constantProperties = ABDirectoryQueryResult.constantProperties.copy()
-
-        # TODO: optimization: call dsFilterFromAddressBookFilter with
-        # KIND as constant so that record type or query can be skipped if addressBookFilter needs a different kind
-        # Then combine like filters to do the query with an allowed type list
-        # constantProperties["KIND"] = "group"
+        def allowedRecordTypes():
+            constantProperties = ABDirectoryQueryResult.constantProperties.copy()
+    
+            # optimization: use KIND as constant to filter record type list
+            dsRecordTypeToKindMap = {
+                           dsattributes.kDSStdRecordTypeGroups:"group",
+                           dsattributes.kDSStdRecordTypeLocations:"location",
+                           dsattributes.kDSStdRecordTypeResources:"device",
+                           }
+            
+            allowedRecordTypes = []
+            for recordType in set(self.recordTypes):
+                kind = dsRecordTypeToKindMap.get(recordType, "individual")
+                constantProperties["KIND"] = kind
+           
+                filterPropertyNames, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, 
+                                                                                         self.vcardPropToSearchableDSAttrMap,
+                                                                                         constantProperties=constantProperties );
+                if not dsFilter is False:
+                    allowedRecordTypes += [recordType,]
+            return set(allowedRecordTypes)
+        
 
         filterPropertyNames, dsFilter  = dsFilterFromAddressBookFilter( addressBookFilter, 
                                                                                  self.vcardPropToSearchableDSAttrMap,
-                                                                                 constantProperties=constantProperties );
-        self.log_debug("doAddressBookQuery: query=%s, propertyNames=%s" % (dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(), filterPropertyNames))
+                                                                                 constantProperties=ABDirectoryQueryResult.constantProperties );
+        self.log_debug("doAddressBookQuery: query=%s, propertyNames=%s" % (dsFilter if isinstance(dsFilter, bool) else dsFilter.generate(), filterPropertyNames,))
 
         results = []
         limited = False
@@ -520,7 +542,7 @@ class OpenDirectoryBackingService(DirectoryService):
 
             # keep trying query till we get results based on filter.  Especially when doing "all results" query
             while True:
-                dsQueryResults, dsQueryLimited = (yield self._getDirectoryQueryResults(dsFilter, queryAttributes, maxRecords))
+                dsQueryResults, dsQueryLimited = (yield self._getDirectoryQueryResults(dsFilter, queryAttributes, maxRecords, allowedRecordTypes=allowedRecordTypes()))
                 
                 filteredResults = []
                 for dsQueryResult in dsQueryResults:
