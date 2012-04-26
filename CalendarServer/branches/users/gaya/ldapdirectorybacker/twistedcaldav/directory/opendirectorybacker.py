@@ -48,6 +48,7 @@ from twistedcaldav import carddavxml
 from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.query import addressbookqueryfilter
+from twistedcaldav.query.addressbookqueryfilter import TextMatch
 from twistedcaldav.vcard import Component, Property, vCardProductID
 
 from xmlrpclib import datetime
@@ -625,8 +626,8 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                 addedExpressions=False means no records
                 addedExpressions=[expressionlist] add to expression list
             """
-             #def explen(exp): return len(exp) if isinstance(exp, list) else 0
-            # log.debug("propFilterListQuery(): allOf=%s, expressionList=%s (%s), addedExpressions=%s (%s)" % (allOf, expressionList, explen(expressionList), addedExpressions, explen(addedExpressions)))
+            #def explen(exp): return len(exp) if isinstance(exp, list) else 0
+            #log.debug("propFilterListQuery(): allOf=%s, expressionList=%s (%s), addedExpressions=%s (%s)" % (allOf, expressionList, explen(expressionList), addedExpressions, explen(addedExpressions)))
             if expressionList is None:
                 expressionList = addedExpressions
             elif addedExpressions is not None:
@@ -688,61 +689,39 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                 #end andOrExpression()
                 
 
-            # short circuit parameter filters
-            def supportedParamter( filterName, paramFilters, propFilterAllOf ):
+            def paramFilterElementExpression(propFilterAllOf, paramFilterElement):
+
+                # This is a map of possible params
+                paramFilterMap = {
+                    "PHOTO": { "ENCODING": ("B",), "TYPE": ("JPEG",), },
+                    "ADR": { "TYPE": ("WORK", "PREF", "POSTAL", "PARCEL",), },
+                    "LABEL": { "TYPE": ("POSTAL", "PARCEL",)},
+                    "TEL": { "TYPE": None, }, # None mean param can contain can be anything
+                    "EMAIL": { "TYPE": None, },
+                    "KEY": { "ENCODING": ("B",), "TYPE": ("PGPPUBILICKEY", "USERCERTIFICATE", "USERPKCS12DATA", "USERSMIMECERTIFICATE",) },
+                    "PHOTO": { "ENCODING": ("B",), "TYPE": ("JPEG",), },
+                    "URL": { "TYPE": ("WEBLOG", "HOMEPAGE",) },
+                    "IMPP": { "TYPE": ("PREF",), "X-SERVICE-TYPE": None, },
+                    "X-ABRELATEDNAMES" : { "TYPE":None, },
+                    "X-AIM": { "TYPE": ("PREF",), },
+                    "X-JABBER": { "TYPE": ("PREF",), },
+                    "X-MSN": { "TYPE": ("PREF",), },
+                    "X-ICQ": { "TYPE": ("PREF",), },
+                }
+                params = paramFilterMap.get(propFilter.filter_name.upper())
                 
-                def supported( paramFilterName, paramFilterDefined, params ):
-                    paramFilterName = paramFilterName.upper()
-                    if len(params.keys()) and ((paramFilterName in params.keys()) != paramFilterDefined):
+                if bool(params) != paramFilterElement.defined:
+                    return False
+                
+                if params:
+                    paramValues = params.get(paramFilterElement.filter_name.upper())
+                    if paramValues and paramFilterElement.filters[0].text.upper() not in paramValues:
                         return False
-                    if len(params[paramFilterName]) and str(paramFilter.qualifier).upper() not in params[paramFilterName]:
-                        return False
-                    return True 
-                    #end supported()
+                
+                #perhaps this should return None if not in paramFilterMap
+                return True
+
             
-                
-                oneSupported = False
-                for paramFilter in paramFilters:
-                    if filterName == "PHOTO":
-                        if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "ENCODING": ["B",], "TYPE": ["JPEG",], }):
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                    elif filterName == "ADR":
-                        if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": ["WORK", "PREF", "POSTAL", "PARCEL",], }):
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                    elif filterName == "LABEL":
-                        if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": ["POSTAL", "PARCEL",]}):
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                    elif filterName == "TEL":
-                        if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": [], }): # has params derived from ds attributes
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                    elif filterName == "EMAIL":
-                        if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "TYPE": [], }): # has params derived from ds attributes
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                    elif filterName == "URL":
-                        if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, {}):
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                    elif filterName == "KEY":
-                        if propFilterAllOf != supported( paramFilter.filter_name, paramFilter.defined, { "ENCODING": ["B",], "TYPE": ["PGPPUBILICKEY", "USERCERTIFICATE", "USERPKCS12DATA", "USERSMIMECERTIFICATE",] }):
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                    elif not filterName.startswith("X-"): #X- IMHandles X-ABRELATEDNAMES excepted, no other params are used
-                        if propFilterAllOf == paramFilter.defined:
-                            return not propFilterAllOf
-                        oneSupported |= propFilterAllOf
-                
-                if propFilterAllOf:
-                    return True
-                else:
-                    return oneSupported
-                #end supportedParamter()
-                
-                
             def textMatchElementExpression( propFilterAllOf, textMatchElement ):
 
                 # pre process text match strings for ds query 
@@ -854,37 +833,37 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                 # return None to try to match all items if this is the only property filter
                 return None
             
-            if propFilter.qualifier and isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
-                return definedExpression(False, filterAllOf)
-            
             paramFilterElements = [paramFilterElement for paramFilterElement in propFilter.filters if isinstance(paramFilterElement, addressbookqueryfilter.ParameterFilter)]
             textMatchElements = [textMatchElement for textMatchElement in propFilter.filters if isinstance(textMatchElement, addressbookqueryfilter.TextMatch)]
             
+            #create a textMatchElement for the IsNotDefined qualifier
+            if isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
+                textMatchElement = TextMatch(carddavxml.TextMatch.fromString(""))
+                textMatchElement.negate = True
+                textMatchElements += [textMatchElement,]
+
             # if only one propFilter, then use filterAllOf as propFilterAllOf to reduce subexpressions and simplify generated query string
-            if len(propFilter.filters) == 1:
+            if len(paramFilterElements)+len(textMatchElements) == 1:
                 propFilterAllOf = filterAllOf
             else:
                 propFilterAllOf = propFilter.propfilter_test == "allof"
-            
-            # handle parameter filter elements
-            if len(paramFilterElements) > 0:
-                if supportedParamter(propFilter.filter_name, paramFilterElements, propFilterAllOf ):
-                    if len(textMatchElements) == 0:
-                        return definedExpression(True, filterAllOf)
-                else:
-                    if propFilterAllOf:
-                        return False
-            
-            # handle text match elements
+
             propFilterExpressions = None
-            for textMatchElement in textMatchElements:
+            for paramFilterElement in paramFilterElements:
+                paramFilterExpressions = paramFilterElementExpression(propFilterAllOf, paramFilterElement)
+                propFilterExpressions = combineExpressionLists(propFilterExpressions, propFilterAllOf, paramFilterExpressions)
+                if isinstance(propFilterExpressions, bool) and propFilterAllOf != propFilterExpression:
+                    break
                 
+            for textMatchElement in textMatchElements:
                 textMatchExpressions = textMatchElementExpression(propFilterAllOf, textMatchElement)
                 propFilterExpressions = combineExpressionLists(propFilterExpressions, propFilterAllOf, textMatchExpressions)
+                if isinstance(propFilterExpressions, bool) and propFilterAllOf != propFilterExpression:
+                    break
                 
             if isinstance(propFilterExpressions, list):
                 propFilterExpressions= list(set(propFilterExpressions))
-                if (len(propFilterExpressions) > 1) and (filterAllOf != propFilterAllOf):
+                if propFilterExpressions and (filterAllOf != propFilterAllOf):
                     propFilterExpressions = [dsquery.expression(dsquery.expression.AND if propFilterAllOf else dsquery.expression.OR , propFilterExpressions)]
             
             return propFilterExpressions
@@ -898,15 +877,16 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
         @param propFilters: the C{list} of L{ComponentFilter} elements.
         @return: (filterProperyNames, expressions) tuple.  expression==True means list all results, expression==False means no results
         """
-        properties = []
         expressions = None
         for propFilter in propFilters:
-            
-            properties += [propFilter.filter_name,]
             
             propExpressions = propFilterExpression(filterAllOf, propFilter)
             expressions = combineExpressionLists(expressions, filterAllOf, propExpressions)
         
+            # early loop exit
+            if isinstance(expressions, bool) and filterAllOf != expressions:
+                break
+            
         # convert to needsAllRecords to return
         if isinstance(expressions, list):
             expressions = list(set(expressions))
@@ -921,6 +901,8 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
         else:
             # True or False
             expr = expressions
+            
+        properties = [propFilter.filter_name for propFilter in propFilters]
 
         return (list(set(properties)), expr)
     
@@ -1569,10 +1551,10 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                                                         #     Usually found in user records (kDSStdRecordTypeUsers). 
                                                         #      Example: http://example.com/blog/jsmith
             for url in self.valuesForAttribute(dsattributes.kDS1AttrWeblogURI):
-                addPropertyAndLabel(groupCount, "weblog", "URL", url, parameters = {"TYPE": ["Weblog",]})
+                addPropertyAndLabel(groupCount, "weblog", "URL", url, parameters = {"TYPE": ["WEBLOG",]})
     
             for url in self.valuesForAttribute(dsattributes.kDSNAttrURL):
-                addPropertyAndLabel(groupCount, "_$!<HomePage>!$_", "URL", url, parameters = {"TYPE": ["Homepage",]})
+                addPropertyAndLabel(groupCount, "_$!<HomePage>!$_", "URL", url, parameters = {"TYPE": ["HOMEPAGE",]})
     
     
             # 3.6.9 VERSION Type Definition
@@ -1663,7 +1645,7 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
                         managerValue = "%s %s" % (splitManager[0], splitManager[1])
                     else:
                         managerValue = manager
-                    addPropertyAndLabel( groupCount, "_$!<Manager>!$_", "X-ABRELATEDNAMES", managerValue, parameters={ "TYPE": ["Manager",]} )
+                    addPropertyAndLabel( groupCount, "_$!<Manager>!$_", "X-ABRELATEDNAMES", managerValue, parameters={ "TYPE": ["MANAGER",]} )
             
  
             # add apple-defined group vcard properties if record type is group

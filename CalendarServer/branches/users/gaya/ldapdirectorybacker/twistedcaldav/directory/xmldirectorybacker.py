@@ -288,8 +288,8 @@ class XMLDirectoryBackingService(XMLDirectoryService):
                         traceback.print_exc()
                         self.log_info("Could not get vcard for %s" % (xmlDirectoryRecord,))
                     else:
+                        self.log_debug("doAddressBookQuery: VCard text =\n%s" % (result.vCard(),))
                         if addressBookFilter.match(result.vCard()):
-                            self.log_debug("doAddressBookQuery: VCard text =\n%s" % (result.vCard(),))
                             results.append(result)
                         else:
                             # should also filter for duplicate UIDs
