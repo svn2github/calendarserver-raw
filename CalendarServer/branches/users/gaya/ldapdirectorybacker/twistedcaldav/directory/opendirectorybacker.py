@@ -690,34 +690,19 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
 
             def paramFilterElementExpression(propFilterAllOf, paramFilterElement):
 
-                # This is a map of possible params
-                paramFilterMap = {
-                    "PHOTO": { "ENCODING": ("B",), "TYPE": ("JPEG",), },
-                    "ADR": { "TYPE": ("WORK", "PREF", "POSTAL", "PARCEL",), },
-                    "LABEL": { "TYPE": ("POSTAL", "PARCEL",)},
-                    "TEL": { "TYPE": None, }, # None mean param can contain can be anything
-                    "EMAIL": { "TYPE": None, },
-                    "KEY": { "ENCODING": ("B",), "TYPE": ("PGPPUBILICKEY", "USERCERTIFICATE", "USERPKCS12DATA", "USERSMIMECERTIFICATE",) },
-                    "PHOTO": { "ENCODING": ("B",), "TYPE": ("JPEG",), },
-                    "URL": { "TYPE": ("WEBLOG", "HOMEPAGE",) },
-                    "IMPP": { "TYPE": ("PREF",), "X-SERVICE-TYPE": None, },
-                    "X-ABRELATEDNAMES" : { "TYPE":None, },
-                    "X-AIM": { "TYPE": ("PREF",), },
-                    "X-JABBER": { "TYPE": ("PREF",), },
-                    "X-MSN": { "TYPE": ("PREF",), },
-                    "X-ICQ": { "TYPE": ("PREF",), },
-                }
-                params = paramFilterMap.get(propFilter.filter_name.upper())
+                params = ABDirectoryQueryResult.vcardPropToParamMap.get(propFilter.filter_name.upper())
+                defined = params and paramFilterElement.filter_name.upper() in params
                 
-                if bool(params) != paramFilterElement.defined:
+                #defined test
+                if defined != paramFilterElement.defined:
                     return False
                 
-                if params:
-                    paramValues = params.get(paramFilterElement.filter_name.upper())
+                #parameter value text match
+                if defined and paramFilterElement.filters:
+                    paramValues = params[paramFilterElement.filter_name.upper()]
                     if paramValues and paramFilterElement.filters[0].text.upper() not in paramValues:
                         return False
                 
-                #perhaps this should return None if not in paramFilterMap
                 return True
 
             
@@ -1029,15 +1014,29 @@ class ABDirectoryQueryResult(DAVPropertyMixIn, LoggingMixIn):
     
     allDSQueryAttributes = list(set([attr for lookupAttributes in vcardPropToDSAttrMap.values()
                                       for attr in lookupAttributes]))
-
     binaryDSAttrNames = [attr[0] for attr in allDSQueryAttributes
                                 if isinstance(attr, tuple) ]
-
     stringDSAttrNames = [attr for attr in allDSQueryAttributes
                                 if isinstance(attr, str) ]
-
     allDSAttrNames = stringDSAttrNames + binaryDSAttrNames
    
+    # all possible generated parameters.
+    vcardPropToParamMap = {
+        "PHOTO": { "ENCODING": ("B",), "TYPE": ("JPEG",), },
+        "ADR": { "TYPE": ("WORK", "PREF", "POSTAL", "PARCEL",), },
+        "LABEL": { "TYPE": ("POSTAL", "PARCEL",)},
+        "TEL": { "TYPE": None, }, # None means param can contain can be anything
+        "EMAIL": { "TYPE": None, },
+        "KEY": { "ENCODING": ("B",), "TYPE": ("PGPPUBILICKEY", "USERCERTIFICATE", "USERPKCS12DATA", "USERSMIMECERTIFICATE",) },
+        "URL": { "TYPE": ("WEBLOG", "HOMEPAGE",) },
+        "IMPP": { "TYPE": ("PREF",), "X-SERVICE-TYPE": None, },
+        "X-ABRELATEDNAMES" : { "TYPE":None, },
+        "X-AIM": { "TYPE": ("PREF",), },
+        "X-JABBER": { "TYPE": ("PREF",), },
+        "X-MSN": { "TYPE": ("PREF",), },
+        "X-ICQ": { "TYPE": ("PREF",), },
+    }
+
     uidSeparator = "-cf07a1a2-"
 
     
