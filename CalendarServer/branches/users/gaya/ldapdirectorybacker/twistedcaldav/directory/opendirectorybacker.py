@@ -48,7 +48,6 @@ from twistedcaldav import carddavxml
 from twistedcaldav.config import config
 from twistedcaldav.directory.directory import DirectoryService
 from twistedcaldav.query import addressbookqueryfilter
-from twistedcaldav.query.addressbookqueryfilter import TextMatch
 from twistedcaldav.vcard import Component, Property, vCardProductID
 
 from xmlrpclib import datetime
@@ -833,36 +832,31 @@ def dsFilterFromAddressBookFilter(addressBookFilter, vcardPropToSearchableAttrMa
                 # return None to try to match all items if this is the only property filter
                 return None
             
-            paramFilterElements = [paramFilterElement for paramFilterElement in propFilter.filters if isinstance(paramFilterElement, addressbookqueryfilter.ParameterFilter)]
-            textMatchElements = [textMatchElement for textMatchElement in propFilter.filters if isinstance(textMatchElement, addressbookqueryfilter.TextMatch)]
-            
             #create a textMatchElement for the IsNotDefined qualifier
             if isinstance(propFilter.qualifier, addressbookqueryfilter.IsNotDefined):
-                textMatchElement = TextMatch(carddavxml.TextMatch.fromString(""))
+                textMatchElement = addressbookqueryfilter.TextMatch(carddavxml.TextMatch.fromString(""))
                 textMatchElement.negate = True
-                textMatchElements += [textMatchElement,]
+                propFilter.filters.append(textMatchElement)
 
             # if only one propFilter, then use filterAllOf as propFilterAllOf to reduce subexpressions and simplify generated query string
-            if len(paramFilterElements)+len(textMatchElements) == 1:
+            if len(propFilter.filters) == 1:
                 propFilterAllOf = filterAllOf
             else:
                 propFilterAllOf = propFilter.propfilter_test == "allof"
 
             propFilterExpressions = None
-            for paramFilterElement in paramFilterElements:
-                paramFilterExpressions = paramFilterElementExpression(propFilterAllOf, paramFilterElement)
-                propFilterExpressions = combineExpressionLists(propFilterExpressions, propFilterAllOf, paramFilterExpressions)
-                if isinstance(propFilterExpressions, bool) and propFilterAllOf != propFilterExpression:
-                    break
-                
-            for textMatchElement in textMatchElements:
-                textMatchExpressions = textMatchElementExpression(propFilterAllOf, textMatchElement)
-                propFilterExpressions = combineExpressionLists(propFilterExpressions, propFilterAllOf, textMatchExpressions)
+            for propFilterElement in propFilter.filters:
+                propFilterExpression = None
+                if isinstance(propFilterElement, addressbookqueryfilter.ParameterFilter):
+                    propFilterExpression = paramFilterElementExpression(propFilterAllOf, propFilterElement)
+                elif isinstance(propFilterElement, addressbookqueryfilter.TextMatch):
+                    propFilterExpression = textMatchElementExpression(propFilterAllOf, propFilterElement)
+                propFilterExpressions = combineExpressionLists(propFilterExpressions, propFilterAllOf, propFilterExpression)
                 if isinstance(propFilterExpressions, bool) and propFilterAllOf != propFilterExpression:
                     break
                 
             if isinstance(propFilterExpressions, list):
-                propFilterExpressions= list(set(propFilterExpressions))
+                propFilterExpressions = list(set(propFilterExpressions))
                 if propFilterExpressions and (filterAllOf != propFilterAllOf):
                     propFilterExpressions = [dsquery.expression(dsquery.expression.AND if propFilterAllOf else dsquery.expression.OR , propFilterExpressions)]
             
