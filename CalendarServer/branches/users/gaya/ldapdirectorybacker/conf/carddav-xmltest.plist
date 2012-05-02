@@ -32,7 +32,7 @@
 
     <!-- Network host name [empty = system host name] -->
     <key>ServerHostName</key>
-    <string></string> <!-- The hostname clients use when connecting -->
+    <string>localhost</string> <!-- The hostname clients use when connecting -->
 
     <!-- Enable Calendars -->
     <key>EnableCalDAV</key>
@@ -250,7 +250,7 @@
           <key>base</key>
           <string>dc=example,dc=com</string>
           <key>guidAttr</key>
-          <string>apple-generateduid</string>
+          <string>entryUUID</string>
           <key>users</key>
           <dict>
             <key>rdn</key>
@@ -543,7 +543,7 @@
 
     <!-- Log levels -->
     <key>DefaultLogLevel</key>
-    <string>debug</string> <!-- debug, info, warn, error -->
+    <string>info</string> <!-- debug, info, warn, error -->
 
     <!-- Log level overrides for specific functionality -->
     <key>LogLevels</key>
@@ -634,6 +634,21 @@
 
       <key>Services</key>
       <dict>
+
+        <key>AMPNotifier</key>
+        <dict>
+          <key>Service</key>
+          <string>calendarserver.push.amppush.AMPPushNotifierService</string>
+          <key>Enabled</key>
+          <true/>
+          <key>Port</key>
+          <integer>62311</integer>
+          <key>EnableStaggering</key>
+          <false/>
+          <key>StaggerSeconds</key>
+          <integer>3</integer>
+        </dict>
+
         <key>SimpleLineNotifier</key>
         <dict>
           <!-- Simple line notification service (for testing) -->
