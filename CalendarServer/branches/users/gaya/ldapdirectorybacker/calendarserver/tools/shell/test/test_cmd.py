@@ -31,8 +31,11 @@ class TestCommandsBase(twisted.trial.unittest.TestCase):
 
     @inlineCallbacks
     def test_getTargetNone(self):
-        target = (yield self.commands.getTarget([]))
+        target = (yield self.commands.getTarget([], wdFallback=True))
         self.assertEquals(target, self.commands.wd)
+
+        target = (yield self.commands.getTarget([]))
+        self.assertEquals(target, None)
 
     def test_getTargetMissing(self):
         self.assertFailure(self.commands.getTarget(["/foo"]), NotFoundError)
@@ -114,22 +117,68 @@ class TestCommandsBase(twisted.trial.unittest.TestCase):
         self.assertEquals(c("h"), ["idden"])
         self.assertEquals(c("f"), [])
 
-    def test_completeFiles(self):
+    @inlineCallbacks
+    def _test_completeFiles(self, tests):
         protocol = ShellProtocol(None, commandsClass=SomeCommands)
         commands = protocol.commands
 
         def c(word):
-            return sorted(commands.complete_files(word))
+            # One token
+            d = commands.complete_files((word,))
+            d.addCallback(lambda c: sorted(c))
+            return d
 
-        raise NotImplementedError()
+        def d(word):
+            # Multiple tokens
+            d = commands.complete_files(("XYZZY", word))
+            d.addCallback(lambda c: sorted(c))
+            return d
 
-    test_completeFiles.todo = "Not implemented."
+        def e(word):
+            # No tokens
+            d = commands.complete_files(())
+            d.addCallback(lambda c: sorted(c))
+            return d
 
-    def test_listEntryToString(self):
-        raise NotImplementedError()
-        self.assertEquals(CommandsBase.listEntryToString(file, "stuff"), "")
+        for word, completions in tests:
+            if word is None:
+                self.assertEquals((yield e(word)), completions, "Completing %r" % (word,))
+            else:
+                self.assertEquals((yield c(word)), completions, "Completing %r" % (word,))
+                self.assertEquals((yield d(word)), completions, "Completing %r" % (word,))
 
-    test_listEntryToString.todo = "Not implemented"
+    def test_completeFilesLevelOne(self):
+        return self._test_completeFiles((
+            (None    , ["groups/", "locations/", "resources/", "uids/", "users/"]),
+            (""      , ["groups/", "locations/", "resources/", "uids/", "users/"]),
+            ("u"     , ["ids/", "sers/"]),
+            ("g"     , ["roups/"]),
+            ("gr"    , ["oups/"]),
+            ("groups", ["/"]),
+        ))
+
+    def test_completeFilesLevelOneSlash(self):
+        return self._test_completeFiles((
+            ("/"      , ["groups/", "locations/", "resources/", "uids/", "users/"]),
+            ("/u"     , ["ids/", "sers/"]),
+            ("/g"     , ["roups/"]),
+            ("/gr"    , ["oups/"]),
+            ("/groups", ["/"]),
+        ))
+
+    def test_completeFilesDirectory(self):
+        return self._test_completeFiles((
+            ("users/" , ["wsanchez", "admin"]), # FIXME: Look up users
+        ))
+
+    test_completeFilesDirectory.todo = "Doesn't work yet"
+
+    def test_completeFilesLevelTwo(self):
+        return self._test_completeFiles((
+            ("users/w" , ["sanchez"]), # FIXME: Look up users?
+        ))
+
+    test_completeFilesLevelTwo.todo = "Doesn't work yet"
 
 
 class SomeCommands(CommandsBase):

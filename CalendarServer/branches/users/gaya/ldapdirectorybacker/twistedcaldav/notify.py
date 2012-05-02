@@ -1480,7 +1480,7 @@ class NotificationServiceMaker(object):
         for key, settings in config.Notifications.Services.iteritems():
             if settings["Enabled"]:
                 notifier = namedClass(settings["Service"]).makeService(settings,
-                    store)
+                    store, config.ServerHostName)
                 notifier.setServiceParent(multiService)
                 notifiers.append(notifier)
 
@@ -1497,7 +1497,7 @@ class NotificationServiceMaker(object):
 class SimpleLineNotifierService(service.Service):
 
     @classmethod
-    def makeService(cls, settings, store):
+    def makeService(cls, settings, store, serverHostName):
         return cls(settings)
 
     def __init__(self, settings):
@@ -1518,7 +1518,7 @@ class SimpleLineNotifierService(service.Service):
 class XMPPNotifierService(service.Service):
 
     @classmethod
-    def makeService(cls, settings, store):
+    def makeService(cls, settings, store, serverHostName):
         return cls(settings)
 
     def __init__(self, settings):

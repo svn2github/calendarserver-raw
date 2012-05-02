@@ -25,6 +25,8 @@ __all__ = [
     "Commands",
 ]
 
+from getopt import getopt
+
 #from twisted.python import log
 from twisted.internet.defer import succeed
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -33,7 +35,10 @@ from twisted.conch.manhole import ManholeInterpreter
 
 from txdav.common.icommondatastore import NotFoundError
 
+from calendarserver.version import version
+from calendarserver.tap.util import getRootResource
 from calendarserver.tools.tables import Table
+from calendarserver.tools.purge import purgeUID
 from calendarserver.tools.shell.vfs import Folder, RootFolder
 from calendarserver.tools.shell.directory import findRecords, summarizeRecords, recordInfo
 
@@ -49,8 +54,16 @@ class UnknownArguments(UsageError):
     Unknown arguments.
     """
     def __init__(self, arguments):
-        Exception.__init__(self, "Unknown arguments: %s" % (arguments,))
+        UsageError.__init__(self, "Unknown arguments: %s" % (arguments,))
         self.arguments = arguments
+
+
+class InsufficientArguments(UsageError):
+    """
+    Insufficient arguments.
+    """
+    def __init__(self):
+        UsageError.__init__(self, "Insufficient arguments.")
 
 
 class CommandsBase(object):
@@ -67,17 +80,25 @@ class CommandsBase(object):
     # Utilities
     #
 
-    def getTarget(self, tokens):
+    def getTarget(self, tokens, wdFallback=False):
+        """
+        Pop's the first token from tokens and locates the File
+        indicated by that token.
+        @return: a C{File}.
+        """
         if tokens:
             return self.wd.locate(tokens.pop(0).split("/"))
         else:
-            return succeed(self.wd)
+            if wdFallback:
+                return succeed(self.wd)
+            else:
+                return succeed(None)
 
     @inlineCallbacks
-    def getTargets(self, tokens):
+    def getTargets(self, tokens, wdFallback=False):
         """
         For each given C{token}, locate a File to operate on.
-        @return: iterable of File objects.
+        @return: iterable of C{File} objects.
         """
         if tokens:
             result = []
@@ -85,7 +106,10 @@ class CommandsBase(object):
                 result.append((yield self.wd.locate(token.split("/"))))
             returnValue(result)
         else:
-            returnValue((self.wd,))
+            if wdFallback:
+                returnValue((self.wd,))
+            else:
+                returnValue(())
 
     def commands(self, showHidden=False):
         """
@@ -143,18 +167,32 @@ class CommandsBase(object):
         if filter is None:
             filter = lambda item: True
 
+        if tokens:
+            token = tokens[-1]
+
+            i = token.rfind("/")
+            if i == -1:
+                # No "/" in token
+                base = self.wd
+                word = token
+            else:
+                base = (yield self.wd.locate(token[:i].split("/")))
+                word = token[i+1:]
+
+        else:
+            base = self.wd
+            word = ""
+
         files = (
             entry.toString()
-            for entry in (yield self.wd.list())
+            for entry in (yield base.list())
             if filter(entry)
         )
 
         if len(tokens) == 0:
             returnValue(files)
-        elif len(tokens) == 1:
-            returnValue(self.complete(tokens[0], files))
         else:
-            returnValue(())
+            returnValue(self.complete(word, files))
 
 
 class Commands(CommandsBase):
@@ -325,6 +363,18 @@ class Commands(CommandsBase):
     cmd_log.hidden = "debug tool"
 
 
+    def cmd_version(self, tokens):
+        """
+        Print version.
+
+        usage: version
+        """
+        if tokens:
+            raise UnknownArguments(tokens)
+
+        self.terminal.write("%s\n" % (version,))
+
+
     #
     # Filesystem tools
     #
@@ -380,11 +430,11 @@ class Commands(CommandsBase):
 
         usage: ls [folder]
         """
-        targets = (yield self.getTargets(tokens))
+        targets = (yield self.getTargets(tokens, wdFallback=True))
         multiple = len(targets) > 0
 
         for target in targets:
-            entries = (yield target.list())
+            entries = sorted((yield target.list()), key=lambda e: e.fileName)
             #
             # FIXME: this can be ugly if, for example, there are zillions
             # of entries to output. Paging would be good.
@@ -409,7 +459,7 @@ class Commands(CommandsBase):
 
         usage: info [folder]
         """
-        target = (yield self.getTarget(tokens))
+        target = (yield self.getTarget(tokens, wdFallback=True))
 
         if tokens:
             raise UnknownArguments(tokens)
@@ -428,12 +478,51 @@ class Commands(CommandsBase):
 
         usage: cat target [target ...]
         """
-        for target in (yield self.getTargets(tokens)):
+        targets = (yield self.getTargets(tokens))
+
+        if not targets:
+            raise InsufficientArguments()
+
+        for target in targets:
             if hasattr(target, "text"):
                 text = (yield target.text())
                 self.terminal.write(text)
 
     complete_cat = CommandsBase.complete_files
+
+
+    @inlineCallbacks
+    def cmd_rm(self, tokens):
+        """
+        Remove target.
+
+        usage: rm target [target ...]
+        """
+        options, tokens = getopt(tokens, "", ["no-implicit"])
+
+        implicit = True
+
+        for option, value in options:
+            if option == "--no-implicit":
+                # Not in docstring; this is really dangerous.
+                implicit = False
+            else:
+                raise AssertionError("We should't be here.")
+
+        targets = (yield self.getTargets(tokens))
+
+        if not targets:
+            raise InsufficientArguments()
+
+        for target in targets:
+            if hasattr(target, "delete"):
+                target.delete(implicit=implicit)
+            else:
+                self.terminal.write("Can not delete read-only target: %s\n" % (target,))
+
+    cmd_rm.hidden = "Incomplete"
+
+    complete_rm = CommandsBase.complete_files
 
 
     #
@@ -465,7 +554,7 @@ class Commands(CommandsBase):
     @inlineCallbacks
     def cmd_print_principal(self, tokens):
         """
-        Print information about a principal
+        Print information about a principal.
 
         usage: print_principal uid
         """
@@ -488,6 +577,69 @@ class Commands(CommandsBase):
 
         self.terminal.nextLine()
 
+
+    #
+    # Data purge tools
+    #
+
+    @inlineCallbacks
+    def cmd_purge_principals(self, tokens):
+        """
+        Purge data associated principals.
+
+        usage: purge_principals uid [uid ...]
+        """
+        dryRun     = True
+        completely = False
+        doimplicit = True
+
+        directory = self.protocol.service.directory
+
+        uids = tuple(tokens)
+
+        error = False
+        for uid in uids:
+            record = directory.recordWithUID(uid)
+            if not record:
+                self.terminal.write("Unknown UID: %s\n" % (uid,))
+                error = True
+
+        if error:
+            self.terminal.write("Aborting.\n")
+            return
+
+        rootResource = getRootResource(
+            self.protocol.service.config,
+            self.protocol.service.store,
+        )
+
+        if dryRun:
+            toPurge = "to purge"
+        else:
+            toPurge = "purged"
+
+        total = 0
+        for uid in uids:
+            count, assignments = (yield purgeUID(
+                uid, directory, rootResource,
+                verbose    = False,
+                dryrun     = dryRun,
+                completely = completely,
+                doimplicit = doimplicit,
+            ))
+            total += count
+
+            self.terminal.write(
+                "%d events %s for UID %s.\n"
+                % (count, toPurge, uid)
+            )
+
+        self.terminal.write(
+            "%d total events %s.\n"
+            % (total, toPurge)
+        )
+
+    cmd_purge_principals.hidden = "incomplete"
 
     #
     # Python prompt, for the win
@@ -571,7 +723,7 @@ class Commands(CommandsBase):
         if tokens:
             raise UnknownArguments(tokens)
 
-        raise NotImplementedError("")
+        raise NotImplementedError("Command not implemented")
 
     cmd_sql.hidden = "not implemented"
 
@@ -581,6 +733,30 @@ class Commands(CommandsBase):
     #
 
     def cmd_raise(self, tokens):
+        """
+        Raises an exception.
+
+        usage: raise [message ...]
+        """
         raise RuntimeError(" ".join(tokens))
 
     cmd_raise.hidden = "test tool"
+
+    def cmd_reload(self, tokens):
+        """
+        Reloads code.
+
+        usage: reload
+        """
+        if tokens:
+            raise UnknownArguments(tokens)
+
+        import calendarserver.tools.shell.vfs
+        reload(calendarserver.tools.shell.vfs)
+
+        import calendarserver.tools.shell.directory
+        reload(calendarserver.tools.shell.directory)
+
+        self.protocol.reloadCommands()
+
+    cmd_reload.hidden = "test tool"

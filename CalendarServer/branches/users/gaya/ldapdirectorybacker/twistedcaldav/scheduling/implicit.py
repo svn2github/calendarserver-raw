@@ -71,6 +71,14 @@ class ImplicitScheduler(object):
         existing_type = "schedule" if is_scheduling_object else "calendar"
         new_type = "schedule" if (yield self.checkImplicitState()) else "calendar"
 
+        # If the types do not currently match, re-check the stored one. We need this to work around the possibility
+        # that data exists using the older algorithm of determining a scheduling object resource, and that could be
+        # wrong.
+        if existing_type != new_type and resource and resource.exists():
+            resource.isScheduleObject = None
+            is_scheduling_object = (yield self.checkSchedulingObjectResource(resource))
+            existing_type = "schedule" if is_scheduling_object else "calendar"
+            
         if existing_type == "calendar":
             self.action = "create" if new_type == "schedule" else "none"
         else:
@@ -230,13 +238,9 @@ class ImplicitScheduler(object):
                 except ValueError:
                     # We have different ORGANIZERs in the same iCalendar object - this is an error
                     returnValue(False)
-                organizerPrincipal = resource.principalForCalendarUserAddress(organizer) if organizer else None
-                implicit = organizerPrincipal != None
-                log.debug("Implicit - checked scheduling object resource state for UID: '%s', result: %s" % (
-                    calendar.resourceUID(),
-                    implicit,
-                ))
-                returnValue(implicit)
+                    
+                # Any ORGANIZER => a scheduling object resource
+                returnValue(organizer is not None)
 
         returnValue(False)
         
@@ -283,7 +287,7 @@ class ImplicitScheduler(object):
         elif self.state == "attendee":
             yield self.doImplicitAttendee()
         elif self.state == "attendee-missing":
-            self.doImplicitMissingAttendee()
+            yield self.doImplicitMissingAttendee()
         else:
             returnValue(None)
 
@@ -528,6 +532,10 @@ class ImplicitScheduler(object):
             self.oldAttendeesByInstance = self.oldcalendar.getAttendeesByInstance(True, onlyScheduleAgentServer=True)
             self.coerceAttendeesPartstatOnModify()
             
+            # Don't allow any SEQUENCE to decrease
+            if self.oldcalendar:
+                self.calendar.sequenceInSync(self.oldcalendar)
+
             # Significant change
             no_change, self.changed_rids, self.needs_action_rids, reinvites, recurrence_reschedule = self.isOrganizerChangeInsignificant()
             if no_change:
@@ -1064,6 +1072,7 @@ class ImplicitScheduler(object):
                 log.debug("Implicit - attendee '%s' is updating UID without server scheduling: '%s'" % (self.attendee, self.uid))
                 # Nothing else to do
 
+    @inlineCallbacks
     def doImplicitMissingAttendee(self):
 
         if self.action == "remove":
@@ -1075,6 +1084,19 @@ class ImplicitScheduler(object):
             # with an schedule-status error and schedule-agent none
             log.debug("Missing attendee is allowed to update UID: '%s' with invalid organizer '%s'" % (self.uid, self.organizer))
             
+            # Make sure ORGANIZER is not changed if originally SCHEDULE-AGENT=SERVER
+            if self.resource.exists():
+                self.oldcalendar = (yield self.resource.iCalendarForUser(self.request))
+                oldOrganizer = self.oldcalendar.getOrganizer()
+                newOrganizer = self.calendar.getOrganizer()
+                if oldOrganizer != newOrganizer and self.oldcalendar.getOrganizerScheduleAgent():
+                    log.error("Cannot change ORGANIZER: UID:%s" % (self.uid,))
+                    raise HTTPError(ErrorResponse(
+                        responsecode.FORBIDDEN,
+                        (caldav_namespace, "valid-attendee-change"),
+                        "Cannot change organizer",
+                    ))
+
             # Check SCHEDULE-AGENT and coerce SERVER to NONE
             if self.calendar.getOrganizerScheduleAgent():
                 self.calendar.setParameterToValueForPropertyWithValue("SCHEDULE-AGENT", "NONE", "ORGANIZER", None)

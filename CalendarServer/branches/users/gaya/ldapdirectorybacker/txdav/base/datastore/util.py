@@ -59,22 +59,34 @@ class QueryCacher(Memcacher):
         self.cacheExpireSeconds = cacheExpireSeconds
 
     def set(self, key, value):
-        super(QueryCacher, self).set(key, value, expireTime=self.cacheExpireSeconds)
+        return super(QueryCacher, self).set(key, value, expireTime=self.cacheExpireSeconds)
+
+    def delete(self, key):
+        return super(QueryCacher, self).delete(key)
+
+
+    def setAfterCommit(self, transaction, key, value):
+        transaction.postCommit(lambda: self.set(key, value), immediately=True)
+
+    def invalidateAfterCommit(self, transaction, key):
+        # Invalidate now (so that operations within this transaction see it)
+        # and *also* post-commit (because there could be a scheduled setAfterCommit
+        # for this key)
+        transaction.postCommit(lambda: self.delete(key), immediately=True)
+        return self.delete(key)
+
+    # Home child objects by name
 
     def keyForObjectWithName(self, homeResourceID, name):
         return "objectWithName:%s:%s" % (homeResourceID, name)
 
-    def getObjectWithName(self, homeResourceID, name):
-        key = self.keyForObjectWithName(homeResourceID, name)
-        return self.get(key)
+    # Home metadata (Created/Modified)
 
-    def setObjectWithName(self, transaction, homeResourceID, name, value):
-        key = self.keyForObjectWithName(homeResourceID, name)
-        transaction.postCommit(lambda:self.set(key, value))
+    def keyForHomeMetaData(self, homeResourceID):
+        return "homeMetaData:%s" % (homeResourceID)
 
-    def invalidateObjectWithName(self, transaction, homeResourceID, name):
-        key = self.keyForObjectWithName(homeResourceID, name)
-        # Invalidate immediately and post-commit in case a calendar was created and deleted
-        # within the same transaction
-        self.delete(key)
-        transaction.postCommit(lambda:self.delete(key))
+    # HomeChild metadata (Created/Modified (and SUPPORTED_COMPONENTS))
+
+    def keyForHomeChildMetaData(self, resourceID):
+        return "homeChildMetaData:%s" % (resourceID)
+

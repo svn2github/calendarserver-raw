@@ -25,6 +25,7 @@ __all__ = [
     "CommonHome",
 ]
 
+from uuid import uuid4
 
 from zope.interface import implements, directlyProvides
 
@@ -82,6 +83,7 @@ from txdav.common.icommondatastore import ConcurrentModification
 from twistedcaldav.customxml import NotificationType
 from twistedcaldav.dateops import datetimeMktime, parseSQLTimestamp,\
     pyCalendarTodatetime
+from txdav.xml.rfc2518 import DisplayName
 
 from cStringIO import StringIO
 from sqlparse import parse
@@ -167,22 +169,21 @@ class CommonDataStore(Service, object):
 
     def eachCalendarHome(self):
         """
-        @see L{ICalendarStore.eachCalendarHome}
+        @see: L{ICalendarStore.eachCalendarHome}
         """
         return []
 
 
     def eachAddressbookHome(self):
         """
-        @see L{IAddressbookStore.eachAddressbookHome}
+        @see: L{IAddressbookStore.eachAddressbookHome}
         """
         return []
 
 
-
     def newTransaction(self, label="unlabeled"):
         """
-        @see L{IDataStore.newTransaction}
+        @see: L{IDataStore.newTransaction}
         """
         txn = CommonStoreTransaction(
             self,
@@ -513,11 +514,11 @@ class CommonStoreTransaction(object):
         return self._apnSubscriptionsBySubscriberQuery.on(self, subscriberGUID=guid)
 
 
-    def postCommit(self, operation):
+    def postCommit(self, operation, immediately=False):
         """
         Run things after C{commit}.
         """
-        self._postCommitOperations.append(operation)
+        self._postCommitOperations.append((operation, immediately))
 
 
     def postAbort(self, operation):
@@ -551,16 +552,22 @@ class CommonStoreTransaction(object):
         object to execute SQL on.
 
         @param thunk: a 1-argument callable which returns a Deferred when it is
-            done.  If this Deferred fails, 
+            done.  If this Deferred fails, the sub-transaction will be rolled
+            back.
+        @type thunk: L{callable}
 
         @param retries: the number of times to re-try C{thunk} before deciding
             that it's legitimately failed.
+        @type retries: L{int}
 
         @param failureOK: it is OK if this subtransaction fails so do not log.
+        @type failureOK: L{bool}
 
         @return: a L{Deferred} which fires or fails according to the logic in
             C{thunk}.  If it succeeds, it will return the value that C{thunk}
-            returned.
+            returned.  If C{thunk} fails or raises an exception more than
+            C{retries} times, then the L{Deferred} resulting from
+            C{subtransaction} will fail with L{AllRetriesFailed}.
         """
         # Right now this code is covered mostly by the automated property store
         # tests.  It should have more direct test coverage.
@@ -659,10 +666,14 @@ class CommonStoreTransaction(object):
         """
         Commit the transaction and execute any post-commit hooks.
         """
+        @inlineCallbacks
         def postCommit(ignored):
-            for operation in self._postCommitOperations:
-                operation()
-            return ignored
+            for operation, immediately in self._postCommitOperations:
+                if immediately:
+                    yield operation()
+                else:
+                    operation()
+            returnValue(ignored)
 
         if self._stats:
             s = StringIO()
@@ -884,8 +895,24 @@ class CommonHome(LoggingMixIn):
 
         if result:
             self._resourceID = result[0][0]
-            self._created, self._modified = (yield self._metaDataQuery.on(
-                self._txn, resourceID=self._resourceID))[0]
+
+            queryCacher = self._txn.store().queryCacher
+            if queryCacher:
+                # Get cached copy
+                cacheKey = queryCacher.keyForHomeMetaData(self._resourceID)
+                data = yield queryCacher.get(cacheKey)
+            else:
+                data = None
+            if data is None:
+                # Don't have a cached copy
+                data = (yield self._metaDataQuery.on(
+                    self._txn, resourceID=self._resourceID))[0]
+                if queryCacher:
+                    # Cache the data
+                    yield queryCacher.setAfterCommit(self._txn, cacheKey, data)
+
+            self._created, self._modified = data
+
             yield self._loadPropertyStore()
             returnValue(self)
         else:
@@ -1442,6 +1469,11 @@ class CommonHome(LoggingMixIn):
             
         try:
             self._modified = (yield self._txn.subtransaction(_bumpModified, retries=0, failureOK=True))[0][0]
+            queryCacher = self._txn.store().queryCacher
+            if queryCacher is not None:
+                cacheKey = queryCacher.keyForHomeMetaData(self._resourceID)
+                yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
+
         except AllRetriesFailed:
             log.debug("CommonHome.bumpModified failed")
         
@@ -1918,6 +1950,84 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         return cls._allHomeChildrenQuery(False)
 
 
+    @classproperty
+    def _insertInviteQuery(cls): #@NoSelf
+        inv = schema.INVITE
+        return Insert(
+            {
+                inv.INVITE_UID: Parameter("uid"),
+                inv.NAME: Parameter("name"),
+                inv.HOME_RESOURCE_ID: Parameter("homeID"),
+                inv.RESOURCE_ID: Parameter("resourceID"),
+                inv.RECIPIENT_ADDRESS: Parameter("recipient")
+            }
+        )
+
+
+    @classproperty
+    def _updateBindQuery(cls): #@NoSelf
+        bind = cls._bindSchema
+        return Update({bind.BIND_MODE: Parameter("mode"),
+                       bind.BIND_STATUS: Parameter("status"),
+                       bind.MESSAGE: Parameter("message")},
+                      Where=
+                      (bind.RESOURCE_ID == Parameter("resourceID"))
+                      .And(bind.HOME_RESOURCE_ID == Parameter("homeID")),
+                      Return=bind.RESOURCE_NAME)
+
+
+    @inlineCallbacks
+    def shareWith(self, shareeHome, mode):
+        """
+        Share this (owned) L{CommonHomeChild} with another home.
+
+        @param shareeHome: The home of the sharee.
+        @type shareeHome: L{CommonHome}
+
+        @param mode: The sharing mode; L{_BIND_MODE_READ} or
+            L{_BIND_MODE_WRITE}.
+        @type mode: L{str}
+
+        @return: the name of the shared calendar in the new calendar home.
+        @rtype: L{str}
+        """
+        dn = PropertyName.fromElement(DisplayName)
+        dnprop = (self.properties().get(dn) or
+                  DisplayName.fromString(self.name()))
+        # FIXME: honor current home type
+        @inlineCallbacks
+        def doInsert(subt):
+            newName = str(uuid4())
+            yield self._bindInsertQuery.on(
+                subt, homeID=shareeHome._resourceID,
+                resourceID=self._resourceID, name=newName, mode=mode,
+                seenByOwner=True, seenBySharee=True,
+                bindStatus=_BIND_STATUS_ACCEPTED,
+            )
+            yield self._insertInviteQuery.on(
+                subt, uid=newName, name=str(dnprop),
+                homeID=shareeHome._resourceID, resourceID=self._resourceID,
+                recipient=shareeHome.uid()
+            )
+            returnValue(newName)
+        try:
+            sharedName = yield self._txn.subtransaction(doInsert)
+        except AllRetriesFailed:
+            # FIXME: catch more specific exception
+            sharedName = (yield self._updateBindQuery.on(
+                self._txn,
+                mode=mode, status=_BIND_STATUS_ACCEPTED, message=None,
+                resourceID=self._resourceID, homeID=shareeHome._resourceID
+            ))[0][0]
+            # Invite already exists; no need to update it, since the name will
+            # remain the same.
+
+        shareeProps = yield PropertyStore.load(shareeHome.uid(), self._txn,
+                                               self._resourceID)
+        shareeProps[dn] = dnprop
+        returnValue(sharedName)
+
+
     @classmethod
     @inlineCallbacks
     def loadAllObjects(cls, home, owned):
@@ -2033,9 +2143,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         # Only caching non-shared objects so that we don't need to invalidate
         # in sql_legacy
         if owned and queryCacher:
-            data = yield queryCacher.getObjectWithName(home._resourceID, name)
+            # Retrieve data from cache
+            cacheKey = queryCacher.keyForObjectWithName(home._resourceID, name)
+            data = yield queryCacher.get(cacheKey)
 
         if data is None:
+            # No cached copy
             if owned:
                 query = cls._resourceIDOwnedByHomeByName
             else:
@@ -2043,11 +2156,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             data = yield query.on(home._txn,
                                   objectName=name, homeID=home._resourceID)
             if owned and data and queryCacher:
-                queryCacher.setObjectWithName(home._txn, home._resourceID,
-                    name, data)
+                # Cache the result
+                queryCacher.setAfterCommit(home._txn, cacheKey, data)
 
         if not data:
             returnValue(None)
+
         resourceID = data[0][0]
         child = cls(home, name, resourceID, owned)
         yield child.initFromStore()
@@ -2110,18 +2224,21 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _initialOwnerBind(cls): #@NoSelf
+    def _bindInsertQuery(cls, **kw):
         """
-        DAL statement to create a bind entry for a particular home value.
+        DAL statement to create a bind entry that connects a collection to its
+        owner's home.
         """
         bind = cls._bindSchema
-        return Insert({bind.HOME_RESOURCE_ID: Parameter("homeID"),
-                       bind.RESOURCE_ID: Parameter("resourceID"),
-                       bind.RESOURCE_NAME: Parameter("name"),
-                       bind.BIND_MODE: _BIND_MODE_OWN,
-                       bind.SEEN_BY_OWNER: True,
-                       bind.SEEN_BY_SHAREE: True,
-                       bind.BIND_STATUS: _BIND_STATUS_ACCEPTED})
+        return Insert({
+            bind.HOME_RESOURCE_ID: Parameter("homeID"),
+            bind.RESOURCE_ID: Parameter("resourceID"),
+            bind.RESOURCE_NAME: Parameter("name"),
+            bind.BIND_MODE: Parameter("mode"),
+            bind.BIND_STATUS: Parameter("bindStatus"),
+            bind.SEEN_BY_OWNER: Parameter("seenByOwner"),
+            bind.SEEN_BY_SHAREE: Parameter("seenBySharee"),
+        })
 
 
     @classmethod
@@ -2144,8 +2261,11 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                                                   resourceID=resourceID))[0]
 
         # Bind table needs entry
-        yield cls._initialOwnerBind.on(home._txn, homeID=home._resourceID,
-                                       resourceID=resourceID, name=name)
+        yield cls._bindInsertQuery.on(
+            home._txn, homeID=home._resourceID, resourceID=resourceID,
+            name=name, mode=_BIND_MODE_OWN, seenByOwner=True,
+            seenBySharee=True, bindStatus=_BIND_STATUS_ACCEPTED
+        )
 
         # Initialize other state
         child = cls(home, name, resourceID, True)
@@ -2181,9 +2301,22 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         resource ID. We read in and cache all the extra metadata from the DB to
         avoid having to do DB queries for those individually later.
         """
-        dataRows = (
-            yield self._metadataByIDQuery.on(self._txn,
-                                          resourceID=self._resourceID))[0]
+        queryCacher = self._txn.store().queryCacher
+        if queryCacher:
+            # Retrieve from cache
+            cacheKey = queryCacher.keyForHomeChildMetaData(self._resourceID)
+            dataRows = yield queryCacher.get(cacheKey)
+        else:
+            dataRows = None
+        if dataRows is None:
+            # No cached copy
+            dataRows = (
+                yield self._metadataByIDQuery.on(self._txn,
+                    resourceID=self._resourceID))[0]
+            if queryCacher:
+                # Cache the results
+                yield queryCacher.setAfterCommit(self._txn, cacheKey, dataRows)
+
         for attr, value in zip(self.metadataAttributes(), dataRows):
             setattr(self, attr, value)
         yield self._loadPropertyStore()
@@ -2244,8 +2377,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         queryCacher = self._home._txn.store().queryCacher
         if queryCacher:
-            queryCacher.invalidateObjectWithName(self._home._txn,
-                self._home._resourceID, oldName)
+            cacheKey = queryCacher.keyForObjectWithName(self._home._resourceID, oldName)
+            yield queryCacher.invalidateAfterCommit(self._home._txn, cacheKey)
 
         yield self._renameQuery.on(self._txn, name=name,
                                    resourceID=self._resourceID,
@@ -2277,8 +2410,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         queryCacher = self._home._txn.store().queryCacher
         if queryCacher:
-            queryCacher.invalidateObjectWithName(self._home._txn,
-                self._home._resourceID, self._name)
+            cacheKey = queryCacher.keyForObjectWithName(self._home._resourceID, self._name)
+            yield queryCacher.invalidateAfterCommit(self._home._txn, cacheKey)
 
         yield self._deletedSyncToken()
         yield self._deleteQuery.on(self._txn, NoSuchHomeChildError,
@@ -2665,6 +2798,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                       Where=schema.RESOURCE_ID == Parameter("resourceID"),
                       Return=schema.MODIFIED)
 
+
     @inlineCallbacks
     def bumpModified(self):
         """
@@ -2683,6 +2817,11 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             
         try:
             self._modified = (yield self._txn.subtransaction(_bumpModified, retries=0, failureOK=True))[0][0]
+
+            queryCacher = self._txn.store().queryCacher
+            if queryCacher is not None:
+                cacheKey = queryCacher.keyForHomeChildMetaData(self._resourceID)
+                yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
         except AllRetriesFailed:
             log.debug("CommonHomeChild.bumpModified failed")
         

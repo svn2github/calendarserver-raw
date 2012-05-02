@@ -20,7 +20,6 @@ from twext.python.log import LoggingMixIn
 from twext.web2 import responsecode
 from txdav.xml import element as davxml
 from twext.web2.dav.noneprops import NonePropertyStore
-from twext.web2.dav.resource import DAVResource
 from twext.web2.http import Response
 from twext.web2.http_headers import MimeType
 from twext.web2.server import parsePOSTData
@@ -54,7 +53,7 @@ class ApplePushNotifierService(service.MultiService, LoggingMixIn):
     """
 
     @classmethod
-    def makeService(cls, settings, store, testConnectorClass=None,
+    def makeService(cls, settings, store, serverHostName, testConnectorClass=None,
         reactor=None):
         """
         Creates the various "subservices" that work together to implement

@@ -433,6 +433,17 @@ DTSTAMP:20111206T203606Z
 SEQUENCE:4
 RECURRENCE-ID;TZID=America/Los_Angeles:20111215T143000
 END:VEVENT
+BEGIN:VEVENT
+CREATED:20111206T203543Z
+UID:5F7FF5FB-2253-4895-8BF1-76E8ED868B4C
+DTEND;TZID=America/Los_Angeles:20001214T163000
+TRANSP:OPAQUE
+SUMMARY:bogus instance
+DTSTART;TZID=America/Los_Angeles:20001214T153000
+DTSTAMP:20111206T203606Z
+SEQUENCE:4
+RECURRENCE-ID;TZID=America/Los_Angeles:20001215T143000
+END:VEVENT
 END:VCALENDAR
 """
         # Ensure it starts off invalid
@@ -451,6 +462,8 @@ END:VCALENDAR
         # Now it should pass without fixing
         calendar.validCalendarData(doFix=False, validateRecurrences=True)
 
+        # Verify expansion works, even for an RDATE prior to master DTSTART:
+        calendar.expandTimeRanges(PyCalendarDateTime(2100, 1, 1))
 
         # Test EXDATEs *prior* to master (as the result of client splitting a
         # a recurring event and copying *all* EXDATEs to new event):
@@ -5604,6 +5617,263 @@ END:VCALENDAR
             self.assertEqual(len(dtstamps1 & dtstamps2), 0, "Failed comparison: %s\n%s" % (title, diff,))
 
 
+    def test_sequenceInSync(self):
+        """
+        Test Component.sequenceInSync to make sure it bumps SEQUENCE when needed.
+        """
+
+        data = (
+            (
+                "Simple no sequence, no sequence change",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR
+""",
+            ),
+            (
+                "Simple sequence, no sequence change",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:1
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:1
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:1
+END:VEVENT
+END:VCALENDAR
+""",
+            ),
+            (
+                "Simple no sequence, sequence change up",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:1
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:1
+END:VEVENT
+END:VCALENDAR
+""",
+            ),
+            (
+                "Simple sequence, sequence change down",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:2
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:1
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:2
+END:VEVENT
+END:VCALENDAR
+""",
+            ),
+            (
+                "Recurrence sequence, sequence change down",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+RRULE:FREQ=DAILY;COUNT=10
+SUMMARY:Test
+SEQUENCE:2
+END:VEVENT
+BEGIN:VEVENT
+UID:12345-67890
+RECURRENCE-ID:20080602T120000Z
+DTSTART:20080602T120000Z
+DTEND:20080602T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:2
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+RRULE:FREQ=DAILY;COUNT=10
+SUMMARY:Test
+SEQUENCE:1
+END:VEVENT
+BEGIN:VEVENT
+UID:12345-67890
+RECURRENCE-ID:20080602T120000Z
+DTSTART:20080602T120000Z
+DTEND:20080602T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:2
+END:VEVENT
+END:VCALENDAR
+""",
+                """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//CALENDARSERVER.ORG//NONSGML Version 1//EN
+BEGIN:VEVENT
+UID:12345-67890
+DTSTART:20080601T120000Z
+DTEND:20080601T130000Z
+DTSTAMP:20080601T120000Z
+RRULE:FREQ=DAILY;COUNT=10
+SUMMARY:Test
+SEQUENCE:2
+END:VEVENT
+BEGIN:VEVENT
+UID:12345-67890
+RECURRENCE-ID:20080602T120000Z
+DTSTART:20080602T120000Z
+DTEND:20080602T130000Z
+DTSTAMP:20080601T120000Z
+SUMMARY:Test
+SEQUENCE:2
+END:VEVENT
+END:VCALENDAR
+""",
+            ),
+        )
+        
+        for title, old_txt, ical_txt, result_txt in data:
+            old = Component.fromString(old_txt)
+            ical = Component.fromString(ical_txt)
+            result = Component.fromString(result_txt)
+            ical.sequenceInSync(old)
+            
+            ical1 = str(ical).split("\n")
+            ical2 = str(result).split("\n")
+            
+            diff = "\n".join(unified_diff(ical1, ical2))
+            self.assertEqual("\n".join(ical1), "\n".join(ical2), "Failed comparison: %s\n%s" % (title, diff,))
+
+
     def test_hasInstancesAfter(self):
         data = (
             ("In the past (single)", False,
@@ -5973,7 +6243,7 @@ END:VCALENDAR
             ),
         )
         cutoff = PyCalendarDateTime(2011, 11, 30, 0, 0, 0)
-        for title, expected, body in data:
+        for _ignore_title, expected, body in data:
             ical = Component.fromString(body)
             self.assertEquals(expected, ical.hasInstancesAfter(cutoff))
 
@@ -5993,7 +6263,7 @@ DTSTART:20071114T000000Z
 ATTENDEE:urn:uuid:foo
 ATTENDEE:urn:uuid:bar
 ATTENDEE:urn:uuid:baz
-ATTENDEE;CALENDARSERVER-OLD-CUA="http://example.com/principals/users/buz":urn:uuid:buz
+ATTENDEE;CALENDARSERVER-OLD-CUA="base64-aHR0cDovL2V4YW1wbGUuY29tL3ByaW5jaXBhbHMvdXNlcnMvYnV6":urn:uuid:buz
 DTSTAMP:20071114T000000Z
 END:VEVENT
 END:VCALENDAR
@@ -6075,17 +6345,17 @@ END:VCALENDAR
         self.patch(config.Scheduling.Options, "V1Compatibility", True)
         component.normalizeCalendarUserAddresses(lookupFunction, None, toUUID=True)
 
-        # /principal CUAs are not stored in CALENDARSERVER-OLD-CUA
+        # /principal CUAs are stored in CALENDARSERVER-OLD-CUA
         prop = component.getAttendeeProperty(("urn:uuid:foo",))
         self.assertEquals("urn:uuid:foo", prop.value())
         self.assertEquals(prop.parameterValue("CALENDARSERVER-OLD-CUA"),
-            "/principals/users/foo")
+            "base64-L3ByaW5jaXBhbHMvdXNlcnMvZm9v")
 
         # http CUAs are stored in CALENDARSERVER-OLD-CUA
         prop = component.getAttendeeProperty(("urn:uuid:buz",))
         self.assertEquals("urn:uuid:buz", prop.value())
         self.assertEquals(prop.parameterValue("CALENDARSERVER-OLD-CUA"),
-            "http://example.com/principals/users/buz")
+            "base64-aHR0cDovL2V4YW1wbGUuY29tL3ByaW5jaXBhbHMvdXNlcnMvYnV6")
 
 
     def test_serializationCaching(self):

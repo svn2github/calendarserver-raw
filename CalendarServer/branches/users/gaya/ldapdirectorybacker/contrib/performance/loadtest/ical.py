@@ -44,6 +44,7 @@ from caldavclientlibrary.protocol.caldav.definitions import caldavxml
 from caldavclientlibrary.protocol.caldav.definitions import csxml
 
 from calendarserver.tools.notifications import PubSubClientFactory
+from calendarserver.push.amppush import subscribeToIDs
 
 from contrib.performance.httpclient import StringProducer, readBody
 from contrib.performance.httpauth import AuthHandlerAgent
@@ -263,7 +264,8 @@ class BaseAppleClient(BaseClient):
 
     email = None
 
-    def __init__(self, reactor, root, record, auth, calendarHomePollInterval=None, supportPush=True):
+    def __init__(self, reactor, root, record, auth, calendarHomePollInterval=None, supportPush=True,
+        supportAmpPush=True, ampPushHost="localhost", ampPushPort=62311):
         
         self._client_id = str(uuid4())
 
@@ -277,7 +279,11 @@ class BaseAppleClient(BaseClient):
         self.calendarHomePollInterval = calendarHomePollInterval
 
         self.supportPush = supportPush
-        
+
+        self.supportAmpPush = supportAmpPush
+        self.ampPushHost = ampPushHost
+        self.ampPushPort = ampPushPort
+
         self.supportSync = self._SYNC_REPORT
 
         # Keep track of the calendars on this account, keys are
@@ -297,6 +303,8 @@ class BaseAppleClient(BaseClient):
         # dictionary has calendar home URLs as keys and XMPPPush instances as
         # values.
         self.xmpp = {}
+
+        self.ampPushKeys = {}
 
         # Keep track of push factories so we can unsubscribe at shutdown
         self._pushFactories = []
@@ -540,6 +548,15 @@ class BaseAppleClient(BaseClient):
 
             if href == calendarHome:
                 text = results[href].getTextProperties()
+
+                try:
+                    pushkey = text[csxml.pushkey]
+                except KeyError:
+                    pass
+                else:
+                    if pushkey:
+                        self.ampPushKeys[href] = pushkey
+
                 try:
                     server = text[csxml.xmpp_server]
                     uri = text[csxml.xmpp_uri]
@@ -918,6 +935,23 @@ class BaseAppleClient(BaseClient):
         self._pushFactories.append(factory)
         self.reactor.connectTCP(host, port, factory)
 
+    def _receivedPush(self, inboundID):
+        for href, id in self.ampPushKeys.iteritems():
+            if inboundID == id:
+                self._checkCalendarsForEvents(href, push=True)
+                break
+        else:
+            # somehow we are not subscribed to this id
+            pass
+
+
+    def _monitorAmpPush(self, home, pushKeys):
+        """
+        Start monitoring for AMP-based push notifications
+        """
+        subscribeToIDs(self.ampPushHost, self.ampPushPort, pushKeys,
+            self._receivedPush, self.reactor)
+
 
     @inlineCallbacks
     def _unsubscribePubSub(self):
@@ -948,6 +982,11 @@ class BaseAppleClient(BaseClient):
         # anything.
         if self.supportPush and calendarHome in self.xmpp:
             self._monitorPubSub(calendarHome, self.xmpp[calendarHome])
+            # Run indefinitely.
+            yield Deferred()
+        elif self.supportAmpPush and calendarHome in self.ampPushKeys:
+            pushKeys = self.ampPushKeys.values()
+            self._monitorAmpPush(calendarHome, pushKeys)
             # Run indefinitely.
             yield Deferred()
         else:

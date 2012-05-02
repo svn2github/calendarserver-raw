@@ -19,6 +19,7 @@ Virtual file system for data store objects.
 """
 
 __all__ = [
+    "ListEntry",
     "File",
     "Folder",
     "RootFolder",
@@ -55,7 +56,8 @@ class ListEntry(object):
     """
     Information about a C{File} as returned by C{File.list()}.
     """
-    def __init__(self, Class, Name, **fields):
+    def __init__(self, parent, Class, Name, **fields):
+        self.parent    = parent # The class implementing list()
         self.fileClass = Class
         self.fileName  = Name
         self.fields    = fields
@@ -64,6 +66,22 @@ class ListEntry(object):
 
     def __str__(self):
         return self.toString()
+
+    def __repr__(self):
+        fields = self.fields.copy()
+        del fields["Name"]
+
+        if fields:
+            fields = " %s" % (fields,)
+        else:
+            fields = ""
+
+        return "<%s(%s): %r%s>" % (
+            self.__class__.__name__,
+            self.fileClass.__name__,
+            self.fileName,
+            fields,
+        )
 
     def isFolder(self):
         return issubclass(self.fileClass, Folder)
@@ -77,18 +95,24 @@ class ListEntry(object):
     @property
     def fieldNames(self):
         if not hasattr(self, "_fieldNames"):
-            if hasattr(self.fileClass.list, "fieldNames"):
-                if "Name" in self.fileClass.list.fieldNames:
-                    self._fieldNames = tuple(self.fileClass.list.fieldNames)
+            if hasattr(self.parent.list, "fieldNames"):
+                if "Name" in self.parent.list.fieldNames:
+                    self._fieldNames = tuple(self.parent.list.fieldNames)
                 else:
-                    self._fieldNames = ("Name",) + tuple(self.fileClass.list.fieldNames)
+                    self._fieldNames = ("Name",) + tuple(self.parent.list.fieldNames)
             else:
                 self._fieldNames = ["Name"] + sorted(n for n in self.fields if n != "Name")
 
         return self._fieldNames
 
     def toFields(self):
-        return tuple(self.fields[fieldName] for fieldName in self.fieldNames)
+        try:
+            return tuple(self.fields[fieldName] for fieldName in self.fieldNames)
+        except KeyError, e:
+            raise AssertionError(
+                "Field %s is not in %r, defined by %s"
+                % (e, self.fields.keys(), self.parent.__name__)
+            )
 
 
 class File(object):
@@ -118,7 +142,7 @@ class File(object):
 
     def list(self):
         return succeed((
-            ListEntry(self.__class__, self.path[-1]),
+            ListEntry(self, self.__class__, self.path[-1]),
         ))
 
 
@@ -180,12 +204,13 @@ class Folder(File):
         raise NotFoundError("Folder %r has no child %r" % (str(self), name))
 
     def list(self):
-        result = set()
+        result = {}
         for name in self._children:
-            result.add(ListEntry(self._children[name].__class__, name))
+            result[name] = ListEntry(self, self._children[name].__class__, name)
         for name in self._childClasses:
-            result.add(ListEntry(self._childClasses[name], name))
-        return succeed(result)
+            if name not in result:
+                result[name] = ListEntry(self, self._childClasses[name], name)
+        return succeed(result.itervalues())
 
 
 class RootFolder(Folder):
@@ -238,7 +263,7 @@ class UIDsFolder(Folder):
         # FIXME: Add directory info (eg. name) to listing
 
         for txn, home in (yield self.service.store.eachCalendarHome()):
-            result.add(ListEntry(PrincipalHomeFolder, home.uid()))
+            result.add(ListEntry(self, PrincipalHomeFolder, home.uid()))
 
         returnValue(result)
 
@@ -263,14 +288,25 @@ class RecordFolder(Folder):
             record=record
         )
 
-    @inlineCallbacks
     def list(self):
-        result = set()
+        names = set()
 
-        # FIXME ...?
-        yield 1
+        for record in self.service.directory.listRecords(self.recordType):
+            for shortName in record.shortNames:
+                if shortName in names:
+                    continue
+                names.add(shortName)
+                yield ListEntry(
+                    self,
+                    PrincipalHomeFolder,
+                    shortName,
+                    **{
+                        "UID": record.uid,
+                        "Full Name": record.fullName,
+                    }
+                )
 
-        returnValue(result)
+    list.fieldNames = ("UID", "Full Name")
 
 
 class UsersFolder(RecordFolder):
@@ -426,7 +462,7 @@ class CalendarHomeFolder(Folder):
     @inlineCallbacks
     def list(self):
         calendars = (yield self.home.calendars())
-        returnValue((ListEntry(CalendarFolder, c.name()) for c in calendars))
+        returnValue((ListEntry(self, CalendarFolder, c.name()) for c in calendars))
 
     @inlineCallbacks
     def describe(self):
@@ -530,6 +566,16 @@ class CalendarFolder(Folder):
 
         returnValue("\n".join(description))
 
+    def delete(self, implicit=True):
+        calendar = self.calendarObject.calendar()
+
+        if implicit:
+            # We need data store-level scheduling support to implement
+            # this.
+            raise NotImplementedError("Delete not implemented.")
+        else:
+            calendar.removeCalendarObjectWithUID(self.uid)
+
 
 class CalendarObject(File):
     """
@@ -567,7 +613,7 @@ class CalendarObject(File):
     @inlineCallbacks
     def list(self):
         (yield self.lookup())
-        returnValue((ListEntry(CalendarObject, self.uid, {
+        returnValue((ListEntry(self, CalendarObject, self.uid, {
             "Component Type": self.componentType,
             "Summary": self.summary.replace("\n", " "),
         }),))

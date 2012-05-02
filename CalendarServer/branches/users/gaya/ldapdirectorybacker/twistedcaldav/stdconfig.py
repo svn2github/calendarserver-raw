@@ -84,7 +84,7 @@ DEFAULT_SERVICE_PARAMS = {
         "authMethod": "LDAP",
         "rdnSchema": {
             "base": "dc=example,dc=com",
-            "guidAttr": None,
+            "guidAttr": "entryUUID",
             "users": {
                 "rdn": "ou=People",
                 "attr": "uid", # used only to synthesize email address
@@ -754,6 +754,13 @@ DEFAULT_CONFIG = {
                     "Passphrase" : "",
                     "Topic" : "",
                 },
+            },
+            "AMPNotifier" : {
+                "Service" : "calendarserver.push.amppush.AMPPushNotifierService",
+                "Enabled" : True,
+                "Port" : 62311,
+                "EnableStaggering" : False,
+                "StaggerSeconds" : 3,
             },
             "XMPPNotifier" : {
                 "Service" : "twistedcaldav.notify.XMPPNotifierService",

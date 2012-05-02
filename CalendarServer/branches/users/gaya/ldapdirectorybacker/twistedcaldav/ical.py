@@ -56,6 +56,8 @@ from pycalendar.property import PyCalendarProperty
 from pycalendar.timezone import PyCalendarTimezone
 from pycalendar.utcoffsetvalue import PyCalendarUTCOffsetValue
 
+import base64
+
 log = Logger()
 
 iCalendarProductID = "-//CALENDARSERVER.ORG//NONSGML Version 1//EN"
@@ -2171,6 +2173,9 @@ END:VCALENDAR
         except IndexError:
             return False
 
+        # Need to add property to indicate this was added by the server
+        valarm.addProperty(Property("X-APPLE-DEFAULT-ALARM", "TRUE"))
+
         # ACTION:NONE not added
         changed = False
         action = valarm.propertyValue("ACTION")
@@ -2400,6 +2405,28 @@ END:VCALENDAR
         
         self.replacePropertyInAllComponents(Property("DTSTAMP", PyCalendarDateTime.getNowUTC()))
             
+    def sequenceInSync(self, oldcalendar):
+        """
+        Make sure SEQUENCE does not decrease in any components.
+        """
+        
+        
+        def maxSequence(calendar):
+            seqs = calendar.getAllPropertiesInAnyComponent("SEQUENCE", depth=1)
+            return max(seqs, key=lambda x:x.value()).value() if seqs else 0
+
+        def minSequence(calendar):
+            seqs = calendar.getAllPropertiesInAnyComponent("SEQUENCE", depth=1)
+            return min(seqs, key=lambda x:x.value()).value() if seqs else 0
+
+        # Determine value to bump to from old calendar (if exists) or self
+        oldseq = maxSequence(oldcalendar)
+        currentseq = minSequence(self)
+            
+        # Sync all components
+        if oldseq and currentseq < oldseq:
+            self.replacePropertyInAllComponents(Property("SEQUENCE", oldseq))
+            
     def normalizeAll(self):
         
         # Normalize all properties
@@ -2577,7 +2604,7 @@ END:VCALENDAR
                     if config.Scheduling.Options.V1Compatibility:
                         if cuaddr.startswith("http") or cuaddr.startswith("/"):
                             prop.setParameter("CALENDARSERVER-OLD-CUA",
-                                prop.value())
+                                "base64-%s" % (base64.b64encode(prop.value())))
 
                     # Always re-write value to urn:uuid
                     prop.setValue("urn:uuid:%s" % (guid,))
@@ -2588,6 +2615,8 @@ END:VCALENDAR
                     # Restore old CUA
                     oldExternalCUA = prop.parameterValue("CALENDARSERVER-OLD-CUA")
                     if oldExternalCUA:
+                        if oldExternalCUA.startswith("base64-"):
+                            oldExternalCUA = base64.b64decode(oldExternalCUA[7:])
                         newaddr = oldExternalCUA
                         prop.removeParameter("CALENDARSERVER-OLD-CUA")
                     elif oldemail:

@@ -246,7 +246,7 @@ www_get () {
             exit 1;
           fi;
 
-          if egrep '^${pkg_host} ' "${HOME}/.ssh/known_hosts" > /dev/null 2>&1; then
+          if egrep "^${pkg_host}" "${HOME}/.ssh/known_hosts" > /dev/null 2>&1; then
             echo "Copying cache file up to ${pkg_host}.";
             if ! scp "${tmp}" "${pkg_host}:/www/hosts/${pkg_host}${pkg_path}/${cache_basename}"; then
               echo "Failed to copy cache file up to ${pkg_host}.";
@@ -733,7 +733,7 @@ dependencies () {
     "${pypi}/p/python-ldap/${ld}.tar.gz";
 
   # XXX actually PyCalendar should be imported in-place.
-  py_dependency -fe -i "src" -r 190 \
+  py_dependency -fe -i "src" -r 191 \
     "pycalendar" "pycalendar" "pycalendar" \
     "http://svn.mulberrymail.com/repos/PyCalendar/branches/server";
 
