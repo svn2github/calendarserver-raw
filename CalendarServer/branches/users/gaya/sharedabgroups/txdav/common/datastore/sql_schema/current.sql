@@ -349,17 +349,6 @@ create table ADDRESSBOOK (
 );
 
 
---------------------------
--- AddressBook Metadata --
---------------------------
-
-create table ADDRESSBOOK_METADATA (
-  RESOURCE_ID integer   primary key references ADDRESSBOOK on delete cascade, -- implicit index
-  CREATED     timestamp default timezone('UTC', CURRENT_TIMESTAMP),
-  MODIFIED    timestamp default timezone('UTC', CURRENT_TIMESTAMP)
-);
-
-
 ----------------------
 -- AddressBook Bind --
 ----------------------
@@ -400,6 +389,28 @@ create table ADDRESSBOOK_OBJECT (
   unique(ADDRESSBOOK_RESOURCE_ID, RESOURCE_NAME), -- implicit index
   unique(ADDRESSBOOK_RESOURCE_ID, VCARD_UID)      -- implicit index
 );
+
+--------------------------
+-- Shared Group --
+--------------------------
+
+create table ADDRESSBOOK_GROUP_MEMBER (
+    GROUPID               integer      references ADDRESSBOOK_OBJECT, 
+    MEMBER                integer      references ADDRESSBOOK_OBJECT,
+    primary key(GROUPID, MEMBER) -- implicit index
+);
+
+--------------------------
+-- AddressBook Metadata --
+--------------------------
+
+create table ADDRESSBOOK_METADATA (
+  RESOURCE_ID integer   primary key references ADDRESSBOOK on delete cascade, -- implicit index
+  GROUPID               integer      references ADDRESSBOOK_OBJECT, -- shared group
+  CREATED     timestamp default timezone('UTC', CURRENT_TIMESTAMP),
+  MODIFIED    timestamp default timezone('UTC', CURRENT_TIMESTAMP)
+);
+
 
 ---------------
 -- Revisions --
