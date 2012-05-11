@@ -395,9 +395,9 @@ create table ADDRESSBOOK_OBJECT (
 --------------------------
 
 create table ADDRESSBOOK_GROUP_MEMBER (
-    GROUPID               integer      references ADDRESSBOOK_OBJECT, 
+    GROUP_ID              integer      references ADDRESSBOOK_OBJECT, 
     MEMBER                integer      references ADDRESSBOOK_OBJECT,
-    primary key(GROUPID, MEMBER) -- implicit index
+    primary key(GROUP_ID, MEMBER) -- implicit index
 );
 
 --------------------------
@@ -405,10 +405,10 @@ create table ADDRESSBOOK_GROUP_MEMBER (
 --------------------------
 
 create table ADDRESSBOOK_METADATA (
-  RESOURCE_ID integer   primary key references ADDRESSBOOK on delete cascade, -- implicit index
-  GROUPID               integer      references ADDRESSBOOK_OBJECT, -- shared group
-  CREATED     timestamp default timezone('UTC', CURRENT_TIMESTAMP),
-  MODIFIED    timestamp default timezone('UTC', CURRENT_TIMESTAMP)
+  RESOURCE_ID   integer     primary key references ADDRESSBOOK on delete cascade, -- implicit index
+  GROUP_ID      integer     references ADDRESSBOOK_OBJECT, -- shared group
+  CREATED       timestamp   default timezone('UTC', CURRENT_TIMESTAMP),
+  MODIFIED      timestamp   default timezone('UTC', CURRENT_TIMESTAMP)
 );
 
 
