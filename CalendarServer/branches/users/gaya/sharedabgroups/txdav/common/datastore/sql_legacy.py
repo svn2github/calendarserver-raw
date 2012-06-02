@@ -450,6 +450,231 @@ class SQLLegacyAddressBookInvites(SQLLegacyInvites):
         return self._txn.addressbookHomeWithUID(uid, create=True)
 
 
+class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
+    """
+    Emulator for the implicit interface specified by
+    L{twistedcaldav.sharing.InvitesDatabase}.
+    """
+
+    @classproperty
+    def _childrenInAddressBookWithVCardUIDs(cls): #@NoSelf
+        bind = schema.ADDRESSBOOK_OBJECT
+        return Select([bind.RESOURCE_ID,],
+                      From=bind,
+                      Where=bind.ADDRESSBOOK_RESOURCE_ID == Parameter("addressbookID") and bind.VCARD_UID.In(Parameter("vcardUIDs")))
+
+    @classproperty
+    def _childInAddressBookWithVCardUID(cls): #@NoSelf
+        bind = schema.ADDRESSBOOK_OBJECT
+        return Select([bind.RESOURCE_ID,],
+                      From=bind,
+                      Where=(bind.ADDRESSBOOK_RESOURCE_ID == Parameter("addressbookID")).And(bind.VCARD_UID == Parameter("vcardUID")))
+        
+    @classproperty
+    def _memberIDsForGroupIDQuery(cls): #@NoSelf
+        bind = schema.GROUP_MEMBERSHIP
+        return Select([bind.GROUP_ID, bind.MEMBER_ID],
+                      From=bind,
+                      Where=bind.GROUP_ID == Parameter("groupID"))
+
+
+    @classproperty
+    def _insertGroupQuery(cls): #@NoSelf
+        bind = schema.GROUP_MEMBERSHIP
+        return Insert(
+            {
+                bind.GROUP_ID: Parameter("groupID"),
+                bind.MEMBER_ID: Parameter("memberID"),
+            }
+        )
+
+    @classproperty
+    def _deleteGroupQuery(cls): #@NoSelf
+        bind = schema.GROUP_MEMBERSHIP
+        return Delete(From=bind,
+                      Where=bind.MEMBER_ID == Parameter("memberID"))
+
+
+    @classproperty
+    def _insertGroupBindQuery(cls): #@NoSelf
+        bind = schema.GROUP_BIND
+        return Insert(
+            {
+                bind.ADDRESSBOOK_BIND_ID: Parameter("addressbookBindID"),
+                bind.GROUP_ID: Parameter("groupID"),
+            }
+        )
+        
+    @classproperty
+    def _insertBindQueryReturningBindID(cls): #@NoSelf
+        bind = cls._bindSchema
+        return Insert(
+            {
+                bind.HOME_RESOURCE_ID: Parameter("homeID"),
+                bind.RESOURCE_ID: Parameter("resourceID"),
+                bind.BIND_MODE: Parameter("mode"),
+                bind.BIND_STATUS: Parameter("status"),
+                bind.MESSAGE: Parameter("message"),
+                bind.RESOURCE_NAME: Parameter("resourceName"),
+                bind.SEEN_BY_OWNER: False,
+                bind.SEEN_BY_SHAREE: False,
+            },
+            Return=bind.GROUP_BIND_ID
+        )
+        
+    @inlineCallbacks
+    def updateMembership(self, group):
+       # first off, get a group list
+        @inlineCallbacks
+        def groupMemberUIDs(group):
+            vCard = (yield group.component())
+            memberUIDs = []
+            for memberProp in tuple(vCard.properties("X-ADDRESSBOOKSERVER-MEMBER")):
+                oneMember = memberProp.value()[len("urn:uuid:"):]
+                if len(oneMember):
+                    memberUIDs.append(oneMember)                       
+            returnValue(memberUIDs)
+                
+        print("updateMembership(): %s" % (group,))
+        memberUIDs = (yield groupMemberUIDs( group ))
+        print("updateMembership(): memberUIDs=%s" % (memberUIDs,))
+        
+        memberResourceIDs = []
+        for memberUID in memberUIDs:
+            
+            memberRow = (yield self._childInAddressBookWithVCardUID.on(
+                self._txn,
+                addressbookID=group._parentCollection._resourceID,
+                vcardUID=memberUID,
+            ))
+            print("updateMembership(): memberUID=%s, memberRow=%s" % (memberUID, memberRow, ))
+            if memberRow:
+                [[memberResourceID]] = memberRow
+                memberResourceIDs += [memberResourceID,]
+        
+        # expand groups here
+        
+        # add group resource id, and make set
+        memberResourceIDs += [group._resourceID,]
+        memberResourceIDs = set(memberResourceIDs)
+        print("updateMembership(): memberResourceIDs=%s" % (memberResourceIDs, ))
+       
+        # get current members
+        currentMemberRows = (yield self._memberIDsForGroupIDQuery.on(
+                self._txn,
+                groupID=group._resourceID,
+            ))
+        print("updateMembership(): currentMemberRows=%s" % (currentMemberRows, ))
+        
+        currentMemberResourceIDs = []
+        for row in tuple(currentMemberRows):
+            [groupID, memberID] = row
+            currentMemberResourceIDs += [memberID,]
+        
+        currentMemberResourceIDs = set(currentMemberResourceIDs)
+        print("updateMembership(): currentMemberResourceIDs=%s" % (currentMemberResourceIDs, ))
+       
+        membersToDelete = currentMemberResourceIDs.difference(memberResourceIDs)
+        print("updateMembership(): membersToDelete=%s" % (membersToDelete, ))
+        for memberToDelete in membersToDelete:
+            (yield self._deleteGroupQuery.on(
+            self._txn,
+            groupID=group._resourceID,
+            memberID=memberToDelete,
+            ))
+        
+        memberResourceIDsToAdd = memberResourceIDs.difference(currentMemberResourceIDs)
+        print("updateMembership(): memberResourceIDsToAdd=%s" % (memberResourceIDsToAdd, ))
+        for memberResourceIDToAdd in memberResourceIDsToAdd:
+            (yield self._insertGroupQuery.on(
+            self._txn,
+            groupID=group._resourceID,
+            memberID=memberResourceIDToAdd,
+            ))
+
+
+    @inlineCallbacks
+    def addOrUpdateRecord(self, record):
+        print("yyy addOrUpdateRecord() leg")
+        bindMode = {'read-only': _BIND_MODE_READ,
+                    'read-write': _BIND_MODE_WRITE}[record.access]
+        bindStatus = {
+            "NEEDS-ACTION": _BIND_STATUS_INVITED,
+            "ACCEPTED": _BIND_STATUS_ACCEPTED,
+            "DECLINED": _BIND_STATUS_DECLINED,
+            "INVALID": _BIND_STATUS_INVALID,
+        }[record.state]
+        shareeHome = yield self._getHomeWithUID(record.principalUID)
+        rows = yield self._idsForInviteUID.on(self._txn,
+                                              inviteuid=record.inviteuid)
+        
+        # FIXME: Do the BIND table query before the INVITE table query because BIND currently has proper
+        # constraints in place, whereas INVITE does not. Really we need to do this in a sub-transaction so
+        # we can roll back if any one query fails.
+        if rows:
+            print("xxx addOrUpdateRecord() leg rows=%s" % (rows,))
+            [[resourceID, homeResourceID]] = rows
+            yield self._updateBindQuery.on(
+                self._txn,
+                mode=bindMode, status=bindStatus, message=record.summary,
+                resourceID=resourceID, homeID=homeResourceID
+            )
+            yield self._updateInviteQuery.on(
+                self._txn, name=record.name, uid=record.inviteuid
+            )
+        else:
+            
+            #update membership
+            (yield self.updateMembership(self._collection))
+                
+                
+            
+                        
+            
+            #get members in address book
+            print("xxx addOrUpdateRecord(): self._collection = %s" % (self._collection,))
+             
+            print("xxx _insertBindQuery(): homeID = %s" % (shareeHome._resourceID,))
+            print("xxx _insertBindQuery(): resourceID = %s" % (self._collection._parentCollection._resourceID,))
+            print("xxx _insertBindQuery(): resourceName = %s" % (record.inviteuid,))
+            print("xxx _insertBindQuery(): mode = %s" % (bindMode,))
+            print("xxx _insertBindQuery(): status = %s" % (bindStatus,))
+            print("xxx _insertBindQuery(): message = %s" % (record.summary,))            
+            bindIDRow = (yield self._insertBindQueryReturningBindID.on(
+                self._txn,
+                homeID=shareeHome._resourceID,
+                resourceID=self._collection._parentCollection._resourceID,
+                resourceName=record.inviteuid,
+                mode=bindMode,
+                status=bindStatus,
+                message=record.summary
+            ))
+            
+            [[bindID]] = bindIDRow
+            print("xxx _insertGroupBindQuery(): groupID = %s" % (self._collection._resourceID,))
+            print("xxx _insertGroupBindQuery(): bindID = %s" % (bindID,))
+            yield self._insertGroupBindQuery.on(
+                self._txn,
+                groupID=self._collection._resourceID,
+                addressbookBindID=bindID,
+            )
+            print("xxx _insertInviteQuery(): uid = %s" % (record.inviteuid,))
+            print("xxx _insertInviteQuery(): name = %s" % (record.name,))
+            print("xxx _insertInviteQuery(): homeID = %s" % (shareeHome._resourceID,))
+            print("xxx _insertInviteQuery(): resourceID = %s" % (self._collection._parentCollection._resourceID,))
+            yield self._insertInviteQuery.on(
+                self._txn, uid=record.inviteuid, 
+                name=record.name,
+                homeID=shareeHome._resourceID,
+                resourceID=self._collection._parentCollection._resourceID,
+                recipient=record.userid
+            )
+        
+        # Must send notification to ensure cache invalidation occurs
+        #self._collection.notifyChanged()
+        self._collection._parentCollection.notifyChanged()
+
+
 
 class SQLLegacyShares(object):
 

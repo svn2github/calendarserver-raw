@@ -40,7 +40,7 @@ from twistedcaldav.vcard import Component as VCard, InvalidVCardDataError
 
 from txdav.common.datastore.sql_legacy import \
     PostgresLegacyABIndexEmulator, SQLLegacyAddressBookInvites,\
-    SQLLegacyAddressBookShares
+    SQLLegacyAddressBookShares, SQLLegacySharedGroupInvites
 
 from txdav.carddav.datastore.util import validateAddressBookComponent
 from txdav.carddav.iaddressbookstore import IAddressBookHome, IAddressBook,\
@@ -60,7 +60,25 @@ from txdav.common.datastore.sql_tables import ADDRESSBOOK_TABLE,\
     ADDRESSBOOK_OBJECT_REVISIONS_AND_BIND_TABLE, schema
 from txdav.base.propertystore.base import PropertyName
 
+from twext.internet.decorate import memoizedKey
+from twisted.internet.defer import succeed
+from txdav.common.icommondatastore import HomeChildNameNotAllowedError
 
+from txdav.base.propertystore.sql import PropertyStore
+from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
+    _BIND_STATUS_ACCEPTED
+
+from twext.enterprise.dal.syntax import Delete, utcNowSQL
+from twext.enterprise.dal.syntax import Insert
+from twext.enterprise.dal.syntax import Max
+from twext.enterprise.dal.syntax import Parameter
+from twext.enterprise.dal.syntax import Select
+from twext.enterprise.dal.syntax import Update
+
+from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
+    HomeChildNameAlreadyExistsError, NoSuchHomeChildError, ObjectResourceNameAlreadyExistsError, \
+    NoSuchObjectResourceError
+from twext.python.clsprop import classproperty
 
 class AddressBookHome(CommonHome):
 
@@ -218,8 +236,429 @@ class AddressBook(CommonHomeChild):
         """
         return MimeType.fromString("text/vcard; charset=utf-8")
 
+    @classmethod
+    @inlineCallbacks
+    def loadAllObjects(cls, home, owned):
+        print("xxx AddressBook.loadAllObjects() cls=%s" % (cls,))
+        """
+        Load all child objects and return a list of them. This must create the
+        child classes and initialize them using "batched" SQL operations to keep
+        this constant wrt the number of children. This is an optimization for
+        Depth:1 operations on the home.
+        """
+        results = []
+
+        # Load from the main table first
+        if owned:
+            query = cls._ownedHomeChildrenQuery
+        else:
+            query = cls._sharedHomeChildrenQuery
+        dataRows = (yield query.on(home._txn, resourceID=home._resourceID))
+        print("xxx AddressBook.loadAllObjects() dataRows=%s" % (dataRows,))
+
+        if dataRows:
+            # Get property stores for all these child resources (if any found)
+            propertyStores = (yield PropertyStore.forMultipleResources(
+                home.uid(), home._txn,
+                cls._bindSchema.RESOURCE_ID, cls._bindSchema.HOME_RESOURCE_ID,
+                home._resourceID
+            ))
+
+            bind = cls._bindSchema
+            rev = cls._revisionsSchema
+            if owned:
+                ownedCond = bind.BIND_MODE == _BIND_MODE_OWN
+            else:
+                ownedCond = bind.BIND_MODE != _BIND_MODE_OWN
+            revisions = (yield Select(
+                [rev.RESOURCE_ID, Max(rev.REVISION)],
+                From=rev.join(bind, rev.RESOURCE_ID == bind.RESOURCE_ID, 'left'),
+                Where=(bind.HOME_RESOURCE_ID == home._resourceID).
+                    And(ownedCond).
+                    And((rev.RESOURCE_NAME != None).Or(rev.DELETED == False)),
+                GroupBy=rev.RESOURCE_ID
+            ).on(home._txn))
+            revisions = dict(revisions)
+            
+        
+ 
+        # Create the actual objects merging in properties
+        for items in dataRows:
+            resourceID, resource_name, groupBindID = items[:3]
+            
+            print("xxx AddressBook.loadAllObjects() groupBindID=%s" % (groupBindID,))
+            
+            child = None
+            if not owned:
+                
+                bind = schema.GROUP_BIND
+                groupIDRows = (yield Select([bind.GROUP_ID,],
+                     From=bind,
+                     Where=(bind.ADDRESSBOOK_BIND_ID == groupBindID)).on(home._txn))
+                
+                print("xxx AddressBook.loadAllObjects() groupIDRows=%s" % (groupIDRows,))
+                
+                if groupIDRows:
+                    [groupIDs] = groupIDRows
+                    
+                    for groupID in groupIDs:
+                        
+                        #debug, print group members
+                        bind = schema.GROUP_MEMBERSHIP
+                        memberRows = (yield Select([bind.MEMBER_ID,],
+                                      From=bind,
+                                      Where=bind.GROUP_ID == groupID).on(home._txn))
+                    
+                        print("xxx AddressBook.loadAllObjects() for groupID=%s" % (memberRows,))
+                   
+                        child = GroupAddressBook(home, resource_name, resourceID, groupIDs)
+            
+            if not child:
+                child = cls(home, resource_name, resourceID, owned)
+            
+            metadata = items[3:]
+            for attr, value in zip(cls.metadataAttributes(), metadata):
+                setattr(child, attr, value)
+            child._syncTokenRevision = revisions[resourceID]
+            propstore = propertyStores.get(resourceID, None)
+            yield child._loadPropertyStore(propstore)
+            results.append(child)
+        returnValue(results)
+
+    @classmethod
+    def _homeChildLookup(cls, ownedPart):
+        """
+        Common portions of C{_ownedResourceIDByName}
+        C{_resourceIDSharedToHomeByName}, except for the 'owned' fragment of the
+        Where clause, supplied as an argument.
+        
+        ADDED return of bind.GROUP_BIND_ID for shared groups
+        """
+        bind = cls._bindSchema
+        return Select(
+            [bind.RESOURCE_ID, bind.GROUP_BIND_ID,],
+            From=bind,
+            Where=(bind.RESOURCE_NAME == Parameter('objectName')).And(
+                   bind.HOME_RESOURCE_ID == Parameter('homeID')).And(
+                    ownedPart))
+
+    @classproperty
+    def _resourceIDOwnedByHomeByName(cls): #@NoSelf
+        print("xxx AddressBook._resourceIDOwnedByHomeByName() cls=%s" % (cls,))
+        """
+        DAL query to look up an object resource ID owned by a home, given a
+        resource name (C{objectName}), and a home resource ID
+        (C{homeID}).
+        """
+        return cls._homeChildLookup(
+            cls._bindSchema.BIND_MODE == _BIND_MODE_OWN)
 
 
+    @classproperty
+    def _resourceIDSharedToHomeByName(cls): #@NoSelf
+        print("xxx AddressBook._resourceIDSharedToHomeByName() cls=%s" % (cls,))
+        """
+        DAL query to look up an object resource ID shared to a home, given a
+        resource name (C{objectName}), and a home resource ID
+        (C{homeID}).
+        """
+        return cls._homeChildLookup(
+            (cls._bindSchema.BIND_MODE != _BIND_MODE_OWN).And(
+                cls._bindSchema.BIND_STATUS == _BIND_STATUS_ACCEPTED))
+
+    @classmethod
+    @inlineCallbacks
+    def objectWithName(cls, home, name, owned):
+        print("xxx AddressBook.objectWithName() cls=%s, home=%s, name=%s, owned=%s" % (cls, home, name, owned,))
+        """
+        Retrieve the child with the given C{name} contained in the given
+        C{home}.
+
+        @param home: a L{CommonHome}.
+
+        @param name: a string; the name of the L{CommonHomeChild} to retrieve.
+
+        @param owned: a boolean - whether or not to get a shared child
+        @return: an L{CommonHomeChild} or C{None} if no such child
+            exists.
+        """
+        data = None
+        queryCacher = home._txn.store().queryCacher
+        # Only caching non-shared objects so that we don't need to invalidate
+        # in sql_legacy
+        if owned and queryCacher:
+            # Retrieve data from cache
+            cacheKey = queryCacher.keyForObjectWithName(home._resourceID, name)
+            data = yield queryCacher.get(cacheKey)
+
+        if data is None:
+            # No cached copy
+            if owned:
+                query = cls._resourceIDOwnedByHomeByName
+            else:
+                query = cls._resourceIDSharedToHomeByName
+            data = yield query.on(home._txn,
+                                  objectName=name, homeID=home._resourceID)
+            if owned and data and queryCacher:
+                # Cache the result
+                queryCacher.setAfterCommit(home._txn, cacheKey, data)
+
+        print("xxx AddressBook.objectWithName() data=%s name=%s" % (data, name,))
+        #traceback.print_exc()
+        
+        didGroupAddressbookQuery = False
+        if not data and owned:
+            data = yield cls._resourceIDSharedToHomeByName.on(home._txn,
+                                  objectName=name, homeID=home._resourceID)
+
+            print("xxx AddressBook.objectWithName() SHARED data=%s name=%s" % (data, name,))
+            didGroupAddressbookQuery = True
+            
+        if not data:
+            returnValue(None)
+
+        resourceID, groupBindID = data[0]
+        
+        bind = schema.GROUP_BIND
+        groupIDRows = (yield Select([bind.GROUP_ID,],
+             From=bind,
+             Where=(bind.ADDRESSBOOK_BIND_ID == groupBindID)).on(home._txn))
+        
+        print("xxx AddressBook.objectWithName() memberIDRows=%s name=%s" % (groupIDRows, name,))
+        
+        if groupIDRows:
+            child = GroupAddressBook(home, name, resourceID, groupIDRows[0][0])
+        elif didGroupAddressbookQuery:
+            child = None
+        else:
+            child = cls(home, name, resourceID, owned)
+            
+        if child:
+            yield child.initFromStore()
+        returnValue(child)
+
+
+
+
+class GroupAddressBook(AddressBook):
+    """
+    Implementation of L{IAddressBook} for shared group address books
+    """
+    implements(IAddressBook)
+
+
+    def __init__(self, home, name, resourceID, groupID):
+        """
+        Initialize an addressbook pointing at a path on disk.
+
+        @param name: the subdirectory of addressbookHome where this addressbook
+            resides.
+        @type name: C{str}
+
+        @param addressbookHome: the home containing this addressbook.
+        @type addressbookHome: L{AddressBookHome}
+
+        @param realName: If this addressbook was just created, the name which it
+        will eventually have on disk.
+        @type realName: C{str}
+        """
+
+        super(GroupAddressBook, self).__init__(home, name, resourceID, False)
+        print("xxx GroupAddressBook.__init__() self=%s, memberIDs=%s" % (self, groupID,))
+        self._objectResourceClass = GroupAddressBookObject
+
+        print("xxx GroupAddressBook.objectResources() self=%s, self._objectResourceClass=%s" % (self, self._objectResourceClass))
+
+        self._groupID = groupID
+
+
+    @classproperty
+    def _memberIDsForGroupIDQuery(cls): #@NoSelf
+        bind = schema.GROUP_MEMBERSHIP
+        return Select([bind.MEMBER_ID,],
+                      From=bind,
+                      Where=bind.GROUP_ID == Parameter("groupID"))
+
+
+
+
+    @classmethod
+    @inlineCallbacks
+    def listObjects(cls, home, owned):
+        print("xxx GroupAddressBook.listObjects() cls=%s" % (cls,))
+        """
+        Retrieve the names of the children that exist in the given home.
+
+        @return: an iterable of C{str}s.
+        """
+        # FIXME: tests don't cover this as directly as they should.
+        if owned:
+            rows = yield cls._ownedChildListQuery.on(
+                home._txn, resourceID=home._resourceID)
+        else:
+            rows = yield cls._sharedChildListQuery.on(
+                home._txn, resourceID=home._resourceID)
+        names = [row[0] for row in rows]
+        returnValue(names)
+
+
+    @classmethod
+    @inlineCallbacks
+    def objectWithName(cls, home, name, owned):
+        print("xxx GroupAddressBook.objectWithName() cls=%s" % (cls,))
+        """
+        Retrieve the child with the given C{name} contained in the given
+        C{home}.
+
+        @param home: a L{CommonHome}.
+
+        @param name: a string; the name of the L{CommonHomeChild} to retrieve.
+
+        @param owned: a boolean - whether or not to get a shared child
+        @return: an L{CommonHomeChild} or C{None} if no such child
+            exists.
+        """
+        data = None
+        queryCacher = home._txn.store().queryCacher
+        # Only caching non-shared objects so that we don't need to invalidate
+        # in sql_legacy
+        if owned and queryCacher:
+            # Retrieve data from cache
+            cacheKey = queryCacher.keyForObjectWithName(home._resourceID, name)
+            data = yield queryCacher.get(cacheKey)
+
+        if data is None:
+            # No cached copy
+            if owned:
+                query = cls._resourceIDOwnedByHomeByName
+            else:
+                query = cls._resourceIDSharedToHomeByName
+            data = yield query.on(home._txn,
+                                  objectName=name, homeID=home._resourceID)
+            if owned and data and queryCacher:
+                # Cache the result
+                queryCacher.setAfterCommit(home._txn, cacheKey, data)
+
+        if not data:
+            returnValue(None)
+
+        resourceID = data[0][0]
+        child = cls(home, name, resourceID, owned)
+        yield child.initFromStore()
+        returnValue(child)
+
+
+    @classmethod
+    @inlineCallbacks
+    def objectWithID(cls, home, resourceID):
+        print("xxx GroupAddressBook.objectWithID() cls=%s" % (cls,))
+        """
+        Retrieve the child with the given C{resourceID} contained in the given
+        C{home}.
+
+        @param home: a L{CommonHome}.
+        @param resourceID: a string.
+        @return: an L{CommonHomeChild} or C{None} if no such child
+            exists.
+        """
+        data = yield cls._homeChildByIDQuery.on(
+            home._txn, resourceID=resourceID, homeID=home._resourceID)
+        if not data:
+            returnValue(None)
+        
+        # TODO: filter here
+            
+        name, mode = data[0]
+        child = cls(home, name, resourceID, mode == _BIND_MODE_OWN)
+        yield child.initFromStore()
+        returnValue(child)
+
+    
+    @classproperty
+    def _objectResourceNamesAndIDsQuery(cls): #@NoSelf
+        """
+        DAL query to load all object resource names for a home child.
+        """
+        obj = cls._objectSchema
+        return Select([obj.RESOURCE_NAME, obj.RESOURCE_ID], From=obj,
+                      Where=obj.PARENT_RESOURCE_ID == Parameter('resourceID'))
+
+    @inlineCallbacks
+    def allowedChildResourceIDs(self):
+        print("xxx GroupAddressBook.allowedChildResourceIDs() self=%s" % (self,))
+        groupMemberIDRows = yield self._memberIDsForGroupIDQuery.on(
+            self._txn, groupID=self._groupID)
+            
+        print("xxx GroupAddressBook.allowedChildResourceIDs(): groupMemberIDRows=%s" % (groupMemberIDRows,))
+        allowedChildResourceIDs = []
+        for groupMemberIDRow in groupMemberIDRows:
+            allowedChildResourceIDs += groupMemberIDRow
+        print("xxx GroupAddressBook.allowedChildResourceIDs(): allowedChildResourceIDs=%s" % (allowedChildResourceIDs,))
+        returnValue(allowedChildResourceIDs)
+
+
+    @inlineCallbacks
+    def listObjectResources(self):
+        print("xxx GroupAddressBook.listObjectResources() self=%s" % (self,))
+        if self._objectNames is None:
+        
+            # FIXME: this should be one query
+            rows = yield self._objectResourceNamesAndIDsQuery.on(
+                self._txn, resourceID=self._resourceID)
+            print("xxx GroupAddressBook.listObjectResources(): rows=%s" % (rows,))
+            
+            allowedChildResourceIDs = (yield self.allowedChildResourceIDs()) if rows else []
+            print("xxx GroupAddressBook.listObjectResources(): allowedChildResourceIDs=%s" % (allowedChildResourceIDs,))
+            
+            names = []
+            for row in rows:
+                print("xxx GroupAddressBook.listObjectResources(): row=%s" % (row,))
+                if row[1] in allowedChildResourceIDs:
+                    names += [row[0],]
+                
+            self._objectNames = sorted(names)
+            #self._objectNames = sorted([row[0] for row in rows])
+        print("xxx GroupAddressBook.listObjectResources(): self=%s returning=%s" % (self, self._objectNames,))
+        returnValue(self._objectNames)
+
+
+    @inlineCallbacks
+    def resourceNameForUID(self, uid):
+        print("xxx GroupAddressBook.resourceNameForUID() self=%s" % (self,))
+        try:
+            resource = self._objects[uid]
+            returnValue(resource.name() if resource else None)
+        except KeyError:
+            pass
+        rows = yield self._resourceNameForUIDQuery.on(
+            self._txn, uid=uid, resourceID=self._resourceID)
+        #FIXME: Filter
+
+        if rows:
+            returnValue(rows[0][0])
+        else:
+            self._objects[uid] = None
+            returnValue(None)
+
+    @inlineCallbacks
+    def resourceUIDForName(self, name):
+        print("xxx GroupAddressBook.resourceUIDForName() self=%s" % (self,))
+        try:
+            resource = self._objects[name]
+            returnValue(resource.uid() if resource else None)
+        except KeyError:
+            pass
+        rows = yield self._resourceUIDForNameQuery.on(
+            self._txn, name=name, resourceID=self._resourceID)
+        
+        #FIXME: Filter
+        if rows:
+            returnValue(rows[0][0])
+        else:
+            self._objects[name] = None
+            returnValue(None)
+
+ 
 class AddressBookObject(CommonObjectResource):
 
     implements(IAddressBookObject)
@@ -230,6 +669,7 @@ class AddressBookObject(CommonObjectResource):
     def __init__(self, addressbook, name, uid, resourceID=None, metadata=None):
 
         super(AddressBookObject, self).__init__(addressbook, name, uid, resourceID)
+        self._invites = SQLLegacySharedGroupInvites(self)
 
 
     @property
@@ -337,6 +777,94 @@ class AddressBookObject(CommonObjectResource):
         The content type of Addressbook objects is text/vcard.
         """
         return MimeType.fromString("text/vcard; charset=utf-8")
+
+
+    @inlineCallbacks
+    def isSharedGroup(self):
+        """
+        FIXME:
+        How do we tell?
+        A shared address book is marked with a property.  Should we do the same with a group when it is shared?
+        
+        Otherwise, we can find the sharees address book bind table and see if there are any binds to this group.
+        But that requires the sharee context.
+        """
+        self.log_info("isSharedGroup(), self = %s, _resourceID=%s returing True by default" % (self, self._resourceID,))
+        
+        
+        
+        #need this for now, yuk!
+        (yield None)
+        returnValue(True)
+
+    def retrieveOldInvites(self):
+        return self._invites
+        
+
+class GroupAddressBookObject(AddressBookObject):
+    """
+    Override of AddressBookObject that filters children of GroupAddressBook
+    """
+
+    @classmethod
+    @inlineCallbacks
+    def loadAllObjects(cls, parent):
+        print("xxx GroupAddressBookObject.loadAllObjects() cls=%s, parent=%s" % (cls, parent))
+        """
+        Load all child objects and return a list of them. This must create the
+        child classes and initialize them using "batched" SQL operations to keep
+        this constant wrt the number of children. This is an optimization for
+        Depth:1 operations on the collection.
+        """
+
+        results = []
+
+        # Load from the main table first
+        dataRows = yield cls._allColumnsWithParent.on(
+            parent._txn, parentID=parent._resourceID)
+            
+
+        #filter
+        print("xxx GroupAddressBookObject.loadAllObjects(): dataRows=%s" % dataRows)
+        if dataRows and hasattr(parent, "allowedChildResourceIDs"):
+
+            allowedChildResourceIDs = (yield parent.allowedChildResourceIDs())
+            print("xxx GroupAddressBookObject.loadAllObjects(): allowedChildResourceIDs=%s" % allowedChildResourceIDs)
+            
+            filteredDataRows = []
+            for dataRow in dataRows:
+                if dataRow[0] in allowedChildResourceIDs:
+                    filteredDataRows += [dataRow,]
+            
+            dataRows = filteredDataRows
+            print("xxx GroupAddressBookObject.loadAllObjects(): filteredDataRows=%s" % dataRows)
+           
+            
+
+        if dataRows:
+        
+            # Get property stores for all these child resources (if any found)
+            if parent.objectResourcesHaveProperties():
+                propertyStores =(yield PropertyStore.forMultipleResources(
+                    parent._home.uid(),
+                    parent._txn,
+                    cls._objectSchema.RESOURCE_ID,
+                    cls._objectSchema.PARENT_RESOURCE_ID,
+                    parent._resourceID
+                ))
+            else:
+                propertyStores = {}
+
+        # Create the actual objects merging in properties
+        for row in dataRows:
+            child = cls(parent, "", None)
+            child._initFromRow(tuple(row))
+            yield child._loadPropertyStore(
+                props=propertyStores.get(child._resourceID, None)
+            )
+            results.append(child)
+
+        returnValue(results)
 
 
 

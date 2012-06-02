@@ -32,7 +32,7 @@ from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import allDataFromStream, joinURL
 from txdav.xml import element
 
-from twisted.internet.defer import succeed, inlineCallbacks, DeferredList,\
+from twisted.internet.defer import inlineCallbacks, DeferredList,\
     returnValue
 
 from twistedcaldav import customxml, caldavxml
@@ -75,10 +75,11 @@ class SharedCollectionMixin(object):
     def upgradeToShare(self):
         """ Upgrade this collection to a shared state """
         
-        # Change resourcetype
-        rtype = self.resourceType()
-        rtype = element.ResourceType(*(rtype.children + (customxml.SharedOwner(),)))
-        self.writeDeadProperty(rtype)
+        if self.isCollection():
+        	# Change resourcetype
+            rtype = self.resourceType()
+            rtype = element.ResourceType(*(rtype.children + (customxml.SharedOwner(),)))
+            self.writeDeadProperty(rtype)
         
         # Create invites database
         self.invitesDB().create()
@@ -202,7 +203,10 @@ class SharedCollectionMixin(object):
     @inlineCallbacks
     def isShared(self, request):
         """ Return True if this is an owner shared calendar collection """
-        returnValue((yield self.isSpecialCollection(customxml.SharedOwner)))
+        if self.isCollection():
+            returnValue((yield self.isSpecialCollection(customxml.SharedOwner)))
+        else:
+            returnValue((yield self.isSharedGroup()))
 
 
     def setVirtualShare(self, shareePrincipal, share):
@@ -211,7 +215,11 @@ class SharedCollectionMixin(object):
         self._share = share
 
         if hasattr(self, "_newStoreObject"):
-            self._newStoreObject.setSharingUID(self._shareePrincipal.principalUID())
+            if hasattr(self._newStoreObject, "setSharingUID"): # FIXME:  skip this for now for groups
+                self._newStoreObject.setSharingUID(self._shareePrincipal.principalUID())
+            else:
+                print("xxx setVirtualShare() self=%s, shareePrincipal=%s, share=%s: skipping setSharingUID() " % (self, shareePrincipal, share,))
+               
 
 
     def isVirtualShare(self):
@@ -847,16 +855,47 @@ class SharedCollectionMixin(object):
         customxml.InviteReply: _xmlHandleInviteReply,          
     }
 
+    @inlineCallbacks
+    def isGroup(self):
+        try:
+            vCard = (yield self.vCard())
+        except AttributeError:
+            pass
+        else:
+            self.log_info("vCard = %s" % (vCard,))
+            if vCard.propertyValue("X-ADDRESSBOOKSERVER-KIND") == "group":
+                self.log_info("isGroup() returning True")
+                returnValue(True)
+        
+        self.log_info("isGroup() returning False")
+        returnValue(False)
+    
+
+    @inlineCallbacks
     def POST_handler_content_type(self, request, contentType):
         if self.isCollection():
             if contentType:
                 if contentType in self._postHandlers:
-                    return self._postHandlers[contentType](self, request)
+                    returnValue((yield self._postHandlers[contentType](self, request)))
                 else:
                     self.log_info("Get a POST of an unsupported content type on a collection type: %s" % (contentType,))
             else:
                 self.log_info("Get a POST with no content type on a collection")
-        return succeed(responsecode.FORBIDDEN)
+        elif (yield self.isGroup()):
+            if contentType:
+                if contentType in self._postHandlers:
+                    returnValue((yield self._postHandlers[contentType](self, request)))
+                else:
+                    self.log_info("Get a POST of an unsupported content type on a group type: %s" % (contentType,))
+            else:
+                self.log_info("Get a POST with no content type on a group")
+        
+        else:
+            self.log_info("Got POST on non-collection, non-group object: %s" % (self,))
+            
+        returnValue(responsecode.FORBIDDEN)
+
+
 
     _postHandlers = {
         ("application", "xml") : xmlRequestHandler,
@@ -1113,8 +1152,12 @@ class SharedHomeMixin(LinkFollowerMixIn):
         
         # Set per-user displayname or color to whatever was given
         sharedCollection.setVirtualShare(ownerPrincipal, share)
-        if displayname:
-            yield sharedCollection.writeProperty(element.DisplayName.fromString(displayname), request)
+        if sharedCollection.isCollection():
+            if displayname:
+                yield sharedCollection.writeProperty(element.DisplayName.fromString(displayname), request)
+        else:
+            print("xxx _acceptShare skipping set of display name")
+        
         if color:
             yield sharedCollection.writeProperty(customxml.CalendarColor.fromString(color), request)
 

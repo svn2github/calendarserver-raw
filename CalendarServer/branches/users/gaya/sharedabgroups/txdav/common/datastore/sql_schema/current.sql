@@ -349,6 +349,17 @@ create table ADDRESSBOOK (
 );
 
 
+--------------------------
+-- AddressBook Metadata --
+--------------------------
+
+create table ADDRESSBOOK_METADATA (
+  RESOURCE_ID integer   primary key references ADDRESSBOOK on delete cascade, -- implicit index
+  CREATED     timestamp default timezone('UTC', CURRENT_TIMESTAMP),
+  MODIFIED    timestamp default timezone('UTC', CURRENT_TIMESTAMP)
+);
+
+
 ----------------------
 -- AddressBook Bind --
 ----------------------
@@ -358,6 +369,7 @@ create table ADDRESSBOOK (
 create table ADDRESSBOOK_BIND (
   ADDRESSBOOK_HOME_RESOURCE_ID integer      not null references ADDRESSBOOK_HOME,
   ADDRESSBOOK_RESOURCE_ID      integer      not null references ADDRESSBOOK on delete cascade,
+  GROUP_BIND_ID                integer      primary key default nextval('RESOURCE_ID_SEQ'),
 
   -- An invitation which hasn't been accepted yet will not yet have a resource
   -- name, so this field may be null.
@@ -369,7 +381,7 @@ create table ADDRESSBOOK_BIND (
   SEEN_BY_SHAREE               boolean      not null,
   MESSAGE                      text,                  -- FIXME: xml?
 
-  primary key(ADDRESSBOOK_HOME_RESOURCE_ID, ADDRESSBOOK_RESOURCE_ID), -- implicit index
+  -- primary key(ADDRESSBOOK_HOME_RESOURCE_ID, ADDRESSBOOK_RESOURCE_ID), -- implicit index
   unique(ADDRESSBOOK_HOME_RESOURCE_ID, ADDRESSBOOK_RESOURCE_NAME)     -- implicit index
 );
 
@@ -391,26 +403,28 @@ create table ADDRESSBOOK_OBJECT (
 );
 
 --------------------------
--- Shared Group --
+-- Shared Group Members --
 --------------------------
 
-create table ADDRESSBOOK_GROUP_MEMBER (
+create table GROUP_MEMBERSHIP (
     GROUP_ID              integer      references ADDRESSBOOK_OBJECT, 
-    MEMBER                integer      references ADDRESSBOOK_OBJECT,
-    primary key(GROUP_ID, MEMBER) -- implicit index
+    MEMBER_ID             integer      references ADDRESSBOOK_OBJECT,
+    primary key(GROUP_ID, MEMBER_ID) -- implicit index
 );
 
---------------------------
--- AddressBook Metadata --
---------------------------
 
-create table ADDRESSBOOK_METADATA (
-  RESOURCE_ID   integer     primary key references ADDRESSBOOK on delete cascade, -- implicit index
-  GROUP_ID      integer     references ADDRESSBOOK_OBJECT, -- shared group
-  CREATED       timestamp   default timezone('UTC', CURRENT_TIMESTAMP),
-  MODIFIED      timestamp   default timezone('UTC', CURRENT_TIMESTAMP)
+--------------------------------
+-- Shared Address Book Groups --
+--------------------------------
+
+create table GROUP_BIND (
+    ADDRESSBOOK_BIND_ID             integer      references ADDRESSBOOK_BIND, 
+    GROUP_ID integer,    -- temporary, should use line below when parser is fixed
+--  GROUP_ID integer      references GROUP_MEMBERSHIP(GROUP_ID),
+--  or add the following line
+--  foreign key(GROUP_ID) references GROUP_MEMBERSHIP(GROUP_ID)
+    primary key(ADDRESSBOOK_BIND_ID, GROUP_ID) -- implicit index
 );
-
 
 ---------------
 -- Revisions --

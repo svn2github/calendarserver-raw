@@ -2160,6 +2160,18 @@ class AddressBookObjectResource(_CommonObjectResource):
 
     vCard = _CommonObjectResource.component
 
+    def isSharedGroup(self):
+        print("xxx isSharedGroup: self = %s, self._newStoreObject=%s" % (self, self._newStoreObject, ))
+    
+        return self._newStoreObject and self._newStoreObject.isSharedGroup()
+
+    def invitesDB(self):
+        """
+        Retrieve the new-style invites DB wrapper.
+        """
+        if not hasattr(self, "_invitesDB"):
+            self._invitesDB = self._newStoreObject.retrieveOldInvites()
+        return self._invitesDB
 
 class _NotificationChildHelper(object):
     """
