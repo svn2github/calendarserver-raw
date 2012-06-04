@@ -60,10 +60,6 @@ from txdav.common.datastore.sql_tables import ADDRESSBOOK_TABLE,\
     ADDRESSBOOK_OBJECT_REVISIONS_AND_BIND_TABLE, schema
 from txdav.base.propertystore.base import PropertyName
 
-from twext.internet.decorate import memoizedKey
-from twisted.internet.defer import succeed
-from txdav.common.icommondatastore import HomeChildNameNotAllowedError
-
 from txdav.base.propertystore.sql import PropertyStore
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
     _BIND_STATUS_ACCEPTED
@@ -75,9 +71,6 @@ from twext.enterprise.dal.syntax import Parameter
 from twext.enterprise.dal.syntax import Select
 from twext.enterprise.dal.syntax import Update
 
-from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
-    HomeChildNameAlreadyExistsError, NoSuchHomeChildError, ObjectResourceNameAlreadyExistsError, \
-    NoSuchObjectResourceError
 from twext.python.clsprop import classproperty
 
 class AddressBookHome(CommonHome):
@@ -427,7 +420,10 @@ class AddressBook(CommonHomeChild):
         print("xxx AddressBook.objectWithName() memberIDRows=%s name=%s" % (groupIDRows, name,))
         
         if groupIDRows:
-            child = GroupAddressBook(home, name, resourceID, groupIDRows[0][0])
+            groupIDs = [];
+            for groupIDRow in groupIDRows:
+                groupIDs.extend(groupIDRow)
+            child = GroupAddressBook(home, name, resourceID, groupIDs)
         elif didGroupAddressbookQuery:
             child = None
         else:
@@ -447,7 +443,7 @@ class GroupAddressBook(AddressBook):
     implements(IAddressBook)
 
 
-    def __init__(self, home, name, resourceID, groupID):
+    def __init__(self, home, name, resourceID, groupIDs):
         """
         Initialize an addressbook pointing at a path on disk.
 
@@ -464,12 +460,12 @@ class GroupAddressBook(AddressBook):
         """
 
         super(GroupAddressBook, self).__init__(home, name, resourceID, False)
-        print("xxx GroupAddressBook.__init__() self=%s, memberIDs=%s" % (self, groupID,))
+        print("xxx GroupAddressBook.__init__() self=%s, memberIDs=%s" % (self, groupIDs,))
         self._objectResourceClass = GroupAddressBookObject
 
         print("xxx GroupAddressBook.objectResources() self=%s, self._objectResourceClass=%s" % (self, self._objectResourceClass))
 
-        self._groupID = groupID
+        self._groupIDs = groupIDs
 
 
     @classproperty
@@ -585,24 +581,35 @@ class GroupAddressBook(AddressBook):
 
     @inlineCallbacks
     def allowedChildResourceIDs(self):
+        """
+            get the allowed resource ids for this group address book
+            TODO:
+                include subgroup member resource ids
+                return read-only/read-write members indication
+        """
+        
         print("xxx GroupAddressBook.allowedChildResourceIDs() self=%s" % (self,))
-        groupMemberIDRows = yield self._memberIDsForGroupIDQuery.on(
-            self._txn, groupID=self._groupID)
-            
-        print("xxx GroupAddressBook.allowedChildResourceIDs(): groupMemberIDRows=%s" % (groupMemberIDRows,))
         allowedChildResourceIDs = []
-        for groupMemberIDRow in groupMemberIDRows:
-            allowedChildResourceIDs += groupMemberIDRow
-        print("xxx GroupAddressBook.allowedChildResourceIDs(): allowedChildResourceIDs=%s" % (allowedChildResourceIDs,))
-        returnValue(allowedChildResourceIDs)
+        for groupID in tuple(self._groupIDs):
+            groupMemberIDRows = (yield self._memberIDsForGroupIDQuery.on(self._txn, groupID=groupID))
+                
+            print("xxx GroupAddressBook.allowedChildResourceIDs(): groupMemberIDRows=%s" % (groupMemberIDRows,))
+            for groupMemberIDRow in groupMemberIDRows:
+                allowedChildResourceIDs += groupMemberIDRow
+            print("xxx GroupAddressBook.allowedChildResourceIDs(): allowedChildResourceIDs=%s" % (allowedChildResourceIDs,))
+        returnValue(set(allowedChildResourceIDs))
 
 
     @inlineCallbacks
     def listObjectResources(self):
+        """
+            AddressBookObject.listObjectResources + filtering
+        """
+        
+        print("xxx GroupAddressBook.allowedChildResourceIDs() self=%s" % (self,))
         print("xxx GroupAddressBook.listObjectResources() self=%s" % (self,))
         if self._objectNames is None:
         
-            # FIXME: this should be one query
             rows = yield self._objectResourceNamesAndIDsQuery.on(
                 self._txn, resourceID=self._resourceID)
             print("xxx GroupAddressBook.listObjectResources(): rows=%s" % (rows,))
@@ -632,6 +639,7 @@ class GroupAddressBook(AddressBook):
             pass
         rows = yield self._resourceNameForUIDQuery.on(
             self._txn, uid=uid, resourceID=self._resourceID)
+        
         #FIXME: Filter
 
         if rows:
