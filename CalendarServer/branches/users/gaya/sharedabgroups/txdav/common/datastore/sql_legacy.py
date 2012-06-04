@@ -457,13 +457,6 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
     """
 
     @classproperty
-    def _childrenInAddressBookWithVCardUIDs(cls): #@NoSelf
-        bind = schema.ADDRESSBOOK_OBJECT
-        return Select([bind.RESOURCE_ID,],
-                      From=bind,
-                      Where=bind.ADDRESSBOOK_RESOURCE_ID == Parameter("addressbookID") and bind.VCARD_UID.In(Parameter("vcardUIDs")))
-
-    @classproperty
     def _childInAddressBookWithVCardUID(cls): #@NoSelf
         bind = schema.ADDRESSBOOK_OBJECT
         return Select([bind.RESOURCE_ID,],
@@ -595,7 +588,6 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
 
     @inlineCallbacks
     def addOrUpdateRecord(self, record):
-        print("yyy addOrUpdateRecord() leg")
         bindMode = {'read-only': _BIND_MODE_READ,
                     'read-write': _BIND_MODE_WRITE}[record.access]
         bindStatus = {
@@ -632,14 +624,14 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
                         
             
             #get members in address book
-            print("xxx addOrUpdateRecord(): self._collection = %s" % (self._collection,))
-             
-            print("xxx _insertBindQuery(): homeID = %s" % (shareeHome._resourceID,))
-            print("xxx _insertBindQuery(): resourceID = %s" % (self._collection._parentCollection._resourceID,))
-            print("xxx _insertBindQuery(): resourceName = %s" % (record.inviteuid,))
-            print("xxx _insertBindQuery(): mode = %s" % (bindMode,))
-            print("xxx _insertBindQuery(): status = %s" % (bindStatus,))
-            print("xxx _insertBindQuery(): message = %s" % (record.summary,))            
+            print("xxx addOrUpdateRecord(): self._collection=%s" % (self._collection,))
+            print("xxx _insertBindQuery(): homeID=%s, resourceID=%s, resourceName=%s, mode=%s, status=%s message=%s" 
+                                        % (shareeHome._resourceID, 
+                                            self._collection._parentCollection._resourceID, 
+                                            record.inviteuid, 
+                                            bindMode, 
+                                            bindStatus, 
+                                            record.summary,))            
             bindIDRow = (yield self._insertBindQueryReturningBindID.on(
                 self._txn,
                 homeID=shareeHome._resourceID,
@@ -651,17 +643,17 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
             ))
             
             [[bindID]] = bindIDRow
-            print("xxx _insertGroupBindQuery(): groupID = %s" % (self._collection._resourceID,))
-            print("xxx _insertGroupBindQuery(): bindID = %s" % (bindID,))
+            print("xxx _insertGroupBindQuery(): groupID=%s, bindID=%s" % (self._collection._resourceID, bindID,))
             yield self._insertGroupBindQuery.on(
                 self._txn,
                 groupID=self._collection._resourceID,
                 addressbookBindID=bindID,
             )
-            print("xxx _insertInviteQuery(): uid = %s" % (record.inviteuid,))
-            print("xxx _insertInviteQuery(): name = %s" % (record.name,))
-            print("xxx _insertInviteQuery(): homeID = %s" % (shareeHome._resourceID,))
-            print("xxx _insertInviteQuery(): resourceID = %s" % (self._collection._parentCollection._resourceID,))
+            print("xxx _insertInviteQuery(): uid=%s, name=%s, homeID=%s, resourceID=%s" 
+                                            % (record.inviteuid, 
+                                                record.name, 
+                                                shareeHome._resourceID, 
+                                                self._collection._parentCollection._resourceID,))
             yield self._insertInviteQuery.on(
                 self._txn, uid=record.inviteuid, 
                 name=record.name,
