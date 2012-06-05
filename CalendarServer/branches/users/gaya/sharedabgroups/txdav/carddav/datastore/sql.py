@@ -72,6 +72,8 @@ from twext.enterprise.dal.syntax import Select
 from twext.enterprise.dal.syntax import Update
 
 from twext.python.clsprop import classproperty
+from txdav.common.datastore.sql_tables import _BIND_MODE_READ
+
 
 class AddressBookHome(CommonHome):
 
@@ -285,26 +287,13 @@ class AddressBook(CommonHomeChild):
             if not owned:
                 
                 bind = schema.GROUP_BIND
-                groupIDRows = (yield Select([bind.GROUP_ID,],
+                groupIDRows = (yield Select([bind.GROUP_ID, bind.BIND_MODE],
                      From=bind,
                      Where=(bind.ADDRESSBOOK_BIND_ID == groupBindID)).on(home._txn))
                 
                 print("xxx AddressBook.loadAllObjects() groupIDRows=%s" % (groupIDRows,))
-                
                 if groupIDRows:
-                    [groupIDs] = groupIDRows
-                    
-                    for groupID in groupIDs:
-                        
-                        #debug, print group members
-                        bind = schema.GROUP_MEMBERSHIP
-                        memberRows = (yield Select([bind.MEMBER_ID,],
-                                      From=bind,
-                                      Where=bind.GROUP_ID == groupID).on(home._txn))
-                    
-                        print("xxx AddressBook.loadAllObjects() for groupID=%s" % (memberRows,))
-                   
-                        child = GroupAddressBook(home, resource_name, resourceID, groupIDs)
+                    child = GroupAddressBook(home, resource_name, resourceID, groupIDRows)
             
             if not child:
                 child = cls(home, resource_name, resourceID, owned)
@@ -413,17 +402,13 @@ class AddressBook(CommonHomeChild):
         resourceID, groupBindID = data[0]
         
         bind = schema.GROUP_BIND
-        groupIDRows = (yield Select([bind.GROUP_ID,],
+        groupIDRows = (yield Select([bind.GROUP_ID, bind.BIND_MODE,],
              From=bind,
              Where=(bind.ADDRESSBOOK_BIND_ID == groupBindID)).on(home._txn))
         
-        print("xxx AddressBook.objectWithName() memberIDRows=%s name=%s" % (groupIDRows, name,))
-        
+        print("xxx AddressBook.objectWithName() groupIDRows=%s name=%s" % (groupIDRows, name,))
         if groupIDRows:
-            groupIDs = [];
-            for groupIDRow in groupIDRows:
-                groupIDs.extend(groupIDRow)
-            child = GroupAddressBook(home, name, resourceID, groupIDs)
+            child = GroupAddressBook(home, name, resourceID, groupIDRows)
         elif didGroupAddressbookQuery:
             child = None
         else:
@@ -443,7 +428,7 @@ class GroupAddressBook(AddressBook):
     implements(IAddressBook)
 
 
-    def __init__(self, home, name, resourceID, groupIDs):
+    def __init__(self, home, name, resourceID, groupIDBindModes):
         """
         Initialize an addressbook pointing at a path on disk.
 
@@ -460,12 +445,9 @@ class GroupAddressBook(AddressBook):
         """
 
         super(GroupAddressBook, self).__init__(home, name, resourceID, False)
-        print("xxx GroupAddressBook.__init__() self=%s, memberIDs=%s" % (self, groupIDs,))
         self._objectResourceClass = GroupAddressBookObject
-
-        print("xxx GroupAddressBook.objectResources() self=%s, self._objectResourceClass=%s" % (self, self._objectResourceClass))
-
-        self._groupIDs = groupIDs
+        self._groupIDBindModes = groupIDBindModes
+        print("xxx GroupAddressBook.__init__() self=%s, groupIDBindModes=%s" % (self, groupIDBindModes,))
 
 
     @classproperty
@@ -588,16 +570,23 @@ class GroupAddressBook(AddressBook):
                 return read-only/read-write members indication
         """
         
-        print("xxx GroupAddressBook.allowedChildResourceIDs() self=%s" % (self,))
-        allowedChildResourceIDs = []
-        for groupID in tuple(self._groupIDs):
+        print("xxx GroupAddressBook.allowedChildResourceIDs() self=%s, self._groupIDBindModes=%s" % (self, self._groupIDBindModes, ))
+        readonlyChildResourceIDs = []
+        readWriteChildResourceIDs = []
+        for groupID, bindMode in self._groupIDBindModes:
             groupMemberIDRows = (yield self._memberIDsForGroupIDQuery.on(self._txn, groupID=groupID))
-                
-            print("xxx GroupAddressBook.allowedChildResourceIDs(): groupMemberIDRows=%s" % (groupMemberIDRows,))
             for groupMemberIDRow in groupMemberIDRows:
-                allowedChildResourceIDs += groupMemberIDRow
-            print("xxx GroupAddressBook.allowedChildResourceIDs(): allowedChildResourceIDs=%s" % (allowedChildResourceIDs,))
-        returnValue(set(allowedChildResourceIDs))
+                if bindMode == _BIND_MODE_READ:
+                    readonlyChildResourceIDs.append(groupMemberIDRow[0])
+                else:
+                    readWriteChildResourceIDs.append(groupMemberIDRow[0])
+        
+        #debug, calc and print composite privs
+        readWriteChildResourceIDSet = set(readWriteChildResourceIDs);
+        readonlyChildResourceIDSet = set(readonlyChildResourceIDs).difference(readWriteChildResourceIDSet)
+        print("xxx GroupAddressBook.allowedChildResourceIDs(): readonlyChildResourceIDSet=%s, readWriteChildResourceIDSet=%s" % (readonlyChildResourceIDSet, readWriteChildResourceIDSet,))
+        
+        returnValue(set(readonlyChildResourceIDs + readWriteChildResourceIDs))
 
 
     @inlineCallbacks
@@ -606,7 +595,6 @@ class GroupAddressBook(AddressBook):
             AddressBookObject.listObjectResources + filtering
         """
         
-        print("xxx GroupAddressBook.allowedChildResourceIDs() self=%s" % (self,))
         print("xxx GroupAddressBook.listObjectResources() self=%s" % (self,))
         if self._objectNames is None:
         
@@ -619,7 +607,6 @@ class GroupAddressBook(AddressBook):
             
             names = []
             for row in rows:
-                print("xxx GroupAddressBook.listObjectResources(): row=%s" % (row,))
                 if row[1] in allowedChildResourceIDs:
                     names += [row[0],]
                 

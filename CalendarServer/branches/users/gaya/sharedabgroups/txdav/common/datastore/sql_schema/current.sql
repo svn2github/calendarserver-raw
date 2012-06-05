@@ -418,11 +418,10 @@ create table GROUP_MEMBERSHIP (
 --------------------------------
 
 create table GROUP_BIND (
-    ADDRESSBOOK_BIND_ID             integer      references ADDRESSBOOK_BIND, 
+    ADDRESSBOOK_BIND_ID          integer      references ADDRESSBOOK_BIND, 
     GROUP_ID integer,    -- temporary, should use line below when parser is fixed
 --  GROUP_ID integer      references GROUP_MEMBERSHIP(GROUP_ID),
---  or add the following line
---  foreign key(GROUP_ID) references GROUP_MEMBERSHIP(GROUP_ID)
+    BIND_MODE                    integer      not null, -- enum CALENDAR_BIND_MODE
     primary key(ADDRESSBOOK_BIND_ID, GROUP_ID) -- implicit index
 );
 

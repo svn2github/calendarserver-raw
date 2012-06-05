@@ -495,6 +495,7 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
             {
                 bind.ADDRESSBOOK_BIND_ID: Parameter("addressbookBindID"),
                 bind.GROUP_ID: Parameter("groupID"),
+                bind.BIND_MODE: Parameter("mode"),
             }
         )
         
@@ -604,7 +605,7 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
         # constraints in place, whereas INVITE does not. Really we need to do this in a sub-transaction so
         # we can roll back if any one query fails.
         if rows:
-            print("xxx addOrUpdateRecord() leg rows=%s" % (rows,))
+            print("xxx addOrUpdateRecord() rows=%s" % (rows,))
             [[resourceID, homeResourceID]] = rows
             yield self._updateBindQuery.on(
                 self._txn,
@@ -648,6 +649,7 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
                 self._txn,
                 groupID=self._collection._resourceID,
                 addressbookBindID=bindID,
+                mode=bindMode,
             )
             print("xxx _insertInviteQuery(): uid=%s, name=%s, homeID=%s, resourceID=%s" 
                                             % (record.inviteuid, 
