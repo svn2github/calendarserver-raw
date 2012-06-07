@@ -418,6 +418,9 @@ class AddressBook(CommonHomeChild):
             yield child.initFromStore()
         returnValue(child)
 
+    def objectResourcesHaveProperties(self):
+        print("xxx AddressBook.objectResourcesHaveProperties() self=%s" % (self,))
+        return True
 
 
 
@@ -777,24 +780,27 @@ class AddressBookObject(CommonObjectResource):
     @inlineCallbacks
     def isSharedGroup(self):
         """
-        FIXME:
-        How do we tell?
-        A shared address book is marked with a property.  Should we do the same with a group when it is shared?
-        
-        Otherwise, we can find the sharees address book bind table and see if there are any binds to this group.
-        But that requires the sharee context.
+        See if this group has a Group bind table
         """
-        self.log_info("isSharedGroup(), self = %s, _resourceID=%s returing True by default" % (self, self._resourceID,))
+        bind = schema.GROUP_BIND
+        groupIDRows = (yield Select([bind.ADDRESSBOOK_BIND_ID,],
+                        From=bind,
+                        Where=(bind.GROUP_ID == self._resourceID)).on(self._txn))
         
-        
-        
-        #need this for now, yuk!
-        (yield None)
-        returnValue(True)
+        # Could do some more validity checks here
+        result = bool(groupIDRows)
+        self.log_info("xxx AddressBookObject.isSharedGroup(), self = %s, groupIDRows=%s, result=%s" % (self, groupIDRows, result))
+        returnValue(result)
 
     def retrieveOldInvites(self):
         return self._invites
         
+
+    def setSharingUID(self, uid):
+        print("xxx AddressBookObject.setSharingUID self=%s" % (self,))
+        self.properties()._setPerUserUID(uid)
+
+
 
 class GroupAddressBookObject(AddressBookObject):
     """
