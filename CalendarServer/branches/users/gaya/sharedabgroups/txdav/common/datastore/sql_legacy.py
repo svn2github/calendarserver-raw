@@ -518,7 +518,7 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
         
     @inlineCallbacks
     def updateMembership(self, group):
-       # first off, get a group list
+        # first off, get a group list
         @inlineCallbacks
         def groupMemberUIDs(group):
             vCard = (yield group.component())
@@ -601,11 +601,14 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
         rows = yield self._idsForInviteUID.on(self._txn,
                                               inviteuid=record.inviteuid)
         
+        print("xxx addOrUpdateRecord(): self._collection=%s" % (self._collection,))
+
+        print("xxx addOrUpdateRecord() record.inviteuid=%s, rows=%s" % (record.inviteuid, rows,))
+
         # FIXME: Do the BIND table query before the INVITE table query because BIND currently has proper
         # constraints in place, whereas INVITE does not. Really we need to do this in a sub-transaction so
         # we can roll back if any one query fails.
         if rows:
-            print("xxx addOrUpdateRecord() rows=%s" % (rows,))
             [[resourceID, homeResourceID]] = rows
             yield self._updateBindQuery.on(
                 self._txn,
@@ -625,7 +628,6 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
                         
             
             #get members in address book
-            print("xxx addOrUpdateRecord(): self._collection=%s" % (self._collection,))
             print("xxx _insertBindQuery(): homeID=%s, resourceID=%s, resourceName=%s, mode=%s, status=%s message=%s" 
                                         % (shareeHome._resourceID, 
                                             self._collection._parentCollection._resourceID, 
@@ -669,6 +671,14 @@ class SQLLegacySharedGroupInvites(SQLLegacyAddressBookInvites):
         self._collection._parentCollection.notifyChanged()
 
 
+    @inlineCallbacks
+    def recordForPrincipalUID(self, principalUID):
+        rows = yield self._inviteForPrincipalUIDQuery.on(
+            self._txn,
+            resourceID=self._collection._parentCollection._resourceID,
+            principalUID=principalUID
+        )
+        returnValue(self._makeInvite(rows[0]) if rows else None)
 
 class SQLLegacyShares(object):
 
