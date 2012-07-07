@@ -2059,7 +2059,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @inlineCallbacks
-    def shareWith(self, shareeHome, mode):
+    def shareWith(self, shareeHome, mode, bindStatus=None, recipient=None):
         """
         Share this (owned) L{CommonHomeChild} with another home.
 
@@ -2070,13 +2070,21 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{_BIND_MODE_WRITE}.
         @type mode: L{str}
 
+        @param recipient: The sharing recipient if not "urn:uuid:" + shareeHome.uid()
+        @type recipient: L{str}
+
         @return: the name of the shared calendar in the new calendar home.
         @rtype: L{str}
         """
+        
+        # recipient is needed for current legacy invites
+        if recipient is None:
+            recipient = "urn:uuid:" + shareeHome.uid()
+
         dn = PropertyName.fromElement(DisplayName)
         dnprop = (self.properties().get(dn) or
                   DisplayName.fromString(self.name()))
-        # FIXME: honor current home type
+
         @inlineCallbacks
         def doInsert(subt):
             newName = str(uuid4())
@@ -2089,7 +2097,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             yield self._insertInviteQuery.on(
                 subt, uid=newName, name=str(dnprop),
                 homeID=shareeHome._resourceID, resourceID=self._resourceID,
-                recipient=shareeHome.uid()
+                recipient=recipient
             )
             returnValue(newName)
         try:

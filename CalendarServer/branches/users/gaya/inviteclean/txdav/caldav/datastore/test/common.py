@@ -993,6 +993,12 @@ class CommonTests(CommonCommonTests):
         other = yield self.homeUnderTest(name=OTHER_HOME_UID)
         newCalName = yield cal.shareWith(other, _BIND_MODE_WRITE)
         self.sharedName = newCalName
+        # Use the legacy invite record to check INVITE table, RECIPIENT_ADDRESS (for now)
+        self.assertEqual(
+            [record.userid for record in
+             (yield cal.retrieveOldInvites().allRecords())],
+            ["urn:uuid:"+OTHER_HOME_UID,]
+        )        
         yield self.commit()
         normalCal = yield self.calendarUnderTest()
         otherHome = yield self.homeUnderTest(name=OTHER_HOME_UID)
