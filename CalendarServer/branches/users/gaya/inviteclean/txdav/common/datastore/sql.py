@@ -2059,7 +2059,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @inlineCallbacks
-    def shareWith(self, shareeHome, mode, bindStatus=None, recipient=None):
+    def shareWith(self, shareeHome, mode, recipient=None):
         """
         Share this (owned) L{CommonHomeChild} with another home.
 
