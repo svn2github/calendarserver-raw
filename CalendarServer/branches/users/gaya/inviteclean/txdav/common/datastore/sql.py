@@ -2131,6 +2131,17 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         @return: a L{Deferred} which will fire with the previously-used name.
         """
+        
+        # first delete the invite table row
+        inv = schema.INVITE
+        yield Delete(
+            From=inv,
+            Where=(inv.RESOURCE_ID == Parameter("resourceID"))
+                  .And(inv.HOME_RESOURCE_ID == Parameter("homeID")),
+        ).on(self._txn, resourceID=self._resourceID,
+             homeID=shareeHome._resourceID)
+        
+        #now delete the bind table row
         bind = self._bindSchema
         resourceName = (yield Delete(
             From=bind,
