@@ -558,10 +558,9 @@ class SharedCollectionMixin(object):
         principal = self.principalForCalendarUserAddress(userid)
         if not principal:
             returnValue(False)
-        
-        principalUID = principal.principalUID()
 
         # add code below to convert from "mailto:" + xxxx form of userid
+        # principalUID = principal.principalUID()
         # userid = "urn:uuid:" + principalUID
 
         # Acquire a memcache lock based on collection URL and sharee UID
