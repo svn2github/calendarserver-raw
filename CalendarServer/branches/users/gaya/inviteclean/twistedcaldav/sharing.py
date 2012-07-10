@@ -388,31 +388,6 @@ class SharedCollectionMixin(object):
 
         returnValue(element.ACL(*aces))
 
-    def validUserIDForShare(self, userid):
-        """
-        Test the user id to see if it is a valid identifier for sharing and
-        return a "normalized" form for our own use (e.g. convert mailto: to
-        urn:uuid).
-
-        @param userid: the userid to test
-        @type userid: C{str}
-        
-        @return: C{str} of normalized userid or C{None} if
-            userid is not allowed.
-        """
-        
-        # First try to resolve as a principal
-        principal = self.principalForCalendarUserAddress(userid)
-        if principal:
-            return principal.principalURL()
-        
-        # TODO: we do not support external users right now so this is being hard-coded
-        # off in spite of the config option.
-        #elif config.Sharing.AllowExternalUsers:
-        #    return userid
-        else:
-            return None
-
     @inlineCallbacks
     def validateInvites(self):
         """
@@ -421,7 +396,7 @@ class SharedCollectionMixin(object):
         
         records = yield self.invitesDB().allRecords()
         for record in records:
-            if self.validUserIDForShare(record.userid) is None and record.state != "INVALID":
+            if not self.principalForCalendarUserAddress(record.userid) and record.state != "INVALID":
                 record.state = "INVALID"
                 yield self.invitesDB().addOrUpdateRecord(record)
 
@@ -559,9 +534,7 @@ class SharedCollectionMixin(object):
         if not principal:
             returnValue(False)
 
-        # add code below to convert from "mailto:" + xxxx form of userid
-        # principalUID = principal.principalUID()
-        # userid = "urn:uuid:" + principalUID
+        principalUID = principal.principalUID()
 
         # Acquire a memcache lock based on collection URL and sharee UID
         # TODO: when sharing moves into the store this should be replaced
@@ -570,7 +543,7 @@ class SharedCollectionMixin(object):
         yield self._acquireLock(lock)
 
         try:
-            record = yield self.invitesDB().recordForUserID(userid)
+            record = yield self.invitesDB().recordForPrincipalUID(principalUID)
             if record:
                 result = (yield self.uninviteRecordFromShare(record, request))
             else:
@@ -750,7 +723,7 @@ class SharedCollectionMixin(object):
                     setDict[userid] = (cn, access, summary)
                 
                     # Validate each userid on add only
-                    (okusers if self.validUserIDForShare(userid) else badusers).add(userid)
+                    (okusers if self.principalForCalendarUserAddress(userid) else badusers).add(userid)
                 elif isinstance(item, customxml.InviteRemove):
                     userid, access = _handleInviteRemove(item)
                     removeDict[userid] = access
