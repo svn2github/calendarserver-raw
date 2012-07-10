@@ -60,6 +60,9 @@ class SharingTests(HomeTestCase):
         def principalURL(self):
             return self.path
         
+        def principalUID(self):
+            return self.record.guid
+        
         def displayName(self):
             return self.displayname
 

@@ -125,7 +125,7 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
-    def changeUserInviteState(self, request, inviteUID, principalURL, state, summary=None):
+    def changeUserInviteState(self, request, inviteUID, principalUID, state, summary=None):
         shared = (yield self.isShared(request))
         if not shared:
             raise HTTPError(ErrorResponse(
@@ -134,7 +134,6 @@ class SharedCollectionMixin(object):
                 "Invalid share",
             ))
         
-        principalUID = principalURL.split("/")[3]
         record = yield self.invitesDB().recordForInviteUID(inviteUID)
         if record is None or record.principalUID != principalUID:
             raise HTTPError(ErrorResponse(
@@ -414,32 +413,6 @@ class SharedCollectionMixin(object):
         else:
             return None
 
-    def validUserIDWithCommonNameForShare(self, userid, cn):
-        """
-        Validate user ID and find the common name.
-
-        @param userid: the userid to test
-        @type userid: C{str}
-        @param cn: default common name to use if principal has none
-        @type cn: C{str}
-        
-        @return: C{tuple} of C{str} of normalized userid or C{None} if
-            userid is not allowed, and appropriate common name.
-        """
-        
-        # First try to resolve as a principal
-        principal = self.principalForCalendarUserAddress(userid)
-        if principal:
-            return userid, principal.principalURL(), principal.displayName()
-        
-        # TODO: we do not support external users right now so this is being hard-coded
-        # off in spite of the config option.
-        #elif config.Sharing.AllowExternalUsers:
-        #    return userid, None, cn
-        else:
-            return None, None, None
-
-
     @inlineCallbacks
     def validateInvites(self):
         """
@@ -540,12 +513,15 @@ class SharedCollectionMixin(object):
     @inlineCallbacks
     def inviteSingleUserToShare(self, userid, cn, ace, summary, request):
         
-        # Validate userid and cn
-        userid, principalURL, cn = self.validUserIDWithCommonNameForShare(userid, cn)
-        
         # We currently only handle local users
-        if principalURL is None:
+        principal = self.principalForCalendarUserAddress(userid)
+        if not principal:
             returnValue(False)
+        
+        principalUID = principal.principalUID()
+        # add code below to convert from "mailto:" + xxxx form of userid
+        # userid = "urn:uuid:" + principalUID
+        cn = principal.displayName()
 
         # Acquire a memcache lock based on collection URL and sharee UID
         # TODO: when sharing moves into the store this should be replaced
@@ -555,7 +531,6 @@ class SharedCollectionMixin(object):
 
         try:
             # Look for existing invite and update its fields or create new one
-            principalUID = principalURL.split("/")[3]
             record = yield self.invitesDB().recordForPrincipalUID(principalUID)
             if record:
                 record.name = cn
@@ -579,6 +554,15 @@ class SharedCollectionMixin(object):
     @inlineCallbacks
     def uninviteSingleUserFromShare(self, userid, aces, request):
         # Cancel invites - we'll just use whatever userid we are given
+
+        principal = self.principalForCalendarUserAddress(userid)
+        if not principal:
+            returnValue(False)
+        
+        principalUID = principal.principalUID()
+
+        # add code below to convert from "mailto:" + xxxx form of userid
+        # userid = "urn:uuid:" + principalUID
 
         # Acquire a memcache lock based on collection URL and sharee UID
         # TODO: when sharing moves into the store this should be replaced
@@ -1214,7 +1198,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
         
         # Change state in sharer invite
         ownerPrincipal = (yield self.ownerPrincipal(request))
-        owner = ownerPrincipal.principalURL()
+        ownerPrincipalUID = ownerPrincipal.principalUID()
         sharedCollection = (yield request.locateResource(hostUrl))
         if sharedCollection is None:
             # Original shared collection is gone - nothing we can do except ignore it
@@ -1225,7 +1209,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
             ))
             
         # Change the record
-        yield sharedCollection.changeUserInviteState(request, replytoUID, owner, state, displayname)
+        yield sharedCollection.changeUserInviteState(request, replytoUID, ownerPrincipalUID, state, displayname)
 
         yield self.sendReply(request, ownerPrincipal, sharedCollection, state, hostUrl, replytoUID, displayname)
 
