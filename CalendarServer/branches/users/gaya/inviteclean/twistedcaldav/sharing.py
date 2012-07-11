@@ -496,6 +496,7 @@ class SharedCollectionMixin(object):
         principalUID = principal.principalUID()
         # add code below to convert from "mailto:" + xxxx form of userid
         # userid = "urn:uuid:" + principalUID
+        # NOTE: userid is currently ignored by Invite(), so change above is not needed
         cn = principal.displayName()
 
         # Acquire a memcache lock based on collection URL and sharee UID
@@ -859,7 +860,10 @@ class Invite(object):
     
     def __init__(self, inviteuid, userid, principalUID, common_name, access, state, summary):
         self.inviteuid = inviteuid
-        self.userid = userid
+        # self.userid = userid
+        # generate userid from principalUID
+        self.userid = "urn:uuid:" + principalUID
+        # TODO:  Get rid of userid completely.
         self.principalUID = principalUID
         self.name = common_name
         self.access = access
