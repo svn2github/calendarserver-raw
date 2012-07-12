@@ -147,7 +147,7 @@ class SharedCollectionMixin(object):
                 "Invalid share",
             ))
         
-        record = yield self.invitesDB().recordForInviteUID(inviteUID)
+        record = yield self._recordForInviteUID(inviteUID)
         if record is None or record.principalUID != principalUID:
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
@@ -328,7 +328,7 @@ class SharedCollectionMixin(object):
             # Invite shares use access mode from the invite
     
             # Get the invite for this sharee
-            invite = yield self.invitesDB().recordForInviteUID(
+            invite = yield self._recordForInviteUID(
                 self._share.shareuid
             )
             if invite is None:
@@ -499,6 +499,30 @@ class SharedCollectionMixin(object):
         returnValue("%s:%s" % (hosturl, userid))
 
     @inlineCallbacks
+    def _recordForPrincipalUID(self, principalUID):
+        """
+        replaces self.invitesDB().recordForPrincipalUID(principalUID)
+        """
+        records = yield self.invitesDB().allRecords()
+        for record in records:
+            if record.principalUID == principalUID:
+                returnValue(record)
+        returnValue(None)
+
+    @inlineCallbacks
+    def _recordForInviteUID(self, inviteUID):
+        """
+        replaces self.invitesDB().recordForInviteUID(inviteUID)
+        """
+        records = yield self.invitesDB().allRecords()
+        for record in records:
+            if record.inviteuid == inviteUID:
+                returnValue(record)
+        returnValue(None)
+            
+
+
+    @inlineCallbacks
     def inviteSingleUserToShare(self, userid, cn, ace, summary, request):
         
         # We currently only handle local users
@@ -519,7 +543,7 @@ class SharedCollectionMixin(object):
 
         try:
             # Look for existing invite and update its fields or create new one
-            record = yield self.invitesDB().recordForPrincipalUID(principalUID)
+            record = yield self._recordForPrincipalUID(principalUID)
             if record:
                 record.access = inviteAccessMapFromXML[type(ace)]
                 record.summary = summary
@@ -555,7 +579,7 @@ class SharedCollectionMixin(object):
         yield self._acquireLock(lock)
 
         try:
-            record = yield self.invitesDB().recordForPrincipalUID(principalUID)
+            record = yield self._recordForPrincipalUID(principalUID)
             if record:
                 result = (yield self.uninviteRecordFromShare(record, request))
             else:
@@ -573,10 +597,10 @@ class SharedCollectionMixin(object):
         sharee = self.principalForUID(record.principalUID)
         if sharee:
             if self.isCalendarCollection():
-                shareeHome = yield sharee.calendarHome(request)
+                shareeHomeResource = yield sharee.calendarHome(request)
             elif self.isAddressBookCollection():
-                shareeHome = yield sharee.addressBookHome(request)
-            yield shareeHome.removeShareByUID(request, record.inviteuid)
+                shareeHomeResource = yield sharee.addressBookHome(request)
+            yield shareeHomeResource.removeShareByUID(request, record.inviteuid)
     
             # If current user state is accepted then we send an invite with the new state, otherwise
             # we cancel any existing invites for the user
@@ -585,9 +609,19 @@ class SharedCollectionMixin(object):
             elif record:
                 record.state = "DELETED"
                 yield self.sendInvite(record, request)
-    
-        # Remove from database
-        yield self.invitesDB().removeRecordForInviteUID(record.inviteuid)
+                
+        # use new API
+        from twistedcaldav.directory.util import transactionFromRequest
+        transaction = transactionFromRequest(request, self._newStoreObject)
+        
+        if self.isCalendarCollection():
+            shareeHome = yield transaction.calendarHomeWithUID(record.principalUID, create=True)
+        elif self.isAddressBookCollection():
+            shareeHome = yield transaction.addressbookHomeWithUID(record.principalUID, create=True)
+
+        yield self._newStoreObject.unshareWith(shareeHome)
+        # old
+        # yield self.invitesDB().removeRecordForInviteUID(record.inviteuid)
         
         returnValue(True)            
 
@@ -607,7 +641,7 @@ class SharedCollectionMixin(object):
         # Locate notifications collection for user
         sharee = self.principalForUID(record.principalUID)
         if sharee is None:
-            raise ValueError("sharee is None but userid was valid before")
+            raise ValueError("sharee is None but principalUID was valid before")
         
         # We need to look up the resource so that the response cache notifier is properly initialized
         notificationResource = (yield request.locateResource(sharee.notificationURL()))
@@ -651,7 +685,7 @@ class SharedCollectionMixin(object):
         # Locate notifications collection for user
         sharee = self.principalForUID(record.principalUID)
         if sharee is None:
-            raise ValueError("sharee is None but userid was valid before")
+            raise ValueError("sharee is None but principalUID was valid before")
         notifications = (yield request.locateResource(sharee.notificationURL()))
         
         # Add to collections
