@@ -164,7 +164,7 @@ class SQLLegacyInvites(object):
                 .And(inv.RESOURCE_ID == bind.RESOURCE_ID)
                 .And(inv.HOME_RESOURCE_ID == home.RESOURCE_ID)
                 .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID)),
-            OrderBy=inv.NAME, Ascending=True
+            OrderBy=home.OWNER_UID, Ascending=True
         )
 
 
@@ -353,7 +353,7 @@ class SQLLegacyInvites(object):
                 resourceID=resourceID, homeID=homeResourceID
             )
             yield self._updateInviteQuery.on(
-                self._txn, name=record.name, uid=record.inviteuid
+                self._txn, name="name", uid=record.inviteuid
             )
         else:
             yield self._insertBindQuery.on(
@@ -366,10 +366,10 @@ class SQLLegacyInvites(object):
                 message=record.summary
             )
             yield self._insertInviteQuery.on(
-                self._txn, uid=record.inviteuid, name=record.name,
+                self._txn, uid=record.inviteuid, name="name",
                 homeID=shareeHome._resourceID,
                 resourceID=self._collection._resourceID,
-                recipient=record.userid
+                recipient="userid"
             )
         
         # Must send notification to ensure cache invalidation occurs

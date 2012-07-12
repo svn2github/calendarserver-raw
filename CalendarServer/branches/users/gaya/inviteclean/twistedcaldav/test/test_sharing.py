@@ -82,8 +82,6 @@ class SharingTests(HomeTestCase):
         self.patch(config.Sharing, "Enabled", True)
         self.patch(config.Sharing.Calendars, "Enabled", True)
 
-        CalDAVResource.validUserIDForShare = self._fakeValidUserID
-        CalDAVResource.validUserIDWithCommonNameForShare = self._fakeValidUserID
         CalDAVResource.sendInvite = lambda self, record, request: succeed(True)
         CalDAVResource.removeInvite = lambda self, record, request: succeed(True)
 
@@ -101,18 +99,6 @@ class SharingTests(HomeTestCase):
         )[0]
         returnValue(result)
 
-
-    def _fakeValidUserID(self, userid, *args):
-        if userid.startswith("/principals/"):
-            return userid
-        if userid.endswith("@example.com"):
-            principal = SharingTests.FakePrincipal(userid)
-            return principal.path if len(args) == 0 else (userid, principal.path, principal.displayname,)
-        else:
-            return None if len(args) == 0 else (None, None, None,)
-
-    def _fakeInvalidUserID(self, userid, *args):
-        return None if len(args) == 0 else (None, None, None,)
 
     @inlineCallbacks
     def _doPOST(self, body, resultcode = responsecode.OK):
@@ -531,16 +517,15 @@ class SharingTests(HomeTestCase):
             )
         ))
 
-        self.resource.validUserIDForShare = self._fakeInvalidUserID
-        self.resource.validUserIDWithCommonNameForShare = self._fakeInvalidUserID
         self.resource.principalForCalendarUserAddress = lambda cuaddr: None
+        self.resource.principalForUID = lambda principalUID: None
 
         propInvite = (yield self.resource.readProperty(customxml.Invite, None))
         self.assertEquals(self._clearUIDElementValue(propInvite), customxml.Invite(
             customxml.InviteUser(
                 customxml.UID.fromString(""),
                 davxml.HRef.fromString("urn:uuid:user01"),
-                customxml.CommonName.fromString("USER01"),
+                customxml.CommonName.fromString("user01"),
                 customxml.InviteAccess(customxml.ReadWriteAccess()),
                 customxml.InviteStatusInvalid(),
             )
