@@ -571,6 +571,7 @@ class SharedCollectionMixin(object):
             returnValue(False)
 
         principalUID = principal.principalUID()
+        userid = "urn:uuid:" + principalUID
 
         # Acquire a memcache lock based on collection URL and sharee UID
         # TODO: when sharing moves into the store this should be replaced
@@ -654,13 +655,15 @@ class SharedCollectionMixin(object):
             pass
         
         # Generate invite XML
+        userid = "urn:uuid:" + record.principalUID
+
         typeAttr = {'shared-type':self.sharedResourceType()}
         xmltype = customxml.InviteNotification(**typeAttr)
         xmldata = customxml.Notification(
             customxml.DTStamp.fromString(PyCalendarDateTime.getNowUTC().getText()),
             customxml.InviteNotification(
                 customxml.UID.fromString(record.inviteuid),
-                element.HRef.fromString("urn:uuid:" + record.principalUID),
+                element.HRef.fromString(userid),
                 inviteStatusMapToXML[record.state](),
                 customxml.InviteAccess(inviteAccessMapToXML[record.access]()),
                 customxml.HostURL(
