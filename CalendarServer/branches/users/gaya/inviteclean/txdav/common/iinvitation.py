@@ -22,12 +22,12 @@ from zope.interface.interface import Interface
 
 
 __all__ = [
-    "IInvite",
+    "IInvitation",
 ]
 
-class IInvite(Interface):
+class IInvitation(Interface):
     """
-    IInvite.  The state of the an invitation to a shared resource.
+    IInvitation.  The state of the an invitation to a shared resource.
     
     """
   
@@ -65,7 +65,7 @@ def shareeAccess():
 
 def state():
     """
-    Invite or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
+    Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
 
     @return: the invitation state
     @rtype: C{str}
