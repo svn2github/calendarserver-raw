@@ -15,10 +15,10 @@
 ##
 
 """
-Common invite interface
+Common invitation interface
 """
 
-from zope.interface.interface import Interface, Attribute
+from zope.interface.interface import Interface
 
 
 __all__ = [
@@ -27,12 +27,54 @@ __all__ = [
 
 class IInvite(Interface):
     """
-    Invite.  The state of the an invitation to a shared resource
-    """
+    Invite.  The state of the an invitation to a shared resource.
     
-    inviteUID = Attribute("""Unique identifier for this invitation.  Randomly generated.  @type: C{str}""")
-    shareeUID = Attribute("""Sharee's principal unique identifier.  @type: C{str}""")
-    sharerUID = Attribute("""Sharer's principal unique identifier.  @type: C{str}""")
-    sharerAccess = Attribute("""Sharer's access.  Currently, one of "own", "read-only", or "read-write".  @type: C{str}""")
-    state = Attribute("""Sharer's access.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".  @type: C{str}""")
-    summary = Attribute("""Sharee's summary of this shared resource's name, purpose, or description.  @type: C{str}""")
+    """
+  
+def uid():
+        """
+        Unique identifier for this invitation.  Randomly generated.
+
+        @return: the invite unique identifier
+        @rtype: C{str}
+        """
+
+def shareeUID():
+        """
+        Sharee's unique identifier.
+
+        @return: the Sharee's unique identifier.
+        @rtype: C{str}
+        """
+
+def sharerUID():
+        """
+        Sharer's unique identifier.
+
+        @return: the Sharer's unique identifier.
+        @rtype: C{str}
+        """
+
+def sharerAccess():
+        """
+        Sharer's access.  Currently, one of "own", "read-only", or "read-write".
+
+        @return: the Sharer's access to the shared resource
+        @rtype: C{str}
+        """
+
+def state():
+        """
+        Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
+
+        @return: the invitation state
+        @rtype: C{str}
+        """
+
+def summary():
+        """
+       The shared resource's name, purpose, or description.
+
+        @return: the summary
+        @rtype: C{str}
+        """
