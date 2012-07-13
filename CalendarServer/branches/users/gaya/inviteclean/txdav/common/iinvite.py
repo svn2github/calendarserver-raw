@@ -39,14 +39,6 @@ def uid():
     @rtype: C{str}
     """
 
-def shareeUID():
-    """
-    Sharee's unique identifier.
-
-    @return: the Sharee's unique identifier.
-    @rtype: C{str}
-    """
-
 def sharerUID():
     """
     Sharer's unique identifier.
@@ -55,11 +47,19 @@ def sharerUID():
     @rtype: C{str}
     """
 
-def sharerAccess():
+def shareeUID():
     """
-    Sharer's access.  Currently, one of "own", "read-only", or "read-write".
+    Sharee's unique identifier.
 
-    @return: the Sharer's access to the shared resource
+    @return: the Sharee's unique identifier.
+    @rtype: C{str}
+    """
+
+def shareeAccess():
+    """
+    Sharee's access.  Currently, one of "own", "read-only", or "read-write".
+
+    @return: the Sharee's access to the shared resource
     @rtype: C{str}
     """
 
