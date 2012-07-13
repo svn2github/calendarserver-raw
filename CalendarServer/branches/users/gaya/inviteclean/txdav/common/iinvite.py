@@ -27,54 +27,54 @@ __all__ = [
 
 class IInvite(Interface):
     """
-    Invite.  The state of the an invitation to a shared resource.
+    IInvite.  The state of the an invitation to a shared resource.
     
     """
   
 def uid():
-        """
-        Unique identifier for this invitation.  Randomly generated.
+    """
+    Unique identifier for this invitation.  Randomly generated.
 
-        @return: the invite unique identifier
-        @rtype: C{str}
-        """
+    @return: the invite unique identifier
+    @rtype: C{str}
+    """
 
 def shareeUID():
-        """
-        Sharee's unique identifier.
+    """
+    Sharee's unique identifier.
 
-        @return: the Sharee's unique identifier.
-        @rtype: C{str}
-        """
+    @return: the Sharee's unique identifier.
+    @rtype: C{str}
+    """
 
 def sharerUID():
-        """
-        Sharer's unique identifier.
+    """
+    Sharer's unique identifier.
 
-        @return: the Sharer's unique identifier.
-        @rtype: C{str}
-        """
+    @return: the Sharer's unique identifier.
+    @rtype: C{str}
+    """
 
 def sharerAccess():
-        """
-        Sharer's access.  Currently, one of "own", "read-only", or "read-write".
+    """
+    Sharer's access.  Currently, one of "own", "read-only", or "read-write".
 
-        @return: the Sharer's access to the shared resource
-        @rtype: C{str}
-        """
+    @return: the Sharer's access to the shared resource
+    @rtype: C{str}
+    """
 
 def state():
-        """
-        Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
+    """
+    Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
 
-        @return: the invitation state
-        @rtype: C{str}
-        """
+    @return: the invitation state
+    @rtype: C{str}
+    """
 
 def summary():
-        """
-       The shared resource's name, purpose, or description.
+    """
+   The shared resource's name, purpose, or description.
 
-        @return: the summary
-        @rtype: C{str}
+    @return: the summary
+    @rtype: C{str}
         """
