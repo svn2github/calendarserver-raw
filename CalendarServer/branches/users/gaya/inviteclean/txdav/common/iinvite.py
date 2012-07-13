@@ -73,8 +73,8 @@ def state():
 
 def summary():
     """
-   The shared resource's name, purpose, or description.
+    The shared resource's name, purpose, or description.
 
     @return: the summary
     @rtype: C{str}
-        """
+    """
