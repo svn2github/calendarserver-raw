@@ -65,22 +65,22 @@ class SharedCollectionMixin(object):
             
             def invitePropertyElement(record, includeUID=True):
 
-                userid = "urn:uuid:" + record.principalUID
-                principal = self.principalForUID(record.principalUID)
-                cn = principal.displayName() if principal else record.principalUID
+                userid = "urn:uuid:" + record.shareeUID()
+                principal = self.principalForUID(record.shareeUID())
+                cn = principal.displayName() if principal else record.shareeUID()
                 return customxml.InviteUser(
-                    customxml.UID.fromString(record.inviteuid) if includeUID else None,
+                    customxml.UID.fromString(record.uid()) if includeUID else None,
                     element.HRef.fromString(userid),
                     customxml.CommonName.fromString(cn),
-                    customxml.InviteAccess(inviteAccessMapToXML[record.access]()),
-                    inviteStatusMapToXML[record.state](),
+                    customxml.InviteAccess(inviteAccessMapToXML[record.shareeAccess()]()),
+                    inviteStatusMapToXML[record.state()](),
                 )
 
             # See if this property is on the shared calendar
             isShared = yield self.isShared(request)
             if isShared:
                 yield self.validateInvites()
-                records = yield self.invitesDB().allRecords()
+                records = yield self._allInvites()
                 returnValue(customxml.Invite(
                     *[invitePropertyElement(record) for record in records]
                 ))
@@ -89,7 +89,7 @@ class SharedCollectionMixin(object):
             if self.isVirtualShare():
                 original = (yield request.locateResource(self._share.hosturl))
                 yield original.validateInvites()
-                records = yield original.invitesDB().allRecords()
+                records = yield original._allInvites()
 
                 ownerPrincipal = (yield original.ownerPrincipal(request))
                 owner = ownerPrincipal.principalURL()
@@ -127,7 +127,7 @@ class SharedCollectionMixin(object):
         self.writeDeadProperty(rtype)
         
         # Remove all invitees
-        for record in (yield self.invitesDB().allRecords()):
+        for record in (yield self._allInvites()):
             yield self.uninviteRecordFromShare(record, request)
 
         # Remove invites database
@@ -147,8 +147,8 @@ class SharedCollectionMixin(object):
                 "Invalid share",
             ))
         
-        record = yield self._recordForInviteUID(inviteUID)
-        if record is None or record.principalUID != principalUID:
+        record = yield self._inviteForInviteUID(inviteUID)
+        if record is None or record.shareeUID() != principalUID:
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (customxml.calendarserver_namespace, "valid-request"),
@@ -156,11 +156,11 @@ class SharedCollectionMixin(object):
             ))
         
         # Only certain states are sharer controlled
-        if record.state in ("NEEDS-ACTION", "ACCEPTED", "DECLINED",):
-            record.state = state
+        if record.state() in ("NEEDS-ACTION", "ACCEPTED", "DECLINED",):
+            record._state = state
             if summary is not None:
-                record.summary = summary
-            yield self.invitesDB().addOrUpdateRecord(record)
+                record._summary = summary
+            yield self.invitesDB().addOrUpdateRecord(record.invite())
 
 
     @inlineCallbacks
@@ -328,12 +328,12 @@ class SharedCollectionMixin(object):
             # Invite shares use access mode from the invite
     
             # Get the invite for this sharee
-            invite = yield self._recordForInviteUID(
+            invite = yield self._inviteForInviteUID(
                 self._share.shareuid
             )
             if invite is None:
                 returnValue(element.ACL())
-            inviteAccess = invite.access
+            inviteAccess = invite.shareeAccess()
             
         userprivs = [
         ]
@@ -407,11 +407,11 @@ class SharedCollectionMixin(object):
         Make sure each userid in an invite is valid - if not re-write status.
         """
         
-        records = yield self.invitesDB().allRecords()
+        records = yield self._allInvites()
         for record in records:
-            if not self.principalForUID(record.principalUID) and record.state != "INVALID":
-                record.state = "INVALID"
-                yield self.invitesDB().addOrUpdateRecord(record)
+            if not self.principalForUID(record.shareeUID()) and record.state() != "INVALID":
+                record._state = "INVALID"
+                yield self.invitesDB().addOrUpdateRecord(record.invite())
 
 
     def inviteUserToShare(self, userid, cn, ace, summary, request):
@@ -497,28 +497,39 @@ class SharedCollectionMixin(object):
         """
         hosturl = (yield self.canonicalURL(request))
         returnValue("%s:%s" % (hosturl, userid))
+        
+    @inlineCallbacks
+    def _allInvites(self):
+        """
+        replaces self.invitesDB().allRecords()
+        """
+        records = yield self.invitesDB().allRecords()
+        invitations = [record.invitation() for record in records]
+        returnValue(invitations)
 
     @inlineCallbacks
-    def _recordForPrincipalUID(self, principalUID):
+    def _inviteForPrincipalUID(self, principalUID):
         """
         replaces self.invitesDB().recordForPrincipalUID(principalUID)
         """
-        records = yield self.invitesDB().allRecords()
+        records = yield self._allInvites()
         for record in records:
-            if record.principalUID == principalUID:
+            if record.shareeUID() == principalUID:
                 returnValue(record)
         returnValue(None)
 
+
     @inlineCallbacks
-    def _recordForInviteUID(self, inviteUID):
+    def _inviteForInviteUID(self, inviteUID):
         """
         replaces self.invitesDB().recordForInviteUID(inviteUID)
         """
-        records = yield self.invitesDB().allRecords()
+        records = yield self._allInvites()
         for record in records:
-            if record.inviteuid == inviteUID:
+            if record.uid() == inviteUID:
                 returnValue(record)
         returnValue(None)
+
             
 
 
@@ -543,18 +554,23 @@ class SharedCollectionMixin(object):
 
         try:
             # Look for existing invite and update its fields or create new one
-            record = yield self._recordForPrincipalUID(principalUID)
+            record = yield self._inviteForPrincipalUID(principalUID)
             if record:
-                record.access = inviteAccessMapFromXML[type(ace)]
-                record.summary = summary
+                record._shareeAccess = inviteAccessMapFromXML[type(ace)]
+                record._summary = summary
             else:
-                record = Invite(str(uuid4()), "userid", principalUID, "cn", inviteAccessMapFromXML[type(ace)], "NEEDS-ACTION", summary)
+                record = Invitation(uid=str(uuid4()), 
+                                    sharerUID=None, 
+                                    shareeUID=principalUID, 
+                                    shareeAccess=inviteAccessMapFromXML[type(ace)],
+                                    state="NEEDS-ACTION", 
+                                    summary=summary)
 
             # Send invite
             yield self.sendInvite(record, request)
 
             # Add to database
-            yield self.invitesDB().addOrUpdateRecord(record)
+            yield self.invitesDB().addOrUpdateRecord(record.invite())
 
         finally:
             lock.clean()
@@ -580,7 +596,7 @@ class SharedCollectionMixin(object):
         yield self._acquireLock(lock)
 
         try:
-            record = yield self._recordForPrincipalUID(principalUID)
+            record = yield self._inviteForPrincipalUID(principalUID)
             if record:
                 result = (yield self.uninviteRecordFromShare(record, request))
             else:
@@ -595,34 +611,36 @@ class SharedCollectionMixin(object):
     def uninviteRecordFromShare(self, record, request):
         
         # Remove any shared calendar or address book
-        sharee = self.principalForUID(record.principalUID)
+        sharee = self.principalForUID(record.shareeUID())
         if sharee:
             if self.isCalendarCollection():
                 shareeHomeResource = yield sharee.calendarHome(request)
             elif self.isAddressBookCollection():
                 shareeHomeResource = yield sharee.addressBookHome(request)
-            yield shareeHomeResource.removeShareByUID(request, record.inviteuid)
+            yield shareeHomeResource.removeShareByUID(request, record.uid())
     
             # If current user state is accepted then we send an invite with the new state, otherwise
             # we cancel any existing invites for the user
-            if record and record.state != "ACCEPTED":
+            if record and record.state() != "ACCEPTED":
                 yield self.removeInvite(record, request)
             elif record:
-                record.state = "DELETED"
+                record._state = "DELETED"
                 yield self.sendInvite(record, request)
-                
-        # use new API
-        from twistedcaldav.directory.util import transactionFromRequest
-        transaction = transactionFromRequest(request, self._newStoreObject)
         
-        if self.isCalendarCollection():
-            shareeHome = yield transaction.calendarHomeWithUID(record.principalUID, create=True)
-        elif self.isAddressBookCollection():
-            shareeHome = yield transaction.addressbookHomeWithUID(record.principalUID, create=True)
+        if hasattr(self._newStoreObject, "unshareWith"):
 
-        yield self._newStoreObject.unshareWith(shareeHome)
-        # old
-        # yield self.invitesDB().removeRecordForInviteUID(record.inviteuid)
+            from twistedcaldav.directory.util import transactionFromRequest
+            transaction = transactionFromRequest(request, self._newStoreObject)
+            
+            if self.isCalendarCollection():
+                shareeHome = yield transaction.calendarHomeWithUID(record.shareeUID(), create=True)
+            elif self.isAddressBookCollection():
+                shareeHome = yield transaction.addressbookHomeWithUID(record.shareeUID(), create=True)
+    
+            yield self._newStoreObject.unshareWith(shareeHome)
+        
+        else:
+            yield self.invitesDB().removeRecordForInviteUID(record.uid())
         
         returnValue(True)            
 
@@ -640,7 +658,7 @@ class SharedCollectionMixin(object):
         hosturl = (yield self.canonicalURL(request))
 
         # Locate notifications collection for user
-        sharee = self.principalForUID(record.principalUID)
+        sharee = self.principalForUID(record.shareeUID())
         if sharee is None:
             raise ValueError("sharee is None but principalUID was valid before")
         
@@ -649,23 +667,23 @@ class SharedCollectionMixin(object):
         notifications = notificationResource._newStoreNotifications
         
         # Look for existing notification
-        oldnotification = (yield notifications.notificationObjectWithUID(record.inviteuid))
+        oldnotification = (yield notifications.notificationObjectWithUID(record.uid()))
         if oldnotification:
             # TODO: rollup changes?
             pass
         
         # Generate invite XML
-        userid = "urn:uuid:" + record.principalUID
+        userid = "urn:uuid:" + record.shareeUID()
 
         typeAttr = {'shared-type':self.sharedResourceType()}
         xmltype = customxml.InviteNotification(**typeAttr)
         xmldata = customxml.Notification(
             customxml.DTStamp.fromString(PyCalendarDateTime.getNowUTC().getText()),
             customxml.InviteNotification(
-                customxml.UID.fromString(record.inviteuid),
+                customxml.UID.fromString(record.uid()),
                 element.HRef.fromString(userid),
-                inviteStatusMapToXML[record.state](),
-                customxml.InviteAccess(inviteAccessMapToXML[record.access]()),
+                inviteStatusMapToXML[record.state()](),
+                customxml.InviteAccess(inviteAccessMapToXML[record.shareeAccess()]()),
                 customxml.HostURL(
                     element.HRef.fromString(hosturl),
                 ),
@@ -673,26 +691,26 @@ class SharedCollectionMixin(object):
                     element.HRef.fromString(owner),
                     customxml.CommonName.fromString(ownerCN),
                 ),
-                customxml.InviteSummary.fromString(record.summary),
+                customxml.InviteSummary.fromString(record.summary()),
                 self.getSupportedComponentSet() if self.isCalendarCollection() else None,
                 **typeAttr
             ),
         ).toxml()
         
         # Add to collections
-        yield notifications.writeNotificationObject(record.inviteuid, xmltype, xmldata)
+        yield notifications.writeNotificationObject(record.uid(), xmltype, xmldata)
 
     @inlineCallbacks
     def removeInvite(self, record, request):
         
         # Locate notifications collection for user
-        sharee = self.principalForUID(record.principalUID)
+        sharee = self.principalForUID(record.shareeUID())
         if sharee is None:
             raise ValueError("sharee is None but principalUID was valid before")
         notifications = (yield request.locateResource(sharee.notificationURL()))
         
         # Add to collections
-        yield notifications.deleteNotifictionMessageByUID(request, record.inviteuid)
+        yield notifications.deleteNotifictionMessageByUID(request, record.uid())
 
     @inlineCallbacks
     def _xmlHandleInvite(self, request, docroot):
@@ -913,6 +931,95 @@ class Invite(object):
         self.state = state
         self.summary = summary
         
+    def invitation(self):
+        return Invitation(uid=self.inviteuid,
+                      sharerUID=None,
+                      shareeUID=self.principalUID, 
+                      shareeAccess=self.access,
+                      state=self.state,
+                      summary=self.summary, )
+   
+
+
+from zope.interface import implements
+from txdav.common.iinvitation import IInvitation
+
+class Invitation(object):
+    implements(IInvitation)
+
+    
+    def __init__(self, uid, sharerUID, shareeUID, shareeAccess, state, summary):
+        self._uid = uid
+        self._sharerUID = sharerUID
+        self._shareeUID = shareeUID
+        self._shareeAccess = shareeAccess
+        self._state = state
+        self._summary = summary
+
+    def invite(self):
+        return Invite(inviteuid=self.uid(), 
+                      userid="userid", 
+                      principalUID=self.shareeUID(), 
+                      common_name="common_name",
+                      access=self.shareeAccess(),
+                      state=self.state(),
+                      summary=self.summary() )
+                      
+    def uid(self):
+        """
+        Unique identifier for this record.  Randomly generated.
+    
+        @return: the invite unique identifier
+        @rtype: C{str}
+        """
+        return self._uid
+    
+    def sharerUID(self):
+        """
+        Sharer's unique identifier.
+    
+        @return: the Sharer's unique identifier.
+        @rtype: C{str}
+        """
+        return self._sharerUID
+    
+    def shareeUID(self):
+        """
+        Sharee's unique identifier.
+    
+        @return: the Sharee's unique identifier.
+        @rtype: C{str}
+        """
+        return self._shareeUID
+   
+    def shareeAccess(self):
+        """
+        Sharee's access.  Currently, one of "own", "read-only", or "read-write".
+    
+        @return: the Sharee's access to the shared resource
+        @rtype: C{str}
+        """
+        return self._shareeAccess
+    
+    def state(self):
+        """
+        Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
+    
+        @return: the record state
+        @rtype: C{str}
+        """
+        return self._state
+   
+    def summary(self):
+        """
+        The shared resource's name, purpose, or description.
+    
+        @return: the summary
+        @rtype: C{str}
+        """
+        return self._summary
+        
+    
 
 class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
     
