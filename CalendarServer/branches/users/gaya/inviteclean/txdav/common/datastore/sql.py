@@ -2115,6 +2115,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         shareeProps = yield PropertyStore.load(shareeHome.uid(), self._txn,
                                                self._resourceID)
         shareeProps[dn] = dnprop
+        
+        # Must send notification to ensure cache invalidation occurs
+        yield self.notifyChanged()
+
         returnValue(sharedName)
 
 
@@ -2151,6 +2155,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         ).on(self._txn, resourceID=self._resourceID,
              homeID=shareeHome._resourceID))[0][0]
         shareeHome._sharedChildren.pop(resourceName, None)
+        
+        # Must send notification to ensure cache invalidation occurs
+        yield self.notifyChanged()
+       
         returnValue(resourceName)
 
 
