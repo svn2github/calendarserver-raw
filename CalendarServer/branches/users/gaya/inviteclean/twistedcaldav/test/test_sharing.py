@@ -82,8 +82,8 @@ class SharingTests(HomeTestCase):
         self.patch(config.Sharing, "Enabled", True)
         self.patch(config.Sharing.Calendars, "Enabled", True)
 
-        CalDAVResource.sendInvite = lambda self, record, request: succeed(True)
-        CalDAVResource.removeInvite = lambda self, record, request: succeed(True)
+        CalDAVResource.sendInviteNotification = lambda self, record, request: succeed(True)
+        CalDAVResource.removeInviteNotification = lambda self, record, request: succeed(True)
 
         self.patch(CalDAVResource, "principalForCalendarUserAddress", lambda self, cuaddr: None if "bogus" in cuaddr else SharingTests.FakePrincipal(cuaddr))
         self.patch(CalDAVResource, "principalForUID", lambda self, principalUID: SharingTests.FakePrincipal("urn:uuid:" + principalUID ))
