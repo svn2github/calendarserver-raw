@@ -77,6 +77,8 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def setUp(self):
+        self.calendarStore = yield buildStore(self, StubNotifierFactory())
+
         yield super(SharingTests, self).setUp()
 
         self.patch(config.Sharing, "Enabled", True)
@@ -88,6 +90,8 @@ class SharingTests(HomeTestCase):
         self.patch(CalDAVResource, "principalForCalendarUserAddress", lambda self, cuaddr: None if "bogus" in cuaddr else SharingTests.FakePrincipal(cuaddr))
         self.patch(CalDAVResource, "principalForUID", lambda self, principalUID: SharingTests.FakePrincipal("urn:uuid:" + principalUID ))
 
+    def createDataStore(self):
+        return self.calendarStore
 
     @inlineCallbacks
     def _refreshRoot(self, request=None):
@@ -622,6 +626,7 @@ class SharingTests(HomeTestCase):
         self.assertTrue("<write/>" in acl.toxml())
 
 
+"""
 class DatabaseSharingTests(SharingTests):
 
     @inlineCallbacks
@@ -633,4 +638,4 @@ class DatabaseSharingTests(SharingTests):
     def createDataStore(self):
         return self.calendarStore
 
-
+"""

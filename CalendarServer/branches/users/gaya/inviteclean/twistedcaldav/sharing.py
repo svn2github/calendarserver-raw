@@ -157,10 +157,7 @@ class SharedCollectionMixin(object):
         
         # Only certain states are sharer controlled
         if invitation.state() in ("NEEDS-ACTION", "ACCEPTED", "DECLINED",):
-            invitation._state = state
-            if summary is not None:
-                invitation._summary = summary
-            yield self.invitesDB().addOrUpdateRecord(invitation.legacyInvite())
+            invitation = yield self._updateInvitationForUID(invitation.uid(), state=state, summary=summary)
 
 
     @inlineCallbacks
@@ -410,8 +407,7 @@ class SharedCollectionMixin(object):
         invitations = yield self._allInvitations()
         for invitation in invitations:
             if not self.principalForUID(invitation.shareeUID()) and invitation.state() != "INVALID":
-                invitation._state = "INVALID"
-                yield self.invitesDB().addOrUpdateRecord(invitation.legacyInvite())
+                yield self._updateInvitationForUID(invitation.uid(), state="INVALID")
 
 
     def inviteUserToShare(self, userid, cn, ace, summary, request):
@@ -498,6 +494,37 @@ class SharedCollectionMixin(object):
         hosturl = (yield self.canonicalURL(request))
         returnValue("%s:%s" % (hosturl, userid))
         
+
+    def _legacyInviteFromInvitation(self, invitation):
+        """
+        compatibilityHack
+        """
+        return LegacyInvite(inviteuid=invitation.uid(), 
+                      userid="userid", 
+                      principalUID=invitation.shareeUID(), 
+                      common_name="common_name",
+                      access=invitation.shareeAccess(),
+                      state=invitation.state(),
+                      summary=invitation.summary() )
+
+    @inlineCallbacks
+    def _createInvitation(self, invitation):
+        yield self.invitesDB().addOrUpdateRecord(self._legacyInviteFromInvitation(invitation))
+
+
+    @inlineCallbacks
+    def _updateInvitationForUID(self, uid, shareeAccess=None, state=None, summary=None):
+        invitation = yield self._invitationForUID(uid)
+        if shareeAccess:
+            invitation._shareeAccess = shareeAccess
+        if state:
+            invitation._state = state
+        if summary:
+            invitation._summary = summary
+        yield self.invitesDB().addOrUpdateRecord(self._legacyInviteFromInvitation(invitation))
+        returnValue(invitation)
+
+
     @inlineCallbacks
     def _allInvitations(self):
         """
@@ -520,13 +547,13 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
-    def _invitationForUID(self, inviteUID):
+    def _invitationForUID(self, uid):
         """
         replaces self.invitesDB().recordForInviteUID(inviteUID)
         """
         invitations = yield self._allInvitations()
         for invitation in invitations:
-            if invitation.uid() == inviteUID:
+            if invitation.uid() == uid:
                 returnValue(invitation)
         returnValue(None)
 
@@ -554,8 +581,8 @@ class SharedCollectionMixin(object):
             # Look for existing invite and update its fields or create new one
             invitation = yield self._invitationForShareeUID(shareeUID)
             if invitation:
-                invitation._shareeAccess = inviteAccessMapFromXML[type(ace)]
-                invitation._summary = summary
+                invitation = yield self._updateInvitationForUID(invitation.uid(), shareeAccess=inviteAccessMapFromXML[type(ace)], summary=summary)
+
             else:
                 invitation = Invitation(uid=str(uuid4()), 
                                     sharerUID=None, 
@@ -564,11 +591,10 @@ class SharedCollectionMixin(object):
                                     state="NEEDS-ACTION", 
                                     summary=summary)
 
+                yield self._createInvitation(invitation)
+
             # Send invite
             yield self.sendInviteNotification(invitation, request)
-
-            # Add to database
-            yield self.invitesDB().addOrUpdateRecord(invitation.legacyInvite())
 
         finally:
             lock.clean()
@@ -921,7 +947,7 @@ inviteStatusMapToXML = {
 }
 inviteStatusMapFromXML = dict([(v,k) for k,v in inviteStatusMapToXML.iteritems()])
 
-class Invite(object):
+class LegacyInvite(object):
     
     def __init__(self, inviteuid, userid, principalUID, common_name, access, state, summary):
         self.inviteuid = inviteuid
@@ -955,15 +981,6 @@ class Invitation(object):
         self._state = state
         self._summary = summary
 
-    def legacyInvite(self):
-        return Invite(inviteuid=self.uid(), 
-                      userid="userid", 
-                      principalUID=self.shareeUID(), 
-                      common_name="common_name",
-                      access=self.shareeAccess(),
-                      state=self.state(),
-                      summary=self.summary() )
-                      
     def uid(self):
         """
         Unique identifier for this record.  Randomly generated.
@@ -1154,7 +1171,7 @@ class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
 
     def _makeRecord(self, row):
         
-        return Invite(*[str(item) if type(item) == types.UnicodeType else item for item in row])
+        return LegacyInvite(*[str(item) if type(item) == types.UnicodeType else item for item in row])
 
 class SharedHomeMixin(LinkFollowerMixIn):
     """

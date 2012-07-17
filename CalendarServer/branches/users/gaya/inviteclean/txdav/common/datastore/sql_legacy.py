@@ -34,7 +34,7 @@ from twistedcaldav.query import \
     calendarqueryfilter, calendarquery, addressbookquery, expression, \
     addressbookqueryfilter
 from twistedcaldav.query.sqlgenerator import sqlgenerator
-from twistedcaldav.sharing import Invite
+from twistedcaldav.sharing import LegacyInvite
 from twistedcaldav.sharing import SharedCollectionRecord
 
 from txdav.caldav.icalendarstore import TimeRangeLowerLimit, TimeRangeUpperLimit
@@ -261,7 +261,7 @@ class SQLLegacyInvites(object):
             _BIND_MODE_READ: "read-only",
             _BIND_MODE_WRITE: "read-write"
         }[bindMode]
-        return Invite(
+        return LegacyInvite(
             inviteuid, userid, ownerUID, common_name,
             access, state, summary
         )
