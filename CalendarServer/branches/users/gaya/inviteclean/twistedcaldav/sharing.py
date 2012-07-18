@@ -49,6 +49,81 @@ from uuid import uuid4
 import os
 import types
 
+'''
+    TEMP FOR NOW - Invitation is duplicated in txdav.common.datastore.sql
+    But importing Invitation causes a circular dependency.
+    
+    Invitation is needed now for _invitationFromLegecyInvite and _legacyInviteFromInvitation
+'''
+class Invitation(object):
+    """
+    """
+    def __init__(self, uid, sharerUID, shareeUID, shareeAccess, state, summary):
+        self._uid = uid
+        self._sharerUID = sharerUID
+        self._shareeUID = shareeUID
+        self._shareeAccess = shareeAccess
+        self._state = state
+        self._summary = summary
+
+    def uid(self):
+        """
+        Unique identifier for this record.  Randomly generated.
+    
+        @return: the invite unique identifier
+        @rtype: C{str}
+        """
+        return self._uid
+    
+    def sharerUID(self):
+        """
+        Sharer's unique identifier.
+    
+        @return: the Sharer's unique identifier.
+        @rtype: C{str}
+        """
+        return self._sharerUID
+    
+    def shareeUID(self):
+        """
+        Sharee's unique identifier.
+    
+        @return: the Sharee's unique identifier.
+        @rtype: C{str}
+        """
+        return self._shareeUID
+   
+    def shareeAccess(self):
+        """
+        Sharee's access.  Currently, one of "own", "read-only", or "read-write".
+    
+        @return: the Sharee's access to the shared resource
+        @rtype: C{str}
+        """
+        return self._shareeAccess
+    
+    def state(self):
+        """
+        Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
+    
+        @return: the record state
+        @rtype: C{str}
+        """
+        return self._state
+   
+    def summary(self):
+        """
+        The shared resource's name, purpose, or description.
+    
+        @return: the summary
+        @rtype: C{str}
+        """
+        return self._summary
+'''
+    END FOR TEMP
+'''
+
+
 # Types of sharing mode
 SHARETYPE_INVITE = "I"  # Invite based sharing
 SHARETYPE_DIRECT = "D"  # Direct linking based sharing
@@ -494,6 +569,14 @@ class SharedCollectionMixin(object):
         hosturl = (yield self.canonicalURL(request))
         returnValue("%s:%s" % (hosturl, userid))
         
+        
+    def _invitationFromLegecyInvite(self, legacyInvite):
+        return Invitation(uid=legacyInvite.inviteuid,
+                      sharerUID=None,
+                      shareeUID=legacyInvite.principalUID, 
+                      shareeAccess=legacyInvite.access,
+                      state=legacyInvite.state,
+                      summary=legacyInvite.summary, )
 
     def _legacyInviteFromInvitation(self, invitation):
         """
@@ -508,8 +591,15 @@ class SharedCollectionMixin(object):
                       summary=invitation.summary() )
 
     @inlineCallbacks
-    def _createInvitation(self, invitation):
+    def _createInvitation(self, uid, sharerUID, shareeUID, shareeAccess, state, summary,):
+        invitation = Invitation(uid=uid,
+                      sharerUID=sharerUID,
+                      shareeUID=shareeUID,
+                      shareeAccess=shareeAccess,
+                      state=state,
+                      summary=summary, )
         yield self.invitesDB().addOrUpdateRecord(self._legacyInviteFromInvitation(invitation))
+        returnValue(invitation)
 
 
     @inlineCallbacks
@@ -530,8 +620,11 @@ class SharedCollectionMixin(object):
         """
         replaces self.invitesDB().allRecords()
         """
-        records = yield self.invitesDB().allRecords()
-        invitations = [record.invitationFromLegecyInvite() for record in records]
+        ''' OLD
+        legecyInvites = yield self.invitesDB().allRecords()
+        invitations = [self._invitationFromLegecyInvite(legecyInvite) for legecyInvite in legecyInvites]
+        '''
+        invitations = yield self._newStoreObject.invitations()
         returnValue(invitations)
 
     @inlineCallbacks
@@ -582,17 +675,14 @@ class SharedCollectionMixin(object):
             invitation = yield self._invitationForShareeUID(shareeUID)
             if invitation:
                 invitation = yield self._updateInvitationForUID(invitation.uid(), shareeAccess=inviteAccessMapFromXML[type(ace)], summary=summary)
-
             else:
-                invitation = Invitation(uid=str(uuid4()), 
-                                    sharerUID=None, 
+                ownerPrincipal = (yield self.ownerPrincipal(request))
+                invitation = yield self._createInvitation(uid=str(uuid4()), 
+                                    sharerUID=ownerPrincipal.principalUID(), 
                                     shareeUID=shareeUID, 
                                     shareeAccess=inviteAccessMapFromXML[type(ace)],
                                     state="NEEDS-ACTION", 
                                     summary=summary)
-
-                yield self._createInvitation(invitation)
-
             # Send invite
             yield self.sendInviteNotification(invitation, request)
 
@@ -955,87 +1045,7 @@ class LegacyInvite(object):
         self.access = access
         self.state = state
         self.summary = summary
-        
-    def invitationFromLegecyInvite(self):
-        return Invitation(uid=self.inviteuid,
-                      sharerUID=None,
-                      shareeUID=self.principalUID, 
-                      shareeAccess=self.access,
-                      state=self.state,
-                      summary=self.summary, )
-   
 
-
-from zope.interface import implements
-from txdav.common.iinvitation import IInvitation
-
-class Invitation(object):
-    implements(IInvitation)
-
-    
-    def __init__(self, uid, sharerUID, shareeUID, shareeAccess, state, summary):
-        self._uid = uid
-        self._sharerUID = sharerUID
-        self._shareeUID = shareeUID
-        self._shareeAccess = shareeAccess
-        self._state = state
-        self._summary = summary
-
-    def uid(self):
-        """
-        Unique identifier for this record.  Randomly generated.
-    
-        @return: the invite unique identifier
-        @rtype: C{str}
-        """
-        return self._uid
-    
-    def sharerUID(self):
-        """
-        Sharer's unique identifier.
-    
-        @return: the Sharer's unique identifier.
-        @rtype: C{str}
-        """
-        return self._sharerUID
-    
-    def shareeUID(self):
-        """
-        Sharee's unique identifier.
-    
-        @return: the Sharee's unique identifier.
-        @rtype: C{str}
-        """
-        return self._shareeUID
-   
-    def shareeAccess(self):
-        """
-        Sharee's access.  Currently, one of "own", "read-only", or "read-write".
-    
-        @return: the Sharee's access to the shared resource
-        @rtype: C{str}
-        """
-        return self._shareeAccess
-    
-    def state(self):
-        """
-        Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
-    
-        @return: the record state
-        @rtype: C{str}
-        """
-        return self._state
-   
-    def summary(self):
-        """
-        The shared resource's name, purpose, or description.
-    
-        @return: the summary
-        @rtype: C{str}
-        """
-        return self._summary
-        
-    
 
 class InvitesDatabase(AbstractSQLDatabase, LoggingMixIn):
     

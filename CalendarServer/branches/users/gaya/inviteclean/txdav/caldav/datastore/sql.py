@@ -397,6 +397,7 @@ class Calendar(CommonHomeChild):
     implements(ICalendar)
 
     # structured tables.  (new, preferred)
+    _homeSchema = schema.CALENDAR_HOME
     _bindSchema = schema.CALENDAR_BIND
     _homeChildSchema = schema.CALENDAR
     _homeChildMetaDataSchema = schema.CALENDAR_METADATA

@@ -56,7 +56,9 @@ from txdav.carddav.iaddressbookstore import IAddressBookTransaction
 
 from txdav.common.datastore.sql_tables import schema
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
-    _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
+    _BIND_MODE_READ, _BIND_MODE_WRITE, _BIND_STATUS_INVITED, \
+    _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, _BIND_STATUS_INVALID, \
+    NOTIFICATION_OBJECT_REVISIONS_TABLE
 from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
     HomeChildNameAlreadyExistsError, NoSuchHomeChildError, \
     ObjectResourceNameNotAllowedError, ObjectResourceNameAlreadyExistsError, \
@@ -1876,6 +1878,88 @@ class _SharedSyncLogic(object):
         """
 
 
+from txdav.common.iinvitation import IInvitation
+
+invitationStateToBindStatusMap = {
+    "NEEDS-ACTION": _BIND_STATUS_INVITED,
+    "ACCEPTED": _BIND_STATUS_ACCEPTED,
+    "DECLINED": _BIND_STATUS_DECLINED,
+    "INVALID": _BIND_STATUS_INVALID,
+}
+invitationStateFromBindStatusMap = dict((v,k) for k, v in invitationStateToBindStatusMap.iteritems())
+invitationShareeAccessToBindModeMap = {
+    "own": _BIND_MODE_OWN,
+    "read-only": _BIND_MODE_READ,
+    "read-write": _BIND_MODE_WRITE,
+    }
+invitationShareeAccessFromBindModeMap = dict((v,k) for k, v in invitationShareeAccessToBindModeMap.iteritems())
+
+class Invitation(object):
+    implements(IInvitation)
+    """
+    """
+    def __init__(self, uid, sharerUID, shareeUID, shareeAccess, state, summary):
+        self._uid = uid
+        self._sharerUID = sharerUID
+        self._shareeUID = shareeUID
+        self._shareeAccess = shareeAccess
+        self._state = state
+        self._summary = summary
+
+    def uid(self):
+        """
+        Unique identifier for this record.  Randomly generated.
+    
+        @return: the invite unique identifier
+        @rtype: C{str}
+        """
+        return self._uid
+    
+    def sharerUID(self):
+        """
+        Sharer's unique identifier.
+    
+        @return: the Sharer's unique identifier.
+        @rtype: C{str}
+        """
+        return self._sharerUID
+    
+    def shareeUID(self):
+        """
+        Sharee's unique identifier.
+    
+        @return: the Sharee's unique identifier.
+        @rtype: C{str}
+        """
+        return self._shareeUID
+   
+    def shareeAccess(self):
+        """
+        Sharee's access.  Currently, one of "own", "read-only", or "read-write".
+    
+        @return: the Sharee's access to the shared resource
+        @rtype: C{str}
+        """
+        return self._shareeAccess
+    
+    def state(self):
+        """
+        Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
+    
+        @return: the record state
+        @rtype: C{str}
+        """
+        return self._state
+   
+    def summary(self):
+        """
+        The shared resource's name, purpose, or description.
+    
+        @return: the summary
+        @rtype: C{str}
+        """
+        return self._summary
+
 
 class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     """
@@ -2192,7 +2276,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _bindEntriesFor(cls):
+    def _bindEntriesFor(cls): #@NoSelf
         bind = cls._bindSchema
         return Select([bind.BIND_MODE, bind.HOME_RESOURCE_ID,
                        bind.RESOURCE_NAME],
@@ -2230,6 +2314,52 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             result.append(new)
         returnValue(result)
 
+
+    @classproperty
+    def _allInvitationsQuery(cls): #@NoSelf
+        inv = schema.INVITE
+        home = cls._homeSchema
+        bind = cls._bindSchema
+        return Select(
+            [inv.INVITE_UID,
+             home.OWNER_UID,
+             bind.BIND_MODE,
+             bind.BIND_STATUS,
+             bind.MESSAGE],
+            From=inv.join(home).join(bind),
+            Where=(
+                (inv.RESOURCE_ID == Parameter("resourceID"))
+                .And(inv.RESOURCE_ID == bind.RESOURCE_ID)
+                .And(inv.HOME_RESOURCE_ID == home.RESOURCE_ID)
+                .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID)),
+            OrderBy=home.OWNER_UID, Ascending=True
+        )
+
+
+    @inlineCallbacks
+    def invitations(self):
+        """
+        Get a list of invitations for sharing of this item
+        @return: a L{Deferred} which will fires with a L{list} of L{IInvitation}s.
+        """
+        values = []
+        rows = yield self._allInvitationsQuery.on(
+            self._txn, resourceID=self._resourceID
+        )
+        for row in rows:
+            [uid, shareeUID, bindMode, bindStatus, summary] = row
+            state = invitationStateFromBindStatusMap[bindStatus]
+            shareeAccess = invitationShareeAccessFromBindModeMap[bindMode]
+
+            #FIXME: get sharerUID == this items's home.OWNER_UID 
+            invitation = Invitation(uid=uid,
+                      sharerUID=None,
+                      shareeUID=shareeUID,
+                      shareeAccess=shareeAccess,
+                      state=state,
+                      summary=summary, )
+            values.append(invitation)
+        returnValue(values)
 
     @classmethod
     @inlineCallbacks
@@ -2428,7 +2558,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _bindInsertQuery(cls, **kw):
+    def _bindInsertQuery(cls, **kw): #@NoSelf
         """
         DAL statement to create a bind entry that connects a collection to its
         owner's home.
