@@ -2257,7 +2257,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         
         #FIXME performance: change schema to get rid if INVITE table -> no join
         #
-        '''
         # similar to sql_legacy.py
         inv = schema.INVITE
         home = cls._homeSchema
@@ -2277,7 +2276,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID))
         )
         '''
-        # This seems to work so far and is simpler. home table is not needed
+        # The ALMOST worked, but returns too many rows in some cases.  
         inv = schema.INVITE
         bind = cls._bindSchema
         return Select(
@@ -2292,6 +2291,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID)
                 .And(bind.BIND_MODE != _BIND_MODE_OWN)
         )
+        '''
 
     @inlineCallbacks
     def asInvited(self):

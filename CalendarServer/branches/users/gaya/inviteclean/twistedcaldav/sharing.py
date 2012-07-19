@@ -665,18 +665,23 @@ class SharedCollectionMixin(object):
         invitations.sort(key=lambda invitation:invitation.shareeUID())
         
         oinvitations = yield self._oallInvitations()
-        if len(oinvitations) != len(invitations):
-            print("len(oinvitations)=%s != len(invitations)=%s" % (len(oinvitations),len(invitations),))
-        else:
-            for i in range(len(oinvitations)):
-                new = invitations[i]
-                nstr = "uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (new.uid(), new.sharerUID(), new.shareeUID(), new.shareeAccess(), new.state(), new.summary(), )
-                old = oinvitations[i]
-                ostr = "uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (old.uid(), old.sharerUID(), old.shareeUID(), old.shareeAccess(), old.state(), old.summary(), )
-                if nstr != ostr:
-                    print("UNEQUAL new[%s] uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, new.uid(), new.sharerUID(), new.shareeUID(), new.shareeAccess(), new.state(), new.summary(), ))
-                    print("UNEQUAL old[%s] uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, old.uid(), old.sharerUID(), old.shareeUID(), old.shareeAccess(), old.state(), old.summary(), ))
+        
+        oinvitationsTestStrings = []
+        for i in range(len(oinvitations)):
+            invitation = oinvitations[i]
+            testStr = "i=%s, uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, invitation.uid(), invitation.sharerUID(), invitation.shareeUID(), invitation.shareeAccess(), invitation.state(), invitation.summary(), )
+            oinvitationsTestStrings += [testStr,]
 
+        invitationsTestStrings = []
+        for i in range(len(invitations)):
+            invitation = invitations[i]
+            testStr = "i=%s, uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, invitation.uid(), invitation.sharerUID(), invitation.shareeUID(), invitation.shareeAccess(), invitation.state(), invitation.summary(), )
+            invitationsTestStrings += [testStr,]
+            
+        if oinvitationsTestStrings != invitationsTestStrings:
+            print("MISMATCH old: %s" % oinvitationsTestStrings)
+            print("MISMATCH new: %s" % invitationsTestStrings)
+        
         returnValue(invitations)
 
     @inlineCallbacks
