@@ -55,6 +55,26 @@ import types
     
     Invitation is needed now for _invitationFromLegecyInvite and _legacyInviteFromInvitation
 '''
+
+from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
+    _BIND_MODE_READ, _BIND_MODE_WRITE, _BIND_STATUS_INVITED, \
+    _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, _BIND_STATUS_INVALID
+
+
+invitationStateToBindStatusMap = {
+    "NEEDS-ACTION": _BIND_STATUS_INVITED,
+    "ACCEPTED": _BIND_STATUS_ACCEPTED,
+    "DECLINED": _BIND_STATUS_DECLINED,
+    "INVALID": _BIND_STATUS_INVALID,
+}
+invitationStateFromBindStatusMap = dict((v,k) for k, v in invitationStateToBindStatusMap.iteritems())
+invitationShareeAccessToBindModeMap = {
+    "own": _BIND_MODE_OWN,
+    "read-only": _BIND_MODE_READ,
+    "read-write": _BIND_MODE_WRITE,
+    }
+invitationShareeAccessFromBindModeMap = dict((v,k) for k, v in invitationShareeAccessToBindModeMap.iteritems())
+
 class Invitation(object):
     """
     """
@@ -570,9 +590,9 @@ class SharedCollectionMixin(object):
         returnValue("%s:%s" % (hosturl, userid))
         
         
-    def _invitationFromLegecyInvite(self, legacyInvite):
+    def _invitationFromLegecyInvite(self, legacyInvite, sharerUID=None):
         return Invitation(uid=legacyInvite.inviteuid,
-                      sharerUID=None,
+                      sharerUID=sharerUID,
                       shareeUID=legacyInvite.principalUID, 
                       shareeAccess=legacyInvite.access,
                       state=legacyInvite.state,
@@ -616,15 +636,47 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
+    def _oallInvitations(self):
+        """
+        replaces self.invitesDB().allRecords()
+        """
+        legecyInvites = yield self.invitesDB().allRecords()
+        invitations = [self._invitationFromLegecyInvite(legecyInvite, sharerUID=self._newStoreObject._home.uid()) for legecyInvite in legecyInvites]
+        returnValue(invitations)
+
+    @inlineCallbacks
     def _allInvitations(self):
         """
         replaces self.invitesDB().allRecords()
         """
-        ''' OLD
-        legecyInvites = yield self.invitesDB().allRecords()
-        invitations = [self._invitationFromLegecyInvite(legecyInvite) for legecyInvite in legecyInvites]
-        '''
-        invitations = yield self._newStoreObject.invitations()
+        invited = yield self._newStoreObject.asInvited()
+        
+        invitations = []
+        for homeChildInvited in invited:
+            state = invitationStateFromBindStatusMap[homeChildInvited.shareStatus()]
+            shareeAccess = invitationShareeAccessFromBindModeMap[homeChildInvited.shareMode()]
+            invitation = Invitation(uid=homeChildInvited.inviteUID(),
+                          sharerUID=self._newStoreObject._home.uid(),
+                          shareeUID= homeChildInvited._home.uid(),
+                          shareeAccess=shareeAccess,
+                          state=state,
+                          summary=homeChildInvited.shareMessage(), )
+            invitations.append(invitation)
+        invitations.sort(key=lambda invitation:invitation.shareeUID())
+        
+        oinvitations = yield self._oallInvitations()
+        if len(oinvitations) != len(invitations):
+            print("len(oinvitations)=%s != len(invitations)=%s" % (len(oinvitations),len(invitations),))
+        else:
+            for i in range(len(oinvitations)):
+                new = invitations[i]
+                nstr = "uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (new.uid(), new.sharerUID(), new.shareeUID(), new.shareeAccess(), new.state(), new.summary(), )
+                old = oinvitations[i]
+                ostr = "uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (old.uid(), old.sharerUID(), old.shareeUID(), old.shareeAccess(), old.state(), old.summary(), )
+                if nstr != ostr:
+                    print("UNEQUAL new[%s] uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, new.uid(), new.sharerUID(), new.shareeUID(), new.shareeAccess(), new.state(), new.summary(), ))
+                    print("UNEQUAL old[%s] uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, old.uid(), old.sharerUID(), old.shareeUID(), old.shareeAccess(), old.state(), old.summary(), ))
+
         returnValue(invitations)
 
     @inlineCallbacks
@@ -742,20 +794,18 @@ class SharedCollectionMixin(object):
                 yield self.sendInviteNotification(invitation, request)
         
         # use new API
-        if hasattr(self._newStoreObject, "unshareWith"):
-
-            from twistedcaldav.directory.util import transactionFromRequest
-            transaction = transactionFromRequest(request, self._newStoreObject)
-            
-            if self.isCalendarCollection():
-                shareeHome = yield transaction.calendarHomeWithUID(invitation.shareeUID(), create=True)
-            elif self.isAddressBookCollection():
-                shareeHome = yield transaction.addressbookHomeWithUID(invitation.shareeUID(), create=True)
-    
-            yield self._newStoreObject.unshareWith(shareeHome)
+        from twistedcaldav.directory.util import transactionFromRequest
+        transaction = transactionFromRequest(request, self._newStoreObject)
         
-        else:
-            yield self.invitesDB().removeRecordForInviteUID(invitation.uid())
+        if self.isCalendarCollection():
+            shareeHome = yield transaction.calendarHomeWithUID(invitation.shareeUID(), create=True)
+        elif self.isAddressBookCollection():
+            shareeHome = yield transaction.addressbookHomeWithUID(invitation.shareeUID(), create=True)
+
+        yield self._newStoreObject.unshareWith(shareeHome)
+    
+        #old code
+        #  yield self.invitesDB().removeRecordForInviteUID(invitation.uid())
         
         returnValue(True)            
 

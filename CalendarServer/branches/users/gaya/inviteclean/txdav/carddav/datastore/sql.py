@@ -148,7 +148,6 @@ class AddressBook(CommonHomeChild):
     implements(IAddressBook)
 
     # structured tables.  (new, preferred)
-    _homeSchema = schema.ADDRESSBOOK_HOME
     _bindSchema = schema.ADDRESSBOOK_BIND
     _homeChildSchema = schema.ADDRESSBOOK
     _homeChildMetaDataSchema = schema.ADDRESSBOOK_METADATA
