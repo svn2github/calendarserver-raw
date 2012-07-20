@@ -49,17 +49,37 @@ from uuid import uuid4
 import os
 import types
 
-'''
-    TEMP FOR NOW - Invitation is duplicated in txdav.common.datastore.sql
-    But importing Invitation causes a circular dependency.
-    
-    Invitation is needed now for _invitationFromLegecyInvite and _legacyInviteFromInvitation
-'''
-
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
     _BIND_MODE_READ, _BIND_MODE_WRITE, _BIND_STATUS_INVITED, \
     _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, _BIND_STATUS_INVALID
 
+
+class Invitation(object):
+    """
+        Invitation is a read-only wrapper for CommonHomeChild, that's similar to the old sharing.py code base.
+    """
+    def __init__(self, uid=None, shareeUID=None, shareeAccess=None, state=None, summary=None, homeChild=None):
+        self._uid = uid
+        self._shareeUID = shareeUID
+        self._shareeAccess = shareeAccess
+        self._state = state
+        self._summary = summary
+        self._homeChild = homeChild
+
+    def uid(self):
+        return self._homeChild.inviteUID() if self._homeChild else self._uid
+    
+    def shareeUID(self):
+        return self._homeChild._home.uid() if self._homeChild else self._shareeUID
+   
+    def shareeAccess(self):
+        return invitationShareeAccessFromBindModeMap[self._homeChild.shareMode()] if self._homeChild else self._shareeAccess
+    
+    def state(self):
+        return invitationStateFromBindStatusMap[self._homeChild.shareStatus()] if self._homeChild else self._state
+   
+    def summary(self):
+        return self._homeChild.shareMessage() if self._homeChild else self._summary
 
 invitationStateToBindStatusMap = {
     "NEEDS-ACTION": _BIND_STATUS_INVITED,
@@ -75,73 +95,6 @@ invitationShareeAccessToBindModeMap = {
     }
 invitationShareeAccessFromBindModeMap = dict((v,k) for k, v in invitationShareeAccessToBindModeMap.iteritems())
 
-class Invitation(object):
-    """
-    """
-    def __init__(self, uid, sharerUID, shareeUID, shareeAccess, state, summary):
-        self._uid = uid
-        self._sharerUID = sharerUID
-        self._shareeUID = shareeUID
-        self._shareeAccess = shareeAccess
-        self._state = state
-        self._summary = summary
-
-    def uid(self):
-        """
-        Unique identifier for this record.  Randomly generated.
-    
-        @return: the invite unique identifier
-        @rtype: C{str}
-        """
-        return self._uid
-    
-    def sharerUID(self):
-        """
-        Sharer's unique identifier.
-    
-        @return: the Sharer's unique identifier.
-        @rtype: C{str}
-        """
-        return self._sharerUID
-    
-    def shareeUID(self):
-        """
-        Sharee's unique identifier.
-    
-        @return: the Sharee's unique identifier.
-        @rtype: C{str}
-        """
-        return self._shareeUID
-   
-    def shareeAccess(self):
-        """
-        Sharee's access.  Currently, one of "own", "read-only", or "read-write".
-    
-        @return: the Sharee's access to the shared resource
-        @rtype: C{str}
-        """
-        return self._shareeAccess
-    
-    def state(self):
-        """
-        Invitation or bind state.  Currently, one of "NEEDS-ACTION","ACCEPTED", "DECLINED", "INVALID".
-    
-        @return: the record state
-        @rtype: C{str}
-        """
-        return self._state
-   
-    def summary(self):
-        """
-        The shared resource's name, purpose, or description.
-    
-        @return: the summary
-        @rtype: C{str}
-        """
-        return self._summary
-'''
-    END FOR TEMP
-'''
 
 
 # Types of sharing mode
@@ -223,7 +176,7 @@ class SharedCollectionMixin(object):
         
         # Remove all invitees
         for invitation in (yield self._allInvitations()):
-            yield self.uninviteRecordFromShare(invitation, request)
+            yield self.uninviteFromShare(invitation, request)
 
         # Remove invites database
         self.invitesDB().remove()
@@ -590,9 +543,8 @@ class SharedCollectionMixin(object):
         returnValue("%s:%s" % (hosturl, userid))
         
         
-    def _invitationFromLegecyInvite(self, legacyInvite, sharerUID=None):
+    def _invitationFromLegecyInvite(self, legacyInvite):
         return Invitation(uid=legacyInvite.inviteuid,
-                      sharerUID=sharerUID,
                       shareeUID=legacyInvite.principalUID, 
                       shareeAccess=legacyInvite.access,
                       state=legacyInvite.state,
@@ -611,27 +563,27 @@ class SharedCollectionMixin(object):
                       summary=invitation.summary() )
 
     @inlineCallbacks
-    def _createInvitation(self, uid, sharerUID, shareeUID, shareeAccess, state, summary,):
+    def _createInvitation(self, uid, shareeUID, shareeAccess, state, summary,):
         invitation = Invitation(uid=uid,
-                      sharerUID=sharerUID,
                       shareeUID=shareeUID,
                       shareeAccess=shareeAccess,
                       state=state,
                       summary=summary, )
         yield self.invitesDB().addOrUpdateRecord(self._legacyInviteFromInvitation(invitation))
+        invitation = yield self._invitationForUID(uid)
         returnValue(invitation)
 
 
     @inlineCallbacks
     def _updateInvitationForUID(self, uid, shareeAccess=None, state=None, summary=None):
-        invitation = yield self._invitationForUID(uid)
-        if shareeAccess:
-            invitation._shareeAccess = shareeAccess
-        if state:
-            invitation._state = state
-        if summary:
-            invitation._summary = summary
+        oldInvitation = yield self._invitationForUID(uid)
+        invitation = Invitation(uid=oldInvitation.uid(),
+                      shareeUID=oldInvitation.shareeUID(),
+                      shareeAccess=shareeAccess if shareeAccess else oldInvitation.shareeAccess(),
+                      state=state if state else oldInvitation.state(),
+                      summary=summary if summary else oldInvitation.summary(), )
         yield self.invitesDB().addOrUpdateRecord(self._legacyInviteFromInvitation(invitation))
+        invitation = yield self._invitationForUID(uid)
         returnValue(invitation)
 
 
@@ -641,7 +593,7 @@ class SharedCollectionMixin(object):
         replaces self.invitesDB().allRecords()
         """
         legecyInvites = yield self.invitesDB().allRecords()
-        invitations = [self._invitationFromLegecyInvite(legecyInvite, sharerUID=self._newStoreObject._home.uid()) for legecyInvite in legecyInvites]
+        invitations = [self._invitationFromLegecyInvite(legecyInvite) for legecyInvite in legecyInvites]
         returnValue(invitations)
 
     @inlineCallbacks
@@ -649,18 +601,11 @@ class SharedCollectionMixin(object):
         """
         replaces self.invitesDB().allRecords()
         """
-        invited = yield self._newStoreObject.asInvited()
+        invitedHomeChildren = yield self._newStoreObject.asInvited()
         
         invitations = []
-        for homeChildInvited in invited:
-            state = invitationStateFromBindStatusMap[homeChildInvited.shareStatus()]
-            shareeAccess = invitationShareeAccessFromBindModeMap[homeChildInvited.shareMode()]
-            invitation = Invitation(uid=homeChildInvited.inviteUID(),
-                          sharerUID=self._newStoreObject._home.uid(),
-                          shareeUID= homeChildInvited._home.uid(),
-                          shareeAccess=shareeAccess,
-                          state=state,
-                          summary=homeChildInvited.shareMessage(), )
+        for homeChild in invitedHomeChildren:
+            invitation = Invitation(homeChild=homeChild)
             invitations.append(invitation)
         invitations.sort(key=lambda invitation:invitation.shareeUID())
         
@@ -669,13 +614,13 @@ class SharedCollectionMixin(object):
         oinvitationsTestStrings = []
         for i in range(len(oinvitations)):
             invitation = oinvitations[i]
-            testStr = "i=%s, uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, invitation.uid(), invitation.sharerUID(), invitation.shareeUID(), invitation.shareeAccess(), invitation.state(), invitation.summary(), )
+            testStr = "i=%s, uid=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, invitation.uid(), invitation.shareeUID(), invitation.shareeAccess(), invitation.state(), invitation.summary(), )
             oinvitationsTestStrings += [testStr,]
 
         invitationsTestStrings = []
         for i in range(len(invitations)):
             invitation = invitations[i]
-            testStr = "i=%s, uid=%s, sharerUID=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, invitation.uid(), invitation.sharerUID(), invitation.shareeUID(), invitation.shareeAccess(), invitation.state(), invitation.summary(), )
+            testStr = "i=%s, uid=%s, shareeUID=%s, shareeAccess=%s, state=%s, summary=%s" % (i, invitation.uid(), invitation.shareeUID(), invitation.shareeAccess(), invitation.state(), invitation.summary(), )
             invitationsTestStrings += [testStr,]
             
         if oinvitationsTestStrings != invitationsTestStrings:
@@ -733,9 +678,7 @@ class SharedCollectionMixin(object):
             if invitation:
                 invitation = yield self._updateInvitationForUID(invitation.uid(), shareeAccess=inviteAccessMapFromXML[type(ace)], summary=summary)
             else:
-                ownerPrincipal = (yield self.ownerPrincipal(request))
                 invitation = yield self._createInvitation(uid=str(uuid4()), 
-                                    sharerUID=ownerPrincipal.principalUID(), 
                                     shareeUID=shareeUID, 
                                     shareeAccess=inviteAccessMapFromXML[type(ace)],
                                     state="NEEDS-ACTION", 
@@ -769,7 +712,7 @@ class SharedCollectionMixin(object):
         try:
             invitation = yield self._invitationForShareeUID(shareeUID)
             if invitation:
-                result = (yield self.uninviteRecordFromShare(invitation, request))
+                result = (yield self.uninviteFromShare(invitation, request))
             else:
                 result = False
         finally:
@@ -779,7 +722,7 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
-    def uninviteRecordFromShare(self, invitation, request):
+    def uninviteFromShare(self, invitation, request):
         
         # Remove any shared calendar or address book
         sharee = self.principalForUID(invitation.shareeUID())
@@ -795,8 +738,7 @@ class SharedCollectionMixin(object):
             if invitation and invitation.state() != "ACCEPTED":
                 yield self.removeInviteNotification(invitation, request)
             elif invitation:
-                invitation._state = "DELETED"
-                yield self.sendInviteNotification(invitation, request)
+                yield self.sendInviteNotification(invitation, request, fakeState="DELETED")
         
         # use new API
         from twistedcaldav.directory.util import transactionFromRequest
@@ -820,7 +762,7 @@ class SharedCollectionMixin(object):
         return self.inviteSingleUserToShare(userid, commonName, aceNEW, summary, request) 
 
     @inlineCallbacks
-    def sendInviteNotification(self, invitation, request):
+    def sendInviteNotification(self, invitation, request, fakeState=None):
         
         ownerPrincipal = (yield self.ownerPrincipal(request))
         owner = ownerPrincipal.principalURL()
@@ -844,6 +786,7 @@ class SharedCollectionMixin(object):
         
         # Generate invite XML
         userid = "urn:uuid:" + invitation.shareeUID()
+        state = fakeState if fakeState else invitation.state()
 
         typeAttr = {'shared-type':self.sharedResourceType()}
         xmltype = customxml.InviteNotification(**typeAttr)
@@ -852,7 +795,7 @@ class SharedCollectionMixin(object):
             customxml.InviteNotification(
                 customxml.UID.fromString(invitation.uid()),
                 element.HRef.fromString(userid),
-                inviteStatusMapToXML[invitation.state()](),
+                inviteStatusMapToXML[state](),
                 customxml.InviteAccess(inviteAccessMapToXML[invitation.shareeAccess()]()),
                 customxml.HostURL(
                     element.HRef.fromString(hosturl),
