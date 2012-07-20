@@ -56,7 +56,7 @@ from txdav.carddav.iaddressbookstore import IAddressBookTransaction
 
 from txdav.common.datastore.sql_tables import schema
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
-    _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
+    _BIND_STATUS_INVITED, _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
 from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
     HomeChildNameAlreadyExistsError, NoSuchHomeChildError, \
     ObjectResourceNameNotAllowedError, ObjectResourceNameAlreadyExistsError, \
@@ -2074,7 +2074,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{_BIND_MODE_WRITE}.
         @type mode: L{str}
 
-        @param recipient: The sharing recipient if not "urn:uuid:" + shareeHome.uid()
+        @param recipient: The sharing recipient
+            if None, defaults to "urn:uuid:" + shareeHome.uid()
         @type recipient: L{str}
 
         @return: the name of the shared calendar in the new calendar home.
@@ -2124,6 +2125,124 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         yield self.notifyChanged()
 
         returnValue(sharedName)
+
+
+    @inlineCallbacks
+    def shareWithOptions(self, shareeHome, mode, status, message):
+        """
+        Share this (owned) L{CommonHomeChild} with another home.
+
+        @param shareeHome: The home of the sharee.
+        @type shareeHome: L{CommonHome}
+
+        @param mode: The sharing mode; L{_BIND_MODE_READ} or
+            L{_BIND_MODE_WRITE}.
+        @type mode: L{str}
+
+        @param status: The sharing mode; L{_BIND_STATUS_INVITED} or
+            L{_BIND_STATUS_ACCEPTED} or L{_BIND_STATUS_DECLINED} or
+            L{_BIND_STATUS_INVALID}.
+        @type mode: L{str}
+
+        @param message: The proposed share name
+        @type recipient: L{str}
+
+        @return: the name of the shared calendar in the new calendar home.
+        @rtype: L{str}
+        """
+        
+        # recipient is needed for current legacy invites
+        recipient = "urn:uuid:" + shareeHome.uid()
+
+        dn = PropertyName.fromElement(DisplayName)
+        dnprop = (self.properties().get(dn) or
+                  DisplayName.fromString(self.name()))
+
+        @inlineCallbacks
+        def doInsert(subt):
+            newName = str(uuid4())
+            yield self._bindInsertQuery.on(
+                subt, homeID=shareeHome._resourceID,
+                resourceID=self._resourceID, name=newName, mode=mode,
+                seenByOwner=True, seenBySharee=True,
+                bindStatus=status, message=message
+            )
+            yield self._insertInviteQuery.on(
+                subt, uid=newName, name=str(dnprop),
+                homeID=shareeHome._resourceID, resourceID=self._resourceID,
+                recipient=recipient
+            )
+            returnValue(newName)
+
+        sharedName = yield self._txn.subtransaction(doInsert)
+
+        shareeProps = yield PropertyStore.load(shareeHome.uid(), self._txn,
+                                               self._resourceID)
+        shareeProps[dn] = dnprop
+        
+        # Must send notification to ensure cache invalidation occurs
+        yield self.notifyChanged()
+        
+        # return homeChild
+        cls = self.__class__ # for ease of grepping...
+        homeChild = cls(
+            home=(yield self._txn.homeWithResourceID(shareeHome._homeType,
+                                                shareeHome._resourceID)),
+            name=sharedName, resourceID=self._resourceID,
+            owned=False, mode=mode, status=status, 
+            message=message, inviteUID=sharedName,
+        )
+        yield homeChild.initFromStore()
+
+        returnValue(homeChild)
+
+
+
+    @inlineCallbacks
+    def updateShare(self, homeChild, mode, status, message):
+        """
+        Update share mode, status, and message for a home child
+            shared with this (owned) L{CommonHomeChild].
+
+        @param shared: The sharee home child that shares this.
+        @type shareeHome: L{CommonHomeChild}
+
+        @param mode: The sharing mode; L{_BIND_MODE_READ} or
+            L{_BIND_MODE_WRITE}.
+
+        @param status: The sharing mode; L{_BIND_STATUS_INVITED} or
+            L{_BIND_STATUS_ACCEPTED} or L{_BIND_STATUS_DECLINED} or
+            L{_BIND_STATUS_INVALID}.
+        @type mode: L{str}
+
+        @param message: The proposed share name
+        @type recipient: L{str}
+
+        @return: the name of the shared calendar in the new calendar home.
+        @rtype: L{str}
+        """
+        # yield self.shareWith(shared._home, mode, status, message)
+        dn = PropertyName.fromElement(DisplayName)
+        dnprop = (self.properties().get(dn) or
+                  DisplayName.fromString(self.name()))
+
+        yield self._updateBindQuery.on(
+            self._txn,
+            mode=mode, status=status, message=message,
+            resourceID=self._resourceID, homeID=homeChild._home._resourceID
+        )
+
+        shareeProps = yield PropertyStore.load(homeChild._home.uid(), self._txn,
+                                               self._resourceID)
+        shareeProps[dn] = dnprop
+        
+        # Must send notification to ensure cache invalidation occurs
+        yield self.notifyChanged()
+        
+        #update affected attributes
+        homeChild._bindMode = mode
+        homeChild._bindStatus = status
+        homeChild._bindMessage = message
 
 
     @inlineCallbacks
@@ -2315,15 +2434,14 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             # TODO: this could all be issued in parallel; no need to serialize
             # the loop.
             new = cls(
-                (yield self._txn.homeWithResourceID(self._home._homeType,
+                home=(yield self._txn.homeWithResourceID(self._home._homeType,
                                                     homeResourceID)),
-                sharedResourceName, self._resourceID, False, bindMode
+                name=sharedResourceName, resourceID=self._resourceID,
+                owned=False, mode=bindMode, status=bindStatus, 
+                message=bindMessage, inviteUID= inviteUID,
             )
             yield new.initFromStore()
-            new._bindStatus = bindStatus
-            new._bindMessage = bindMessage
-            new._inviteUID = inviteUID
-            
+
             result.append(new)
         returnValue(result)
 
@@ -2537,6 +2655,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             bind.RESOURCE_NAME: Parameter("name"),
             bind.BIND_MODE: Parameter("mode"),
             bind.BIND_STATUS: Parameter("bindStatus"),
+            bind.MESSAGE: Parameter("message"),
             bind.SEEN_BY_OWNER: Parameter("seenByOwner"),
             bind.SEEN_BY_SHAREE: Parameter("seenBySharee"),
         })
@@ -2565,7 +2684,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         yield cls._bindInsertQuery.on(
             home._txn, homeID=home._resourceID, resourceID=resourceID,
             name=name, mode=_BIND_MODE_OWN, seenByOwner=True,
-            seenBySharee=True, bindStatus=_BIND_STATUS_ACCEPTED
+            seenBySharee=True, bindStatus=_BIND_STATUS_ACCEPTED,
+            message=None,
         )
 
         # Initialize other state

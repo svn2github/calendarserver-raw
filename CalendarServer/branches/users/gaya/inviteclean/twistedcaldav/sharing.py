@@ -65,6 +65,9 @@ class Invitation(object):
         self._state = state
         self._summary = summary
         self._homeChild = homeChild
+    
+    def homeChild(self):
+        return self._homeChild
 
     def uid(self):
         return self._homeChild.inviteUID() if self._homeChild else self._uid
@@ -205,7 +208,7 @@ class SharedCollectionMixin(object):
         
         # Only certain states are sharer controlled
         if invitation.state() in ("NEEDS-ACTION", "ACCEPTED", "DECLINED",):
-            invitation = yield self._updateInvitationForUID(invitation.uid(), state=state, summary=summary)
+            yield self._updateInvitation(invitation, state=state, summary=summary)
 
 
     @inlineCallbacks
@@ -451,12 +454,10 @@ class SharedCollectionMixin(object):
         """
         Make sure each userid in an invite is valid - if not re-write status.
         """
-        
         invitations = yield self._allInvitations()
         for invitation in invitations:
             if not self.principalForUID(invitation.shareeUID()) and invitation.state() != "INVALID":
-                yield self._updateInvitationForUID(invitation.uid(), state="INVALID")
-
+                yield self._updateInvitation(invitation, state="INVALID")
 
     def inviteUserToShare(self, userid, cn, ace, summary, request):
         """ Send out in invite first, and then add this user to the share list
@@ -563,7 +564,8 @@ class SharedCollectionMixin(object):
                       summary=invitation.summary() )
 
     @inlineCallbacks
-    def _createInvitation(self, uid, shareeUID, shareeAccess, state, summary,):
+    def _createInvitation(self, shareeUID, shareeAccess, summary,):
+        '''
         invitation = Invitation(uid=uid,
                       shareeUID=shareeUID,
                       shareeAccess=shareeAccess,
@@ -571,20 +573,30 @@ class SharedCollectionMixin(object):
                       summary=summary, )
         yield self.invitesDB().addOrUpdateRecord(self._legacyInviteFromInvitation(invitation))
         invitation = yield self._invitationForUID(uid)
+        '''
+        if self.isCalendarCollection():
+            shareeHome = yield self._newStoreObject._txn.calendarHomeWithUID(shareeUID, create=True)
+        elif self.isAddressBookCollection():
+            shareeHome = yield self._newStoreObject._txn.addressbookHomeWithUID(shareeUID, create=True)
+
+        homeChild =  yield self._newStoreObject.shareWithOptions(shareeHome,
+                                                    mode=invitationShareeAccessToBindModeMap[shareeAccess],
+                                                    status=_BIND_STATUS_INVITED,
+                                                    message=summary )
+        invitation = Invitation(homeChild=homeChild)
         returnValue(invitation)
 
 
     @inlineCallbacks
-    def _updateInvitationForUID(self, uid, shareeAccess=None, state=None, summary=None):
-        oldInvitation = yield self._invitationForUID(uid)
-        invitation = Invitation(uid=oldInvitation.uid(),
-                      shareeUID=oldInvitation.shareeUID(),
-                      shareeAccess=shareeAccess if shareeAccess else oldInvitation.shareeAccess(),
-                      state=state if state else oldInvitation.state(),
-                      summary=summary if summary else oldInvitation.summary(), )
-        yield self.invitesDB().addOrUpdateRecord(self._legacyInviteFromInvitation(invitation))
-        invitation = yield self._invitationForUID(uid)
-        returnValue(invitation)
+    def _updateInvitation(self, invitation, shareeAccess=None, state=None, summary=None):
+        mode = invitation.homeChild().shareMode() if shareeAccess is None else invitationShareeAccessToBindModeMap[shareeAccess]
+        status = invitation.homeChild().shareStatus() if state is None else invitationStateToBindStatusMap[state]
+        message = invitation.summary() if summary is None else summary
+        
+        yield self._newStoreObject.updateShare(invitation.homeChild(), mode, status, message )
+        assert not shareeAccess or shareeAccess == invitation.shareeAccess(), "shareeAccess=%s, invitation.shareeAccess()=%s" % (shareeAccess, invitation.shareeAccess())
+        assert not state or state == invitation.state(), "state=%s, invitation.state()=%s" % (state, invitation.state())
+        assert not summary or summary == invitation.summary(), "summary=%s, invitation.summary()=%s" % (summary, invitation.summary())
 
 
     @inlineCallbacks
@@ -626,6 +638,8 @@ class SharedCollectionMixin(object):
         if oinvitationsTestStrings != invitationsTestStrings:
             print("MISMATCH old: %s" % oinvitationsTestStrings)
             print("MISMATCH new: %s" % invitationsTestStrings)
+            assert False
+
         
         returnValue(invitations)
 
@@ -676,14 +690,13 @@ class SharedCollectionMixin(object):
             # Look for existing invite and update its fields or create new one
             invitation = yield self._invitationForShareeUID(shareeUID)
             if invitation:
-                invitation = yield self._updateInvitationForUID(invitation.uid(), shareeAccess=inviteAccessMapFromXML[type(ace)], summary=summary)
+                yield self._updateInvitation(invitation, shareeAccess=inviteAccessMapFromXML[type(ace)], summary=summary)
             else:
-                invitation = yield self._createInvitation(uid=str(uuid4()), 
+                invitation = yield self._createInvitation( 
                                     shareeUID=shareeUID, 
                                     shareeAccess=inviteAccessMapFromXML[type(ace)],
-                                    state="NEEDS-ACTION", 
                                     summary=summary)
-            # Send invite
+            # Send invite notification
             yield self.sendInviteNotification(invitation, request)
 
         finally:
@@ -738,18 +751,10 @@ class SharedCollectionMixin(object):
             if invitation and invitation.state() != "ACCEPTED":
                 yield self.removeInviteNotification(invitation, request)
             elif invitation:
-                yield self.sendInviteNotification(invitation, request, fakeState="DELETED")
+                yield self.sendInviteNotification(invitation, request, notificationState="DELETED")
         
         # use new API
-        from twistedcaldav.directory.util import transactionFromRequest
-        transaction = transactionFromRequest(request, self._newStoreObject)
-        
-        if self.isCalendarCollection():
-            shareeHome = yield transaction.calendarHomeWithUID(invitation.shareeUID(), create=True)
-        elif self.isAddressBookCollection():
-            shareeHome = yield transaction.addressbookHomeWithUID(invitation.shareeUID(), create=True)
-
-        yield self._newStoreObject.unshareWith(shareeHome)
+        yield self._newStoreObject.unshareWith(invitation.homeChild()._home)
     
         #old code
         #  yield self.invitesDB().removeRecordForInviteUID(invitation.uid())
@@ -762,7 +767,7 @@ class SharedCollectionMixin(object):
         return self.inviteSingleUserToShare(userid, commonName, aceNEW, summary, request) 
 
     @inlineCallbacks
-    def sendInviteNotification(self, invitation, request, fakeState=None):
+    def sendInviteNotification(self, invitation, request, notificationState=None):
         
         ownerPrincipal = (yield self.ownerPrincipal(request))
         owner = ownerPrincipal.principalURL()
@@ -786,7 +791,7 @@ class SharedCollectionMixin(object):
         
         # Generate invite XML
         userid = "urn:uuid:" + invitation.shareeUID()
-        state = fakeState if fakeState else invitation.state()
+        state = notificationState if notificationState else invitation.state()
 
         typeAttr = {'shared-type':self.sharedResourceType()}
         xmltype = customxml.InviteNotification(**typeAttr)
