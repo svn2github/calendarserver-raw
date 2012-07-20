@@ -2147,8 +2147,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @param message: The proposed share name
         @type recipient: L{str}
 
-        @return: the name of the shared calendar in the new calendar home.
-        @rtype: L{str}
+        @return: L{CommonHomeChild} objects that represent the created
+            L{CommonHomeChild} as a child of the shareeHome
+        @rtype: a L{Deferred} which fires with a L{CommonHomeChild}
         """
         
         # recipient is needed for current legacy invites
@@ -2218,8 +2219,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @param message: The proposed share name
         @type recipient: L{str}
 
-        @return: the name of the shared calendar in the new calendar home.
-        @rtype: L{str}
+        @return: L{Deferred}
         """
         # yield self.shareWith(shared._home, mode, status, message)
         dn = PropertyName.fromElement(DisplayName)
