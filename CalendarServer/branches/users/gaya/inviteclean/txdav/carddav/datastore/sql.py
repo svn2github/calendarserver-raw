@@ -39,8 +39,7 @@ from twistedcaldav.memcacher import Memcacher
 from twistedcaldav.vcard import Component as VCard, InvalidVCardDataError
 
 from txdav.common.datastore.sql_legacy import \
-    PostgresLegacyABIndexEmulator, SQLLegacyAddressBookInvites,\
-    SQLLegacyAddressBookShares
+    PostgresLegacyABIndexEmulator, SQLLegacyAddressBookShares
 
 from txdav.carddav.datastore.util import validateAddressBookComponent
 from txdav.carddav.iaddressbookstore import IAddressBookHome, IAddressBook,\
@@ -166,8 +165,7 @@ class AddressBook(CommonHomeChild):
     def __init__(self, *args, **kw):
         super(AddressBook, self).__init__(*args, **kw)
         self._index = PostgresLegacyABIndexEmulator(self)
-        self._invites = SQLLegacyAddressBookInvites(self)
-
+        
 
     @property
     def _addressbookHome(self):

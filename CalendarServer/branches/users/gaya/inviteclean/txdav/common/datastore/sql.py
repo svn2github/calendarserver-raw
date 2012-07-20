@@ -56,7 +56,7 @@ from txdav.carddav.iaddressbookstore import IAddressBookTransaction
 
 from txdav.common.datastore.sql_tables import schema
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
-    _BIND_STATUS_INVITED, _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
+    _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
 from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
     HomeChildNameAlreadyExistsError, NoSuchHomeChildError, \
     ObjectResourceNameNotAllowedError, ObjectResourceNameAlreadyExistsError, \
@@ -1933,7 +1933,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         self._syncTokenRevision = None
         self._notifiers         = notifiers
         self._index             = None  # Derived classes need to set this
-        self._invites           = None  # Derived classes need to set this
 
 
     @classproperty
@@ -2754,10 +2753,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
     def retrieveOldIndex(self):
         return self._index
-
-
-    def retrieveOldInvites(self):
-        return self._invites
 
 
     def __repr__(self):

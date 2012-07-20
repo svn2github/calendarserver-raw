@@ -52,8 +52,7 @@ from txdav.caldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObjec
     IAttachment
 from txdav.common.datastore.sql import CommonHome, CommonHomeChild,\
     CommonObjectResource, ECALENDARTYPE
-from txdav.common.datastore.sql_legacy import \
-    PostgresLegacyIndexEmulator, SQLLegacyCalendarInvites,\
+from txdav.common.datastore.sql_legacy import PostgresLegacyIndexEmulator,\
     SQLLegacyCalendarShares, PostgresLegacyInboxIndexEmulator
 from txdav.common.datastore.sql_tables import CALENDAR_TABLE,\
     CALENDAR_BIND_TABLE, CALENDAR_OBJECT_REVISIONS_TABLE, CALENDAR_OBJECT_TABLE,\
@@ -424,7 +423,6 @@ class Calendar(CommonHomeChild):
             self._index = PostgresLegacyInboxIndexEmulator(self)
         else:
             self._index = PostgresLegacyIndexEmulator(self)
-        self._invites = SQLLegacyCalendarInvites(self)
 
 
     @classmethod
