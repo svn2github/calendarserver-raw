@@ -2096,7 +2096,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 subt, homeID=shareeHome._resourceID,
                 resourceID=self._resourceID, name=newName, mode=mode,
                 seenByOwner=True, seenBySharee=True,
-                bindStatus=_BIND_STATUS_ACCEPTED,
+                bindStatus=_BIND_STATUS_ACCEPTED, message=None
             )
             yield self._insertInviteQuery.on(
                 subt, uid=newName, name=str(dnprop),
