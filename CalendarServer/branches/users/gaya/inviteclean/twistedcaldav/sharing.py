@@ -30,6 +30,9 @@ from twext.web2.http import HTTPError, Response, XMLResponse
 from twext.web2.dav.http import ErrorResponse, MultiStatusResponse
 from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import allDataFromStream, joinURL
+from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
+    _BIND_MODE_READ, _BIND_MODE_WRITE, _BIND_STATUS_INVITED, \
+    _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, _BIND_STATUS_INVALID
 from txdav.xml import element
 
 from twisted.internet.defer import succeed, inlineCallbacks, DeferredList,\
@@ -48,50 +51,6 @@ from pycalendar.datetime import PyCalendarDateTime
 from uuid import uuid4
 import os
 import types
-
-from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
-    _BIND_MODE_READ, _BIND_MODE_WRITE, _BIND_STATUS_INVITED, \
-    _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, _BIND_STATUS_INVALID
-
-
-class Invitation(object):
-    """
-        Invitation is a read-only wrapper for CommonHomeChild, that's similar to the old sharing.py code base.
-    """
-    def __init__(self, homeChild):
-        self._homeChild = homeChild
-    
-    def homeChild(self):
-        return self._homeChild
-
-    def uid(self):
-        return self._homeChild.inviteUID()
-    
-    def shareeUID(self):
-        return self._homeChild._home.uid()
-   
-    def shareeAccess(self):
-        return invitationShareeAccessFromBindModeMap[self._homeChild.shareMode()]
-    
-    def state(self):
-        return invitationStateFromBindStatusMap[self._homeChild.shareStatus()]
-   
-    def summary(self):
-        return self._homeChild.shareMessage()
-
-invitationStateToBindStatusMap = {
-    "NEEDS-ACTION": _BIND_STATUS_INVITED,
-    "ACCEPTED": _BIND_STATUS_ACCEPTED,
-    "DECLINED": _BIND_STATUS_DECLINED,
-    "INVALID": _BIND_STATUS_INVALID,
-}
-invitationStateFromBindStatusMap = dict((v,k) for k, v in invitationStateToBindStatusMap.iteritems())
-invitationShareeAccessToBindModeMap = {
-    "own": _BIND_MODE_OWN,
-    "read-only": _BIND_MODE_READ,
-    "read-write": _BIND_MODE_WRITE,
-    }
-invitationShareeAccessFromBindModeMap = dict((v,k) for k, v in invitationShareeAccessToBindModeMap.iteritems())
 
 
 
@@ -118,8 +77,8 @@ class SharedCollectionMixin(object):
                     customxml.UID.fromString(invitation.uid()) if includeUID else None,
                     element.HRef.fromString(userid),
                     customxml.CommonName.fromString(cn),
-                    customxml.InviteAccess(inviteAccessMapToXML[invitation.shareeAccess()]()),
-                    inviteStatusMapToXML[invitation.state()](),
+                    customxml.InviteAccess(invitationAccessMapToXML[invitation.access()]()),
+                    invitationStatusMapToXML[invitation.state()](),
                 )
 
             # See if this property is on the shared calendar
@@ -349,13 +308,13 @@ class SharedCollectionMixin(object):
                 # sharee
                 userID = self._shareePrincipal.record.guid
                 wikiID = owner.record.shortNames[0]
-                inviteAccess = (yield wikiAccessMethod(userID, wikiID))
-                if inviteAccess == "read":
-                    inviteAccess = "read-only"
-                elif inviteAccess in ("write", "admin"):
-                    inviteAccess = "read-write"
+                access = (yield wikiAccessMethod(userID, wikiID))
+                if access == "read":
+                    access = "read-only"
+                elif access in ("write", "admin"):
+                    access = "read-write"
                 else:
-                    inviteAccess = None
+                    access = None
             else:
                 result = (yield original.accessControlList(request, *args,
                     **kwargs))
@@ -364,22 +323,22 @@ class SharedCollectionMixin(object):
             # Invite shares use access mode from the invite
     
             # Get the invite for this sharee
-            invite = yield self._invitationForUID(
+            invitation = yield self._invitationForUID(
                 self._share.shareuid
             )
-            if invite is None:
+            if invitation is None:
                 returnValue(element.ACL())
-            inviteAccess = invite.shareeAccess()
+            access = invitation.access()
             
         userprivs = [
         ]
-        if inviteAccess in ("read-only", "read-write", "read-write-schedule",):
+        if access in ("read-only", "read-write", "read-write-schedule",):
             userprivs.append(element.Privilege(element.Read()))
             userprivs.append(element.Privilege(element.ReadACL()))
             userprivs.append(element.Privilege(element.ReadCurrentUserPrivilegeSet()))
-        if inviteAccess in ("read-only",):
+        if access in ("read-only",):
             userprivs.append(element.Privilege(element.WriteProperties()))
-        if inviteAccess in ("read-write", "read-write-schedule",):
+        if access in ("read-write", "read-write-schedule",):
             userprivs.append(element.Privilege(element.Write()))
         proxyprivs = list(userprivs)
         try:
@@ -533,7 +492,7 @@ class SharedCollectionMixin(object):
         
         
     @inlineCallbacks
-    def _createInvitation(self, shareeUID, shareeAccess, summary,):
+    def _createInvitation(self, shareeUID, access, summary,):
         '''
         Create a new homeChild and wrap it in an Invitation
         '''
@@ -543,7 +502,7 @@ class SharedCollectionMixin(object):
             shareeHome = yield self._newStoreObject._txn.addressbookHomeWithUID(shareeUID, create=True)
 
         homeChild =  yield self._newStoreObject.shareWithOptions(shareeHome,
-                                                    mode=invitationShareeAccessToBindModeMap[shareeAccess],
+                                                    mode=invitationAccessToBindModeMap[access],
                                                     status=_BIND_STATUS_INVITED,
                                                     message=summary )
         invitation = Invitation(homeChild)
@@ -551,13 +510,13 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
-    def _updateInvitation(self, invitation, shareeAccess=None, state=None, summary=None):
-        mode = invitation.homeChild().shareMode() if shareeAccess is None else invitationShareeAccessToBindModeMap[shareeAccess]
+    def _updateInvitation(self, invitation, access=None, state=None, summary=None):
+        mode = invitation.homeChild().shareMode() if access is None else invitationAccessToBindModeMap[access]
         status = invitation.homeChild().shareStatus() if state is None else invitationStateToBindStatusMap[state]
         message = invitation.summary() if summary is None else summary
         
         yield self._newStoreObject.updateShare(invitation.homeChild(), mode, status, message )
-        assert not shareeAccess or shareeAccess == invitation.shareeAccess(), "shareeAccess=%s != invitation.shareeAccess()=%s" % (shareeAccess, invitation.shareeAccess())
+        assert not access or access == invitation.access(), "access=%s != invitation.access()=%s" % (access, invitation.access())
         assert not state or state == invitation.state(), "state=%s != invitation.state()=%s" % (state, invitation.state())
         assert not summary or summary == invitation.summary(), "summary=%s != invitation.summary()=%s" % (summary, invitation.summary())
 
@@ -623,11 +582,11 @@ class SharedCollectionMixin(object):
             # Look for existing invite and update its fields or create new one
             invitation = yield self._invitationForShareeUID(shareeUID)
             if invitation:
-                yield self._updateInvitation(invitation, shareeAccess=inviteAccessMapFromXML[type(ace)], summary=summary)
+                yield self._updateInvitation(invitation, access=invitationAccessMapFromXML[type(ace)], summary=summary)
             else:
                 invitation = yield self._createInvitation( 
                                     shareeUID=shareeUID, 
-                                    shareeAccess=inviteAccessMapFromXML[type(ace)],
+                                    access=invitationAccessMapFromXML[type(ace)],
                                     summary=summary)
             # Send invite notification
             yield self.sendInviteNotification(invitation, request)
@@ -730,8 +689,8 @@ class SharedCollectionMixin(object):
             customxml.InviteNotification(
                 customxml.UID.fromString(invitation.uid()),
                 element.HRef.fromString(userid),
-                inviteStatusMapToXML[state](),
-                customxml.InviteAccess(inviteAccessMapToXML[invitation.shareeAccess()]()),
+                invitationStatusMapToXML[state](),
+                customxml.InviteAccess(invitationAccessMapToXML[invitation.access()]()),
                 customxml.HostURL(
                     element.HRef.fromString(hosturl),
                 ),
@@ -955,20 +914,60 @@ class SharedCollectionMixin(object):
         ("text", "xml") : xmlRequestHandler,
     }
 
-inviteAccessMapToXML = {
+invitationAccessMapToXML = {
     "read-only"           : customxml.ReadAccess,
     "read-write"          : customxml.ReadWriteAccess,
 }
-inviteAccessMapFromXML = dict([(v,k) for k,v in inviteAccessMapToXML.iteritems()])
+invitationAccessMapFromXML = dict([(v,k) for k,v in invitationAccessMapToXML.iteritems()])
 
-inviteStatusMapToXML = {
+invitationStatusMapToXML = {
     "NEEDS-ACTION" : customxml.InviteStatusNoResponse,
     "ACCEPTED"     : customxml.InviteStatusAccepted,
     "DECLINED"     : customxml.InviteStatusDeclined,
     "DELETED"      : customxml.InviteStatusDeleted,
     "INVALID"      : customxml.InviteStatusInvalid,
 }
-inviteStatusMapFromXML = dict([(v,k) for k,v in inviteStatusMapToXML.iteritems()])
+invitationStatusMapFromXML = dict([(v,k) for k,v in invitationStatusMapToXML.iteritems()])
+
+invitationStateToBindStatusMap = {
+    "NEEDS-ACTION": _BIND_STATUS_INVITED,
+    "ACCEPTED": _BIND_STATUS_ACCEPTED,
+    "DECLINED": _BIND_STATUS_DECLINED,
+    "INVALID": _BIND_STATUS_INVALID,
+}
+invitationStateFromBindStatusMap = dict((v,k) for k, v in invitationStateToBindStatusMap.iteritems())
+invitationAccessToBindModeMap = {
+    "own": _BIND_MODE_OWN,
+    "read-only": _BIND_MODE_READ,
+    "read-write": _BIND_MODE_WRITE,
+    }
+invitationAccessFromBindModeMap = dict((v,k) for k, v in invitationAccessToBindModeMap.iteritems())
+
+class Invitation(object):
+    """
+        Invitation is a read-only wrapper for CommonHomeChild, that uses terms similar LegacyInvite sharing.py code base.
+    """
+    def __init__(self, homeChild):
+        self._homeChild = homeChild
+    
+    def homeChild(self):
+        return self._homeChild
+
+    def uid(self):
+        return self._homeChild.inviteUID()
+    
+    def shareeUID(self):
+        return self._homeChild._home.uid()
+   
+    def access(self):
+        return invitationAccessFromBindModeMap[self._homeChild.shareMode()]
+    
+    def state(self):
+        return invitationStateFromBindStatusMap[self._homeChild.shareStatus()]
+   
+    def summary(self):
+        return self._homeChild.shareMessage()
+
 
 class LegacyInvite(object):
     
@@ -1316,7 +1315,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 *(
                     (
                         element.HRef.fromString(cua),
-                        inviteStatusMapToXML[state](),
+                        invitationStatusMapToXML[state](),
                         customxml.HostURL(
                             element.HRef.fromString(hostUrl),
                         ),
