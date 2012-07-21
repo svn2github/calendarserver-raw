@@ -1091,8 +1091,8 @@ class CommonTests(CommonCommonTests):
         yield otherCal.unshare()
         otherCal = yield other.sharedChildWithName(self.sharedName)
         self.assertEqual(otherCal, None)
-        invites = yield cal.retrieveOldInvites().allRecords()
-        self.assertEqual(len(invites), 0)
+        invitedCals = yield cal.asInvited()
+        self.assertEqual(len(invitedCals), 0)
         shares = yield other.retrieveOldShares().allRecords()
         self.assertEqual(len(shares), 0)
 
