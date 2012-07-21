@@ -1030,11 +1030,9 @@ class CommonTests(CommonCommonTests):
         self.assertEqual(newName, self.sharedName)
         self.assertNotIdentical(otherCal, None)
 
-        # FIXME: permission information should be visible on the retrieved
-        # calendar object, we shoudln't need to go via the legacy API.
-        invites = yield cal.retrieveOldInvites().allRecords()
-        self.assertEqual(len(invites), 1)
-        self.assertEqual(invites[0].access, "read-only")
+        invitedCals = yield cal.asInvited()
+        self.assertEqual(len(invitedCals), 1)
+        self.assertEqual(invitedCals[0].shareMode(), _BIND_MODE_READ)
 
 
     @inlineCallbacks
@@ -1051,8 +1049,8 @@ class CommonTests(CommonCommonTests):
         newName = yield cal.unshareWith(other)
         otherCal = yield other.sharedChildWithName(newName)
         self.assertIdentical(otherCal, None)
-        invites = yield cal.retrieveOldInvites().allRecords()
-        self.assertEqual(len(invites), 0)
+        invitedCals = yield cal.asInvited()
+        self.assertEqual(len(invitedCals), 0)
         shares = yield other.retrieveOldShares().allRecords()
         self.assertEqual(len(shares), 0)
 
@@ -1072,8 +1070,8 @@ class CommonTests(CommonCommonTests):
         yield cal.unshare()
         otherCal = yield other.sharedChildWithName(self.sharedName)
         self.assertEqual(otherCal, None)
-        invites = yield cal.retrieveOldInvites().allRecords()
-        self.assertEqual(len(invites), 0)
+        invitedCals = yield cal.asInvited()
+        self.assertEqual(len(invitedCals), 0)
         shares = yield other.retrieveOldShares().allRecords()
         self.assertEqual(len(shares), 0)
 
