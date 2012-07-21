@@ -993,12 +993,6 @@ class CommonTests(CommonCommonTests):
         other = yield self.homeUnderTest(name=OTHER_HOME_UID)
         newCalName = yield cal.shareWith(other, _BIND_MODE_WRITE)
         self.sharedName = newCalName
-        # Use the legacy invite record to check INVITE table row count
-        self.assertEqual(
-            [record.principalUID for record in
-             (yield cal.retrieveOldInvites().allRecords())],
-            [OTHER_HOME_UID,]
-        )        
         yield self.commit()
         normalCal = yield self.calendarUnderTest()
         otherHome = yield self.homeUnderTest(name=OTHER_HOME_UID)
@@ -1050,13 +1044,6 @@ class CommonTests(CommonCommonTests):
         another user's calendar home.
         """
         yield self.test_shareWith()
-        '''
-        cal = yield self.calendarUnderTest()
-        other = yield self.homeUnderTest(name=OTHER_HOME_UID)
-        yield cal.unshareWith(other)
-
-        yield self.test_shareWith()
-        '''
         if commit:
             yield self.commit()
         cal = yield self.calendarUnderTest()
@@ -1068,14 +1055,6 @@ class CommonTests(CommonCommonTests):
         self.assertEqual(len(invites), 0)
         shares = yield other.retrieveOldShares().allRecords()
         self.assertEqual(len(shares), 0)
-        
-        # Check the invite table row for the bind has been cleaned
-        yield self.test_shareWith()
-        #clean up
-        cal = yield self.calendarUnderTest()
-        other = yield self.homeUnderTest(name=OTHER_HOME_UID)
-        yield cal.unshareWith(other)
-       
 
     @inlineCallbacks
     def test_unshareSharerSide(self, commit=False):
