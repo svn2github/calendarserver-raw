@@ -59,6 +59,7 @@ from twistedcaldav.vcard import Component as VCard, InvalidVCardDataError
 from txdav.base.propertystore.base import PropertyName
 from txdav.caldav.icalendarstore import QuotaExceeded
 from txdav.common.icommondatastore import NoSuchObjectResourceError
+from txdav.common.datastore.sql_tables import _BIND_MODE_READ, _BIND_MODE_WRITE
 from txdav.idav import PropertyChangeNotAllowedError
 
 import time
@@ -1509,31 +1510,20 @@ class CalendarObjectDropbox(_GetChildHelper):
 
     @inlineCallbacks
     def sharedDropboxACEs(self):
-        
-        #TODO:  verify that this this works!
-        from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, _BIND_MODE_READ, _BIND_MODE_WRITE
-
 
         aces = ()
         calendars = yield self._newStoreCalendarObject._parentCollection.asShared()
         for calendar in calendars:
-            # Invite shares use access mode from the invite
-            #if record.state != "ACCEPTED":
-            #    continue
-            
-            
+
             userprivs = [
             ]
-            #if record.access in ("read-only", "read-write", "read-write-schedule",):
-            if calendar.shareMode() in (_BIND_MODE_READ, _BIND_MODE_WRITE, _BIND_MODE_OWN,):
+            if calendar.shareMode() in (_BIND_MODE_READ, _BIND_MODE_WRITE,):
                 userprivs.append(davxml.Privilege(davxml.Read()))
                 userprivs.append(davxml.Privilege(davxml.ReadACL()))
                 userprivs.append(davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()))
-            #if record.access in ("read-only",):
             if calendar.shareMode() in (_BIND_MODE_READ,):
                 userprivs.append(davxml.Privilege(davxml.WriteProperties()))
-            #if record.access in ("read-write", "read-write-schedule",):
-            if calendar.shareMode() in (_BIND_MODE_WRITE, _BIND_MODE_OWN,):
+            if calendar.shareMode() in (_BIND_MODE_WRITE,):
                 userprivs.append(davxml.Privilege(davxml.Write()))
             proxyprivs = list(userprivs)
             proxyprivs.remove(davxml.Privilege(davxml.ReadACL()))
