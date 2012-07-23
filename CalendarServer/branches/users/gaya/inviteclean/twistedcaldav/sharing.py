@@ -332,13 +332,13 @@ class SharedCollectionMixin(object):
             
         userprivs = [
         ]
-        if access in ("read-only", "read-write", "read-write-schedule",):
+        if access in ("read-only", "read-write",):
             userprivs.append(element.Privilege(element.Read()))
             userprivs.append(element.Privilege(element.ReadACL()))
             userprivs.append(element.Privilege(element.ReadCurrentUserPrivilegeSet()))
         if access in ("read-only",):
             userprivs.append(element.Privilege(element.WriteProperties()))
-        if access in ("read-write", "read-write-schedule",):
+        if access in ("read-write",):
             userprivs.append(element.Privilege(element.Write()))
         proxyprivs = list(userprivs)
         try:
