@@ -2197,15 +2197,14 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         returnValue(homeChild)
 
 
-
     @inlineCallbacks
-    def updateShare(self, homeChild, mode, status, message):
+    def updateShare(self, shareeView, mode, status, message):
         """
-        Update share mode, status, and message for a home child
-            shared with this (owned) L{CommonHomeChild].
+        Update share mode, status, and message for a home child shared with
+        this (owned) L{CommonHomeChild}.
 
-        @param shared: The sharee home child that shares this.
-        @type shareeHome: L{CommonHomeChild}
+        @param shareeView: The sharee home child that shares this.
+        @type shareeView: L{CommonHomeChild}
 
         @param mode: The sharing mode; L{_BIND_MODE_READ} or
             L{_BIND_MODE_WRITE}.
@@ -2213,13 +2212,17 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @param status: The sharing mode; L{_BIND_STATUS_INVITED} or
             L{_BIND_STATUS_ACCEPTED} or L{_BIND_STATUS_DECLINED} or
             L{_BIND_STATUS_INVALID}.
+
         @type mode: L{str}
 
-        @param message: The proposed share name
-        @type recipient: L{str}
+        @param message: The proposed message to go along with the share, which
+            will be used as the default display name.
 
         @return: L{Deferred}
         """
+        # TODO: raise a nice exception if shareeView is not, in fact, a shared
+        # version of this same L{CommonHomeChild}
+
         # yield self.shareWith(shared._home, mode, status, message)
         dn = PropertyName.fromElement(DisplayName)
         dnprop = (self.properties().get(dn) or
@@ -2228,10 +2231,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         yield self._updateBindQuery.on(
             self._txn,
             mode=mode, status=status, message=message,
-            resourceID=self._resourceID, homeID=homeChild._home._resourceID
+            resourceID=self._resourceID, homeID=shareeView._home._resourceID
         )
 
-        shareeProps = yield PropertyStore.load(homeChild._home.uid(), self._txn,
+        shareeProps = yield PropertyStore.load(shareeView._home.uid(), self._txn,
                                                self._resourceID)
         shareeProps[dn] = dnprop
         
@@ -2239,9 +2242,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         yield self.notifyChanged()
         
         #update affected attributes
-        homeChild._bindMode = mode
-        homeChild._bindStatus = status
-        homeChild._bindMessage = message
+        shareeView._bindMode = mode
+        shareeView._bindStatus = status
+        shareeView._bindMessage = message
 
 
     @inlineCallbacks
@@ -2372,7 +2375,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
     @classproperty
     def _allInvitedQuery(cls): #@NoSelf
-        
         #FIXME performance: change schema to get rid if INVITE table -> no join
         #
         # similar to sql_legacy.py
@@ -2391,25 +2393,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 (inv.RESOURCE_ID == Parameter("resourceID"))
                 .And(inv.RESOURCE_ID == bind.RESOURCE_ID)
                 .And(inv.HOME_RESOURCE_ID == home.RESOURCE_ID)
-                .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID))
-        )
-        '''
-        # The ALMOST worked, but returns too many rows in some cases.  
-        inv = schema.INVITE
-        bind = cls._bindSchema
-        return Select(
-            [bind.BIND_MODE, 
-             bind.HOME_RESOURCE_ID,
-             bind.RESOURCE_NAME,    # same as inv.INVITE_UID when not accepted
-             bind.BIND_STATUS,
-             bind.MESSAGE,
-             inv.INVITE_UID],
-            From=inv.join(bind),
-            Where=(bind.RESOURCE_ID == Parameter("resourceID"))
                 .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID)
-                .And(bind.BIND_MODE != _BIND_MODE_OWN)
+                # FIXME: test that this next line effectively obscures already-
+                # accepted and owned stuff!
+                .And(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED))
         )
-        '''
+
 
     @inlineCallbacks
     def asInvited(self):
@@ -2427,7 +2416,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             self._txn, resourceID=self._resourceID
         )
         cls = self.__class__ # for ease of grepping...
-        
+
         result = []
         for bindMode, homeResourceID, sharedResourceName, bindStatus, bindMessage, inviteUID in rows:
             # TODO: this could all be issued in parallel; no need to serialize
