@@ -2080,6 +2080,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         @param message: The proposed message to go along with the share, which
             will be used as the default display name.
+        @type mode: L{str}
 
         @return: the name of the shared calendar in the new calendar home.
         @rtype: L{str}
@@ -2140,15 +2141,16 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         @param mode: The sharing mode; L{_BIND_MODE_READ} or
             L{_BIND_MODE_WRITE}.
+        @type mode: L{str}
 
         @param status: The sharing mode; L{_BIND_STATUS_INVITED} or
             L{_BIND_STATUS_ACCEPTED} or L{_BIND_STATUS_DECLINED} or
             L{_BIND_STATUS_INVALID}.
-
-        @type mode: L{str}
+        @type status: L{str}
 
         @param message: The proposed message to go along with the share, which
             will be used as the default display name.
+        @type message: L{str}
 
         @return: L{Deferred}
         """
