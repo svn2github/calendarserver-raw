@@ -2062,72 +2062,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @inlineCallbacks
-    def shareWith(self, shareeHome, mode, recipient=None):
-        """
-        Share this (owned) L{CommonHomeChild} with another home.
-
-        @param shareeHome: The home of the sharee.
-        @type shareeHome: L{CommonHome}
-
-        @param mode: The sharing mode; L{_BIND_MODE_READ} or
-            L{_BIND_MODE_WRITE}.
-        @type mode: L{str}
-
-        @param recipient: The sharing recipient
-            if None, defaults to "urn:uuid:" + shareeHome.uid()
-        @type recipient: L{str}
-
-        @return: the name of the shared calendar in the new calendar home.
-        @rtype: L{str}
-        """
-        
-        # recipient is needed for current legacy invites
-        if recipient is None:
-            recipient = "urn:uuid:" + shareeHome.uid()
-
-        dn = PropertyName.fromElement(DisplayName)
-        dnprop = (self.properties().get(dn) or
-                  DisplayName.fromString(self.name()))
-
-        @inlineCallbacks
-        def doInsert(subt):
-            newName = str(uuid4())
-            yield self._bindInsertQuery.on(
-                subt, homeID=shareeHome._resourceID,
-                resourceID=self._resourceID, name=newName, mode=mode,
-                seenByOwner=True, seenBySharee=True,
-                bindStatus=_BIND_STATUS_ACCEPTED, message=None
-            )
-            yield self._insertInviteQuery.on(
-                subt, uid=newName, name=str(dnprop),
-                homeID=shareeHome._resourceID, resourceID=self._resourceID,
-                recipient=recipient
-            )
-            returnValue(newName)
-        try:
-            sharedName = yield self._txn.subtransaction(doInsert)
-        except AllRetriesFailed:
-            # FIXME: catch more specific exception
-            sharedName = (yield self._updateBindQuery.on(
-                self._txn,
-                mode=mode, status=_BIND_STATUS_ACCEPTED, message=None,
-                resourceID=self._resourceID, homeID=shareeHome._resourceID
-            ))[0][0]
-            # Invite already exists; no need to update it, since the name will
-            # remain the same.
-
-        shareeProps = yield PropertyStore.load(shareeHome.uid(), self._txn,
-                                               self._resourceID)
-        shareeProps[dn] = dnprop
-        
-        # Must send notification to ensure cache invalidation occurs
-        yield self.notifyChanged()
-
-        returnValue(sharedName)
-
-
-    @inlineCallbacks
-    def shareWithOptions(self, shareeHome, mode, status, message):
+    def shareWith(self, shareeHome, mode, status=None, message=None):
         """
         Share this (owned) L{CommonHomeChild} with another home.
 
@@ -2143,21 +2078,16 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{_BIND_STATUS_INVALID}.
         @type mode: L{str}
 
-        @param message: The proposed share name
-        @type recipient: L{str}
+        @param message: The proposed message to go along with the share, which
+            will be used as the default display name.
 
-        @return: L{CommonHomeChild} objects that represent the created
-            L{CommonHomeChild} as a child of the shareeHome
-        @rtype: a L{Deferred} which fires with a L{CommonHomeChild}
+        @return: the name of the shared calendar in the new calendar home.
+        @rtype: L{str}
         """
         
-        # recipient is needed for current legacy invites
-        recipient = "urn:uuid:" + shareeHome.uid()
-
-        dn = PropertyName.fromElement(DisplayName)
-        dnprop = (self.properties().get(dn) or
-                  DisplayName.fromString(self.name()))
-
+        if status is None:
+            status = _BIND_STATUS_ACCEPTED
+        
         @inlineCallbacks
         def doInsert(subt):
             newName = str(uuid4())
@@ -2168,33 +2098,35 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 bindStatus=status, message=message
             )
             yield self._insertInviteQuery.on(
-                subt, uid=newName, name=str(dnprop),
+                subt, uid=newName, name="unused",
                 homeID=shareeHome._resourceID, resourceID=self._resourceID,
-                recipient=recipient
+                recipient="unused"
             )
             returnValue(newName)
-
-        sharedName = yield self._txn.subtransaction(doInsert)
+        try:
+            sharedName = yield self._txn.subtransaction(doInsert)
+        except AllRetriesFailed:
+            # FIXME: catch more specific exception
+            sharedName = (yield self._updateBindQuery.on(
+                self._txn,
+                mode=mode, status=status, message=message,
+                resourceID=self._resourceID, homeID=shareeHome._resourceID
+            ))[0][0]
+            # Invite already exists; no need to update it, since the name will
+            # remain the same.
 
         shareeProps = yield PropertyStore.load(shareeHome.uid(), self._txn,
                                                self._resourceID)
+        dn = PropertyName.fromElement(DisplayName)
+        dnprop = (self.properties().get(dn) or
+                  DisplayName.fromString(self.name()))
+
         shareeProps[dn] = dnprop
         
         # Must send notification to ensure cache invalidation occurs
         yield self.notifyChanged()
-        
-        # return homeChild
-        cls = self.__class__ # for ease of grepping...
-        homeChild = cls(
-            home=(yield self._txn.homeWithResourceID(shareeHome._homeType,
-                                                shareeHome._resourceID)),
-            name=sharedName, resourceID=self._resourceID,
-            owned=False, mode=mode, status=status, 
-            message=message, inviteUID=sharedName,
-        )
-        yield homeChild.initFromStore()
 
-        returnValue(homeChild)
+        returnValue(sharedName)
 
 
     @inlineCallbacks
@@ -2396,7 +2328,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID)
                 # FIXME: test that this next line effectively obscures already-
                 # accepted and owned stuff!
-                .And(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED))
+                #.And(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED)
+                )
         )
 
 

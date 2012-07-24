@@ -501,11 +501,19 @@ class SharedCollectionMixin(object):
         elif self.isAddressBookCollection():
             shareeHome = yield self._newStoreObject._txn.addressbookHomeWithUID(shareeUID, create=True)
 
-        homeChild =  yield self._newStoreObject.shareWithOptions(shareeHome,
+        sharedName =  yield self._newStoreObject.shareWith(shareeHome,
                                                     mode=invitationAccessToBindModeMap[access],
                                                     status=_BIND_STATUS_INVITED,
                                                     message=summary )
-        invitation = Invitation(homeChild)
+        # no way to get an unaccepted child similar to 
+        #    homeChild = yield shareeHome.sharedChildWithName(sharedName)
+        #    invitation = Invitation(homeChild)
+        # so get all invites and filter
+        invitation = yield self._invitationForShareeUID(shareeUID)
+        assert sharedName == invitation.uid()
+        returnValue(invitation)
+        
+        
         returnValue(invitation)
 
 
@@ -522,11 +530,19 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
-    def _allInvitations(self):
+    def _allInvitations(self, includeAccepted=True):
         """
         Get list of all invitations to this object
         """
         invitedHomeChildren = yield self._newStoreObject.asInvited()
+        ''' FUTURE
+        if includeAccepted:
+            acceptedHomeChildren = yield self._newStoreObject.asShared()
+            if invitedHomeChildren and acceptedHomeChildren:
+                invitedHomeChildren += acceptedHomeChildren
+            elif acceptedHomeChildren:
+                invitedHomeChildren = acceptedHomeChildren
+        '''
         
         invitations = []
         for homeChild in invitedHomeChildren:
