@@ -2287,11 +2287,31 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                         )
         )
 
-
     @classproperty
     def _sharedFor(cls): #@NoSelf
         bind = cls._bindSchema
         return cls._bindEntriesFor(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)
+    
+    @inlineCallbacks
+    def _asBound(self, query):
+        rows = yield query.on(self._txn, 
+                                resourceID=self._resourceID)
+
+        cls = self.__class__ # for ease of grepping...
+        result = []
+        for bindMode, homeResourceID, sharedResourceName, bindStatus, bindMessage, inviteUID in rows:
+            # TODO: this could all be issued in parallel; no need to serialize
+            # the loop.
+            new = cls(
+                home=(yield self._txn.homeWithResourceID(self._home._homeType,
+                                                    homeResourceID)),
+                name=sharedResourceName, resourceID=self._resourceID,
+                owned=False, mode=bindMode, status=bindStatus, 
+                message=bindMessage, inviteUID=inviteUID,
+            )
+            yield new.initFromStore()
+            result.append(new)
+        returnValue(result)
     
 
     @inlineCallbacks
@@ -2306,24 +2326,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{CommonHomeChild} as a child of different L{CommonHome}s
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
-        rows = yield self._sharedFor.on(self._txn, 
-                                        resourceID=self._resourceID)
-
-        cls = self.__class__ # for ease of grepping...
-        result = []
-        for bindMode, homeResourceID, sharedResourceName, bindStatus, bindMessage, inviteUID in rows:
-            assert bindStatus == _BIND_STATUS_ACCEPTED
-            # TODO: this could all be issued in parallel; no need to serialize
-            # the loop.
-            new = cls(
-                home=(yield self._txn.homeWithResourceID(self._home._homeType,
-                                                    homeResourceID)),
-                name=sharedResourceName, resourceID=self._resourceID,
-                owned=False, mode=bindMode, status=bindStatus, 
-                message=bindMessage, inviteUID=inviteUID,
-            )
-            yield new.initFromStore()
-            result.append(new)
+        result = yield self._asBound(self._sharedFor)
         returnValue(result)
 
 
@@ -2344,27 +2347,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{CommonHomeChild} as a child of different L{CommonHome}s
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
-        rows = yield self._invitedFor.on(
-            self._txn, resourceID=self._resourceID
-        )
-        cls = self.__class__ # for ease of grepping...
-
-        result = []
-        for bindMode, homeResourceID, sharedResourceName, bindStatus, bindMessage, inviteUID in rows:
-            # TODO: this could all be issued in parallel; no need to serialize
-            # the loop.
-            new = cls(
-                home=(yield self._txn.homeWithResourceID(self._home._homeType,
-                                                    homeResourceID)),
-                name=sharedResourceName, resourceID=self._resourceID,
-                owned=False, mode=bindMode, status=bindStatus, 
-                message=bindMessage, inviteUID=inviteUID,
-            )
-            yield new.initFromStore()
-
-            result.append(new)
+        result = yield self._asBound(self._invitedFor)
         returnValue(result)
-
 
     @classmethod
     @inlineCallbacks
