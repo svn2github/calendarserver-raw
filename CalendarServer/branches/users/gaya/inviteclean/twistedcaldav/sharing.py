@@ -506,12 +506,9 @@ class SharedCollectionMixin(object):
                                                     mode=invitationAccessToBindModeMap[access],
                                                     status=_BIND_STATUS_INVITED,
                                                     message=summary )
-        # TODO:  add  invitedChildWithName
-        #    homeChild = yield shareeHome.invitedChildWithName(sharedName)
-        #    invitation = Invitation(homeChild)
-        # for now, get all invites and filter
-        invitation = yield self._invitationForShareeUID(shareeUID, includeAccepted=False)
-        assert sharedName == invitation.uid()
+        
+        homeChild = yield shareeHome.invitedChildWithName(sharedName)
+        invitation = Invitation(homeChild)
         returnValue(invitation)
         
         
