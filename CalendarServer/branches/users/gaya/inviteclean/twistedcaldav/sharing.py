@@ -32,7 +32,8 @@ from twext.web2.dav.resource import TwistedACLInheritable
 from twext.web2.dav.util import allDataFromStream, joinURL
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
     _BIND_MODE_READ, _BIND_MODE_WRITE, _BIND_STATUS_INVITED, \
-    _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, _BIND_STATUS_INVALID
+    _BIND_MODE_DIRECT, _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, \
+    _BIND_STATUS_INVALID
 from txdav.xml import element
 
 from twisted.internet.defer import succeed, inlineCallbacks, DeferredList,\
@@ -534,17 +535,16 @@ class SharedCollectionMixin(object):
         """
         Get list of all invitations to this object
         
-        For legacy reasons, all invitations are all invited + shared (accepted).
-        Combine these two into a single sorted list, sorted for easy testing
+        For legacy reasons, all invitations are all invited + shared (accepted, not direct).
+        Combine these two into a single sorted list so code is similar to that for legacy invite db
         """
         invitedHomeChildren = yield self._newStoreObject.asInvited()
         if includeAccepted:
             acceptedHomeChildren = yield self._newStoreObject.asShared()
-            if invitedHomeChildren and acceptedHomeChildren:
-                invitedHomeChildren += acceptedHomeChildren
-                invitedHomeChildren = set(invitedHomeChildren)
-            elif acceptedHomeChildren:
-                invitedHomeChildren = acceptedHomeChildren
+            # remove direct shares (it might be OK not to filter, that would be different from legacy db code)
+            indirectAccceptedHomeChildren = [homeChild for homeChild in acceptedHomeChildren
+                                             if homeChild.shareMode() != _BIND_MODE_DIRECT]
+            invitedHomeChildren += indirectAccceptedHomeChildren
         
         invitations = [Invitation(homeChild) for homeChild in invitedHomeChildren]
         invitations.sort(key=lambda invitation:invitation.shareeUID())
