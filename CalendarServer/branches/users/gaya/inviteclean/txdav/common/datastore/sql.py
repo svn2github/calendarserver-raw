@@ -2267,16 +2267,32 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
 
-    @classproperty
-    def _bindEntriesFor(cls): #@NoSelf
+    @classmethod
+    def _bindEntriesFor(cls, condition): #@NoSelf
         bind = cls._bindSchema
-        return Select([bind.BIND_MODE, bind.HOME_RESOURCE_ID,
-                       bind.RESOURCE_NAME],
-                      From=bind,
-                      Where=(bind.RESOURCE_ID == Parameter("resourceID")).And
-                            (bind.BIND_STATUS == _BIND_STATUS_ACCEPTED).And
-                            (bind.BIND_MODE != _BIND_MODE_OWN))
+        inv = schema.INVITE
+        return Select(
+            [bind.BIND_MODE, 
+             bind.HOME_RESOURCE_ID,
+             bind.RESOURCE_NAME,
+             bind.BIND_STATUS,
+             bind.MESSAGE,
+             inv.INVITE_UID],
+                  From=inv.join(bind),
+                  Where=(condition
+                        .And(bind.RESOURCE_ID == Parameter("resourceID"))
+                        .And(bind.BIND_MODE != _BIND_MODE_OWN)
+                        .And(inv.RESOURCE_ID == bind.RESOURCE_ID)
+                        .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID)
+                        )
+        )
 
+
+    @classproperty
+    def _sharedFor(cls): #@NoSelf
+        bind = cls._bindSchema
+        return cls._bindEntriesFor(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)
+    
 
     @inlineCallbacks
     def asShared(self):
@@ -2290,17 +2306,21 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{CommonHomeChild} as a child of different L{CommonHome}s
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
-        rows = yield self._bindEntriesFor.on(self._txn,
-                                             resourceID=self._resourceID)
+        rows = yield self._sharedFor.on(self._txn, 
+                                        resourceID=self._resourceID)
+
         cls = self.__class__ # for ease of grepping...
         result = []
-        for mode, homeResourceID, sharedResourceName in rows:
+        for bindMode, homeResourceID, sharedResourceName, bindStatus, bindMessage, inviteUID in rows:
+            assert bindStatus == _BIND_STATUS_ACCEPTED
             # TODO: this could all be issued in parallel; no need to serialize
             # the loop.
             new = cls(
-                (yield self._txn.homeWithResourceID(self._home._homeType,
+                home=(yield self._txn.homeWithResourceID(self._home._homeType,
                                                     homeResourceID)),
-                sharedResourceName, self._resourceID, False, mode
+                name=sharedResourceName, resourceID=self._resourceID,
+                owned=False, mode=bindMode, status=bindStatus, 
+                message=bindMessage, inviteUID=inviteUID,
             )
             yield new.initFromStore()
             result.append(new)
@@ -2308,32 +2328,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _allInvitedQuery(cls): #@NoSelf
-        #FIXME performance: change schema to get rid if INVITE table -> no join
-        #
-        # similar to sql_legacy.py
-        inv = schema.INVITE
-        home = cls._homeSchema
+    def _invitedFor(cls): #@NoSelf
         bind = cls._bindSchema
-        return Select(
-            [bind.BIND_MODE, 
-             bind.HOME_RESOURCE_ID,
-             bind.RESOURCE_NAME,    # same as inv.INVITE_UID when not accepted
-             bind.BIND_STATUS,
-             bind.MESSAGE,
-             inv.INVITE_UID],
-            From=inv.join(home).join(bind),
-            Where=(
-                (inv.RESOURCE_ID == Parameter("resourceID"))
-                .And(inv.RESOURCE_ID == bind.RESOURCE_ID)
-                .And(inv.HOME_RESOURCE_ID == home.RESOURCE_ID)
-                .And(inv.HOME_RESOURCE_ID == bind.HOME_RESOURCE_ID)
-                # FIXME: test that this next line effectively obscures already-
-                # accepted and owned stuff!
-                #.And(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED)
-                )
-        )
-
+        return cls._bindEntriesFor(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED)
 
     @inlineCallbacks
     def asInvited(self):
@@ -2347,7 +2344,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{CommonHomeChild} as a child of different L{CommonHome}s
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
-        rows = yield self._allInvitedQuery.on(
+        rows = yield self._invitedFor.on(
             self._txn, resourceID=self._resourceID
         )
         cls = self.__class__ # for ease of grepping...
@@ -2361,7 +2358,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                                                     homeResourceID)),
                 name=sharedResourceName, resourceID=self._resourceID,
                 owned=False, mode=bindMode, status=bindStatus, 
-                message=bindMessage, inviteUID= inviteUID,
+                message=bindMessage, inviteUID=inviteUID,
             )
             yield new.initFromStore()
 

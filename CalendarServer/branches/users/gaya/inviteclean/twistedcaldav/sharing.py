@@ -505,11 +505,11 @@ class SharedCollectionMixin(object):
                                                     mode=invitationAccessToBindModeMap[access],
                                                     status=_BIND_STATUS_INVITED,
                                                     message=summary )
-        # no way to get an unaccepted child similar to 
-        #    homeChild = yield shareeHome.sharedChildWithName(sharedName)
+        # TODO:  add  invitedChildWithName
+        #    homeChild = yield shareeHome.invitedChildWithName(sharedName)
         #    invitation = Invitation(homeChild)
-        # so get all invites and filter
-        invitation = yield self._invitationForShareeUID(shareeUID)
+        # for now, get all invites and filter
+        invitation = yield self._invitationForShareeUID(shareeUID, includeAccepted=False)
         assert sharedName == invitation.uid()
         returnValue(invitation)
         
@@ -533,31 +533,30 @@ class SharedCollectionMixin(object):
     def _allInvitations(self, includeAccepted=True):
         """
         Get list of all invitations to this object
+        
+        For legacy reasons, all invitations are all invited + shared (accepted).
+        Combine these two into a single sorted list, sorted for easy testing
         """
         invitedHomeChildren = yield self._newStoreObject.asInvited()
-        ''' FUTURE
         if includeAccepted:
             acceptedHomeChildren = yield self._newStoreObject.asShared()
             if invitedHomeChildren and acceptedHomeChildren:
                 invitedHomeChildren += acceptedHomeChildren
+                invitedHomeChildren = set(invitedHomeChildren)
             elif acceptedHomeChildren:
                 invitedHomeChildren = acceptedHomeChildren
-        '''
         
-        invitations = []
-        for homeChild in invitedHomeChildren:
-            invitation = Invitation(homeChild)
-            invitations.append(invitation)
+        invitations = [Invitation(homeChild) for homeChild in invitedHomeChildren]
         invitations.sort(key=lambda invitation:invitation.shareeUID())
         
         returnValue(invitations)
 
     @inlineCallbacks
-    def _invitationForShareeUID(self, shareeUID):
+    def _invitationForShareeUID(self, shareeUID, includeAccepted=True):
         """
         Get an invitation for this sharee principal UID
         """
-        invitations = yield self._allInvitations()
+        invitations = yield self._allInvitations(includeAccepted=includeAccepted)
         for invitation in invitations:
             if invitation.shareeUID() == shareeUID:
                 returnValue(invitation)
@@ -565,11 +564,11 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
-    def _invitationForUID(self, uid):
+    def _invitationForUID(self, uid, includeAccepted=True):
         """
-        Get an invitation for an invitation for a uid 
+        Get an invitation for an invitations uid 
         """
-        invitations = yield self._allInvitations()
+        invitations = yield self._allInvitations(includeAccepted=includeAccepted)
         for invitation in invitations:
             if invitation.uid() == uid:
                 returnValue(invitation)
