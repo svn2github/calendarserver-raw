@@ -2334,12 +2334,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     
 
     @classproperty
-    #FIXME:  almost the same as _
     def _acceptedBindFor(cls): #@NoSelf
         bind = cls._bindSchema
         return Select(
             [bind.BIND_MODE, 
              bind.HOME_RESOURCE_ID,
+             bind.RESOURCE_ID,
              bind.RESOURCE_NAME,
              bind.BIND_STATUS,
              bind.MESSAGE],
@@ -2363,11 +2363,11 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{CommonHomeChild} as a child of different L{CommonHome}s
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
-        # get all accepted binds, add inviteUID=None, and put in dict by home homeResourceID
+        # get all accepted binds, add inviteUID=None, and put in dict by homeResourceID
         acceptedRows = yield self._acceptedBindFor.on(self._txn, resourceID=self._resourceID)
         acceptedRowDict = dict([(row[1], row + [None,]) for row in acceptedRows])
         
-        # get accepted binds with associated inviteUID, and put in dict by home homeResourceID
+        # get accepted binds with associated inviteUID, and put in dict by homeResourceID
         inviteRows = yield self._sharedWithInviteFor.on(self._txn, resourceID=self._resourceID)
         inviteRowDict = dict([(row[1], row) for row in inviteRows])
         
@@ -2618,7 +2618,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     def _homeChildByIDQuery(cls): #@NoSelf
         """
         DAL query that looks up home child names / bind modes by home child
-        resouce ID and home resource ID.
+        resource ID and home resource ID.
         """
         bind = cls._bindSchema
         return Select([bind.RESOURCE_NAME, bind.BIND_MODE],
