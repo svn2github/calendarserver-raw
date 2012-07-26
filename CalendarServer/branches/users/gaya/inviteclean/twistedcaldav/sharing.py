@@ -44,7 +44,6 @@ from twistedcaldav.config import config
 from twistedcaldav.customxml import calendarserver_namespace
 from twistedcaldav.directory.wiki import WikiDirectoryService, getWikiAccess
 from twistedcaldav.linkresource import LinkFollowerMixIn
-from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.sql import AbstractSQLDatabase, db_prefix
 
 from pycalendar.datetime import PyCalendarDateTime
@@ -460,39 +459,6 @@ class SharedCollectionMixin(object):
         
 
     @inlineCallbacks
-    def _createLock(self, userid, request):
-        """
-        Create an instance of MemcacheLock whose key is based on the sharee's
-        uid and the collection's URL
-        """
-        returnValue(MemcacheLock(
-            "ShareInviteLock",
-            (yield self._lockToken(userid, request)),
-            timeout=config.Scheduling.Options.UIDLockTimeoutSeconds,
-            expire_time=config.Scheduling.Options.UIDLockExpirySeconds,
-        ))
-
-    @inlineCallbacks
-    def _acquireLock(self, lock):
-        """
-        Attempt to acquire a lock -- can raise MemcacheLockTimeoutError
-        """
-        try:
-            yield lock.acquire()
-        except MemcacheLockTimeoutError:
-            self.log_error("Memcache lock timeout for sharing invite")
-            raise
-
-    @inlineCallbacks
-    def _lockToken(self, userid, request):
-        """
-        Generate a string we can use for a memcache lock key
-        """
-        hosturl = (yield self.canonicalURL(request))
-        returnValue("%s:%s" % (hosturl, userid))
-        
-        
-    @inlineCallbacks
     def _createInvitation(self, shareeUID, access, summary,):
         '''
         Create a new homeChild and wrap it in an Invitation
@@ -510,10 +476,6 @@ class SharedCollectionMixin(object):
         homeChild = yield shareeHome.invitedChildWithName(sharedName)
         invitation = Invitation(homeChild)
         returnValue(invitation)
-        
-        
-        returnValue(invitation)
-
 
     @inlineCallbacks
     def _updateInvitation(self, invitation, access=None, state=None, summary=None):
@@ -538,9 +500,9 @@ class SharedCollectionMixin(object):
         invitedHomeChildren = yield self._newStoreObject.asInvited()
         if includeAccepted:
             acceptedHomeChildren = yield self._newStoreObject.asShared()
-            # remove direct shares (it might be OK not to filter, that would be different from legacy db code)
+            # remove direct shares (it might be OK not to remove these, that would be different from legacy code)
             indirectAccceptedHomeChildren = [homeChild for homeChild in acceptedHomeChildren
-                                             if homeChild.shareMode() != _BIND_MODE_DIRECT]
+                                             if homeChild.shareMode()!=_BIND_MODE_DIRECT]
             invitedHomeChildren += indirectAccceptedHomeChildren
         
         invitations = [Invitation(homeChild) for homeChild in invitedHomeChildren]
@@ -582,29 +544,18 @@ class SharedCollectionMixin(object):
             returnValue(False)
         
         shareeUID = sharee.principalUID()
-        userid = "urn:uuid:" + shareeUID
         
-        # Acquire a memcache lock based on collection URL and sharee UID
-        # TODO: when sharing moves into the store this should be replaced
-        # by DB-level locking
-        lock = (yield self._createLock(userid, request))
-        yield self._acquireLock(lock)
-
-        try:
-            # Look for existing invite and update its fields or create new one
-            invitation = yield self._invitationForShareeUID(shareeUID)
-            if invitation:
-                yield self._updateInvitation(invitation, access=invitationAccessMapFromXML[type(ace)], summary=summary)
-            else:
-                invitation = yield self._createInvitation( 
-                                    shareeUID=shareeUID, 
-                                    access=invitationAccessMapFromXML[type(ace)],
-                                    summary=summary)
-            # Send invite notification
-            yield self.sendInviteNotification(invitation, request)
-
-        finally:
-            lock.clean()
+        # Look for existing invite and update its fields or create new one
+        invitation = yield self._invitationForShareeUID(shareeUID)
+        if invitation:
+            yield self._updateInvitation(invitation, access=invitationAccessMapFromXML[type(ace)], summary=summary)
+        else:
+            invitation = yield self._createInvitation( 
+                                shareeUID=shareeUID, 
+                                access=invitationAccessMapFromXML[type(ace)],
+                                summary=summary)
+        # Send invite notification
+        yield self.sendInviteNotification(invitation, request)
 
         returnValue(True)
 
@@ -618,22 +569,12 @@ class SharedCollectionMixin(object):
             returnValue(False)
 
         shareeUID = sharee.principalUID()
-        userid = "urn:uuid:" + shareeUID
 
-        # Acquire a memcache lock based on collection URL and sharee UID
-        # TODO: when sharing moves into the store this should be replaced
-        # by DB-level locking
-        lock = (yield self._createLock(userid, request))
-        yield self._acquireLock(lock)
-
-        try:
-            invitation = yield self._invitationForShareeUID(shareeUID)
-            if invitation:
-                result = (yield self.uninviteFromShare(invitation, request))
-            else:
-                result = False
-        finally:
-            lock.clean()
+        invitation = yield self._invitationForShareeUID(shareeUID)
+        if invitation:
+            result = (yield self.uninviteFromShare(invitation, request))
+        else:
+            result = False
 
         returnValue(result)
 
