@@ -2071,7 +2071,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _insertInviteQuery(cls): #@NoSelf
+    def _inviteInsertQuery(cls): #@NoSelf
         inv = schema.INVITE
         return Insert(
             {
@@ -2133,7 +2133,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 seenByOwner=True, seenBySharee=True,
                 bindStatus=status, message=message
             )
-            yield self._insertInviteQuery.on(
+            yield self._inviteInsertQuery.on(
                 subt, uid=newName, name="unused",
                 homeID=shareeHome._resourceID, resourceID=self._resourceID,
                 recipient="unused"
@@ -2293,8 +2293,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         @param homeType: a valid store type (ECALENDARTYPE or EADDRESSBOOKTYPE)
         """
-        mode = self.shareMode()
-        if mode == _BIND_MODE_OWN:
+        if self.owned():
             # This collection may be shared to others
             for sharedToHome in [x.viewerHome() for x in (yield self.asShared())]:
                 (yield self.unshareWith(sharedToHome))
