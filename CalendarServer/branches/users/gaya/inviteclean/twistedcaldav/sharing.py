@@ -907,7 +907,7 @@ class Invitation(object):
         return self._homeChild
 
     def uid(self):
-        return self._homeChild.inviteUID()
+        return self._homeChild.shareUID()
     
     def shareeUID(self):
         return self._homeChild._home.uid()

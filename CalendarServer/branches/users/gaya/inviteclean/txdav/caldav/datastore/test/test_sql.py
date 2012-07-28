@@ -976,9 +976,9 @@ END:VCALENDAR
             bind.SEEN_BY_SHAREE: True,
         })
         yield _bindCreate.on(self.transactionUnderTest())
-        sharedCalendar = yield shareeHome.sharedChildWithName("shared_1")
+        sharedCalendar = yield shareeHome.childWithName("shared_1")
         self.assertTrue(sharedCalendar is not None)
-        sharedCalendar = yield shareeHome.sharedChildWithName("shared_1_vtodo")
+        sharedCalendar = yield shareeHome.childWithName("shared_1_vtodo")
         self.assertTrue(sharedCalendar is None)
 
         # Now do the transfer and see if a new binding exists
@@ -986,11 +986,11 @@ END:VCALENDAR
             "home_splits")).createCalendarWithName("calendar_new")
         yield calendar._transferSharingDetails(newcalendar, "VTODO")
 
-        sharedCalendar = yield shareeHome.sharedChildWithName("shared_1")
+        sharedCalendar = yield shareeHome.childWithName("shared_1")
         self.assertTrue(sharedCalendar is not None)
         self.assertEqual(sharedCalendar._resourceID, calendar._resourceID)
 
-        sharedCalendar = yield shareeHome.sharedChildWithName("shared_1-vtodo")
+        sharedCalendar = yield shareeHome.childWithName("shared_1-vtodo")
         self.assertTrue(sharedCalendar is not None)
         self.assertEqual(sharedCalendar._resourceID, newcalendar._resourceID)
 

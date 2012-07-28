@@ -2274,7 +2274,6 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
         children = set(self._provisionedChildren.keys())
         children.update(self._provisionedLinks.keys())
         children.update((yield self._newStoreHome.listChildren()))
-        children.update((yield self._newStoreHome.listSharedChildren()))
         returnValue(children)
 
 
@@ -2591,6 +2590,9 @@ class CalendarHomeResource(DefaultAlarmPropertyMixin, CommonHomeResource):
     @inlineCallbacks
     def makeRegularChild(self, name):
         newCalendar = yield self._newStoreHome.calendarWithName(name)
+        if newCalendar and not newCalendar.owned():
+            newCalendar = None
+
         from twistedcaldav.storebridge import CalendarCollectionResource
         similar = CalendarCollectionResource(
             newCalendar, self, name=name,
@@ -2841,6 +2843,8 @@ class AddressBookHomeResource (CommonHomeResource):
                 mainCls = GlobalAddressBookCollectionResource
 
         newAddressBook = yield self._newStoreHome.addressbookWithName(name)
+        if newAddressBook and not newAddressBook.owned():
+            newAddressBook = None
         similar = mainCls(
             newAddressBook, self, name,
             principalCollections=self.principalCollections()

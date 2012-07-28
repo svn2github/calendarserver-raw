@@ -295,7 +295,7 @@ class SQLLegacyShares(object):
             else:
                 yield savepoint.release(self._txn)
 
-        shareeCollection = yield self._home.sharedChildWithName(record.localname)
+        shareeCollection = yield self._home.childWithName(record.localname)
         yield shareeCollection._initSyncToken()
 
 
@@ -311,7 +311,7 @@ class SQLLegacyShares(object):
     @inlineCallbacks
     def removeRecordForLocalName(self, localname):
         record = yield self.recordForLocalName(localname)
-        shareeCollection = yield self._home.sharedChildWithName(record.localname)
+        shareeCollection = yield self._home.childWithName(record.localname)
         yield shareeCollection._deletedSyncToken(sharedRemoval=True)
 
         result = yield self._unbindShareQuery.on(self._txn, name=localname,
@@ -348,7 +348,7 @@ class SQLLegacyShares(object):
     def removeRecordForShareUID(self, shareUID):
 
         record = yield self.recordForShareUID(shareUID)
-        shareeCollection = yield self._home.sharedChildWithName(record.localname)
+        shareeCollection = yield self._home.childWithName(record.localname)
         yield shareeCollection._deletedSyncToken(sharedRemoval=True)
 
         if not shareUID.startswith("Direct"):
