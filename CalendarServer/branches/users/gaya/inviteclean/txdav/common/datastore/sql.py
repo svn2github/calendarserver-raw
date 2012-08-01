@@ -1912,7 +1912,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         self._syncTokenRevision = None
         self._notifiers         = notifiers
         self._index             = None  # Derived classes need to set this
-        assert self._bindMode == _BIND_MODE_OWN or self._bindMode == _BIND_MODE_DIRECT or self._inviteUID is not None
+        assert self._bindMode == _BIND_MODE_OWN or self._bindMode == _BIND_MODE_DIRECT or self._inviteUID is not None, \
+            "self._bindMode == _BIND_MODE_OWN or self._bindMode == _BIND_MODE_DIRECT or self._inviteUID is not None"
 
 
     @classproperty
@@ -2315,6 +2316,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         acceptedRowDict = dict([(row[1], row + [None,]) for row in acceptedRows])
         
         # get accepted binds with associated inviteUID, and put in dict by homeResourceID
+        #FIXME:  use simpler query on INVITE table only - perhaps OR of all resource IDs
         inviteRows = yield self._sharedWithInviteFor.on(self._txn, resourceID=self._resourceID)
         inviteRowDict = dict([(row[1], row) for row in inviteRows])
         
@@ -2402,6 +2404,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         if dataRows:
             
             # get inviteUID for indirect shared children and inviteUID (or None) into dataRows
+            #FIXME:  use simpler query on INVITE table only - perhaps OR of all resource IDs
             invitedRows = yield cls._allInvitedChildrenQuery.on(home._txn, homeID=home._resourceID)
             resouceIDToInviteUIDMap = dict([(invitedRow[2], invitedRow[6]) for invitedRow in invitedRows])
             dataRows = [dataRow[:6] + [resouceIDToInviteUIDMap.get(dataRow[2]),] + dataRow[6:] for dataRow in dataRows]
@@ -2496,7 +2499,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             From=bind,
             Where=(bind.RESOURCE_NAME == Parameter('name')).And(
                    bind.HOME_RESOURCE_ID == Parameter('homeID')).And(
-                        (bind.BIND_MODE == _BIND_MODE_OWN).Or(          # FIXME: are these two a no-op?
+                        (bind.BIND_MODE == _BIND_MODE_OWN).Or(
                         bind.BIND_STATUS == _BIND_STATUS_ACCEPTED))
         )
 
@@ -2542,13 +2545,14 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             if rows:
                 
                 #get invite id
-                inviteID = None
+                inviteUID = None
                 if rows[0][0] != _BIND_MODE_OWN and rows[0][4] != _BIND_MODE_DIRECT:
+                    #FIXME:  use simpler query on INVITE table only - perhaps OR of all resource IDs
                     inviteRows = yield cls._sharedWithInviteAndNameFor.on(home._txn, name=name, homeID=home._resourceID)
                     if inviteRows:
-                        inviteID = inviteRows[0][6]
+                        inviteUID = inviteRows[0][6]
                         
-                rows[0].append(inviteID) # add inviteUID column
+                rows[0].append(inviteUID) # add inviteUID column
                     
             if rows and queryCacher and rows[0][0] == _BIND_MODE_OWN:
                 # Cache the result
@@ -2615,6 +2619,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         # get inviteUID
         inviteUID = None
         if rows[0][0] != _BIND_MODE_OWN and rows[0][4] != _BIND_MODE_DIRECT:
+            #FIXME:  use simpler query on INVITE table only
             inviteRows = yield cls._sharedWithInviteAndIDFor.on(home._txn, resourceID=rows[0][2], homeID=home._resourceID)
             if inviteRows:
                 inviteUID = inviteRows[0][6] if inviteRows else None
