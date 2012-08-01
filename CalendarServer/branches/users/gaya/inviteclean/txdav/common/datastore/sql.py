@@ -56,7 +56,7 @@ from txdav.carddav.iaddressbookstore import IAddressBookTransaction
 
 from txdav.common.datastore.sql_tables import schema
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
-    _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
+    _BIND_MODE_DIRECT, _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
 from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
     HomeChildNameAlreadyExistsError, NoSuchHomeChildError, \
     ObjectResourceNameNotAllowedError, ObjectResourceNameAlreadyExistsError, \
@@ -1429,7 +1429,7 @@ class CommonHome(LoggingMixIn):
     def _preLockResourceIDQuery(cls): #@NoSelf
         meta = cls._homeMetaDataSchema
         return Select(From=meta,
-                      Where=meta.RESOURCE_ID==Parameter("resourceID"),
+                      Where=meta.RESOURCE_ID == Parameter("resourceID"),
                       ForUpdate=True)
 
 
@@ -1912,6 +1912,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         self._syncTokenRevision = None
         self._notifiers         = notifiers
         self._index             = None  # Derived classes need to set this
+        assert self._bindMode == _BIND_MODE_OWN or self._bindMode == _BIND_MODE_DIRECT or self._inviteUID is not None
 
 
     @classproperty
@@ -2212,7 +2213,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         """
         @see: L{ICalendar.owned}
         """
-        return self._bindMode==_BIND_MODE_OWN
+        return self._bindMode == _BIND_MODE_OWN
 
     def shareStatus(self):
         """
@@ -2378,6 +2379,11 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         returnValue(result)
 
 
+    @classproperty
+    def _allInvitedChildrenQuery(cls): #@NoSelf
+        bind = cls._bindSchema
+        return cls._invitedBindFor(bind.HOME_RESOURCE_ID == Parameter("homeID"))
+
     @classmethod
     @inlineCallbacks
     def loadAllObjects(cls, home):
@@ -2395,20 +2401,11 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         if dataRows:
             
-            # get inviteUID for indirect shared children
-            invitedRows = yield cls._invitedChildListQuery.on(home._txn, homeID=home._resourceID)
-            for i in range(len(dataRows)):
-                dataRowResourceID = dataRows[i][2]
-                for invitedRow in invitedRows:
-                    invitedRowResourceID = invitedRow[2]
-                    if invitedRowResourceID==dataRowResourceID:
-                        inviteUID = invitedRow[7]
-                        break
-                else:
-                    inviteUID = None
-                
-                dataRows[i] = dataRows[i][:6] + [inviteUID,] + dataRows[i][6:]                        
-            
+            # get inviteUID for indirect shared children and inviteUID (or None) into dataRows
+            invitedRows = yield cls._allInvitedChildrenQuery.on(home._txn, homeID=home._resourceID)
+            resouceIDToInviteUIDMap = dict([(invitedRow[2], invitedRow[6]) for invitedRow in invitedRows])
+            dataRows = [dataRow[:6] + [resouceIDToInviteUIDMap.get(dataRow[2]),] + dataRow[6:] for dataRow in dataRows]
+           
             # Get property stores for all these child resources (if any found)
             propertyStores = (yield PropertyStore.forMultipleResources(
                 home.uid(), home._txn,
@@ -2499,7 +2496,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             From=bind,
             Where=(bind.RESOURCE_NAME == Parameter('name')).And(
                    bind.HOME_RESOURCE_ID == Parameter('homeID')).And(
-                        (bind.BIND_MODE == _BIND_MODE_OWN).Or(
+                        (bind.BIND_MODE == _BIND_MODE_OWN).Or(          # FIXME: are these two a no-op?
                         bind.BIND_STATUS == _BIND_STATUS_ACCEPTED))
         )
 
@@ -2536,19 +2533,24 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             rows = yield queryCacher.get(cacheKey)
             
             #make sure we only cached non-shared
-            assert not rows or rows[0][4] == _BIND_MODE_OWN
+            assert not rows or rows[0][0] == _BIND_MODE_OWN
 
         if rows is None:
             # No cached copy
-            # get accepted bind with invite id
-            rows = yield cls._sharedWithInviteAndNameFor.on(home._txn, name=name, homeID=home._resourceID)
-            if not rows:
-                # or all owned or accepted binds w/o inviteUID
-                rows = yield cls._homeChildLookup.on(home._txn, name=name, homeID=home._resourceID)
-                if rows:
-                    rows[0] += [None,] # add inviteUID col
+            # all owned or accepted binds w/o inviteUID
+            rows = yield cls._homeChildLookup.on(home._txn, name=name, homeID=home._resourceID)
+            if rows:
+                
+                #get invite id
+                inviteID = None
+                if rows[0][0] != _BIND_MODE_OWN and rows[0][4] != _BIND_MODE_DIRECT:
+                    inviteRows = yield cls._sharedWithInviteAndNameFor.on(home._txn, name=name, homeID=home._resourceID)
+                    if inviteRows:
+                        inviteID = inviteRows[0][6]
+                        
+                rows[0].append(inviteID) # add inviteUID column
                     
-            if rows and queryCacher and rows[0][4] == _BIND_MODE_OWN:
+            if rows and queryCacher and rows[0][0] == _BIND_MODE_OWN:
                 # Cache the result
                 queryCacher.setAfterCommit(home._txn, cacheKey, rows)
         
@@ -2568,17 +2570,30 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
+    # FIXME: combine with _homeChildLookup()
     def _homeChildByIDQuery(cls): #@NoSelf
         """
         DAL query that looks up home child names / bind modes by home child
         resource ID and home resource ID.
         """
         bind = cls._bindSchema
-        return Select([bind.RESOURCE_NAME, bind.BIND_MODE],
+        return Select([bind.BIND_MODE, 
+                       bind.HOME_RESOURCE_ID,
+                       bind.RESOURCE_ID,
+                       bind.RESOURCE_NAME,
+                       bind.BIND_STATUS,
+                       bind.MESSAGE],
                       From=bind,
                       Where=(bind.RESOURCE_ID == Parameter("resourceID")
                             ).And(bind.HOME_RESOURCE_ID == Parameter("homeID")))
 
+
+    @classproperty
+    def _sharedWithInviteAndIDFor(cls): #@NoSelf
+        bind = cls._bindSchema
+        return cls._invitedBindFor((bind.HOME_RESOURCE_ID == Parameter("homeID"))
+                                    .And(bind.RESOURCE_ID == Parameter("resourceID"))
+                                    .And(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED))
 
     @classmethod
     @inlineCallbacks
@@ -2592,12 +2607,27 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @return: an L{CommonHomeChild} or C{None} if no such child
             exists.
         """
-        data = yield cls._homeChildByIDQuery.on(
+        rows = yield cls._homeChildByIDQuery.on(
             home._txn, resourceID=resourceID, homeID=home._resourceID)
-        if not data:
+        if not rows:
             returnValue(None)
-        name, mode = data[0]
-        child = cls(home, name, resourceID, mode)
+        
+        # get inviteUID
+        inviteUID = None
+        if rows[0][0] != _BIND_MODE_OWN and rows[0][4] != _BIND_MODE_DIRECT:
+            inviteRows = yield cls._sharedWithInviteAndIDFor.on(home._txn, resourceID=rows[0][2], homeID=home._resourceID)
+            if inviteRows:
+                inviteUID = inviteRows[0][6] if inviteRows else None
+        
+        rows[0].append([inviteUID,])
+        
+        bindMode, homeResourceID, resourceID, resourceName, bindStatus, bindMessage, inviteUID = rows[0] #@UnusedVariable
+        child = cls(
+            home=home,
+            name=resourceName, resourceID=resourceID,
+            mode=bindMode, status=bindStatus, 
+            message=bindMessage, inviteUID=inviteUID,
+        )
         yield child.initFromStore()
         returnValue(child)
 
