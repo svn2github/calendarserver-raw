@@ -2032,16 +2032,22 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         )
 
 
-    @classproperty
-    def _updateBindQuery(cls): #@NoSelf
+    @classmethod
+    def _updateBindColumnsQuery(cls, columnMap): #@NoSelf
         bind = cls._bindSchema
-        return Update({bind.BIND_MODE: Parameter("mode"),
-                       bind.BIND_STATUS: Parameter("status"),
-                       bind.MESSAGE: Parameter("message")},
+        return Update(columnMap,
                       Where=
                       (bind.RESOURCE_ID == Parameter("resourceID"))
                       .And(bind.HOME_RESOURCE_ID == Parameter("homeID")),
                       Return=bind.RESOURCE_NAME)
+
+    @classproperty
+    def _updateBindQuery(cls): #@NoSelf
+        bind = cls._bindSchema
+        return cls._updateBindColumnsQuery(
+                    {bind.BIND_MODE: Parameter("mode"),
+                     bind.BIND_STATUS: Parameter("status"),
+                     bind.MESSAGE: Parameter("message")})
 
 
     @inlineCallbacks
@@ -2091,14 +2097,15 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             sharedName = yield self._txn.subtransaction(doInsert)
         except AllRetriesFailed:
             # FIXME: catch more specific exception
+
+            # Invite already exists; no need to update it, since the name will
+            # remain the same.        
             sharedName = (yield self._updateBindQuery.on(
                 self._txn,
                 mode=mode, status=status, message=message,
                 resourceID=self._resourceID, homeID=shareeHome._resourceID
             ))[0][0]
-            # Invite already exists; no need to update it, since the name will
-            # remain the same.
-
+        
         shareeProps = yield PropertyStore.load(shareeHome.uid(), self._txn,
                                                self._resourceID)
         dn = PropertyName.fromElement(DisplayName)
@@ -2114,7 +2121,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @inlineCallbacks
-    def updateShare(self, shareeView, mode, status, message):
+    def updateShare(self, shareeView, mode=None, status=None, message=None, name=None):
         """
         Update share mode, status, and message for a home child shared with
         this (owned) L{CommonHomeChild}.
@@ -2123,45 +2130,70 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @type shareeView: L{CommonHomeChild}
 
         @param mode: The sharing mode; L{_BIND_MODE_READ} or
-            L{_BIND_MODE_WRITE}.
+            L{_BIND_MODE_WRITE} or None to not update
         @type mode: L{str}
 
         @param status: The sharing mode; L{_BIND_STATUS_INVITED} or
             L{_BIND_STATUS_ACCEPTED} or L{_BIND_STATUS_DECLINED} or
-            L{_BIND_STATUS_INVALID}.
+            L{_BIND_STATUS_INVALID}  or None to not update
         @type status: L{str}
 
         @param message: The proposed message to go along with the share, which
-            will be used as the default display name.
+            will be used as the default display name, or None to not update
         @type message: L{str}
 
+        @param name: The bind resource name or None to not update
+        @type message: L{str}
+
+        @return: the name of the shared item in the sharee's home.
+        @rtype: L{str}
         @return: L{Deferred}
         """
         # TODO: raise a nice exception if shareeView is not, in fact, a shared
         # version of this same L{CommonHomeChild}
 
-        # yield self.shareWith(shared._home, mode, status, message)
-        dn = PropertyName.fromElement(DisplayName)
-        dnprop = (self.properties().get(dn) or
-                  DisplayName.fromString(self.name()))
+        #remove None parameters, and substitute None for empty string
+        bind = self._bindSchema
+        columnMap = dict([(k, v if v else None) 
+                          for k,v in {bind.BIND_MODE:mode,
+                            bind.BIND_STATUS:status,
+                            bind.MESSAGE:message,
+                            bind.RESOURCE_NAME:name}.iteritems() if v is not None])
+                                
+        if len(columnMap):
 
-        yield self._updateBindQuery.on(
-            self._txn,
-            mode=mode, status=status, message=message,
-            resourceID=self._resourceID, homeID=shareeView._home._resourceID
-        )
-
-        shareeProps = yield PropertyStore.load(shareeView._home.uid(), self._txn,
-                                               self._resourceID)
-        shareeProps[dn] = dnprop
+            # yield self.shareWith(shared._home, mode, status, message)
+            dn = PropertyName.fromElement(DisplayName)
+            dnprop = (self.properties().get(dn) or
+                      DisplayName.fromString(self.name()))
+            
+            updatedName = yield self._updateBindColumnsQuery(columnMap).on(
+                            self._txn,
+                            resourceID=self._resourceID, homeID=shareeView._home._resourceID
+                        )
+    
+            shareeProps = yield PropertyStore.load(shareeView._home.uid(), self._txn,
+                                                   self._resourceID)
+            shareeProps[dn] = dnprop
+            
+            # Must send notification to ensure cache invalidation occurs
+            yield self.notifyChanged()
+            
+            #update affected attributes
+            if mode:
+                shareeView._bindMode = columnMap[bind.BIND_MODE]
+            if status:
+                shareeView._bindStatus = columnMap[bind.BIND_STATUS]
+                #TODO: Is is OK to always call _initSyncToken ?
+                if shareeView._bindStatus == _BIND_STATUS_ACCEPTED:
+                    yield shareeView._initSyncToken()
+            if message:
+                shareeView._bindMessage = columnMap[bind.MESSAGE]
+            
+            shareeView._name = updatedName
         
-        # Must send notification to ensure cache invalidation occurs
-        yield self.notifyChanged()
+        returnValue(shareeView._name)
         
-        #update affected attributes
-        shareeView._bindMode = mode
-        shareeView._bindStatus = status
-        shareeView._bindMessage = message
 
 
     @inlineCallbacks
