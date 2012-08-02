@@ -48,7 +48,6 @@ from twistedcaldav.sql import AbstractSQLDatabase, db_prefix
 
 from pycalendar.datetime import PyCalendarDateTime
 
-from uuid import uuid4
 import os
 import types
 
@@ -474,17 +473,16 @@ class SharedCollectionMixin(object):
                                                     status=_BIND_STATUS_INVITED,
                                                     message=summary )
         
-        homeChild = yield shareeHome.invitedChildWithName(sharedName)
-        invitation = Invitation(homeChild)
+        shareeHomeChild = yield shareeHome.invitedChildWithName(sharedName)
+        invitation = Invitation(shareeHomeChild)
         returnValue(invitation)
 
     @inlineCallbacks
     def _updateInvitation(self, invitation, access=None, state=None, summary=None):
-        mode = invitation.homeChild().shareMode() if access is None else invitationAccessToBindModeMap[access]
-        status = invitation.homeChild().shareStatus() if state is None else invitationStateToBindStatusMap[state]
-        message = invitation.summary() if summary is None else summary
-        
-        yield self._newStoreObject.updateShare(invitation.homeChild(), mode, status, message )
+        mode = None if access is None else invitationAccessToBindModeMap[access]
+        status = None if state is None else invitationStateToBindStatusMap[state]
+
+        yield self._newStoreObject.updateShare(invitation._shareeHomeChild, mode=mode, status=status, message=summary )
         assert not access or access == invitation.access(), "access=%s != invitation.access()=%s" % (access, invitation.access())
         assert not state or state == invitation.state(), "state=%s != invitation.state()=%s" % (state, invitation.state())
         assert not summary or summary == invitation.summary(), "summary=%s != invitation.summary()=%s" % (summary, invitation.summary())
@@ -600,7 +598,7 @@ class SharedCollectionMixin(object):
                 yield self.sendInviteNotification(invitation, request, notificationState="DELETED")
         
         # use new API
-        yield self._newStoreObject.unshareWith(invitation.homeChild()._home)
+        yield self._newStoreObject.unshareWith(invitation._shareeHomeChild._home)
     
         returnValue(True)            
 
@@ -901,26 +899,23 @@ class Invitation(object):
     """
         Invitation is a read-only wrapper for CommonHomeChild, that uses terms similar LegacyInvite sharing.py code base.
     """
-    def __init__(self, homeChild):
-        self._homeChild = homeChild
+    def __init__(self, shareeHomeChild):
+        self._shareeHomeChild = shareeHomeChild
     
-    def homeChild(self):
-        return self._homeChild
-
     def uid(self):
-        return self._homeChild.shareUID()
+        return self._shareeHomeChild.shareUID()
     
     def shareeUID(self):
-        return self._homeChild._home.uid()
+        return self._shareeHomeChild._home.uid()
    
     def access(self):
-        return invitationAccessFromBindModeMap[self._homeChild.shareMode()]
+        return invitationAccessFromBindModeMap.get(self._shareeHomeChild.shareMode())
     
     def state(self):
-        return invitationStateFromBindStatusMap[self._homeChild.shareStatus()]
+        return invitationStateFromBindStatusMap.get(self._shareeHomeChild.shareStatus())
    
     def summary(self):
-        return self._homeChild.shareMessage()
+        return self._shareeHomeChild.shareMessage()
 
 
 class LegacyInvite(object):
@@ -1131,13 +1126,13 @@ class SharedHomeMixin(LinkFollowerMixIn):
             oTestStrings = []
             for i in range(len(allRecords)):
                 record = allRecords[i]
-                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, locqlname=%s, summary=%s" % (i, record.shareuid, record.sharetype, record.hosturl, record.localname, record.summary, )
+                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, localname=%s, summary=%s" % (i, record.shareuid, record.sharetype, record.hosturl, record.localname, record.summary, )
                 oTestStrings += [testStr,]
     
             testStrings = []
             for i in range(len(shares)):
                 share = shares[i]
-                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, locqlname=%s, summary=%s" % (i, share.uid(), "D" if share.direct() else "I", share.url(), share.name(), share.summary(), )
+                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, localname=%s, summary=%s" % (i, share.uid(), "D" if share.direct() else "I", share.url(), share.name(), share.summary(), )
                 testStrings += [testStr,]
                 
             if oTestStrings != testStrings:
@@ -1169,15 +1164,6 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 returnValue(share)
         returnValue(None)
 
-    @inlineCallbacks
-    def _removeShareForUID(self, shareUID):
-        yield self.sharesDB().removeRecordForShareUID(shareUID)
-
-    @inlineCallbacks
-    def _addOrUpdateRecord(self, shareRecord):
-        yield self.sharesDB().addOrUpdateRecord(shareRecord)
-
-
 
     @inlineCallbacks
     def acceptInviteShare(self, request, hostUrl, inviteUID, displayname=None):
@@ -1188,7 +1174,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
         # Send the invite reply then add the link
         yield self._changeShare(request, "ACCEPTED", hostUrl, inviteUID, displayname)
 
-        response = (yield self._acceptShare(request, oldShare, False, hostUrl, inviteUID, displayname))
+        response = yield self._acceptShare(request, oldShare, False, hostUrl, inviteUID, displayname)
         returnValue(response)
 
     @inlineCallbacks
@@ -1196,7 +1182,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         # Just add the link
         oldShare = yield self._shareForUID(resourceUID)
-        response = (yield self._acceptShare(request, oldShare, True, hostUrl, resourceUID, displayname))
+        response = yield self._acceptShare(request, oldShare, True, hostUrl, resourceUID, displayname)
         returnValue(response)
 
     @inlineCallbacks
@@ -1210,18 +1196,24 @@ class SharedHomeMixin(LinkFollowerMixIn):
         if oldShare:
             share = oldShare
         else:
+            if direct:
+                sharedName =  yield sharedCollection._newStoreObject.shareWith(shareeHome=self._newStoreHome,
+                                                        mode=_BIND_MODE_DIRECT,
+                                                        status=_BIND_STATUS_ACCEPTED,
+                                                        message=displayname )
+                
+            else:
+                # nothing to do here.  Invite is accepted is already accepted
+                # legacy code always renamed share here:
+                # sharedName = yield sharedCollection._newStoreObject.updateShare(invitation._shareeHomeChild, name=str(uuid4()) )
+                # without rename, share name is the same as inviteUID
+                # share name is the same as inviteUID
+                sharedName = shareUID
             
-            #FIXME:  add new share, then generate new from 
+            # this is similar to legacy code
+            shareeHomeChild = yield self._newStoreHome.childWithName(sharedName)
+            share = Share(shareeHomeChild=shareeHomeChild, sharerHomeChild=sharedCollection._newStoreObject, url=hostUrl)
             
-            sharedCollectionRecord = SharedCollectionRecord(shareUID, "D" if direct else "I", hostUrl, str(uuid4()), displayname)
-            yield self._addOrUpdateRecord(sharedCollectionRecord)
-            
-            # find in allShares, which I like better because self._allShares is a cache
-            share = yield self._shareForUID(shareUID, refresh=True)
-            # or, create fresh like legacy code
-            # FIXME:  Need sharee home child
-            # share = Share(shareeHomeChild=self._newStoreObject, sharerHomeChild=sharedCollection._newStoreObject, url=hostUrl)
-        
 
         # For a direct share we will copy any calendar-color over using the owners view
         color = None
@@ -1290,7 +1282,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 inbox = (yield request.locateResource(inboxURL))
                 inbox.processFreeBusyCalendar(shareURL, False)
 
-        yield self._removeShareForUID(share.uid())
+        yield self.sharesDB().removeRecordForShareUID(share.uid())
  
         # Notify client of changes
         yield self.notifyChanged()
