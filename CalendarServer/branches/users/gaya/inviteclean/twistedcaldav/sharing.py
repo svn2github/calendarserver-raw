@@ -52,11 +52,12 @@ from uuid import uuid4
 import os
 import types
 
+#FIXME: Get rid of this!
+#from txdav.common.datastore.sql import EADDRESSBOOKTYPE
+ECALENDARTYPE = 0
+EADDRESSBOOKTYPE = 1
+ENOTIFICATIONTYPE = 2
 
-
-# Types of sharing mode
-SHARETYPE_INVITE = "I"  # Invite based sharing
-SHARETYPE_DIRECT = "D"  # Direct linking based sharing
 
 class SharedCollectionMixin(object):
 
@@ -92,7 +93,7 @@ class SharedCollectionMixin(object):
                 
             # See if it is on the sharee calendar
             if self.isVirtualShare():
-                original = (yield request.locateResource(self._share.hosturl))
+                original = (yield request.locateResource(self._share.sharedResourceURL()))
                 yield original.validateInvites()
                 invitations = yield original._allInvitations()
 
@@ -300,8 +301,8 @@ class SharedCollectionMixin(object):
         wikiAccessMethod = kwargs.get("wikiAccessMethod", getWikiAccess)
 
         # Direct shares use underlying privileges of shared collection
-        if self._share.sharetype == SHARETYPE_DIRECT:
-            original = (yield request.locateResource(self._share.hosturl))
+        if self._share.isDirect():
+            original = (yield request.locateResource(self._share.sharedResourceURL()))
             owner = yield original.ownerPrincipal(request)
             if owner.record.recordType == WikiDirectoryService.recordType_wikis:
                 # Access level comes from what the wiki has granted to the
@@ -324,7 +325,7 @@ class SharedCollectionMixin(object):
     
             # Get the invite for this sharee
             invitation = yield self._invitationForUID(
-                self._share.shareuid
+                self._share.uid()
             )
             if invitation is None:
                 returnValue(element.ACL())
@@ -502,7 +503,7 @@ class SharedCollectionMixin(object):
             acceptedHomeChildren = yield self._newStoreObject.asShared()
             # remove direct shares (it might be OK not to remove these, that would be different from legacy code)
             indirectAccceptedHomeChildren = [homeChild for homeChild in acceptedHomeChildren
-                                             if homeChild.shareMode()!=_BIND_MODE_DIRECT]
+                                             if homeChild.shareMode() != _BIND_MODE_DIRECT]
             invitedHomeChildren += indirectAccceptedHomeChildren
         
         invitations = [Invitation(homeChild) for homeChild in invitedHomeChildren]
@@ -1088,11 +1089,69 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
 
     @inlineCallbacks
-    def allShares(self):
-        if not hasattr(self, "_allShares"):
-            allShareRecords = yield self.sharesDB().allRecords()
-            self._allShares = dict([(share.localname, share) for share in
-                                    allShareRecords])
+    def allShares(self, refresh=False):
+                
+        if refresh or not hasattr(self, "_allShares"):
+            
+            shares = []
+            children = yield self._newStoreHome.children()
+            for shareeHomeChild in children:
+                if not shareeHomeChild.owned():
+                    
+                    sharerHomeID = yield shareeHomeChild.sharerHomeID()
+                    sharerHome = yield self._newStoreHome._txn.homeWithResourceID(self._newStoreHome._homeType, sharerHomeID)
+                    sharerHomeChild = yield sharerHome.childWithID(shareeHomeChild._resourceID)
+                    
+                    # get the shared object's URL
+                    principal = self.principalForUID(sharerHomeChild._home.uid())
+                    
+                    # FIXEME:  Fake up a request that can be used to get the sharer home resource
+                    class FakeRequest(object):pass
+                    fakeRequest = FakeRequest()
+                    from twistedcaldav.directory.util import TRANSACTION_KEY
+                    setattr(fakeRequest, TRANSACTION_KEY, self._newStoreHome._txn)
+                    
+                    if self._newStoreHome._homeType == ECALENDARTYPE:
+                        sharerHomeCollection = yield principal.calendarHome(fakeRequest)
+                    elif self._newStoreHome._homeType == EADDRESSBOOKTYPE:
+                        sharerHomeCollection = yield principal.addressBookHome(fakeRequest)
+                    
+                    sharedResourceURL =  joinURL(sharerHomeCollection.url(), sharerHomeChild.name())
+                    
+                    
+                    share = Share(shareeHomeChild=shareeHomeChild, sharerHomeChild=sharerHomeChild, sharedResourceURL=sharedResourceURL)
+                    shares.append(share)
+
+            # DEBUG ONLY
+            shares.sort(key=lambda share:share.uid())
+            
+            allRecords = yield self.sharesDB().allRecords()
+            allRecords.sort(key=lambda record:record.shareuid)
+            
+            oTestStrings = []
+            for i in range(len(allRecords)):
+                record = allRecords[i]
+                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, locqlname=%s, summary=%s" % (i, record.shareuid, record.sharetype, record.hosturl, record.localname, record.summary, )
+                oTestStrings += [testStr,]
+    
+            testStrings = []
+            for i in range(len(shares)):
+                share = shares[i]
+                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, locqlname=%s, summary=%s" % (i, share.uid(), "D" if share.isDirect() else "I", share.sharedResourceURL(), share.shareeResourceName(), share.summary(), )
+                testStrings += [testStr,]
+                
+            if oTestStrings != testStrings:
+                print("MISMATCH old: %s" % oTestStrings)
+                print("MISMATCH new: %s" % testStrings)
+                assert False
+
+
+            self._allShares = dict([(share.shareeResourceName(), share) for share in shares])
+            
+            print ("allShares: GENERATED %d records, refresh=%s" % (len(self._allShares), refresh))
+        else:
+            print ("allShares: RETURNING %d records" % (len(self._allShares),))
+            
         returnValue(self._allShares)
 
 
@@ -1100,45 +1159,73 @@ class SharedHomeMixin(LinkFollowerMixIn):
     def allShareNames(self):
         allShares = yield self.allShares()
         returnValue(tuple(allShares.keys()))
+        
+    @inlineCallbacks
+    def _shareForUID(self, shareUID, refresh=False):
+        
+        allShares = yield self.allShares(refresh)
+        for share in allShares.values():
+            if share.uid() == shareUID:
+                returnValue(share)
+        returnValue(None)
+
+    @inlineCallbacks
+    def _removeShareForUID(self, shareUID):
+        yield self.sharesDB().removeRecordForShareUID(shareUID)
+
+    @inlineCallbacks
+    def _addOrUpdateRecord(self, shareRecord):
+        yield self.sharesDB().addOrUpdateRecord(shareRecord)
+
 
 
     @inlineCallbacks
     def acceptInviteShare(self, request, hostUrl, inviteUID, displayname=None):
         
         # Check for old share
-        oldShare = yield self.sharesDB().recordForShareUID(inviteUID)
+        oldShare = yield self._shareForUID(inviteUID)
 
         # Send the invite reply then add the link
         yield self._changeShare(request, "ACCEPTED", hostUrl, inviteUID, displayname)
 
-        response = (yield self._acceptShare(request, oldShare, SHARETYPE_INVITE, hostUrl, inviteUID, displayname))
+        response = (yield self._acceptShare(request, oldShare, False, hostUrl, inviteUID, displayname))
         returnValue(response)
 
     @inlineCallbacks
     def acceptDirectShare(self, request, hostUrl, resourceUID, displayname=None):
 
         # Just add the link
-        oldShare = yield self.sharesDB().recordForShareUID(resourceUID)
-        response = (yield self._acceptShare(request, oldShare, SHARETYPE_DIRECT, hostUrl, resourceUID, displayname))
+        oldShare = yield self._shareForUID(resourceUID)
+        response = (yield self._acceptShare(request, oldShare, True, hostUrl, resourceUID, displayname))
         returnValue(response)
 
     @inlineCallbacks
-    def _acceptShare(self, request, oldShare, sharetype, hostUrl, shareUID, displayname=None):
+    def _acceptShare(self, request, oldShare, isDirect, hostUrl, shareUID, displayname=None):
+
+        # Get shared collection in non-share mode first
+        sharedCollection = (yield request.locateResource(hostUrl))
+        ownerPrincipal = (yield self.ownerPrincipal(request))
 
         # Add or update in DB
         if oldShare:
             share = oldShare
         else:
-            share = SharedCollectionRecord(shareUID, sharetype, hostUrl, str(uuid4()), displayname)
-            yield self.sharesDB().addOrUpdateRecord(share)
+            
+            #FIXME:  add new share, then generate new from 
+            
+            sharedCollectionRecord = SharedCollectionRecord(shareUID, "D" if isDirect else "I", hostUrl, str(uuid4()), displayname)
+            yield self._addOrUpdateRecord(sharedCollectionRecord)
+            
+            # find in allShares, which I like better because self._allShares is a cache
+            share = yield self._shareForUID(shareUID, refresh=True)
+            # or, create fresh like legacy code
+            # FIXME:  Need sharee home child
+            # share = Share(shareeHomeChild=self._newStoreObject, sharerHomeChild=sharedCollection._newStoreObject, sharedResourceURL=hostUrl)
         
-        # Get shared collection in non-share mode first
-        sharedCollection = (yield request.locateResource(hostUrl))
-        ownerPrincipal = (yield self.ownerPrincipal(request))
 
         # For a direct share we will copy any calendar-color over using the owners view
         color = None
-        if sharetype == SHARETYPE_DIRECT and not oldShare and sharedCollection.isCalendarCollection():
+        if share.isDirect() and not oldShare and sharedCollection.isCalendarCollection():
             try:
                 color = (yield sharedCollection.readProperty(customxml.CalendarColor, request))
             except HTTPError:
@@ -1166,24 +1253,24 @@ class SharedHomeMixin(LinkFollowerMixIn):
         returnValue(XMLResponse(
             code = responsecode.OK,
             element = customxml.SharedAs(
-                element.HRef.fromString(joinURL(self.url(), share.localname))
+                element.HRef.fromString(joinURL(self.url(), share.shareeResourceName()))
             )
         ))
 
     def removeShare(self, request, share):
         """ Remove a shared collection named in resourceName """
 
-        # Send a decline when an invite share is removed only
-        if share.sharetype == SHARETYPE_INVITE:
-            return self.declineShare(request, share.hosturl, share.shareuid)
-        else:
+        if share.isDirect():
             return self.removeDirectShare(request, share)
+        else:
+            # Send a decline when an invite share is removed only
+            return self.declineShare(request, share.sharedResourceURL(), share.uid())
 
     @inlineCallbacks
     def removeShareByUID(self, request, shareUID):
         """ Remove a shared collection but do not send a decline back """
 
-        share = yield self.sharesDB().recordForShareUID(shareUID)
+        share = yield self._shareForUID(shareUID)
         if share:
             yield self.removeDirectShare(request, share)
 
@@ -1193,7 +1280,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
     def removeDirectShare(self, request, share):
         """ Remove a shared collection but do not send a decline back """
 
-        shareURL = joinURL(self.url(), share.localname)
+        shareURL = joinURL(self.url(), share.shareeResourceName())
 
         if self.isCalendarCollection():
             # For backwards compatibility we need to sync this up with the calendar-free-busy-set on the inbox
@@ -1203,7 +1290,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 inbox = (yield request.locateResource(inboxURL))
                 inbox.processFreeBusyCalendar(shareURL, False)
 
-        yield self.sharesDB().removeRecordForShareUID(share.shareuid)
+        yield self._removeShareForUID(share.uid())
  
         # Notify client of changes
         yield self.notifyChanged()
@@ -1323,6 +1410,32 @@ class SharedCollectionRecord(object):
         self.hosturl = hosturl
         self.localname = localname
         self.summary = summary
+
+class Share(object):
+    
+    def __init__(self, sharerHomeChild, shareeHomeChild, sharedResourceURL):
+        self._shareeHomeChild = shareeHomeChild
+        self._sharerHomeChild = sharerHomeChild
+        self._sharedResourceURL = sharedResourceURL
+        
+    def uid(self):
+        # Move to CommonHomeChild shareUID?
+        if self._shareeHomeChild.shareMode() == _BIND_MODE_DIRECT:
+            return "Direct-%s-%s" % (self._shareeHomeChild._home._resourceID, self._sharerHomeChild._resourceID,)
+        else:
+            return self._shareeHomeChild.shareUID()
+    
+    def isDirect(self):
+        return self._shareeHomeChild.shareMode() == _BIND_MODE_DIRECT
+   
+    def sharedResourceURL(self):
+        return self._sharedResourceURL
+
+    def shareeResourceName(self):
+        return self._shareeHomeChild.name()
+    
+    def summary(self):
+        return self._shareeHomeChild.shareMessage()
 
 class SharedCollectionsDatabase(AbstractSQLDatabase, LoggingMixIn):
     

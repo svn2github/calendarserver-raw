@@ -55,6 +55,8 @@ def normalizeUUID(value):
         return value
 
 
+TRANSACTION_KEY = '_newStoreTransaction'
+
 def transactionFromRequest(request, newStore):
     """
     Return the associated transaction from the given HTTP request, creating a
@@ -76,7 +78,6 @@ def transactionFromRequest(request, newStore):
     @rtype: L{ITransaction} (and possibly L{ICalendarTransaction} and
         L{IAddressBookTransaction} as well.
     """
-    TRANSACTION_KEY = '_newStoreTransaction'
     transaction = getattr(request, TRANSACTION_KEY, None)
     if transaction is None:
         transaction = newStore.newTransaction(repr(request))
