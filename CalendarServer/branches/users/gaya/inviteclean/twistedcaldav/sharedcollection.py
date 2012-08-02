@@ -37,7 +37,7 @@ class SharedCollectionResource(LinkResource):
     
     def __init__(self, parent, share):
         self.share = share
-        super(SharedCollectionResource, self).__init__(parent, self.share.sharedResourceURL())
+        super(SharedCollectionResource, self).__init__(parent, self.share.url())
 
     @inlineCallbacks
     def linkedResource(self, request):
@@ -46,13 +46,13 @@ class SharedCollectionResource(LinkResource):
         """
         
         if not hasattr(self, "_linkedResource"):
-            self._linkedResource = (yield request.locateResource(self.share.sharedResourceURL()))
+            self._linkedResource = (yield request.locateResource(self.share.url()))
             
             if self._linkedResource is not None:
                 # FIXME: this is awkward - because we are "mutating" this object into a virtual share
                 # we must not cache the resource at this URL, otherwise an access of the owner's resource
                 # will return the same virtually shared one which would be wrong.
-                request._forgetResource(self._linkedResource, self.share.sharedResourceURL())
+                request._forgetResource(self._linkedResource, self.share.url())
     
                 ownerPrincipal = (yield self.parent.ownerPrincipal(request))
                 self._linkedResource.setVirtualShare(ownerPrincipal, self.share)

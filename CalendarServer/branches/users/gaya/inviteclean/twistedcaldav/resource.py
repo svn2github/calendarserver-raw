@@ -706,7 +706,7 @@ class CalDAVResource (
             isvirt = self.isVirtualShare()
             
             if isvirt:
-                returnValue(customxml.SharedURL(element.HRef.fromString(self._share.sharedResourceURL())))
+                returnValue(customxml.SharedURL(element.HRef.fromString(self._share.url())))
             else:
                 returnValue(None)
 
@@ -934,7 +934,7 @@ class CalDAVResource (
 
         isVirt = self.isVirtualShare()
         if isVirt:
-            parent = (yield self.locateParent(request, self._share.sharedResourceURL()))
+            parent = (yield self.locateParent(request, self._share.url()))
         else:
             parent = (yield self.locateParent(request, request.urlForResource(self)))
         if parent and isinstance(parent, CalDAVResource):
@@ -950,7 +950,7 @@ class CalDAVResource (
         """
         isVirt = self.isVirtualShare()
         if isVirt:
-            parent = (yield self.locateParent(request, self._share.sharedResourceURL()))
+            parent = (yield self.locateParent(request, self._share.url()))
         else:
             parent = (yield self.locateParent(request, request.urlForResource(self)))
         if parent and isinstance(parent, CalDAVResource):
@@ -1366,14 +1366,14 @@ class CalDAVResource (
         isvirt = self.isVirtualShare()
         if isvirt:
             # A virtual share's quota root is the resource owner's root
-            sharedParent = (yield request.locateResource(parentForURL(self._share.sharedResourceURL())))
+            sharedParent = (yield request.locateResource(parentForURL(self._share.url())))
         else:
             parent = (yield self.locateParent(request, request.urlForResource(self)))
             if isCalendarCollectionResource(parent) or isAddressBookCollectionResource(parent):
                 isvirt = parent.isVirtualShare()
                 if isvirt:
                     # A virtual share's quota root is the resource owner's root
-                    sharedParent = (yield request.locateResource(parentForURL(parent._share.sharedResourceURL())))
+                    sharedParent = (yield request.locateResource(parentForURL(parent._share.url())))
 
         if sharedParent:
             result = (yield sharedParent.quotaRootResource(request))
