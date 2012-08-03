@@ -48,6 +48,9 @@ class StubShare(object):
     def __init__(self, link):
         self.hosturl = link
 
+    def url(self):
+        return self.hosturl
+
 class LinkResourceTests(TestCase):
 
     @inlineCallbacks
