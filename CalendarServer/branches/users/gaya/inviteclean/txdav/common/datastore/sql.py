@@ -898,7 +898,6 @@ class CommonHome(LoggingMixIn):
         self._txn = transaction
         self._ownerUID = ownerUID
         self._resourceID = None
-        self._shares = None
         self._childrenLoaded = False
         self._children = {}
         self._notifiers = notifiers
@@ -1071,10 +1070,6 @@ class CommonHome(LoggingMixIn):
 
     def transaction(self):
         return self._txn
-
-
-    def retrieveOldShares(self):
-        return self._shares
 
 
     def name(self):
@@ -2060,7 +2055,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @type shareeHome: L{CommonHome}
 
         @param mode: The sharing mode; L{_BIND_MODE_READ} or
-            L{_BIND_MODE_WRITE}.
+            L{_BIND_MODE_WRITE} or L{_BIND_MODE_DIRECT}
         @type mode: L{str}
 
         @param status: The sharing mode; L{_BIND_STATUS_INVITED} or
@@ -2088,11 +2083,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 seenByOwner=True, seenBySharee=True,
                 bindStatus=status, message=message
             )
-            yield self._inviteInsertQuery.on(
-                subt, uid=newName, name="unused",
-                homeID=shareeHome._resourceID, resourceID=self._resourceID,
-                recipient="unused"
-            )
+            if mode != _BIND_MODE_DIRECT:
+                yield self._inviteInsertQuery.on(
+                    subt, uid=newName, name="unused",
+                    homeID=shareeHome._resourceID, resourceID=self._resourceID,
+                    recipient="unused"
+                )
             returnValue(newName)
         try:
             sharedName = yield self._txn.subtransaction(doInsert)

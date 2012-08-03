@@ -2121,15 +2121,6 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
 
         return props
 
-    def sharesDB(self):
-        """
-        Retrieve the new-style shares DB wrapper.
-        """
-        if not hasattr(self, "_sharesDB"):
-            self._sharesDB = self._newStoreHome.retrieveOldShares()
-        return self._sharesDB
-
-
     def url(self):
         return joinURL(self.parent.url(), self.name, "/")
 

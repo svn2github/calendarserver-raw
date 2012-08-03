@@ -36,7 +36,7 @@ from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
     _BIND_STATUS_INVALID
 from txdav.xml import element
 
-from twisted.internet.defer import succeed, inlineCallbacks, DeferredList,\
+from twisted.internet.defer import succeed, inlineCallbacks, DeferredList, \
     returnValue
 
 from twistedcaldav import customxml, caldavxml
@@ -51,11 +51,13 @@ from pycalendar.datetime import PyCalendarDateTime
 import os
 import types
 
-#FIXME: Get rid of this!
-#from txdav.common.datastore.sql import EADDRESSBOOKTYPE
+#FIXME: Get rid of these imports
+from twistedcaldav.directory.util import TRANSACTION_KEY
+# circular import
+#from txdav.common.datastore.sql import ECALENDARTYPE, EADDRESSBOOKTYPE
 ECALENDARTYPE = 0
 EADDRESSBOOKTYPE = 1
-ENOTIFICATIONTYPE = 2
+#ENOTIFICATIONTYPE = 2
 
 
 class SharedCollectionMixin(object):
@@ -272,7 +274,7 @@ class SharedCollectionMixin(object):
         if isVirt:
             rtype = element.ResourceType(
                 *(
-                    tuple([child for child in rtype.children if child.qname() != customxml.SharedOwner.qname()]) +
+                    tuple([child for child in rtype.children if child.qname() != customxml.SharedOwner.qname()]) + 
                     (customxml.Shared(),)
                 )
             )
@@ -468,10 +470,10 @@ class SharedCollectionMixin(object):
         elif self.isAddressBookCollection():
             shareeHome = yield self._newStoreObject._txn.addressbookHomeWithUID(shareeUID, create=True)
 
-        sharedName =  yield self._newStoreObject.shareWith(shareeHome,
+        sharedName = yield self._newStoreObject.shareWith(shareeHome,
                                                     mode=invitationAccessToBindModeMap[access],
                                                     status=_BIND_STATUS_INVITED,
-                                                    message=summary )
+                                                    message=summary)
         
         shareeHomeChild = yield shareeHome.invitedChildWithName(sharedName)
         invitation = Invitation(shareeHomeChild)
@@ -482,7 +484,7 @@ class SharedCollectionMixin(object):
         mode = None if access is None else invitationAccessToBindModeMap[access]
         status = None if state is None else invitationStateToBindStatusMap[state]
 
-        yield self._newStoreObject.updateShare(invitation._shareeHomeChild, mode=mode, status=status, message=summary )
+        yield self._newStoreObject.updateShare(invitation._shareeHomeChild, mode=mode, status=status, message=summary)
         assert not access or access == invitation.access(), "access=%s != invitation.access()=%s" % (access, invitation.access())
         assert not state or state == invitation.state(), "state=%s != invitation.state()=%s" % (state, invitation.state())
         assert not summary or summary == invitation.summary(), "summary=%s != invitation.summary()=%s" % (summary, invitation.summary())
@@ -549,8 +551,8 @@ class SharedCollectionMixin(object):
         if invitation:
             yield self._updateInvitation(invitation, access=invitationAccessMapFromXML[type(ace)], summary=summary)
         else:
-            invitation = yield self._createInvitation( 
-                                shareeUID=shareeUID, 
+            invitation = yield self._createInvitation(
+                                shareeUID=shareeUID,
                                 access=invitationAccessMapFromXML[type(ace)],
                                 summary=summary)
         # Send invite notification
@@ -846,7 +848,7 @@ class SharedCollectionMixin(object):
 
     xmlDocHandlers = {
         customxml.InviteShare: _xmlHandleInvite,
-        customxml.InviteReply: _xmlHandleInviteReply,          
+        customxml.InviteReply: _xmlHandleInviteReply,
     }
 
     def POST_handler_content_type(self, request, contentType):
@@ -869,7 +871,7 @@ invitationAccessMapToXML = {
     "read-only"           : customxml.ReadAccess,
     "read-write"          : customxml.ReadWriteAccess,
 }
-invitationAccessMapFromXML = dict([(v,k) for k,v in invitationAccessMapToXML.iteritems()])
+invitationAccessMapFromXML = dict([(v, k) for k, v in invitationAccessMapToXML.iteritems()])
 
 invitationStatusMapToXML = {
     "NEEDS-ACTION" : customxml.InviteStatusNoResponse,
@@ -878,7 +880,7 @@ invitationStatusMapToXML = {
     "DELETED"      : customxml.InviteStatusDeleted,
     "INVALID"      : customxml.InviteStatusInvalid,
 }
-invitationStatusMapFromXML = dict([(v,k) for k,v in invitationStatusMapToXML.iteritems()])
+invitationStatusMapFromXML = dict([(v, k) for k, v in invitationStatusMapToXML.iteritems()])
 
 invitationStateToBindStatusMap = {
     "NEEDS-ACTION": _BIND_STATUS_INVITED,
@@ -886,13 +888,13 @@ invitationStateToBindStatusMap = {
     "DECLINED": _BIND_STATUS_DECLINED,
     "INVALID": _BIND_STATUS_INVALID,
 }
-invitationStateFromBindStatusMap = dict((v,k) for k, v in invitationStateToBindStatusMap.iteritems())
+invitationStateFromBindStatusMap = dict((v, k) for k, v in invitationStateToBindStatusMap.iteritems())
 invitationAccessToBindModeMap = {
     "own": _BIND_MODE_OWN,
     "read-only": _BIND_MODE_READ,
     "read-write": _BIND_MODE_WRITE,
     }
-invitationAccessFromBindModeMap = dict((v,k) for k, v in invitationAccessToBindModeMap.iteritems())
+invitationAccessFromBindModeMap = dict((v, k) for k, v in invitationAccessToBindModeMap.iteritems())
 
 class Invitation(object):
     """
@@ -1102,7 +1104,6 @@ class SharedHomeMixin(LinkFollowerMixIn):
                     # FIXEME:  Fake up a request that can be used to get the sharer home resource
                     class FakeRequest(object):pass
                     fakeRequest = FakeRequest()
-                    from twistedcaldav.directory.util import TRANSACTION_KEY
                     setattr(fakeRequest, TRANSACTION_KEY, self._newStoreHome._txn)
                     
                     if self._newStoreHome._homeType == ECALENDARTYPE:
@@ -1110,13 +1111,14 @@ class SharedHomeMixin(LinkFollowerMixIn):
                     elif self._newStoreHome._homeType == EADDRESSBOOKTYPE:
                         sharerHomeCollection = yield principal.addressBookHome(fakeRequest)
                     
-                    url =  joinURL(sharerHomeCollection.url(), sharerHomeChild.name())
+                    url = joinURL(sharerHomeCollection.url(), sharerHomeChild.name())
                     
                     
                     share = Share(shareeHomeChild=shareeHomeChild, sharerHomeChild=sharerHomeChild, url=url)
                     shares.append(share)
 
             # DEBUG ONLY
+            '''
             shares.sort(key=lambda share:share.uid())
             
             allRecords = yield self.sharesDB().allRecords()
@@ -1138,7 +1140,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 print("MISMATCH old: %s" % oTestStrings)
                 print("MISMATCH new: %s" % testStrings)
                 assert False
-
+            '''
 
             self._allShares = dict([(share.name(), share) for share in shares])
             
@@ -1192,17 +1194,20 @@ class SharedHomeMixin(LinkFollowerMixIn):
             share = oldShare
         else:
             if direct:
-                sharedName =  yield sharedCollection._newStoreObject.shareWith(shareeHome=self._newStoreHome,
+                sharedName = yield sharedCollection._newStoreObject.shareWith(shareeHome=self._newStoreHome,
                                                         mode=_BIND_MODE_DIRECT,
                                                         status=_BIND_STATUS_ACCEPTED,
-                                                        message=displayname )
+                                                        message=displayname)
                 
             else:
-                # nothing to do here.  Invite is accepted is already accepted
-                # legacy code always renamed share here:
-                # sharedName = yield sharedCollection._newStoreObject.updateShare(invitation._shareeHomeChild, name=str(uuid4()) )
+                # FIXME:  clean the logic up here. Add or update the share in caller acceptInviteShare() or (acceptDirectShare() or directShare())
+                # Nothing to do here.  Invite is accepted, sync token inited
+                # legacy code always renamed share here with side effect of calling shareeHomeChild._initSyncToken().
+                #    sharedName = yield sharedCollection._newStoreObject.updateShare(invitation._shareeHomeChild, name=str(uuid4()) )
                 # without rename, share name is the same as inviteUID
-                # share name is the same as inviteUID
+                #
+                # NOTE: if bind.RESOURCE_NAME is not changed to be != invite.inviteUID the entire INVITE table is not needed
+                #
                 sharedName = shareUID
             
             # this is similar to legacy code
@@ -1238,8 +1243,8 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         # Return the URL of the shared collection
         returnValue(XMLResponse(
-            code = responsecode.OK,
-            element = customxml.SharedAs(
+            code=responsecode.OK,
+            element=customxml.SharedAs(
                 element.HRef.fromString(joinURL(self.url(), share.name()))
             )
         ))
@@ -1281,7 +1286,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
         if share.direct():
             yield share._sharerHomeChild.unshareWith(share._shareeHomeChild._home)
         else:
-            yield share._sharerHomeChild.updateShare(share._shareeHomeChild, status=_BIND_STATUS_DECLINED )
+            yield share._sharerHomeChild.updateShare(share._shareeHomeChild, status=_BIND_STATUS_DECLINED)
 
 
     @inlineCallbacks
