@@ -569,6 +569,15 @@ class SharingTests(HomeTestCase):
             def __init__(self):
                 self.sharetype = SHARETYPE_DIRECT
                 self.hosturl = "/wikifoo"
+            
+            def shareType(self):
+                return self.shareType
+
+            def hostURL(self):
+                return self.hosturl
+
+            def uid(self):
+                return "012345"
 
         class TestCollection(SharedCollectionMixin, StubCollection):
             pass

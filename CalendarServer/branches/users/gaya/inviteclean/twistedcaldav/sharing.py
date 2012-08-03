@@ -186,11 +186,11 @@ class SharedCollectionMixin(object):
                 (calendarserver_namespace, "valid-principal"),
                 "Current user principal not specified",
             ))
-        principal = (yield request.locateResource(principalURL))
+        sharee = (yield request.locateResource(principalURL))
         
         # Check enabled for service
         from twistedcaldav.directory.principal import DirectoryCalendarPrincipalResource
-        if not isinstance(principal, DirectoryCalendarPrincipalResource):
+        if not isinstance(sharee, DirectoryCalendarPrincipalResource):
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (calendarserver_namespace, "invalid-principal"),
@@ -199,9 +199,9 @@ class SharedCollectionMixin(object):
         
         # Get the home collection
         if self.isCalendarCollection():
-            home = yield principal.calendarHome(request)
+            shareeHomeResource = yield sharee.calendarHome(request)
         elif self.isAddressBookCollection():
-            home = yield principal.addressBookHome(request)
+            shareeHomeResource = yield sharee.addressBookHome(request)
         else:
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
@@ -210,9 +210,9 @@ class SharedCollectionMixin(object):
             ))
             
         # TODO: Make sure principal is not sharing back to themselves
-        compareURL = (yield self.canonicalURL(request))
-        homeURL = home.url()
-        if compareURL.startswith(homeURL):
+        hostURL = (yield self.canonicalURL(request))
+        shareeHomeURL = shareeHomeResource.url()
+        if hostURL.startswith(shareeHomeURL):
             raise HTTPError(ErrorResponse(
                 responsecode.FORBIDDEN,
                 (calendarserver_namespace, "invalid-share"),
@@ -220,8 +220,8 @@ class SharedCollectionMixin(object):
             ))
 
         # Accept it
-        directID = home.sharesDB().directShareID(home, self)
-        response = (yield home.acceptDirectShare(request, compareURL, directID, self.displayName()))
+        directUID = Share.directUID(shareeHomeResource._newStoreHome, self._newStoreObject)
+        response = (yield shareeHomeResource.acceptDirectShare(request, hostURL, directUID, self.displayName()))
 
         # Return the URL of the shared calendar
         returnValue(response)
@@ -589,7 +589,6 @@ class SharedCollectionMixin(object):
             elif self.isAddressBookCollection():
                 shareeHomeResource = yield sharee.addressBookHome(request)
             yield shareeHomeResource.removeShareByUID(request, invitation.uid())
-    
             # If current user state is accepted then we send an invite with the new state, otherwise
             # we cancel any existing invites for the user
             if invitation and invitation.state() != "ACCEPTED":
@@ -597,7 +596,7 @@ class SharedCollectionMixin(object):
             elif invitation:
                 yield self.sendInviteNotification(invitation, request, notificationState="DELETED")
         
-        # use new API
+        # Direct shares for  with valid sharee principal will already be deleted
         yield self._newStoreObject.unshareWith(invitation._shareeHomeChild._home)
     
         returnValue(True)            
@@ -1143,10 +1142,6 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
             self._allShares = dict([(share.name(), share) for share in shares])
             
-            print ("allShares: GENERATED %d records, refresh=%s" % (len(self._allShares), refresh))
-        else:
-            print ("allShares: RETURNING %d records" % (len(self._allShares),))
-            
         returnValue(self._allShares)
 
 
@@ -1282,10 +1277,12 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 inbox = (yield request.locateResource(inboxURL))
                 inbox.processFreeBusyCalendar(shareURL, False)
 
-        yield self.sharesDB().removeRecordForShareUID(share.uid())
- 
-        # Notify client of changes
-        yield self.notifyChanged()
+        
+        if share.direct():
+            yield share._sharerHomeChild.unshareWith(share._shareeHomeChild._home)
+        else:
+            yield share._sharerHomeChild.updateShare(share._shareeHomeChild, status=_BIND_STATUS_DECLINED )
+
 
     @inlineCallbacks
     def declineShare(self, request, hostUrl, inviteUID):
@@ -1410,10 +1407,14 @@ class Share(object):
         self._sharerHomeChild = sharerHomeChild
         self._sharedResourceURL = url
         
+    @classmethod
+    def directUID(cls, shareeHome, sharerHomeChild):
+        return "Direct-%s-%s" % (shareeHome._resourceID, sharerHomeChild._resourceID,)
+        
     def uid(self):
         # Move to CommonHomeChild shareUID?
         if self._shareeHomeChild.shareMode() == _BIND_MODE_DIRECT:
-            return "Direct-%s-%s" % (self._shareeHomeChild._home._resourceID, self._sharerHomeChild._resourceID,)
+            return self.directUID(shareeHome=self._shareeHomeChild._home, sharerHomeChild=self._sharerHomeChild,)
         else:
             return self._shareeHomeChild.shareUID()
     

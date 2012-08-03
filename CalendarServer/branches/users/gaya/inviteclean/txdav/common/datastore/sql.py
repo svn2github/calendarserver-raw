@@ -56,7 +56,8 @@ from txdav.carddav.iaddressbookstore import IAddressBookTransaction
 
 from txdav.common.datastore.sql_tables import schema
 from txdav.common.datastore.sql_tables import _BIND_MODE_OWN, \
-    _BIND_MODE_DIRECT, _BIND_STATUS_ACCEPTED, NOTIFICATION_OBJECT_REVISIONS_TABLE
+    _BIND_MODE_DIRECT, _BIND_STATUS_ACCEPTED, _BIND_STATUS_DECLINED, \
+    NOTIFICATION_OBJECT_REVISIONS_TABLE
 from txdav.common.icommondatastore import HomeChildNameNotAllowedError, \
     HomeChildNameAlreadyExistsError, NoSuchHomeChildError, \
     ObjectResourceNameNotAllowedError, ObjectResourceNameAlreadyExistsError, \
@@ -2146,8 +2147,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @type message: L{str}
 
         @return: the name of the shared item in the sharee's home.
-        @rtype: L{str}
-        @return: L{Deferred}
+        @rtype: a L{Deferred} which fires with a L{str}
         """
         # TODO: raise a nice exception if shareeView is not, in fact, a shared
         # version of this same L{CommonHomeChild}
@@ -2162,7 +2162,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                                 
         if len(columnMap):
 
-            # yield self.shareWith(shared._home, mode, status, message)
             dn = PropertyName.fromElement(DisplayName)
             dnprop = (self.properties().get(dn) or
                       DisplayName.fromString(self.name()))
@@ -2182,11 +2181,15 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             #update affected attributes
             if mode:
                 shareeView._bindMode = columnMap[bind.BIND_MODE]
+                
             if status:
                 shareeView._bindStatus = columnMap[bind.BIND_STATUS]
                 #TODO: Is is OK to always call _initSyncToken ?
                 if shareeView._bindStatus == _BIND_STATUS_ACCEPTED:
                     yield shareeView._initSyncToken()
+                elif shareeView._bindStatus == _BIND_STATUS_DECLINED:
+                    shareeView._deletedSyncToken(sharedRemoval=True);
+
             if message:
                 shareeView._bindMessage = columnMap[bind.MESSAGE]
             
@@ -2210,6 +2213,14 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @return: a L{Deferred} which will fire with the previously-used name.
         """
         
+        
+        #remove sync tokens
+        shareeChildren = yield shareeHome.children()
+        for shareeChild in shareeChildren:
+            if not shareeChild.owned() and shareeChild._resourceID == self._resourceID:
+                shareeChild._deletedSyncToken(sharedRemoval=True);
+                break;
+
         # first delete the invite table row
         inv = schema.INVITE
         yield Delete(
@@ -2221,14 +2232,18 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         
         #now delete the bind table row
         bind = self._bindSchema
-        resourceName = (yield Delete(
+        rows = yield Delete(
             From=bind,
             Where=(bind.RESOURCE_ID == Parameter("resourceID"))
                   .And(bind.HOME_RESOURCE_ID == Parameter("homeID")),
             Return=bind.RESOURCE_NAME,
         ).on(self._txn, resourceID=self._resourceID,
-             homeID=shareeHome._resourceID))[0][0]
-        shareeHome._children.pop(resourceName, None)
+             homeID=shareeHome._resourceID)
+        
+        resourceName = None
+        if rows:
+            resourceName = rows[0][0]
+            shareeHome._children.pop(resourceName, None)
         
         # Must send notification to ensure cache invalidation occurs
         yield self.notifyChanged()
