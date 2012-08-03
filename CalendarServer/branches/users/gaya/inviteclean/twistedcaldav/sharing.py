@@ -1117,31 +1117,6 @@ class SharedHomeMixin(LinkFollowerMixIn):
                     share = Share(shareeHomeChild=shareeHomeChild, sharerHomeChild=sharerHomeChild, url=url)
                     shares.append(share)
 
-            # DEBUG ONLY
-            '''
-            shares.sort(key=lambda share:share.uid())
-            
-            allRecords = yield self.sharesDB().allRecords()
-            allRecords.sort(key=lambda record:record.shareuid)
-            
-            oTestStrings = []
-            for i in range(len(allRecords)):
-                record = allRecords[i]
-                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, localname=%s, summary=%s" % (i, record.shareuid, record.sharetype, record.hosturl, record.localname, record.summary, )
-                oTestStrings += [testStr,]
-    
-            testStrings = []
-            for i in range(len(shares)):
-                share = shares[i]
-                testStr = "i=%s, shareuid=%s, sharetype=%s, hostulr=%s, localname=%s, summary=%s" % (i, share.uid(), "D" if share.direct() else "I", share.url(), share.name(), share.summary(), )
-                testStrings += [testStr,]
-                
-            if oTestStrings != testStrings:
-                print("MISMATCH old: %s" % oTestStrings)
-                print("MISMATCH new: %s" % testStrings)
-                assert False
-            '''
-
             self._allShares = dict([(share.name(), share) for share in shares])
             
         returnValue(self._allShares)
