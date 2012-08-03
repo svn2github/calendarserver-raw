@@ -25,7 +25,7 @@ from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twistedcaldav import customxml
 from twistedcaldav.config import config
 from twistedcaldav.test.util import HomeTestCase, norequest
-from twistedcaldav.sharing import SharedCollectionMixin, SHARETYPE_DIRECT, WikiDirectoryService
+from twistedcaldav.sharing import SharedCollectionMixin, WikiDirectoryService
 
 from twistedcaldav.resource import CalDAVResource
 from txdav.common.datastore.test.util import buildStore, StubNotifierFactory
@@ -566,15 +566,11 @@ class SharingTests(HomeTestCase):
                 return True
 
         class StubShare(object):
-            def __init__(self):
-                self.sharetype = SHARETYPE_DIRECT
-                self.hosturl = "/wikifoo"
-            
-            def shareType(self):
-                return self.shareType
+            def direct(self):
+                return True
 
-            def hostURL(self):
-                return self.hosturl
+            def url(self):
+                return "/wikifoo"
 
             def uid(self):
                 return "012345"
