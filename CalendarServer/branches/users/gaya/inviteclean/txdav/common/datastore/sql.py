@@ -2162,7 +2162,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             dnprop = (self.properties().get(dn) or
                       DisplayName.fromString(self.name()))
             
-            updatedName = yield self._updateBindColumnsQuery(columnMap).on(
+            sharedname = yield self._updateBindColumnsQuery(columnMap).on(
                             self._txn,
                             resourceID=self._resourceID, homeID=shareeView._home._resourceID
                         )
@@ -2189,7 +2189,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             if message:
                 shareeView._bindMessage = columnMap[bind.MESSAGE]
             
-            shareeView._name = updatedName
+            shareeView._name = sharedname[0][0]
         
         returnValue(shareeView._name)
         
