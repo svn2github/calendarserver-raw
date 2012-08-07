@@ -667,10 +667,11 @@ class SharedCollectionMixin(object):
         sharee = self.principalForUID(invitation.shareeUID())
         if sharee is None:
             raise ValueError("sharee is None but principalUID was valid before")
-        notifications = (yield request.locateResource(sharee.notificationURL()))
+        notificationResource = (yield request.locateResource(sharee.notificationURL()))
+        notifications = notificationResource._newStoreNotifications
         
         # Add to collections
-        yield notifications.deleteNotifictionMessageByUID(request, invitation.uid())
+        yield notifications.removeNotificationObjectWithUID(invitation.uid())
 
     @inlineCallbacks
     def _xmlHandleInvite(self, request, docroot):
@@ -1302,7 +1303,8 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         # Locate notifications collection for sharer
         sharer = (yield sharedCollection.ownerPrincipal(request))
-        notifications = (yield request.locateResource(sharer.notificationURL()))
+        notificationResource = (yield request.locateResource(sharer.notificationURL()))
+        notifications = notificationResource._newStoreNotifications
 
         # Generate invite XML
         notificationUID = "%s-reply" % (replytoUID,)
@@ -1338,7 +1340,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
         ).toxml()
         
         # Add to collections
-        yield notifications.addNotification(request, notificationUID, xmltype, xmldata)
+        yield notifications.writeNotificationObject(notificationUID, xmltype, xmldata)
 
     def _handleInviteReply(self, request, invitereplydoc):
         """ Handle a user accepting or declining a sharing invite """

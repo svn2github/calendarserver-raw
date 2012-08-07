@@ -2182,13 +2182,6 @@ class _NotificationChildHelper(object):
         return self.getChild(segments[0]), segments[1:]
 
 
-    def notificationsDB(self):
-        """
-        Retrieve the new-style index wrapper.
-        """
-        return self._newStoreNotifications.retrieveOldIndex()
-
-
     def exists(self):
         # FIXME: tests
         return True

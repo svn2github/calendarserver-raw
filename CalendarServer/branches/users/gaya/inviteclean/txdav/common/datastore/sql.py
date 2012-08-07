@@ -49,7 +49,6 @@ from txdav.base.datastore.util import QueryCacher
 
 from twext.internet.decorate import memoizedKey
 
-from txdav.common.datastore.sql_legacy import PostgresLegacyNotificationsEmulator
 from txdav.caldav.icalendarstore import ICalendarTransaction, ICalendarStore
 
 from txdav.carddav.iaddressbookstore import IAddressBookTransaction
@@ -2479,8 +2478,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         rows = None
         queryCacher = home._txn._queryCacher
         
-        
         # FIXME: Only caching non-shared objects so that we don't need to invalidate in sql_legacy
+        # NOTE: Currently, r-9500, if shared caching is enabled, 
+        #       Six failures when the following CardDAVTester files are run together
+        #               CardDAVTester/scripts/tests/CalDAV/sharing-freebusy.xml
+        #               CardDAVTester/scripts/tests/CalDAV/sharing-notification-sync.xml
+        #
         if queryCacher:
             # Retrieve data from cache
             cacheKey = queryCacher.keyForObjectWithName(home._resourceID, name)
@@ -3682,10 +3685,6 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
     def resourceType(self):
         return ResourceType.notification #@UndefinedVariable
-
-
-    def retrieveOldIndex(self):
-        return PostgresLegacyNotificationsEmulator(self)
 
 
     def __repr__(self):

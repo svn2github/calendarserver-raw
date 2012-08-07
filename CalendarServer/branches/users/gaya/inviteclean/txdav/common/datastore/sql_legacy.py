@@ -29,7 +29,6 @@ from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 from twistedcaldav.config import config
 from twistedcaldav.dateops import normalizeForIndex, pyCalendarTodatetime
 from twistedcaldav.memcachepool import CachePoolUserMixIn
-from twistedcaldav.notifications import NotificationRecord
 from twistedcaldav.query import \
     calendarqueryfilter, calendarquery, addressbookquery, expression, \
     addressbookqueryfilter
@@ -56,46 +55,6 @@ indexfbtype_to_icalfbtype = {
     3: 'U',
     4: 'T',
 }
-
-class PostgresLegacyNotificationsEmulator(object):
-    def __init__(self, notificationsCollection):
-        self._collection = notificationsCollection
-
-
-    @inlineCallbacks
-    def _recordForObject(self, notificationObject):
-        if notificationObject:
-            returnValue(
-                NotificationRecord(
-                    notificationObject.uid(),
-                    notificationObject.name(),
-                    (yield notificationObject.xmlType().toxml())
-                )
-            )
-        else:
-            returnValue(None)
-
-
-    def recordForName(self, name):
-        return self._recordForObject(
-            self._collection.notificationObjectWithName(name)
-        )
-
-
-    @inlineCallbacks
-    def recordForUID(self, uid):
-        returnValue((yield self._recordForObject(
-            (yield self._collection.notificationObjectWithUID(uid))
-        )))
-
-
-    def removeRecordForUID(self, uid):
-        return self._collection.removeNotificationObjectWithUID(uid)
-
-
-    def removeRecordForName(self, name):
-        return self._collection.removeNotificationObjectWithName(name)
-
 
 class MemcachedUIDReserver(CachePoolUserMixIn, LoggingMixIn):
     def __init__(self, index, cachePool=None):
