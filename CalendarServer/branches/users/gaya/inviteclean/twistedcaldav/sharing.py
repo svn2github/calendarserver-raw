@@ -1144,8 +1144,14 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         # Send the invite reply then add the link
         yield self._changeShare(request, "ACCEPTED", hostUrl, inviteUID, displayname)
+        if oldShare:
+            share = oldShare
+        else:
+            sharedCollection = yield request.locateResource(hostUrl)
+            shareeHomeChild = yield self._newStoreHome.childWithName(inviteUID)
+            share = Share(shareeHomeChild=shareeHomeChild, sharerHomeChild=sharedCollection._newStoreObject, url=hostUrl)
 
-        response = yield self._acceptShare(request, oldShare, False, hostUrl, inviteUID, displayname)
+        response = yield self._acceptShare(request, not oldShare, share, displayname)
         returnValue(response)
 
     @inlineCallbacks
@@ -1153,45 +1159,31 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         # Just add the link
         oldShare = yield self._shareForUID(resourceUID, request)
-        response = yield self._acceptShare(request, oldShare, True, hostUrl, resourceUID, displayname)
-        returnValue(response)
-
-    @inlineCallbacks
-    def _acceptShare(self, request, oldShare, direct, hostUrl, shareUID, displayname=None):
-
-        # Get shared collection in non-share mode first
-        sharedCollection = (yield request.locateResource(hostUrl))
-        ownerPrincipal = (yield self.ownerPrincipal(request))
-
-        # Add or update in DB
         if oldShare:
             share = oldShare
         else:
-            if direct:
-                sharedName = yield sharedCollection._newStoreObject.shareWith(shareeHome=self._newStoreHome,
-                                                        mode=_BIND_MODE_DIRECT,
-                                                        status=_BIND_STATUS_ACCEPTED,
-                                                        message=displayname)
-                
-            else:
-                # FIXME:  clean the logic up here. Add or update the share in caller acceptInviteShare() or (acceptDirectShare() or directShare())
-                # Nothing to do here.  Invite is accepted, sync token inited
-                # legacy code always renamed share here with side effect of calling shareeHomeChild._initSyncToken().
-                #    sharedName = yield sharedCollection._newStoreObject.updateShare(invitation._shareeHomeChild, name=str(uuid4()) )
-                # without rename, share name is the same as inviteUID
-                #
-                # NOTE: if bind.RESOURCE_NAME is not changed to be != invite.inviteUID the entire INVITE table is not needed
-                #
-                sharedName = shareUID
+            sharedCollection = yield request.locateResource(hostUrl)
+            sharedName = yield sharedCollection._newStoreObject.shareWith(shareeHome=self._newStoreHome,
+                                                    mode=_BIND_MODE_DIRECT,
+                                                    status=_BIND_STATUS_ACCEPTED,
+                                                    message=displayname)
             
-            # this is similar to legacy code
             shareeHomeChild = yield self._newStoreHome.childWithName(sharedName)
             share = Share(shareeHomeChild=shareeHomeChild, sharerHomeChild=sharedCollection._newStoreObject, url=hostUrl)
             
+        response = yield self._acceptShare(request, not oldShare, share, displayname)
+        returnValue(response)
+
+    @inlineCallbacks
+    def _acceptShare(self, request, isNewShare, share, displayname=None):
+
+        # Get shared collection in non-share mode first
+        sharedCollection = yield request.locateResource(share.url())
+        ownerPrincipal = yield self.ownerPrincipal(request)
 
         # For a direct share we will copy any calendar-color over using the owners view
         color = None
-        if share.direct() and not oldShare and sharedCollection.isCalendarCollection():
+        if share.direct() and isNewShare and sharedCollection.isCalendarCollection():
             try:
                 color = (yield sharedCollection.readProperty(customxml.CalendarColor, request))
             except HTTPError:
@@ -1205,7 +1197,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
             yield sharedCollection.writeProperty(customxml.CalendarColor.fromString(color), request)
 
         # Calendars always start out transparent and with empty default alarms
-        if not oldShare and sharedCollection.isCalendarCollection():
+        if isNewShare and sharedCollection.isCalendarCollection():
             yield sharedCollection.writeProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Transparent()), request)
             yield sharedCollection.writeProperty(caldavxml.DefaultAlarmVEventDateTime.fromString(""), request)
             yield sharedCollection.writeProperty(caldavxml.DefaultAlarmVEventDate.fromString(""), request)
@@ -1222,6 +1214,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 element.HRef.fromString(joinURL(self.url(), share.name()))
             )
         ))
+
 
     def removeShare(self, request, share):
         """ Remove a shared collection named in resourceName """
