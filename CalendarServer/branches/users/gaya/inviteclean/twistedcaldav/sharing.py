@@ -626,10 +626,11 @@ class SharedCollectionMixin(object):
         notifications = notificationResource._newStoreNotifications
         
         # Look for existing notification
-        oldnotification = (yield notifications.notificationObjectWithUID(invitation.uid()))
-        if oldnotification:
+        # oldnotification is not used don't query for it
+        # oldnotification = (yield notifications.notificationObjectWithUID(invitation.uid()))
+        # if oldnotification:
             # TODO: rollup changes?
-            pass
+        #    pass
         
         # Generate invite XML
         userid = "urn:uuid:" + invitation.shareeUID()
@@ -1122,12 +1123,6 @@ class SharedHomeMixin(LinkFollowerMixIn):
             
         returnValue(self._allShares)
 
-
-    @inlineCallbacks
-    def allShareNames(self):
-        allShares = yield self.allShares()
-        returnValue(tuple(allShares.keys()))
-        
     @inlineCallbacks
     def _shareForUID(self, shareUID, refresh=False):
         
