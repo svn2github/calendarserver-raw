@@ -1076,68 +1076,71 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
     @inlineCallbacks
     def provisionShare(self, name):
-        # Try to find a matching share
-        child = None
-        shares = yield self.allShares()
-        if name in shares:
+        child = yield self._newStoreHome.childWithName(name)
+        share = yield self.shareWithChild(child)
+        if share:
             from twistedcaldav.sharedcollection import SharedCollectionResource
-            child = SharedCollectionResource(self, shares[name])
-            self.putChild(name, child)
-        returnValue(child)
-
-
-    @inlineCallbacks
-    def allShares(self, refresh=False):
-                
-        if refresh or not hasattr(self, "_allShares"):
-            
-            shares = []
-            children = yield self._newStoreHome.children()
-            for shareeHomeChild in children:
-                if not shareeHomeChild.owned():
-                    
-                    sharerHomeID = yield shareeHomeChild.sharerHomeID()
-                    sharerHome = yield self._newStoreHome._txn.homeWithResourceID(self._newStoreHome._homeType, sharerHomeID)
-                    sharerHomeChild = yield sharerHome.childWithID(shareeHomeChild._resourceID)
-                    
-                    # get the shared object's URL
-                    principal = self.principalForUID(sharerHomeChild._home.uid())
-                    
-                    # FIXEME:  Fake up a request that can be used to get the sharer home resource
-                    class FakeRequest(object):pass
-                    fakeRequest = FakeRequest()
-                    setattr(fakeRequest, TRANSACTION_KEY, self._newStoreHome._txn)
-                    
-                    if self._newStoreHome._homeType == ECALENDARTYPE:
-                        sharerHomeCollection = yield principal.calendarHome(fakeRequest)
-                    elif self._newStoreHome._homeType == EADDRESSBOOKTYPE:
-                        sharerHomeCollection = yield principal.addressBookHome(fakeRequest)
-                    
-                    url = joinURL(sharerHomeCollection.url(), sharerHomeChild.name())
-                    
-                    
-                    share = Share(shareeHomeChild=shareeHomeChild, sharerHomeChild=sharerHomeChild, url=url)
-                    shares.append(share)
-
-            self._allShares = dict([(share.name(), share) for share in shares])
-            
-        returnValue(self._allShares)
-
-    @inlineCallbacks
-    def _shareForUID(self, shareUID, refresh=False):
+            sharedCollection = SharedCollectionResource(self, share)
+            self.putChild(name, sharedCollection)
+            returnValue(sharedCollection)
         
-        allShares = yield self.allShares(refresh)
-        for share in allShares.values():
-            if share.uid() == shareUID:
-                returnValue(share)
         returnValue(None)
 
+
+    @inlineCallbacks
+    def shareWithChild(self, child, request=None):
+        # Try to find a matching share
+        if not child or child.owned():
+            returnValue(None)
+        
+        sharerHomeID = yield child.sharerHomeID()
+        sharerHome = yield self._newStoreHome._txn.homeWithResourceID(self._newStoreHome._homeType, sharerHomeID)
+        sharerHomeChild = yield sharerHome.childWithID(child._resourceID)
+        
+        # get the shared object's URL
+        sharer = self.principalForUID(sharerHomeChild._home.uid())
+        
+        if not request:
+            # FIXEME:  Fake up a request that can be used to get the sharer home resource
+            class FakeRequest(object):pass
+            fakeRequest = FakeRequest()
+            setattr(fakeRequest, TRANSACTION_KEY, self._newStoreHome._txn)
+            request = fakeRequest
+        
+        if self._newStoreHome._homeType == ECALENDARTYPE:
+            sharerHomeCollection = yield sharer.calendarHome(request)
+        elif self._newStoreHome._homeType == EADDRESSBOOKTYPE:
+            sharerHomeCollection = yield sharer.addressBookHome(request)
+        
+        url = joinURL(sharerHomeCollection.url(), sharerHomeChild.name())        
+        share = Share(shareeHomeChild=child, sharerHomeChild=sharerHomeChild, url=url)
+
+        returnValue(share)
+
+    @inlineCallbacks
+    def _shareForUID(self, shareUID, request):
+        
+        # since child.shareUID() == child.name() for indirect shares
+        child = yield self._newStoreHome.childWithName(shareUID)
+        if child:
+            share = yield self.shareWithChild(child, request)
+            if share and share.uid() == shareUID:
+                returnValue(share)
+        
+        # find direct shares
+        children = yield self._newStoreHome.children()
+        for child in children:
+            share = yield self.shareWithChild(child, request)
+            if share and share.uid() == shareUID:
+                returnValue(share)
+                
+        returnValue(None)
 
     @inlineCallbacks
     def acceptInviteShare(self, request, hostUrl, inviteUID, displayname=None):
         
         # Check for old share
-        oldShare = yield self._shareForUID(inviteUID)
+        oldShare = yield self._shareForUID(inviteUID, request)
 
         # Send the invite reply then add the link
         yield self._changeShare(request, "ACCEPTED", hostUrl, inviteUID, displayname)
@@ -1149,7 +1152,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
     def acceptDirectShare(self, request, hostUrl, resourceUID, displayname=None):
 
         # Just add the link
-        oldShare = yield self._shareForUID(resourceUID)
+        oldShare = yield self._shareForUID(resourceUID, request)
         response = yield self._acceptShare(request, oldShare, True, hostUrl, resourceUID, displayname)
         returnValue(response)
 
@@ -1233,7 +1236,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
     def removeShareByUID(self, request, shareUID):
         """ Remove a shared collection but do not send a decline back """
 
-        share = yield self._shareForUID(shareUID)
+        share = yield self._shareForUID(shareUID, request)
         if share:
             yield self.removeDirectShare(request, share)
 
