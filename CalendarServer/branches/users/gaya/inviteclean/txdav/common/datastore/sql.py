@@ -2272,7 +2272,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         )
 
     @classproperty
-    def _acceptedBindForResourceID(cls): #@NoSelf
+    def _sharedBindForResourceID(cls): #@NoSelf
         bind = cls._bindSchema
         return cls._bindFor((bind.RESOURCE_ID == Parameter("resourceID"))
                             .And(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)
@@ -2294,7 +2294,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
         # get all accepted binds
-        acceptedRows = yield self._acceptedBindForResourceID.on(self._txn, resourceID=self._resourceID)
+        acceptedRows = yield self._sharedBindForResourceID.on(self._txn, resourceID=self._resourceID)
 
         cls = self.__class__ # for ease of grepping...
         result = []
@@ -2596,6 +2596,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     def create(cls, home, name):
         child = (yield cls.objectWithName(home, name))
         if child is not None:
+            raise HomeChildNameAlreadyExistsError(name)
+        invite = (yield cls.invitedObjectWithName(home, name))
+        if invite is not None:
             raise HomeChildNameAlreadyExistsError(name)
 
         if name.startswith("."):
