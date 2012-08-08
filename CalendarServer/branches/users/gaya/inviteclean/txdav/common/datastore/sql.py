@@ -1909,13 +1909,12 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _childListQuery(cls): #@NoSelf
+    def _childNamesForHomeID(cls): #@NoSelf
         bind = cls._bindSchema
         return Select([bind.RESOURCE_NAME], From=bind,
                       Where=(bind.HOME_RESOURCE_ID ==
-                             Parameter("resourceID")).And(
-                                (bind.BIND_MODE == _BIND_MODE_OWN).Or(
-                                bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)))
+                             Parameter("homeID")).And
+                                (bind.BIND_STATUS == _BIND_STATUS_ACCEPTED))
 
 
     @classmethod
@@ -1957,8 +1956,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @return: an iterable of C{str}s.
         """
         # FIXME: tests don't cover this as directly as they should.
-        rows = yield cls._childListQuery.on(
-                home._txn, resourceID=home._resourceID)
+        rows = yield cls._childNamesForHomeID.on(
+                home._txn, homeID=home._resourceID)
         names = [row[0] for row in rows]
         returnValue(names)
 
@@ -1967,7 +1966,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     def _invitedBindForHomeID(cls): #@NoSelf
         bind = cls._bindSchema
         return cls._bindFor((bind.HOME_RESOURCE_ID == Parameter("homeID"))
-                                    .And(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED))
+                            .And(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED))
 
     @classmethod
     @inlineCallbacks
@@ -1985,7 +1984,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _allHomeChildrenQuery(cls): #@NoSelf
+    def _childrenAndMetadataForHomeID(cls): #@NoSelf
         bind = cls._bindSchema
         child = cls._homeChildSchema
         childMetaData = cls._homeChildMetaDataSchema
@@ -2004,9 +2003,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                          childMetaData, childMetaData.RESOURCE_ID == bind.RESOURCE_ID,
                          'left outer'),
                      Where=(bind.HOME_RESOURCE_ID == Parameter("homeID")
-                           ).And(
-                                 (bind.BIND_MODE == _BIND_MODE_OWN).Or(
-                                  bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)))
+                           ).And(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED))
 
 
     @classmethod
@@ -2371,7 +2368,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         results = []
 
         # Load from the main table first
-        dataRows = (yield cls._allHomeChildrenQuery.on(home._txn, homeID=home._resourceID))
+        dataRows = (yield cls._childrenAndMetadataForHomeID.on(home._txn, homeID=home._resourceID))
 
         if dataRows:
             
@@ -2454,10 +2451,11 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _bindForNameAndHomeID(cls): #@NoSelf
+    def _childForNameAndHomeID(cls): #@NoSelf
         bind = cls._bindSchema
         return cls._bindFor((bind.RESOURCE_NAME == Parameter("name"))
                                .And(bind.HOME_RESOURCE_ID == Parameter("homeID"))
+                               .And(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)
                                )
 
     @classmethod
@@ -2494,7 +2492,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         if rows is None:
             # No cached copy
-            rows = yield cls._bindForNameAndHomeID.on(home._txn, name=name, homeID=home._resourceID)
+            rows = yield cls._childForNameAndHomeID.on(home._txn, name=name, homeID=home._resourceID)
                     
             if rows and queryCacher and rows[0][0] == _BIND_MODE_OWN:
                 # Cache the result
