@@ -444,7 +444,7 @@ class PostgresLegacyIndexEmulator(LegacyIndexHelper):
         return Select(
             [co.RESOURCE_NAME],
             From=co,
-            Where=((co.RECURRANCE_MIN < Parameter("minDate"))
+            Where=((co.RECURRANCE_MIN > Parameter("minDate"))
                 .Or(co.RECURRANCE_MAX < Parameter("maxDate")))
                 .And(co.CALENDAR_RESOURCE_ID == Parameter("resourceID"))
         )

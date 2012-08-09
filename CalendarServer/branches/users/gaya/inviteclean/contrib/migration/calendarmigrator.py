@@ -104,9 +104,9 @@ def main():
         help='path to the root of the new system',
         default='/')
 
-    optionParser.add_option('--language', choices=('en', 'fr', 'de', 'ja'),
-        metavar='[en|fr|de|ja]',
-        help='language identifier (IGNORED)')
+    optionParser.add_option('--language',
+        help='language identifier (IGNORED)',
+        default="en")
 
     (options, args) = optionParser.parse_args()
     log("Options: %s" % (options,))
@@ -590,13 +590,13 @@ def relocateData(sourceRoot, targetRoot, sourceVersion, oldServerRootValue,
         # /Library/Server/Calendar and Contacts will be new ServerRoot no matter what.
 
         if oldCalDocumentRootValueProcessed:
-            if diskAccessor.exists(oldCalDocumentRootValueProcessed): # external volume
+            if oldCalDocumentRootValueProcessed.startswith("/Volumes/"): # external volume
                 # The old external calendar DocumentRoot becomes the new DataRoot
                 newDataRoot = newDataRootValue = os.path.join(os.path.dirname(oldCalDocumentRootValue.rstrip("/")), "Calendar and Contacts Data")
                 newDocumentRoot = os.path.join(newDataRoot, newDocumentRootValue)
                 # Move aside whatever is there
                 if diskAccessor.exists(newDataRoot):
-                    renameTo = nextAvailable(newDataRoot + ".bak", diskAccessor=diskAccessor)
+                    renameTo = nextAvailable(newDataRoot, "bak", diskAccessor=diskAccessor)
                     diskAccessor.rename(newDataRoot, renameTo)
 
                 if diskAccessor.exists(absolutePathWithRoot(sourceRoot, oldCalDataRootValueProcessed)):
@@ -629,8 +629,7 @@ def relocateData(sourceRoot, targetRoot, sourceVersion, oldServerRootValue,
         # Old AddressBook DocumentRoot
         if oldABDocumentRootValue:
             newAddressBooks = os.path.join(newDocumentRoot, "addressbooks")
-            if diskAccessor.exists(oldABDocumentRootValue):
-                # Must be on an external volume if we see it existing at the point
+            if oldABDocumentRootValue.startswith("/Volumes/"): # external volume
                 diskAccessor.ditto(
                     os.path.join(oldABDocumentRootValue, "addressbooks"),
                     newAddressBooks
@@ -651,7 +650,7 @@ def relocateData(sourceRoot, targetRoot, sourceVersion, oldServerRootValue,
         # Before 10.8, DocumentRoot and DataRoot were relative to ServerRoot
 
         if oldServerRootValue:
-            if oldServerRootValue.rstrip("/") != NEW_SERVER_ROOT: # external volume
+            if oldServerRootValue.rstrip("/").startswith("/Volumes/"): # external volume
                 log("Using external calendar server root: %s" % (oldServerRootValue,))
                 # ServerRoot needs to be /Library/Server/Calendar and Contacts
                 # Since DocumentRoot is now relative to DataRoot, move DocumentRoot into DataRoot
@@ -699,7 +698,7 @@ def relocateData(sourceRoot, targetRoot, sourceVersion, oldServerRootValue,
     else: # 10.8 -> 10.8
 
         if oldServerRootValue:
-            if oldServerRootValue.rstrip("/") != NEW_SERVER_ROOT: # external volume
+            if oldServerRootValue.rstrip("/").startswith("/Volumes/"): # external volume
                 log("Using external calendar server root: %s" % (oldServerRootValue,))
             elif diskAccessor.exists(absolutePathWithRoot(sourceRoot, oldServerRootValue)):
                 log("Copying calendar server root: %s" % (newServerRoot,))
@@ -769,26 +768,30 @@ def absolutePathWithRoot(root, path):
         return os.path.join(root, path)
 
 
-def nextAvailable(path, diskAccessor=None):
+def nextAvailable(path, ext, diskAccessor=None):
     """
-    If path doesn't exist, return path.  Otherwise return the first path name
-    following the path.NNN pattern that doesn't exist, where NNN starts at 1
+    If path.ext doesn't exist, return path.ext.  Otherwise return the first path name
+    following the path.N.ext pattern that doesn't exist, where N starts at 1
     and increments until a non-existent path name is determined.
 
     @param path: path to examine
     @type path: C{str}
-    @returns: non-existent path name C{str}
+    @param ext: filename extension to append (don't include ".")
+    @type ext: C{str}
+    @returns: non-existent path name
+    @rtype: C{str}
     """
 
     if diskAccessor is None:
         diskAccessor = DiskAccessor()
 
-    if not diskAccessor.exists(path):
-        return path
+    newPath = "%s.%s" % (path, ext)
+    if not diskAccessor.exists(newPath):
+        return newPath
 
     i = 1
     while(True):
-        newPath = "%s.%d" % (path, i)
+        newPath = "%s.%d.%s" % (path, i, ext)
         if not diskAccessor.exists(newPath):
             return newPath
         i += 1

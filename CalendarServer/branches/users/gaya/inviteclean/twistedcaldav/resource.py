@@ -1908,7 +1908,7 @@ class CalendarPrincipalResource (CalDAVComplianceMixIn, DAVResourceWithChildrenM
 
             elif name == "calendar-user-address-set":
                 returnValue(caldavxml.CalendarUserAddressSet(
-                    *[element.HRef(uri) for uri in self.calendarUserAddresses()]
+                    *[element.HRef(uri) for uri in sorted(self.calendarUserAddresses())]
                 ))
 
             elif name == "schedule-inbox-URL":
@@ -2190,7 +2190,7 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
 
     @inlineCallbacks
     def findChildrenFaster(
-        self, depth, request, okcallback, badcallback,
+        self, depth, request, okcallback, badcallback, missingcallback,
         names, privileges, inherited_aces
     ):
         """
@@ -2201,7 +2201,7 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
             yield self._newStoreHome.loadChildren()
         
         result = (yield super(CommonHomeResource, self).findChildrenFaster(
-            depth, request, okcallback, badcallback, names, privileges, inherited_aces
+            depth, request, okcallback, badcallback, missingcallback, names, privileges, inherited_aces
         ))
         
         returnValue(result)
@@ -2285,7 +2285,7 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
 
         if qname == customxml.MaxCollections.qname() and config.MaxCollectionsPerHome:
             returnValue(customxml.MaxCollections.fromString(config.MaxCollectionsPerHome))
-            
+
         elif qname == (customxml.calendarserver_namespace, "push-transports"):
 
             if (config.Notifications.Services.XMPPNotifier.Enabled or
@@ -2311,6 +2311,9 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
                                     ),
                                     customxml.PubSubAPSEnvironmentProperty(
                                         apsConfiguration["APSEnvironment"]
+                                    ),
+                                    customxml.PubSubAPSRefreshIntervalProperty(
+                                        str(apsConfiguration["SubscriptionRefreshIntervalSeconds"])
                                     ),
                                     type="APSD",
                                 )

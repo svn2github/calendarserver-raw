@@ -557,6 +557,7 @@ class SlaveSpawnerService(Service):
                 "--reactor=%s" % (config.Twisted.reactor,),
                 "-n", self.maker.groupMembershipCacherTapName,
                 "-f", self.configPath,
+                "-o", "PIDFile=groupcacher.pid",
             ))
 
             self.monitor.addProcess("groupcacher", groupMembershipCacherArgv,
@@ -585,6 +586,7 @@ class ReExecService(MultiService, LoggingMixIn):
         Removes pidfile, registers an exec to happen after shutdown, then
         stops the reactor.
         """
+        self.log_info("SIGHUP received - restarting")
         try:
             self.log_info("Removing pidfile: %s" % (self.pidfilePath,))
             os.remove(self.pidfilePath)
@@ -595,7 +597,6 @@ class ReExecService(MultiService, LoggingMixIn):
         self.reactor.stop()
 
     def sighupHandler(self, num, frame):
-        self.log_info("SIGHUP received - restarting")
         self.reactor.callFromThread(self.reExec)
 
     def startService(self):

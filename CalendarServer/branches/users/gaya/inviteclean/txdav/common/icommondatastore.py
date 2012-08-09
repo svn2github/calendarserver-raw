@@ -167,7 +167,7 @@ class ICommonTransaction(ITransaction):
             notification collection exists.
         """
 
-    def addAPNSubscription(token, key, timestamp, subscriber):
+    def addAPNSubscription(token, key, timestamp, subscriber, userAgent, ipAddr):
         """
         Add (or update) a subscription entry in the database.
 
@@ -182,6 +182,12 @@ class ICommonTransaction(ITransaction):
 
         @param subscriber: The GUID of the subscribing principal
         @type subscrbier: C{str}
+
+        @param userAgent: The user agent requesting the subscription
+        @type userAgent: C{str}
+
+        @param ipAddr: The ip address requesting the subscription
+        @type ipAddr: C{str}
         """
 
     def removeAPNSubscription(token, key):
@@ -193,6 +199,15 @@ class ICommonTransaction(ITransaction):
 
         @param key: The push key
         @type key: C{str}
+        """
+
+    def purgeOldAPNSubscriptions(olderThan):
+        """
+        Remove all subscription entries whose modified timestamp
+        is older than the provided timestamp.
+
+        @param olderThan: The cutoff timestamp in seconds
+        @type token: C{int}
         """
 
     def apnSubscriptionsByToken(token):

@@ -698,7 +698,7 @@ dependencies () {
     "http://pypi.python.org/packages/source/p/pyOpenSSL/${po}.tar.gz";
 
   if type -P krb5-config > /dev/null; then
-    py_dependency -r 8679 \
+    py_dependency -r 9409 \
       "PyKerberos" "kerberos" "PyKerberos" \
       "${svn_uri_base}/PyKerberos/trunk";
   fi;
@@ -743,7 +743,7 @@ dependencies () {
     "${pypi}/p/python-ldap/${ld}.tar.gz";
 
   # XXX actually PyCalendar should be imported in-place.
-  py_dependency -fe -i "src" -r 204 \
+  py_dependency -fe -i "src" -r 209 \
     "pycalendar" "pycalendar" "pycalendar" \
     "http://svn.mulberrymail.com/repos/PyCalendar/branches/server";
 

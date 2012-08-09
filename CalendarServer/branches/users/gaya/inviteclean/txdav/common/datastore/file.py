@@ -208,6 +208,7 @@ class CommonStoreTransaction(DataStoreTransaction):
         self._notificationHomes = {}
         self._notifierFactory = notifierFactory
         self._notifiedAlready = set()
+        self._bumpedAlready = set()
         self._migrating = migrating
 
         extraInterfaces = []
@@ -250,10 +251,13 @@ class CommonStoreTransaction(DataStoreTransaction):
 
 
     # File-based storage of APN subscriptions not implementated.
-    def addAPNSubscription(self, token, key, timestamp, subscriber):
+    def addAPNSubscription(self, token, key, timestamp, subscriber, userAgent, ipAddr):
         return NotImplementedError
 
     def removeAPNSubscription(self, token, key):
+        return NotImplementedError
+
+    def purgeOldAPNSubscriptions(self, purgeSeconds):
         return NotImplementedError
 
     def apnSubscriptionsByToken(self, token):
@@ -267,9 +271,26 @@ class CommonStoreTransaction(DataStoreTransaction):
 
     def isNotifiedAlready(self, obj):
         return obj in self._notifiedAlready
-    
+
     def notificationAddedForObject(self, obj):
         self._notifiedAlready.add(obj)
+
+    def isBumpedAlready(self, obj):
+        """
+        Indicates whether or not bumpAddedForObject has already been
+        called for the given object, in order to facilitate calling
+        bumpModified only once per object.
+        """
+        return obj in self._bumpedAlready
+
+    def bumpAddedForObject(self, obj):
+        """
+        Records the fact that a bumpModified( ) call has already been
+        done, in order to facilitate calling bumpModified only once per
+        object.
+        """
+        self._bumpedAlready.add(obj)
+
 
 
 class StubResource(object):
@@ -779,6 +800,18 @@ class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
         """
         return [self.objectResourceWithName(name)
                 for name in self.listObjectResources()]
+
+
+    def objectResourcesWithNames(self, names):
+        """
+        Return a list of the specified object resource objects.
+        """
+        results = []
+        for name in names:
+            obj = self.objectResourceWithName(name)
+            if obj is not None:
+                results.append(obj)
+        return results
 
 
     def listObjectResources(self):

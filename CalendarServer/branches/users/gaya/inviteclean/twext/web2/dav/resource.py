@@ -57,6 +57,12 @@ from twisted.internet.defer import (
 from twisted.internet import reactor
 
 from twext.python.log import Logger
+from txdav.xml import element
+from txdav.xml.base import encodeXMLName
+from txdav.xml.element import WebDAVElement, WebDAVEmptyElement, WebDAVTextElement
+from txdav.xml.element import dav_namespace
+from txdav.xml.element import twisted_dav_namespace, twisted_private_namespace
+from txdav.xml.element import registerElement, lookupElement
 from twext.web2 import responsecode
 from twext.web2.http import HTTPError, RedirectResponse, StatusResponse
 from twext.web2.http_headers import generateContentType
@@ -70,11 +76,6 @@ from twext.web2.dav.http import NeedPrivilegesResponse
 from twext.web2.dav.noneprops import NonePropertyStore
 from twext.web2.dav.util import unimplemented, parentForURL, joinURL
 from twext.web2.dav.auth import PrincipalCredentials
-from txdav.xml import element
-from txdav.xml.element import WebDAVElement, WebDAVEmptyElement, WebDAVTextElement
-from txdav.xml.element import dav_namespace
-from txdav.xml.element import twisted_dav_namespace, twisted_private_namespace
-from txdav.xml.element import registerElement, lookupElement
 
 
 log = Logger()
@@ -217,7 +218,7 @@ class DAVPropertyMixIn (MetaDataMixin):
         def defer():
             if type(property) is tuple:
                 qname = property
-                sname = "{%s}%s" % property
+                sname = encodeXMLName(*property)
             else:
                 qname = property.qname()
                 sname = property.sname()
@@ -416,7 +417,7 @@ class DAVPropertyMixIn (MetaDataMixin):
         def defer():
             if type(property) is tuple:
                 qname = property
-                sname = "{%s}%s" % property
+                sname = encodeXMLName(*property)
             else:
                 qname = property.qname()
                 sname = property.sname()
@@ -680,7 +681,7 @@ class DAVResource (DAVPropertyMixIn, StaticRenderMixin):
 
     @inlineCallbacks
     def findChildrenFaster(
-        self, depth, request, okcallback, badcallback,
+        self, depth, request, okcallback, badcallback, missingcallback,
         names, privileges, inherited_aces
     ):
         """
@@ -698,6 +699,8 @@ class DAVResource (DAVPropertyMixIn, StaticRenderMixin):
             that pass the privilege check, or C{None}
         @param badcallback: a callback function used on all resources
             that fail the privilege check, or C{None}
+        @param missingcallback: a callback function used on all resources
+            that are missing, or C{None}
         @param names: a C{list} of C{str}'s containing the names of
             the child resources to lookup. If empty or C{None} all
             children will be examined, otherwise only the ones in the
@@ -737,6 +740,10 @@ class DAVResource (DAVPropertyMixIn, StaticRenderMixin):
                     children.append((child, childpath + "/"))
                 else:
                     children.append((child, childpath))
+
+        if missingcallback:
+            for name in set(names1) - set(childnames):
+                missingcallback(joinURL(basepath, urllib.quote(name)))
 
         # Generate (acl,supported_privs) map
         aclmap = {}
@@ -779,7 +786,7 @@ class DAVResource (DAVPropertyMixIn, StaticRenderMixin):
                         yield collection.inheritedACEsforChildren(request)
                     )
                     yield collection.findChildrenFaster(
-                        depth, request, okcallback, badcallback,
+                        depth, request, okcallback, badcallback, missingcallback,
                         child_collections[collection_name] if names else None, privileges,
                         inherited_aces=collection_inherited_aces
                     )
@@ -1873,9 +1880,9 @@ class DAVResource (DAVPropertyMixIn, StaticRenderMixin):
                     return None
 
                 if not isinstance(principal, element.Principal):
-                    log.err("Non-principal value in property {%s}%s "
+                    log.err("Non-principal value in property %s "
                             "referenced by property principal."
-                            % (namespace, name))
+                            % (encodeXMLName(namespace, name),))
                     return None
 
                 if len(principal.children) != 1:

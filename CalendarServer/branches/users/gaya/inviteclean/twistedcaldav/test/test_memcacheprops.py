@@ -28,10 +28,11 @@ import os
 
 from twext.web2.http import HTTPError
 
+from txdav.xml.base import encodeXMLName
+
 from twistedcaldav.memcacheprops import MemcachePropertyCollection
 from twistedcaldav.test.util import InMemoryPropertyStore
 from twistedcaldav.test.util import TestCase
-
 
 
 class StubCollection(object):
@@ -91,9 +92,8 @@ class StubProperty(object):
     def qname(self):
         return self.ns, self.name
 
-
     def __repr__(self):
-        return "{%s}%s = %s" % (self.ns, self.name, self.value)
+        return "%s = %s" % (encodeXMLName(self.ns, self.name), self.value)
 
 
 class MemcachePropertyCollectionTestCase(TestCase):

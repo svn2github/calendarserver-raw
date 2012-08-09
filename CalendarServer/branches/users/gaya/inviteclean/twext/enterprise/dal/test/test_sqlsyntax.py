@@ -683,7 +683,8 @@ class GenerationTests(ExampleSchemaHelper, TestCase):
 
     def test_inSubSelect(self):
         """
-        L{ColumnSyntax.In} returns a sub-expression using the SQL 'in' syntax.
+        L{ColumnSyntax.In} returns a sub-expression using the SQL 'in' syntax with
+        a sub-select.
         """
         wherein = (self.schema.FOO.BAR.In(
                     Select([self.schema.BOZ.QUX], From=self.schema.BOZ)))
@@ -691,6 +692,79 @@ class GenerationTests(ExampleSchemaHelper, TestCase):
             Select(From=self.schema.FOO, Where=wherein).toSQL(),
             SQLFragment(
                 "select * from FOO where BAR in (select QUX from BOZ)"))
+
+
+    def test_inParameter(self):
+        """
+        L{ColumnSyntax.In} returns a sub-expression using the SQL 'in' syntax with
+        parameter list.
+        """
+        
+        # One item with IN only
+        items = set(('A',))
+        self.assertEquals(
+            Select(From=self.schema.FOO, Where=self.schema.FOO.BAR.In(Parameter("names", len(items)))).toSQL().bind(names=items),
+            SQLFragment(
+                "select * from FOO where BAR in (?)", ['A']))
+
+        # Two items with IN only
+        items = set(('A', 'B'))
+        self.assertEquals(
+            Select(From=self.schema.FOO, Where=self.schema.FOO.BAR.In(Parameter("names", len(items)))).toSQL().bind(names=items),
+            SQLFragment(
+                "select * from FOO where BAR in (?, ?)", ['A', 'B']))
+
+        # Two items with preceding AND
+        self.assertEquals(
+            Select(
+                From=self.schema.FOO,
+                Where=(self.schema.FOO.BAZ == Parameter('P1')).And(
+                    self.schema.FOO.BAR.In(Parameter("names", len(items))
+                ))
+            ).toSQL().bind(P1="P1", names=items),
+            SQLFragment(
+                "select * from FOO where BAZ = ? and BAR in (?, ?)", ['P1', 'A', 'B']),
+        )
+
+        # Two items with following AND
+        self.assertEquals(
+            Select(
+                From=self.schema.FOO,
+                Where=(self.schema.FOO.BAR.In(Parameter("names", len(items))).And(
+                    self.schema.FOO.BAZ == Parameter('P2')
+                ))
+            ).toSQL().bind(P2="P2", names=items),
+            SQLFragment(
+                "select * from FOO where BAR in (?, ?) and BAZ = ?", ['A', 'B', 'P2']),
+        )
+
+        # Two items with preceding OR and following AND
+        self.assertEquals(
+            Select(
+                From=self.schema.FOO,
+                Where=(self.schema.FOO.BAZ == Parameter('P1')).Or(
+                    self.schema.FOO.BAR.In(Parameter("names", len(items))).And(
+                        self.schema.FOO.BAZ == Parameter('P2')
+                ))
+            ).toSQL().bind(P1="P1", P2="P2", names=items),
+            SQLFragment(
+                "select * from FOO where BAZ = ? or BAR in (?, ?) and BAZ = ?", ['P1', 'A', 'B', 'P2']),
+        )
+
+        # Check various error situations
+        
+        # No count not allowed
+        self.assertRaises(DALError, self.schema.FOO.BAR.In, Parameter("names"))
+        
+        # count=0 not allowed
+        self.assertRaises(DALError, Parameter,"names", 0)
+        
+        # Mismatched count and len(items)
+        self.assertRaises(
+            DALError,
+            Select(From=self.schema.FOO, Where=self.schema.FOO.BAR.In(Parameter("names", len(items)))).toSQL().bind,
+            names=["a", "b", "c",]
+        )
 
 
     def test_max(self):
