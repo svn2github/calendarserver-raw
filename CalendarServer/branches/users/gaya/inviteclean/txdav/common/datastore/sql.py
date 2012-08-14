@@ -82,7 +82,7 @@ from txdav.common.icommondatastore import ConcurrentModification
 from twistedcaldav.customxml import NotificationType
 from twistedcaldav.dateops import datetimeMktime, parseSQLTimestamp,\
     pyCalendarTodatetime
-from txdav.xml.rfc2518 import DisplayName
+#from txdav.xml.rfc2518 import DisplayName
 
 from txdav.base.datastore.util import normalizeUUIDOrNot
 
@@ -2149,13 +2149,16 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 resourceID=self._resourceID, homeID=shareeHome._resourceID
             ))[0][0]
         
-        shareeProps = yield PropertyStore.load(shareeHome.uid(), self._txn,
-                                               self._resourceID)
-        dn = PropertyName.fromElement(DisplayName)
-        dnprop = (self.properties().get(dn) or
-                  DisplayName.fromString(self.name()))
-
-        shareeProps[dn] = dnprop
+        ''' Only needed when setSharingUID is removed
+        if status == _BIND_STATUS_ACCEPTED:
+            shareeProps = yield PropertyStore.load(self._home.uid(), self._txn,
+                                                   self._resourceID)
+            dn = PropertyName.fromElement(DisplayName)
+            dnprop = (self.properties().get(dn) or
+                      DisplayName.fromString(self.name()))
+    
+            shareeProps[dn] = dnprop
+        '''
         
         # Must send notification to ensure cache invalidation occurs
         yield self.notifyChanged()
@@ -2204,21 +2207,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                                 
         if len(columnMap):
 
-            dn = PropertyName.fromElement(DisplayName)
-            dnprop = (self.properties().get(dn) or
-                      DisplayName.fromString(self.name()))
-            
             sharedname = yield self._updateBindColumnsQuery(columnMap).on(
                             self._txn,
                             resourceID=self._resourceID, homeID=shareeView._home._resourceID
                         )
-    
-            shareeProps = yield PropertyStore.load(shareeView._home.uid(), self._txn,
-                                                   self._resourceID)
-            shareeProps[dn] = dnprop
-            
-            # Must send notification to ensure cache invalidation occurs
-            yield self.notifyChanged()
             
             #update affected attributes
             if mode:
@@ -2229,6 +2221,18 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 #TODO: Is is OK to always call _initSyncToken ?
                 if shareeView._bindStatus == _BIND_STATUS_ACCEPTED:
                     yield shareeView._initSyncToken()
+            
+                    ''' Only needed when setSharingUID is removed
+
+                    shareeProps = yield PropertyStore.load(self._home.uid(), self._txn,
+                                                           self._resourceID)
+                    dn = PropertyName.fromElement(DisplayName)
+                    dnprop = (self.properties().get(dn) or
+                              DisplayName.fromString(self.name()))
+            
+                    shareeProps[dn] = dnprop
+                    '''
+
                 elif shareeView._bindStatus == _BIND_STATUS_DECLINED:
                     shareeView._deletedSyncToken(sharedRemoval=True);
 
@@ -2236,7 +2240,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 shareeView._bindMessage = columnMap[bind.MESSAGE]
             
             shareeView._name = sharedname[0][0]
-        
+
+            # Must send notification to ensure cache invalidation occurs
+            yield self.notifyChanged()
+                    
         returnValue(shareeView._name)
         
 
