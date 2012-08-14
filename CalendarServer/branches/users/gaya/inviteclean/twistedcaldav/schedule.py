@@ -309,6 +309,8 @@ class ScheduleInboxResource (CalendarSchedulingCollectionResource):
                     if calendarName == "inbox":
                         continue
                     calendar = (yield self.parent._newStoreHome.calendarWithName(calendarName))
+                    if not calendar.owned():
+                        continue
                     if not calendar.isSupportedComponent(componentType):
                         continue
                     break
