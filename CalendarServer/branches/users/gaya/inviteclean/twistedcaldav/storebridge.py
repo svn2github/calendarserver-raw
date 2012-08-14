@@ -98,7 +98,7 @@ class _NewStorePropertiesWrapper(object):
 
 
     # FIXME 'uid' here should be verifying something.
-    def get(self, qname, uid=None):
+    def get(self, qname):
         try:
             return self._newPropertyStore[self._convertKey(qname)]
         except KeyError:
@@ -108,7 +108,7 @@ class _NewStorePropertiesWrapper(object):
             ))
 
 
-    def set(self, property, uid=None):
+    def set(self, property):
         try:
             self._newPropertyStore[self._convertKey(property.qname())] = property
         except PropertyChangeNotAllowedError:
@@ -119,7 +119,7 @@ class _NewStorePropertiesWrapper(object):
             
 
 
-    def delete(self, qname, uid=None):
+    def delete(self, qname):
         try:
             del self._newPropertyStore[self._convertKey(qname)]
         except KeyError:
@@ -128,11 +128,11 @@ class _NewStorePropertiesWrapper(object):
             pass
 
 
-    def contains(self, qname, uid=None, cache=True):
+    def contains(self, qname):
         return (self._convertKey(qname) in self._newPropertyStore)
 
 
-    def list(self, uid=None, filterByUID=True, cache=True):
+    def list(self):
         return [(pname.namespace, pname.name) for pname in
                 self._newPropertyStore.keys()]
 

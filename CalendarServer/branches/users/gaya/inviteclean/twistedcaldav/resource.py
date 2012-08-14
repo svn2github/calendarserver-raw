@@ -496,19 +496,17 @@ class CalDAVResource (
         isvirt = self.isVirtualShare()
         if isvirt:
             if self.isShadowableProperty(qname):
-                ownerPrincipal = (yield self.resourceOwnerPrincipal(request))
-                p = self.deadProperties().contains(qname, uid=ownerPrincipal.principalUID())
+                p = self.deadProperties().contains(qname)
                 if p:
                     returnValue(p)
                 
             elif (not self.isGlobalProperty(qname)):
-                result = (yield self._hasSharedProperty(qname, request))
+                result = self._hasSharedProperty(qname, request)
                 returnValue(result)
 
         res = (yield self._hasGlobalProperty(property, request))
         returnValue(res)
 
-    @inlineCallbacks
     def _hasSharedProperty(self, qname, request):
 
         # Always have default alarms on shared calendars
@@ -518,11 +516,10 @@ class CalDAVResource (
             caldavxml.DefaultAlarmVToDoDateTime.qname(),
             caldavxml.DefaultAlarmVToDoDate.qname(),
         ) and self.isCalendarCollection():
-            returnValue(True)
+            return True
 
-        ownerPrincipal = (yield self.resourceOwnerPrincipal(request))
-        p = self.deadProperties().contains(qname, uid=ownerPrincipal.principalUID())
-        returnValue(p)
+        p = self.deadProperties().contains(qname)
+        return p
 
     def _hasGlobalProperty(self, property, request):
         """
@@ -572,27 +569,25 @@ class CalDAVResource (
 
         if isvirt:
             if self.isShadowableProperty(qname):
-                ownerPrincipal = (yield self.resourceOwnerPrincipal(request))
                 try:
-                    p = self.deadProperties().get(qname, uid=ownerPrincipal.principalUID())
+                    p = self.deadProperties().get(qname)
                     returnValue(p)
                 except PropertyNotFoundError:
                     pass
                 
             elif (not self.isGlobalProperty(qname)):
-                result = (yield self._readSharedProperty(qname, request))
+                result = self._readSharedProperty(qname, request)
                 returnValue(result)
 
         res = (yield self._readGlobalProperty(qname, property, request))
         returnValue(res)
 
-    @inlineCallbacks
+
     def _readSharedProperty(self, qname, request):
 
         # Default behavior - read per-user dead property
-        ownerPrincipal = (yield self.resourceOwnerPrincipal(request))
-        p = self.deadProperties().get(qname, uid=ownerPrincipal.principalUID())
-        returnValue(p)
+        p = self.deadProperties().get(qname)
+        return p
 
     @inlineCallbacks
     def _readGlobalProperty(self, qname, property, request):
@@ -723,8 +718,7 @@ class CalDAVResource (
         isvirt = self.isVirtualShare()
         if isvirt and (self.isShadowableProperty(property.qname()) or (not self.isGlobalProperty(property.qname()))):
             yield self._preProcessWriteProperty(property, request, isShare=True)
-            ownerPrincipal = (yield self.resourceOwnerPrincipal(request))
-            p = self.deadProperties().set(property, uid=ownerPrincipal.principalUID())
+            p = self.deadProperties().set(property)
             returnValue(p)
  
         res = (yield self._writeGlobalProperty(property, request))
@@ -2856,13 +2850,17 @@ class AddressBookHomeResource (CommonHomeResource):
         defaultAddressBookURL = joinURL(self.url(), "addressbook")
         defaultAddressBook = (yield self.makeRegularChild("addressbook"))
         if defaultAddressBook is None or not defaultAddressBook.exists():
-            getter = iter((yield self._newStoreHome.addressbooks()))  # These are only unshared children
+            addressbooks = yield self._newStoreHome.addressbooks()
+            ownedAddressBooks = [addressbook for addressbook in addressbooks if addressbook.owned()]
+            ownedAddressBooks.sort(key=lambda ab:ab.name())
+            
+            # These are only unshared children
             # FIXME: the back-end should re-provision a default addressbook here.
             # Really, the dead property shouldn't be necessary, and this should
             # be entirely computed by a back-end method like 'defaultAddressBook()'
             try:
-                anAddressBook = getter.next()
-            except StopIteration:
+                anAddressBook = ownedAddressBooks[0]
+            except IndexError:
                 raise RuntimeError("No address books at all.")
 
             defaultAddressBookURL = joinURL(self.url(), anAddressBook.name())
