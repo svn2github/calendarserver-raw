@@ -69,7 +69,7 @@ from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
 from twistedcaldav.datafilters.privateevents import PrivateEventFilter
 from twistedcaldav.directory.internal import InternalDirectoryRecord
 from twistedcaldav.extensions import DAVResource, DAVPrincipalResource,\
-    PropertyNotFoundError, DAVResourceWithChildrenMixin
+    DAVResourceWithChildrenMixin
 from twistedcaldav.ical import Component
 
 from twistedcaldav.icaldav import ICalDAVResource, ICalendarPrincipalResource
@@ -488,13 +488,13 @@ class CalDAVResource (
         Need to special case schedule-calendar-transp for backwards compatability.
         """
         
+        '''
         if type(property) is tuple:
             qname = property
         else:
             qname = property.qname()
-
-        isvirt = self.isVirtualShare()
-        if isvirt:
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             if self.isShadowableProperty(qname):
                 p = self.deadProperties().contains(qname)
                 if p:
@@ -503,6 +503,7 @@ class CalDAVResource (
             elif (not self.isGlobalProperty(qname)):
                 result = self._hasSharedProperty(qname, request)
                 returnValue(result)
+        '''
 
         res = (yield self._hasGlobalProperty(property, request))
         returnValue(res)
@@ -545,8 +546,6 @@ class CalDAVResource (
         else:
             qname = property.qname()
 
-        isvirt = self.isVirtualShare()
-
         if self.isCalendarCollection() or self.isAddressBookCollection():
 
             # Push notification DAV property "pushkey"
@@ -558,7 +557,7 @@ class CalDAVResource (
                 if hasattr(self, "_newStoreObject"):
                     dataObject = getattr(self, "_newStoreObject")
                 if dataObject:
-                    label = "collection" if isvirt else "default"
+                    label = "collection" if self.isShareeCollection() else "default"
                     nodeName = (yield dataObject.nodeName(label=label))
                     if nodeName:
                         propVal = customxml.PubSubXMPPPushKeyProperty(nodeName)
@@ -566,8 +565,9 @@ class CalDAVResource (
 
                 returnValue(customxml.PubSubXMPPPushKeyProperty())
 
-
-        if isvirt:
+        '''
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             if self.isShadowableProperty(qname):
                 try:
                     p = self.deadProperties().get(qname)
@@ -578,6 +578,7 @@ class CalDAVResource (
             elif (not self.isGlobalProperty(qname)):
                 result = self._readSharedProperty(qname, request)
                 returnValue(result)
+        '''
 
         res = (yield self._readGlobalProperty(qname, property, request))
         returnValue(res)
@@ -698,9 +699,9 @@ class CalDAVResource (
                 returnValue(customxml.AllowedSharingModes(customxml.CanBeShared()))
 
         elif qname == customxml.SharedURL.qname():
-            isvirt = self.isVirtualShare()
+            isShareeCollection = self.isShareeCollection()
             
-            if isvirt:
+            if isShareeCollection:
                 returnValue(customxml.SharedURL(element.HRef.fromString(self._share.url())))
             else:
                 returnValue(None)
@@ -715,8 +716,9 @@ class CalDAVResource (
         )
         
         # Per-user Dav props currently only apply to a sharee's copy of a calendar
-        isvirt = self.isVirtualShare()
-        if isvirt and (self.isShadowableProperty(property.qname()) or (not self.isGlobalProperty(property.qname()))):
+        isShareeCollection = self.isShareeCollection()
+
+        if isShareeCollection and (self.isShadowableProperty(property.qname()) or (not self.isGlobalProperty(property.qname()))):
             yield self._preProcessWriteProperty(property, request, isShare=True)
             p = self.deadProperties().set(property)
             returnValue(p)
@@ -870,8 +872,8 @@ class CalDAVResource (
     def accessControlList(self, request, *args, **kwargs):
 
         acls = None
-        isvirt = self.isVirtualShare()
-        if isvirt:
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             acls = (yield self.shareeAccessControlList(request, *args, **kwargs))
 
         if acls is None:
@@ -926,8 +928,8 @@ class CalDAVResource (
         Return the DAV:owner property value (MUST be a DAV:href or None).
         """
 
-        isVirt = self.isVirtualShare()
-        if isVirt:
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             parent = (yield self.locateParent(request, self._share.url()))
         else:
             parent = (yield self.locateParent(request, request.urlForResource(self)))
@@ -942,8 +944,8 @@ class CalDAVResource (
         """
         Return the DAV:owner property value (MUST be a DAV:href or None).
         """
-        isVirt = self.isVirtualShare()
-        if isVirt:
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             parent = (yield self.locateParent(request, self._share.url()))
         else:
             parent = (yield self.locateParent(request, request.urlForResource(self)))
@@ -960,14 +962,18 @@ class CalDAVResource (
         This is the owner of the resource based on the URI used to access it. For a shared
         collection it will be the sharee, otherwise it will be the regular the ownerPrincipal.
         """
-
-        isVirt = self.isVirtualShare()
-        if isVirt:
+        '''
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             returnValue(self._shareePrincipal)
         else:
             parent = (yield self.locateParent(
                 request, request.urlForResource(self)
             ))
+        '''
+        parent = (yield self.locateParent(
+            request, request.urlForResource(self)
+        ))
         if parent and isinstance(parent, CalDAVResource):
             result = (yield parent.resourceOwnerPrincipal(request))
             returnValue(result)
@@ -1357,16 +1363,16 @@ class CalDAVResource (
         """
 
         sharedParent = None
-        isvirt = self.isVirtualShare()
-        if isvirt:
-            # A virtual share's quota root is the resource owner's root
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
+            # A sharee collection's quota root is the resource owner's root
             sharedParent = (yield request.locateResource(parentForURL(self._share.url())))
         else:
             parent = (yield self.locateParent(request, request.urlForResource(self)))
             if isCalendarCollectionResource(parent) or isAddressBookCollectionResource(parent):
-                isvirt = parent.isVirtualShare()
-                if isvirt:
-                    # A virtual share's quota root is the resource owner's root
+                isShareeCollection = parent.isShareeCollection()
+                if isShareeCollection:
+                    # A sharee collection's quota root is the resource owner's root
                     sharedParent = (yield request.locateResource(parentForURL(parent._share.url())))
 
         if sharedParent:
@@ -2221,12 +2227,18 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
 
         # Try normal child type
         child = (yield self.makeRegularChild(name))
-
+        
+        '''
         # Try shares next if child does not exist
         if not child.exists() and self.canShare():
             sharedchild = yield self.provisionShare(name)
             if sharedchild:
                 returnValue(sharedchild)
+        '''
+                    
+        share = yield self.shareWithChild(child._newStoreObject)
+        if share:
+            child.setShareeCollection(share)
 
         returnValue(child)
 
@@ -2578,7 +2590,7 @@ class CalendarHomeResource(DefaultAlarmPropertyMixin, CommonHomeResource):
     @inlineCallbacks
     def makeRegularChild(self, name):
         newCalendar = yield self._newStoreHome.calendarWithName(name)
-        if newCalendar and not newCalendar.owned():
+        if newCalendar and not newCalendar.owned() and not self.canShare():
             newCalendar = None
 
         from twistedcaldav.storebridge import CalendarCollectionResource
@@ -2763,7 +2775,7 @@ class AddressBookHomeResource (CommonHomeResource):
             if defaultAddressBookProperty and len(defaultAddressBookProperty.children) == 1:
                 defaultAddressBook = str(defaultAddressBookProperty.children[0])
                 adbk = (yield request.locateResource(str(defaultAddressBook)))
-                if adbk is not None and isAddressBookCollectionResource(adbk) and adbk.exists() and not adbk.isVirtualShare():
+                if adbk is not None and isAddressBookCollectionResource(adbk) and adbk.exists() and not adbk.isShareeCollection():
                     returnValue(defaultAddressBookProperty) 
             
             # Default is not valid - we have to try to pick one
@@ -2785,7 +2797,7 @@ class AddressBookHomeResource (CommonHomeResource):
             if len(new_adbk) == 1:
                 adbkURI = str(new_adbk[0])
                 adbk = (yield request.locateResource(str(new_adbk[0])))
-            if adbk is None or not adbk.exists() or not isAddressBookCollectionResource(adbk) or adbk.isVirtualShare():
+            if adbk is None or not adbk.exists() or not isAddressBookCollectionResource(adbk) or adbk.isShareeCollection():
                 # Validate that href's point to a valid addressbook.
                 raise HTTPError(ErrorResponse(
                     responsecode.CONFLICT,
@@ -2831,7 +2843,7 @@ class AddressBookHomeResource (CommonHomeResource):
                 mainCls = GlobalAddressBookCollectionResource
 
         newAddressBook = yield self._newStoreHome.addressbookWithName(name)
-        if newAddressBook and not newAddressBook.owned():
+        if newAddressBook and not newAddressBook.owned() and not self.canShare():
             newAddressBook = None
         similar = mainCls(
             newAddressBook, self, name,

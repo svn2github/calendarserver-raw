@@ -93,7 +93,7 @@ class SharedCollectionMixin(object):
                 ))
                 
             # See if it is on the sharee calendar
-            if self.isVirtualShare():
+            if self.isShareeCollection():
                 original = (yield request.locateResource(self._share.url()))
                 yield original.validateInvites()
                 invitations = yield original._allInvitations()
@@ -235,29 +235,26 @@ class SharedCollectionMixin(object):
         returnValue((yield self.isSpecialCollection(customxml.SharedOwner)))
 
 
-    def setVirtualShare(self, shareePrincipal, share):
-        self._isVirtualShare = True
-        self._shareePrincipal = shareePrincipal
+    def setShareeCollection(self, share):
+        self._isShareeCollection = True
         self._share = share
 
-        if hasattr(self, "_newStoreObject"):
-            self._newStoreObject.setSharingUID(self._shareePrincipal.principalUID())
 
-
-    def isVirtualShare(self):
-        """ Return True if this is a shared calendar collection """
-        return hasattr(self, "_isVirtualShare")
+    def isShareeCollection(self):
+        """ Return True if this is a sharee shared calendar collection """
+        return hasattr(self, "_isShareeCollection")
 
 
     @inlineCallbacks
-    def removeVirtualShare(self, request):
-        """ Return True if this is a shared calendar collection """
+    def removeShareeCollection(self, request):
         
+        sharee = self.principalForUID(self._share.shareeUID())
+
         # Remove from sharee's calendar/address book home
         if self.isCalendarCollection():
-            shareeHome = yield self._shareePrincipal.calendarHome(request)
+            shareeHome = yield sharee.calendarHome(request)
         elif self.isAddressBookCollection():
-            shareeHome = yield self._shareePrincipal.addressBookHome(request)
+            shareeHome = yield sharee.addressBookHome(request)
         returnValue((yield shareeHome.removeShare(request, self._share)))
 
 
@@ -270,8 +267,8 @@ class SharedCollectionMixin(object):
         else:
             rtype = superMethod()
 
-        isVirt = self.isVirtualShare()
-        if isVirt:
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             rtype = element.ResourceType(
                 *(
                     tuple([child for child in rtype.children if child.qname() != customxml.SharedOwner.qname()]) + 
@@ -297,9 +294,11 @@ class SharedCollectionMixin(object):
     @inlineCallbacks
     def shareeAccessControlList(self, request, *args, **kwargs):
 
-        assert self._isVirtualShare, "Only call this for a virtual share"
+        assert self._isShareeCollection, "Only call this for a sharee collection"
 
         wikiAccessMethod = kwargs.get("wikiAccessMethod", getWikiAccess)
+
+        sharee = self.principalForUID(self._share.shareeUID())
 
         # Direct shares use underlying privileges of shared collection
         if self._share.direct():
@@ -308,7 +307,7 @@ class SharedCollectionMixin(object):
             if owner.record.recordType == WikiDirectoryService.recordType_wikis:
                 # Access level comes from what the wiki has granted to the
                 # sharee
-                userID = self._shareePrincipal.record.guid
+                userID = sharee.record.guid
                 wikiID = owner.record.shortNames[0]
                 access = (yield wikiAccessMethod(userID, wikiID))
                 if access == "read":
@@ -352,7 +351,7 @@ class SharedCollectionMixin(object):
         aces = (
             # Inheritable specific access for the resource's associated principal.
             element.ACE(
-                element.Principal(element.HRef(self._shareePrincipal.principalURL())),
+                element.Principal(element.HRef(sharee.principalURL())),
                 element.Grant(*userprivs),
                 element.Protected(),
                 TwistedACLInheritable(),
@@ -379,7 +378,7 @@ class SharedCollectionMixin(object):
             aces += (
                 # DAV:read/DAV:read-current-user-privilege-set access for this principal's calendar-proxy-read users.
                 element.ACE(
-                    element.Principal(element.HRef(joinURL(self._shareePrincipal.principalURL(), "calendar-proxy-read/"))),
+                    element.Principal(element.HRef(joinURL(sharee.principalURL(), "calendar-proxy-read/"))),
                     element.Grant(
                         element.Privilege(element.Read()),
                         element.Privilege(element.ReadCurrentUserPrivilegeSet()),
@@ -389,7 +388,7 @@ class SharedCollectionMixin(object):
                 ),
                 # DAV:read/DAV:read-current-user-privilege-set/DAV:write access for this principal's calendar-proxy-write users.
                 element.ACE(
-                    element.Principal(element.HRef(joinURL(self._shareePrincipal.principalURL(), "calendar-proxy-write/"))),
+                    element.Principal(element.HRef(joinURL(sharee.principalURL(), "calendar-proxy-write/"))),
                     element.Grant(*proxyprivs),
                     element.Protected(),
                     TwistedACLInheritable(),
@@ -1073,20 +1072,6 @@ class SharedHomeMixin(LinkFollowerMixIn):
     manipulating a sharee's set of shared calendars.
     """
 
-
-    @inlineCallbacks
-    def provisionShare(self, name):
-        child = yield self._newStoreHome.childWithName(name)
-        share = yield self.shareWithChild(child)
-        if share:
-            from twistedcaldav.sharedcollection import SharedCollectionResource
-            sharedCollection = SharedCollectionResource(self, share)
-            self.putChild(name, sharedCollection)
-            returnValue(sharedCollection)
-        
-        returnValue(None)
-
-
     @inlineCallbacks
     def shareWithChild(self, child, request=None):
         # Try to find a matching share
@@ -1095,6 +1080,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
         
         sharerHomeID = yield child.sharerHomeID()
         sharerHome = yield self._newStoreHome._txn.homeWithResourceID(self._newStoreHome._homeType, sharerHomeID)
+        #FIXME: sharerHome = child.ownerHome() when it works
         sharerHomeChild = yield sharerHome.childWithID(child._resourceID)
         
         # get the shared object's URL
@@ -1102,8 +1088,8 @@ class SharedHomeMixin(LinkFollowerMixIn):
         
         if not request:
             # FIXEME:  Fake up a request that can be used to get the sharer home resource
-            class FakeRequest(object):pass
-            fakeRequest = FakeRequest()
+            class _FakeRequest(object):pass
+            fakeRequest = _FakeRequest()
             setattr(fakeRequest, TRANSACTION_KEY, self._newStoreHome._txn)
             request = fakeRequest
         
@@ -1179,7 +1165,6 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         # Get shared collection in non-share mode first
         sharedCollection = yield request.locateResource(share.url())
-        ownerPrincipal = yield self.ownerPrincipal(request)
 
         # For a direct share we will copy any calendar-color over using the owners view
         color = None
@@ -1188,21 +1173,29 @@ class SharedHomeMixin(LinkFollowerMixIn):
                 color = (yield sharedCollection.readProperty(customxml.CalendarColor, request))
             except HTTPError:
                 pass
-        
+            
+        sharee = self.principalForUID(share.shareeUID())
+        if sharedCollection.isCalendarCollection():
+            shareeHomeResource = yield sharee.calendarHome(request)
+        elif sharedCollection.isAddressBookCollection():
+            shareeHomeResource = yield sharee.addressBookHome(request)
+        shareeURL = joinURL(shareeHomeResource.url(), share.name())
+        shareeCollection = yield request.locateResource(shareeURL)
+        shareeCollection.setShareeCollection(share)
+
         # Set per-user displayname or color to whatever was given
-        sharedCollection.setVirtualShare(ownerPrincipal, share)
         if displayname:
-            yield sharedCollection.writeProperty(element.DisplayName.fromString(displayname), request)
+            yield shareeCollection.writeProperty(element.DisplayName.fromString(displayname), request)
         if color:
-            yield sharedCollection.writeProperty(customxml.CalendarColor.fromString(color), request)
+            yield shareeCollection.writeProperty(customxml.CalendarColor.fromString(color), request)
 
         # Calendars always start out transparent and with empty default alarms
-        if isNewShare and sharedCollection.isCalendarCollection():
-            yield sharedCollection.writeProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Transparent()), request)
-            yield sharedCollection.writeProperty(caldavxml.DefaultAlarmVEventDateTime.fromString(""), request)
-            yield sharedCollection.writeProperty(caldavxml.DefaultAlarmVEventDate.fromString(""), request)
-            yield sharedCollection.writeProperty(caldavxml.DefaultAlarmVToDoDateTime.fromString(""), request)
-            yield sharedCollection.writeProperty(caldavxml.DefaultAlarmVToDoDate.fromString(""), request)
+        if isNewShare and shareeCollection.isCalendarCollection():
+            yield shareeCollection.writeProperty(caldavxml.ScheduleCalendarTransp(caldavxml.Transparent()), request)
+            yield shareeCollection.writeProperty(caldavxml.DefaultAlarmVEventDateTime.fromString(""), request)
+            yield shareeCollection.writeProperty(caldavxml.DefaultAlarmVEventDate.fromString(""), request)
+            yield shareeCollection.writeProperty(caldavxml.DefaultAlarmVToDoDateTime.fromString(""), request)
+            yield shareeCollection.writeProperty(caldavxml.DefaultAlarmVToDoDate.fromString(""), request)
  
         # Notify client of changes
         yield self.notifyChanged()
@@ -1402,6 +1395,9 @@ class Share(object):
     
     def summary(self):
         return self._shareeHomeChild.shareMessage()
+
+    def shareeUID(self):
+        return self._shareeHomeChild._home.uid()
 
 class SharedCollectionsDatabase(AbstractSQLDatabase, LoggingMixIn):
     

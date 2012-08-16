@@ -97,7 +97,6 @@ class _NewStorePropertiesWrapper(object):
         return PropertyName(namespace, name)
 
 
-    # FIXME 'uid' here should be verifying something.
     def get(self, qname):
         try:
             return self._newPropertyStore[self._convertKey(qname)]
@@ -421,11 +420,11 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         @rtype: something adaptable to L{twext.web2.iweb.IResponse}
         """
 
-        # Check virtual share first
-        isVirtual = self.isVirtualShare()
-        if isVirtual:
+        # Check sharee collection first
+        isShareeCollection = self.isShareeCollection()
+        if isShareeCollection:
             log.debug("Removing shared collection %s" % (self,))
-            yield self.removeVirtualShare(request)
+            yield self.removeShareeCollection(request)
             returnValue(NO_CONTENT)
 
         log.debug("Deleting collection %s" % (self,))

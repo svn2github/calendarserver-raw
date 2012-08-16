@@ -140,7 +140,7 @@ class SharingTests(HomeTestCase):
         
         isShared = (yield self.resource.isShared(request))
         self.assertTrue(isShared)
-        isVShared = self.resource.isVirtualShare()
+        isVShared = self.resource.isShareeCollection()
         self.assertFalse(isVShared)
 
     @inlineCallbacks
@@ -161,7 +161,7 @@ class SharingTests(HomeTestCase):
         
         isShared = (yield self.resource.isShared(request))
         self.assertTrue(isShared)
-        isVShared = self.resource.isVirtualShare()
+        isVShared = self.resource.isShareeCollection()
         self.assertFalse(isVShared)
 
     @inlineCallbacks
@@ -182,7 +182,7 @@ class SharingTests(HomeTestCase):
         
         isShared = (yield self.resource.isShared(None))
         self.assertFalse(isShared)
-        isVShared = self.resource.isVirtualShare()
+        isVShared = self.resource.isShareeCollection()
         self.assertFalse(isVShared)
 
     @inlineCallbacks
@@ -213,7 +213,7 @@ class SharingTests(HomeTestCase):
         
         isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
-        isVShared = self.resource.isVirtualShare()
+        isVShared = self.resource.isShareeCollection()
         self.assertFalse(isVShared)
 
     @inlineCallbacks
@@ -243,7 +243,7 @@ class SharingTests(HomeTestCase):
         
         isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
-        isVShared = (yield self.resource.isVirtualShare())
+        isVShared = (yield self.resource.isShareeCollection())
         self.assertFalse(isVShared)
 
     @inlineCallbacks
@@ -560,7 +560,7 @@ class SharingTests(HomeTestCase):
 
         class StubCollection(object):
             def __init__(self):
-                self._isVirtualShare = True
+                self._isShareeCollection = True
                 self._shareePrincipal = StubUserPrincipal()
             def isCalendarCollection(self):
                 return True
@@ -575,8 +575,13 @@ class SharingTests(HomeTestCase):
             def uid(self):
                 return "012345"
 
+            def shareeUID(self):
+                return StubUserPrincipal().record.guid
+
         class TestCollection(SharedCollectionMixin, StubCollection):
-            pass
+            def principalForUID(self, uid):
+                principal = StubUserPrincipal()
+                return principal if principal.record.guid == uid else None
 
         class StubRecord(object):
             def __init__(self, recordType, name, guid):
