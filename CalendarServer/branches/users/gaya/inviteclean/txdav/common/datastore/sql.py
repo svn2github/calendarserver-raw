@@ -2336,9 +2336,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         )
 
     @classproperty
-    def _sharedBindForResourceID(cls): #@NoSelf
+    def _sharedBindForResourceIDAndNotHomeID(cls): #@NoSelf
         bind = cls._bindSchema
         return cls._bindFor((bind.RESOURCE_ID == Parameter("resourceID"))
+                            .And(bind.HOME_RESOURCE_ID != Parameter("homeID"))
                             .And(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)
                             .And(bind.BIND_MODE != _BIND_MODE_OWN)
                             )
@@ -2358,7 +2359,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
         # get all accepted binds
-        acceptedRows = yield self._sharedBindForResourceID.on(self._txn, resourceID=self._resourceID)
+        acceptedRows = yield self._sharedBindForResourceIDAndNotHomeID.on(
+            self._txn, resourceID=self._resourceID, homeID=self._home._resourceID
+        )
 
         cls = self.__class__ # for ease of grepping...
         result = []
@@ -2379,9 +2382,10 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
 
     @classproperty
-    def _invitedBindForResourceID(cls): #@NoSelf
+    def _invitedBindForResourceIDAndNotHomeID(cls): #@NoSelf
         bind = cls._bindSchema
         return cls._bindFor((bind.RESOURCE_ID == Parameter("resourceID"))
+                            .And(bind.HOME_RESOURCE_ID != Parameter("homeID"))
                             .And(bind.BIND_STATUS != _BIND_STATUS_ACCEPTED)
                             )
 
@@ -2397,8 +2401,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             L{CommonHomeChild} as a child of different L{CommonHome}s
         @rtype: a L{Deferred} which fires with a L{list} of L{ICalendar}s.
         """
-        rows = yield self._invitedBindForResourceID.on(
-            self._txn, resourceID=self._resourceID
+        rows = yield self._invitedBindForResourceIDAndNotHomeID.on(
+            self._txn, resourceID=self._resourceID, homeID=self._home._resourceID,
         )
         cls = self.__class__ # for ease of grepping...
 

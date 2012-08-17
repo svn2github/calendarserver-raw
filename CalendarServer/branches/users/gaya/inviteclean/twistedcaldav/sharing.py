@@ -321,15 +321,9 @@ class SharedCollectionMixin(object):
                     **kwargs))
                 returnValue(result)
         else:
-            # Invite shares use access mode from the invite
-    
-            # Get the invite for this sharee
-            invitation = yield self._invitationForUID(
-                self._share.uid()
-            )
-            if invitation is None:
-                returnValue(element.ACL())
-            access = invitation.access()
+            # Invited shares use access mode from the invite
+            # Get the access for self
+            access = Invitation(self._newStoreObject).access()
             
         userprivs = [
         ]
