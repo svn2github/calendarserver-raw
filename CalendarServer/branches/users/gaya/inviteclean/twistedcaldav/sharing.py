@@ -592,7 +592,7 @@ class SharedCollectionMixin(object):
                 yield self.sendInviteNotification(invitation, request, notificationState="DELETED")
         
         # Direct shares for  with valid sharee principal will already be deleted
-        yield self._newStoreObject.unshareWith(invitation._shareeHomeChild._home)
+        yield self._newStoreObject.unshareWith(invitation._shareeHomeChild.viewerHome())
     
         returnValue(True)            
 
@@ -902,7 +902,7 @@ class Invitation(object):
         return self._shareeHomeChild.shareUID()
     
     def shareeUID(self):
-        return self._shareeHomeChild._home.uid()
+        return self._shareeHomeChild.viewerHome().uid()
    
     def access(self):
         return invitationAccessFromBindModeMap.get(self._shareeHomeChild.shareMode())
@@ -1072,13 +1072,10 @@ class SharedHomeMixin(LinkFollowerMixIn):
         if not child or child.owned():
             returnValue(None)
         
-        sharerHomeID = yield child.sharerHomeID()
-        sharerHome = yield self._newStoreHome._txn.homeWithResourceID(self._newStoreHome._homeType, sharerHomeID)
-        #FIXME: sharerHome = child.ownerHome() when it works
-        sharerHomeChild = yield sharerHome.childWithID(child._resourceID)
+        sharerHomeChild = yield child.ownerHome().childWithID(child._resourceID)
         
         # get the shared object's URL
-        sharer = self.principalForUID(sharerHomeChild._home.uid())
+        sharer = self.principalForUID(sharerHomeChild.viewerHome().uid())
         
         if not request:
             # FIXEME:  Fake up a request that can be used to get the sharer home resource
@@ -1238,7 +1235,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         
         if share.direct():
-            yield share._sharerHomeChild.unshareWith(share._shareeHomeChild._home)
+            yield share._sharerHomeChild.unshareWith(share._shareeHomeChild.viewerHome())
         else:
             yield share._sharerHomeChild.updateShare(share._shareeHomeChild, status=_BIND_STATUS_DECLINED)
 
@@ -1374,7 +1371,7 @@ class Share(object):
     def uid(self):
         # Move to CommonHomeChild shareUID?
         if self._shareeHomeChild.shareMode() == _BIND_MODE_DIRECT:
-            return self.directUID(shareeHome=self._shareeHomeChild._home, sharerHomeChild=self._sharerHomeChild,)
+            return self.directUID(shareeHome=self._shareeHomeChild.viewerHome(), sharerHomeChild=self._sharerHomeChild,)
         else:
             return self._shareeHomeChild.shareUID()
     
@@ -1391,7 +1388,7 @@ class Share(object):
         return self._shareeHomeChild.shareMessage()
 
     def shareeUID(self):
-        return self._shareeHomeChild._home.uid()
+        return self._shareeHomeChild.viewerHome().uid()
 
 class SharedCollectionsDatabase(AbstractSQLDatabase, LoggingMixIn):
     
