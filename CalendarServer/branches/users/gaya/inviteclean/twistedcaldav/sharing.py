@@ -235,13 +235,13 @@ class SharedCollectionMixin(object):
         returnValue((yield self.isSpecialCollection(customxml.SharedOwner)))
 
 
-    def setShareeCollection(self, share):
-        self._isShareeCollection = True
+    def setShare(self, share):
+        self._isShareeCollection = True #  _isShareeCollection attr is used by self tests
         self._share = share
 
 
     def isShareeCollection(self):
-        """ Return True if this is a sharee shared calendar collection """
+        """ Return True if this is a sharee view of a shared calendar collection """
         return hasattr(self, "_isShareeCollection")
 
 
@@ -1065,9 +1065,16 @@ class SharedHomeMixin(LinkFollowerMixIn):
     A mix-in for calendar/addressbook homes that defines the operations for
     manipulating a sharee's set of shared calendars.
     """
+    
+        
+    @inlineCallbacks
+    def provisionShare(self, child, request=None):
+        share = yield self._shareForHomeChild(child._newStoreObject, request)
+        if share:
+            child.setShare(share)
 
     @inlineCallbacks
-    def shareWithChild(self, child, request=None):
+    def _shareForHomeChild(self, child, request=None):
         # Try to find a matching share
         if not child or child.owned():
             returnValue(None)
@@ -1100,14 +1107,14 @@ class SharedHomeMixin(LinkFollowerMixIn):
         # since child.shareUID() == child.name() for indirect shares
         child = yield self._newStoreHome.childWithName(shareUID)
         if child:
-            share = yield self.shareWithChild(child, request)
+            share = yield self._shareForHomeChild(child, request)
             if share and share.uid() == shareUID:
                 returnValue(share)
         
         # find direct shares
         children = yield self._newStoreHome.children()
         for child in children:
-            share = yield self.shareWithChild(child, request)
+            share = yield self._shareForHomeChild(child, request)
             if share and share.uid() == shareUID:
                 returnValue(share)
                 
@@ -1172,7 +1179,7 @@ class SharedHomeMixin(LinkFollowerMixIn):
             shareeHomeResource = yield sharee.addressBookHome(request)
         shareeURL = joinURL(shareeHomeResource.url(), share.name())
         shareeCollection = yield request.locateResource(shareeURL)
-        shareeCollection.setShareeCollection(share)
+        shareeCollection.setShare(share)
 
         # Set per-user displayname or color to whatever was given
         if displayname:

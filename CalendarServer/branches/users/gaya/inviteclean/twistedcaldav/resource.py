@@ -488,6 +488,7 @@ class CalDAVResource (
         Need to special case schedule-calendar-transp for backwards compatability.
         """
         
+        #TODO: Remove old code below
         '''
         if type(property) is tuple:
             qname = property
@@ -564,8 +565,9 @@ class CalDAVResource (
                         returnValue(propVal)
 
                 returnValue(customxml.PubSubXMPPPushKeyProperty())
-
-        '''
+        
+        #TODO: Remove old code below
+        ''' 
         isShareeCollection = self.isShareeCollection()
         if isShareeCollection:
             if self.isShadowableProperty(qname):
@@ -715,6 +717,8 @@ class CalDAVResource (
             "%r is not a WebDAVElement instance" % (property,)
         )
         
+        #TODO: Remove old code below
+        '''
         # Per-user Dav props currently only apply to a sharee's copy of a calendar
         isShareeCollection = self.isShareeCollection()
 
@@ -722,6 +726,7 @@ class CalDAVResource (
             yield self._preProcessWriteProperty(property, request, isShare=True)
             p = self.deadProperties().set(property)
             returnValue(p)
+        '''
  
         res = (yield self._writeGlobalProperty(property, request))
         returnValue(res)
@@ -962,6 +967,7 @@ class CalDAVResource (
         This is the owner of the resource based on the URI used to access it. For a shared
         collection it will be the sharee, otherwise it will be the regular the ownerPrincipal.
         """
+        #TODO: Remove old code below:
         '''
         isShareeCollection = self.isShareeCollection()
         if isShareeCollection:
@@ -2225,20 +2231,11 @@ class CommonHomeResource(PropfindCacheMixin, SharedHomeMixin, CalDAVResource):
             self.putChild(name, child)
             returnValue(child)
 
-        # Try normal child type
+        # get regular or shared child
         child = (yield self.makeRegularChild(name))
         
-        '''
-        # Try shares next if child does not exist
-        if not child.exists() and self.canShare():
-            sharedchild = yield self.provisionShare(name)
-            if sharedchild:
-                returnValue(sharedchild)
-        '''
-                    
-        share = yield self.shareWithChild(child._newStoreObject)
-        if share:
-            child.setShareeCollection(share)
+        # add _share attribute if child is shared
+        yield self.provisionShare(child)
 
         returnValue(child)
 
