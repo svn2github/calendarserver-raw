@@ -952,6 +952,61 @@ class Component (object):
             self._markAsDirty()
         return changed
 
+    def truncateRecurrenceDueToSplit(self, splitRID):
+        """
+        Truncate RRULEs etc to make sure there are no more than the given number
+        of instances. This assumes that the RID has already been validated as an
+        existing, valid instance.
+ 
+        @param splitRID: the recurrence-id where the split occurs
+        @type maximumCount: L{PyCalendarDateTime}
+        """
+        
+        splitRID = splitRID.duplicateAsUTC()
+
+        master = self.masterComponent()
+        if master and master.isRecurring():
+            # Force all RRULEs to an UNTIL one second before the RID
+            rrules = master._pycalendar.getRecurrenceSet()
+            if rrules:
+                until = splitRID.duplicate()
+                until.offsetSeconds(-1)
+                for rrule in rrules.getRules():
+                    rrule.setUseCount(False)
+                    rrule.setUseUntil(True)
+                    rrule.setUntil(until)
+            
+            # Remove RDATES on or after RID
+            for rdate in tuple(master.properties("RDATE")):
+                for value in tuple(rdate.value()):
+                    if isinstance(value.getValue(), PyCalendarDateTime):
+                        if value.getValue() >= splitRID:
+                            rdate.value().remove(value)
+                    elif isinstance(value.getValue(), PyCalendarPeriod):
+                        if value.getValue().getStart() >= splitRID:
+                            rdate.value().remove(value)
+                if len(rdate.value()) == 0:
+                    master.removeProperty(rdate)
+
+            # Remove EXDATES on or after RID
+            for exdate in tuple(master.properties("EXDATE")):
+                for value in tuple(exdate.value()):
+                    if value.getValue() >= splitRID:
+                        exdate.value().remove(value)
+                if len(exdate.value()) == 0:
+                    master.removeProperty(exdate)
+    
+            # After creating/changing a component we need to do this to keep PyCalendar happy
+            master._pycalendar.finalise()
+                        
+        # Remove overridden components
+        for component in tuple(self.subcomponents()):
+            rid = component.getRecurrenceIDUTC()
+            if rid is not None and rid >= splitRID:
+                self.removeComponent(component)
+        
+        self._markAsDirty()
+
     def expand(self, start, end, timezone=None):
         """
         Expand the components into a set of new components, one for each
@@ -1145,6 +1200,22 @@ class Component (object):
                     return True
         return False
         
+    def recurrenceSet(self):
+        """
+        @return: the RECURRENCE-SET of the subcomponents in this component.
+        """
+        assert self.name() == "VCALENDAR", "Not a calendar: %r" % (self,)
+
+        if not hasattr(self, "_recurrence_set"):
+            for subcomponent in self.subcomponents():
+                if subcomponent.name() not in ignoredComponents:
+                    self._recurrence_set = subcomponent.propertyValue("RECURRENCE-SET")
+                    break
+            else:
+                self._recurrence_set = None
+
+        return self._recurrence_set
+
     def deriveInstance(self, rid, allowCancelled=False, newcomp=None):
         """
         Derive an instance from the master component that has the provided RECURRENCE-ID, but
@@ -2822,6 +2893,26 @@ END:VCALENDAR
         
         return tuple(results)
 
+
+    def peruserComponents(self, ignoreUUID, fromRID, newUID):
+        """
+        Return an iCalendar object with just per-user components (not including ones for
+        the specified user UUID, and only including the master component and RIDs on or after
+        the specified RID.
+        
+        @param ignoreUID: UUID of user to ignore
+        @type ignoreUID: C{str}
+        @param fromRID: RID that starts per-user components
+        @type fromRID: L{PyCalendarDateTime}
+        @param newUID: new iCalendar UID to use or None to leave unchanged
+        @type newUID: C{str} or C{None}
+        """
+        
+        results = set()
+        for component in self.subcomponents():
+            if component.name() == "X-CALENDARSERVER-PERUSER":
+                results.add(component.propertyValue("X-CALENDARSERVER-PERUSER-UID"))
+        return results
 
     def hasInstancesAfter(self, limit):
         """

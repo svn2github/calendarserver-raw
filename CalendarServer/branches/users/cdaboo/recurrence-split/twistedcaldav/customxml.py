@@ -69,6 +69,11 @@ calendarserver_sharing_no_scheduling_compliance = (
 )
 
 
+calendarserver_recurrence_split_compliance = (
+    "calendarserver-recurrence-split",
+)
+
+
 @registerElement
 class TwistedCalendarSupportedComponents (WebDAVTextElement):
     """

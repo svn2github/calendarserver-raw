@@ -54,7 +54,8 @@ from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.carddavxml import carddav_namespace
 from twistedcaldav.config import config
 from twistedcaldav.ical import Component as VCalendar, Property as VProperty,\
-    InvalidICalendarDataError, iCalendarProductID, allowedComponents
+    InvalidICalendarDataError, iCalendarProductID, allowedComponents, Component,\
+    Property
 from twistedcaldav.memcachelock import MemcacheLock, MemcacheLockTimeoutError
 from twistedcaldav.method.put_addressbook_common import StoreAddressObjectResource
 from twistedcaldav.method.put_common import StoreCalendarObjectResource
@@ -66,6 +67,10 @@ from twistedcaldav.resource import CalDAVResource, GlobalAddressBookResource,\
 from twistedcaldav.schedule import ScheduleInboxResource
 from twistedcaldav.scheduling.implicit import ImplicitScheduler
 from twistedcaldav.vcard import Component as VCard, InvalidVCardDataError
+from twistedcaldav.customxml import calendarserver_namespace
+import uuid
+from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
+from pycalendar.datetime import PyCalendarDateTime
 
 """
 Wrappers to translate between the APIs in L{txdav.caldav.icalendarstore} and
@@ -115,7 +120,7 @@ class _NewStorePropertiesWrapper(object):
                 FORBIDDEN,
                 "Property cannot be changed: %s" % (property.sname(),)
             ))
-            
+
 
 
     def delete(self, qname, uid=None):
@@ -232,7 +237,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
     def liveProperties(self):
 
         props = super(_CommonHomeChildCollectionMixin, self).liveProperties()
-        
+
         if config.MaxResourcesPerCollection:
             props += (customxml.MaxResources.qname(),)
 
@@ -297,14 +302,14 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
         if self._newStoreObject:
             newStoreObject = yield self._newStoreObject.objectResourceWithName(name)
-    
+
             similar = self._childClass(
                 newStoreObject,
                 self._newStoreObject,
                 name,
                 principalCollections=self._principalCollections
             )
-    
+
             self.propagateTransaction(similar)
             returnValue(similar)
         else:
@@ -360,26 +365,26 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         """
         Override to pre-load children in certain collection types for better performance.
         """
-        
+
         if depth == "1":
             if names:
                 yield self._newStoreObject.objectResourcesWithNames(names)
             else:
                 yield self._newStoreObject.objectResources()
-        
+
         result = (yield super(_CommonHomeChildCollectionMixin, self).findChildrenFaster(
             depth, request, okcallback, badcallback, missingcallback, names, privileges, inherited_aces
         ))
-        
+
         returnValue(result)
-    
+
     @inlineCallbacks
     def createCollection(self):
         """
         Override C{createCollection} to actually do the work.
         """
         self._newStoreObject = (yield self._newStoreParentHome.createChildWithName(self._name))
-        
+
         # Re-initialize to get stuff setup again now we have a "real" object
         self._initializeWithHomeChild(self._newStoreObject, self._parentResource)
 
@@ -389,7 +394,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
     @inlineCallbacks
     def http_DELETE(self, request):
         """
-        Override http_DELETE to validate 'depth' header. 
+        Override http_DELETE to validate 'depth' header.
         """
 
         if not self.exists():
@@ -473,7 +478,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
         # Actually delete it.
         yield self._newStoreObject.remove()
-        
+
         # Re-initialize to get stuff setup again now we have no object
         self._initializeWithHomeChild(None, self._parentResource)
 
@@ -515,7 +520,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         destination = yield request.locateResource(destinationURI)
         if destination.exists():
             returnValue(FORBIDDEN)
-            
+
         # Forget the destination now as after the move we will need to re-init it with its
         # new store object
         request._forgetResource(destination, destinationURI)
@@ -566,31 +571,31 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
     @requiresPermissions(davxml.Bind())
     @inlineCallbacks
     def simpleBatchPOST(self, request):
-        
+
         # If CTag precondition
         yield self.checkCTagPrecondition(request)
-        
+
         # Look for return changed data option
         return_changed = self.checkReturnChanged(request)
 
         # Read in all data
         data = (yield allDataFromStream(request.stream))
-        
+
         components = self.componentsFromData(data)
         if components is None:
             raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, "Could not parse valid data from request body"))
-        
+
         # Build response
         xmlresponses = []
         for ctr, component in enumerate(components):
-            
+
             code = None
             error = None
             dataChanged = None
             try:
                 # Create a new name if one was not provided
                 name =  md5(str(ctr) + component.resourceUID() + str(time.time()) + request.path).hexdigest() + self.resourceSuffix()
-            
+
                 # Get a resource for the new item
                 newchildURL = joinURL(request.path, name)
                 newchild = (yield request.locateResource(newchildURL))
@@ -604,9 +609,9 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                     error = (error.namespace, error.name,)
             except Exception:
                 code = responsecode.BAD_REQUEST
-            
+
             if code is None:
-                
+
                 etag = (yield newchild.etag())
                 if not return_changed or dataChanged is None:
                     xmlresponses.append(
@@ -634,7 +639,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                             )
                         )
                     )
-                
+
             else:
                 xmlresponses.append(
                     davxml.StatusResponse(
@@ -646,9 +651,9 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                     ) if error else None,
                     )
                 )
-        
+
         result = MultiStatusResponse(xmlresponses)
-        
+
         newctag = (yield self.getInternalSyncToken())
         result.headers.setRawHeaders("CTag", (newctag,))
 
@@ -659,16 +664,16 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         request.extendedLogItems["rcount"] = len(xmlresponses)
 
         returnValue(result)
-        
+
     @inlineCallbacks
     def crudBatchPOST(self, request, xmlroot):
-        
+
         # Need to force some kind of overall authentication on the request
         yield self.authorize(request, (davxml.Read(), davxml.Write(),))
 
         # If CTag precondition
         yield self.checkCTagPrecondition(request)
-        
+
         # Look for return changed data option
         return_changed = self.checkReturnChanged(request)
 
@@ -680,7 +685,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
         updateCount = 0
         deleteCount = 0
         for xmlchild in xmlroot.children:
-            
+
             # Determine the multiput operation: create, update, delete
             href = xmlchild.childOfType(davxml.HRef.qname())
             set = xmlchild.childOfType(davxml.Set.qname())
@@ -688,11 +693,11 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
             xmldata_root = prop if prop else set
             xmldata = xmldata_root.childOfType(self.xmlDataElementType().qname()) if xmldata_root is not None else None
             if href is None:
-                
+
                 if xmldata is None:
                     raise HTTPError(StatusResponse(responsecode.BAD_REQUEST, "Could not parse valid data from request body without a DAV:Href present"))
-                
-                # Do privilege check on collection once 
+
+                # Do privilege check on collection once
                 if checkedBindPrivelege is None:
                     try:
                         yield self.authorize(request, (davxml.Bind(),))
@@ -716,7 +721,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                     yield self.crudUpdate(request, str(href), xmldata, ifmatch, return_changed, xmlresponses)
                     updateCount += 1
                 else:
-                    # Do privilege check on collection once 
+                    # Do privilege check on collection once
                     if checkedUnbindPrivelege is None:
                         try:
                             yield self.authorize(request, (davxml.Unbind(),))
@@ -726,9 +731,9 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
                     yield self.crudDelete(request, str(href), ifmatch, xmlresponses, checkedUnbindPrivelege);
                     deleteCount += 1
-        
+
         result = MultiStatusResponse(xmlresponses)
-        
+
         newctag = (yield self.getInternalSyncToken())
         result.headers.setRawHeaders("CTag", (newctag,))
 
@@ -748,7 +753,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
     @inlineCallbacks
     def crudCreate(self, request, xmldata, xmlresponses, return_changed, hasPrivilege):
-        
+
         code = None
         error = None
         try:
@@ -760,7 +765,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
             # Create a new name if one was not provided
             name =  md5(str(componentdata) + str(time.time()) + request.path).hexdigest() + self.resourceSuffix()
-        
+
             # Get a resource for the new item
             newchildURL = joinURL(request.path, name)
             newchild = (yield request.locateResource(newchildURL))
@@ -777,7 +782,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
         except Exception:
             code = responsecode.BAD_REQUEST
-        
+
         if code is None:
             etag = (yield newchild.etag())
             xmlresponses.append(
@@ -823,7 +828,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
             etag = (yield updateResource.etag())
             if ifmatch and ifmatch != etag.generate():
                 raise HTTPError(responsecode.PRECONDITION_FAILED)
-            
+
             yield self.storeResourceData(request, updateResource, href, component, componentdata)
 
             # FIXME: figure out return_changed behavior
@@ -837,7 +842,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
         except Exception:
             code = responsecode.BAD_REQUEST
-        
+
         if code is None:
             xmlresponses.append(
                 davxml.PropertyStatusResponse(
@@ -879,7 +884,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
                 raise HTTPError(responsecode.PRECONDITION_FAILED)
 
             yield deleteResource.storeRemove(
-                request, 
+                request,
                 True,
                 href,
             )
@@ -893,7 +898,7 @@ class _CommonHomeChildCollectionMixin(ResponseCacheMixin):
 
         except Exception:
             code = responsecode.BAD_REQUEST
-        
+
         if code is None:
             xmlresponses.append(
                 davxml.StatusResponse(
@@ -923,7 +928,7 @@ class _CalendarCollectionBehaviorMixin():
     """
     Functions common to calendar and inbox collections
     """
-    
+
     # Support component set behaviors
     def setSupportedComponentSet(self, support_components_property):
         """
@@ -931,7 +936,7 @@ class _CalendarCollectionBehaviorMixin():
         """
         support_components = tuple([comp.attributes["name"].upper() for comp in support_components_property.children])
         return self.setSupportedComponents(support_components)
-    
+
     def getSupportedComponentSet(self):
         comps = self._newStoreObject.getSupportedComponents()
         if comps:
@@ -949,14 +954,14 @@ class _CalendarCollectionBehaviorMixin():
         @param components: list of names of components to support
         @type components: C{list}
         """
-        
+
         # Validate them first - raise on failure
         if not self.validSupportedComponents(components):
             raise HTTPError(StatusResponse(responsecode.FORBIDDEN, "Invalid CALDAV:supported-calendar-component-set"))
 
         support_components = ",".join(sorted([comp.upper() for comp in components]))
         return maybeDeferred(self._newStoreObject.setSupportedComponents, support_components)
-    
+
     def getSupportedComponents(self):
         comps = self._newStoreObject.getSupportedComponents()
         if comps:
@@ -977,13 +982,13 @@ class _CalendarCollectionBehaviorMixin():
             return components in (("VEVENT",), ("VTODO",),)
         return True
 
-    
+
 class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionBehaviorMixin, _CommonHomeChildCollectionMixin, CalDAVResource):
     """
     Wrapper around a L{txdav.caldav.icalendar.ICalendar}.
     """
 
- 
+
     def __init__(self, calendar, home, name=None, *args, **kw):
         """
         Create a CalendarCollectionResource from a L{txdav.caldav.icalendar.ICalendar}
@@ -1056,7 +1061,7 @@ class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionB
                 assert subcalendar.name() == "VCALENDAR"
 
                 for component in subcalendar.subcomponents():
-                    
+
                     # Only insert VTIMEZONEs once
                     if component.name() == "VTIMEZONE":
                         tzid = component.propertyValue("TZID")
@@ -1081,7 +1086,7 @@ class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionB
         Need to split a single VCALENDAR into separate ones based on UID with the
         appropriate VTIEMZONES included.
         """
-        
+
         results = []
 
         # Split into components by UID and TZID
@@ -1097,14 +1102,14 @@ class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionB
                 by_tzid[subcomponent.propertyValue("TZID")] = subcomponent
             else:
                 by_uid.setdefault(subcomponent.propertyValue("UID"), []).append(subcomponent)
-        
+
         # Re-constitute as separate VCALENDAR objects
         for components in by_uid.values():
-            
+
             newvcal = VCalendar("VCALENDAR")
             newvcal.addProperty(VProperty("VERSION", "2.0"))
             newvcal.addProperty(VProperty("PRODID", vcal.propertyValue("PRODID")))
-            
+
             # Get the set of TZIDs and include them
             tzids = set()
             for component in components:
@@ -1117,13 +1122,13 @@ class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionB
                     # We ignore the error and generate invalid ics which someone will
                     # complain about at some point
                     pass
-            
+
             # Now add each component
             for component in components:
                 newvcal.addComponent(component.duplicate())
- 
+
             results.append(newvcal)
-        
+
         return results
 
     @classmethod
@@ -1147,9 +1152,9 @@ class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionB
             returnData = returnData,
         )
         yield storer.run()
-        
+
         returnValue(storer.storeddata if hasattr(storer, "storeddata") else None)
-            
+
 
     @inlineCallbacks
     def storeRemove(self, request, implicitly, where):
@@ -1211,7 +1216,7 @@ class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionB
         that calendar's name.
         """
         defaultCalendarType = (yield self.isDefaultCalendar(request))
-        
+
         result = (yield super(CalendarCollectionResource, self).http_MOVE(request))
         if result == NO_CONTENT:
             destinationURI = urlsplit(request.headers.getHeader("destination"))[2]
@@ -1536,7 +1541,7 @@ class CalendarObjectDropbox(_GetChildHelper):
             # Invite shares use access mode from the invite
             if record.state != "ACCEPTED":
                 continue
-            
+
             userprivs = [
             ]
             if record.access in ("read-only", "read-write", "read-write-schedule",):
@@ -1644,7 +1649,7 @@ class CalendarAttachment(_NewStoreFileMetaDataHelper, _GetChildHelper):
         except IOError, e:
             log.error("Unable to read attachment: %s, due to: %s" % (self, e,))
             raise HTTPError(responsecode.NOT_FOUND)
-            
+
         return Response(OK, {"content-type":self.contentType()}, stream)
 
 
@@ -1667,7 +1672,7 @@ class CalendarAttachment(_NewStoreFileMetaDataHelper, _GetChildHelper):
 
     def http_PROPPATCH(self, request):
         """
-        No dead properties allowed on attachments. 
+        No dead properties allowed on attachments.
         """
         return FORBIDDEN
 
@@ -1737,7 +1742,7 @@ class _CommonObjectResource(_NewStoreFileMetaDataHelper, CalDAVResource, FancyEq
     @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):
         """
-        Override http_DELETE to validate 'depth' header. 
+        Override http_DELETE to validate 'depth' header.
         """
         if not self.exists():
             log.debug("Resource not found: %s" % (self,))
@@ -1747,7 +1752,7 @@ class _CommonObjectResource(_NewStoreFileMetaDataHelper, CalDAVResource, FancyEq
 
     def http_PROPPATCH(self, request):
         """
-        No dead properties allowed on object resources. 
+        No dead properties allowed on object resources.
         """
         if self._newStoreParent.objectResourcesHaveProperties():
             return super(_CommonObjectResource, self).http_PROPPATCH(request)
@@ -1851,7 +1856,7 @@ class _MetadataProperty(object):
 
 class _CalendarObjectMetaDataMixin(object):
     """
-    Dynamically create the required meta-data for an object resource 
+    Dynamically create the required meta-data for an object resource
     """
 
     accessMode        = _MetadataProperty("accessMode")
@@ -2012,6 +2017,267 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
         returnValue(NO_CONTENT)
 
 
+    @inlineCallbacks
+    def action_SplitRecurrence(self, request):
+        """
+        Split a recurring event into two at the specified RECURRENCE-ID, preserving per-attendee/per-user
+        data in the on-going event.
+        """
+
+        #
+        # Step 1: Various preconditions
+        #
+
+        # Feature must be enabled
+        if not config.EnableRecurrenceSplitting:
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (calendarserver_namespace, "valid-recurrence-split"),
+                "Recurrence splitting is not enabled",
+            ))
+            
+        # Not inbox
+        if self._newStoreObject._calendar.name() == "inbox":
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (calendarserver_namespace, "supported-recurrence-split"),
+                "Cannot split inbox resources",
+            ))
+
+        # Do If-Schedule-Tag-Match behavior first
+        # Important: this should only ever be done when called
+        # directly as a result of an HTTP POST to ensure the proper If-
+        # header is used in this test.
+        self.validIfScheduleMatch(request)
+
+        # Event must be recurring
+        oldcalendar = (yield self.iCalendar())
+        if not oldcalendar.isRecurring():
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (calendarserver_namespace, "supported-recurrence-split"),
+                "Cannot split non-recurring calendar resources",
+            ))
+
+        # Specified RECURRENCE-ID must exist and be valid
+        rid = request.args.get("recurrence-id", [None])[0]
+        if rid is None:
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (calendarserver_namespace, "valid-recurrence-split"),
+                "Missing recurrence_id parameter",
+            ))
+        rid = PyCalendarDateTime.parseText(rid)
+        if not oldcalendar.validInstance(rid):
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (calendarserver_namespace, "valid-recurrence-split"),
+                "Invalid recurrence_id parameter - does not match a valid instance",
+            ))
+
+        # Must contain valid iCalendar data in the request body
+        content_type = request.headers.getHeader("content-type")
+        if content_type is not None and (content_type.mediaType, content_type.mediaSubtype) != ("text", "calendar"):
+            log.err("MIME type %s not allowed in calendar collection" % (content_type,))
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (caldav_namespace, "supported-calendar-data"),
+                "Invalid MIME type for calendar resource",
+            ))
+        newcalendar = (yield allDataFromStream(request.stream))
+        if not hasattr(request, "extendedLogItems"):
+            request.extendedLogItems = {}
+        request.extendedLogItems["cl"] = str(len(newcalendar)) if newcalendar else "0"
+
+        # We must have some data at this point
+        newcalendar = Component.fromString(newcalendar)
+        if newcalendar is None:
+            # Use correct DAV:error response
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (caldav_namespace, "valid-calendar-data"),
+                "Valid calendar data must be present in the request"
+            ))
+
+        #
+        # Look for other events in the set that are after the split - those will need to be removed
+        #
+
+        #
+        # Step 2: Check for implicit scheduling and initiate ImplicitUID lock
+        #
+        pass
+
+        #
+        # Step 3: Save the new event with per-user data preserved
+        #
+
+        # Add the recurrence-set relation property
+        recurrenceSet = oldcalendar.recurrenceSet()
+        if recurrenceSet is None:
+            recurrenceSet = str(uuid.uuid4())
+        if newcalendar.recurrenceSet() is not None and newcalendar.recurrenceSet() != recurrenceSet:
+            raise HTTPError(ErrorResponse(
+                responsecode.FORBIDDEN,
+                (calendarserver_namespace, "valid-recurrence-split"),
+                "Cannot specify a RECURRENCE-SET property in the new data that is different from the original data",
+            ))
+        if newcalendar.recurrenceSet() is None:
+            newcalendar.addPropertyToAllComponents(Property("RECURRENCE-SET", recurrenceSet))
+
+        # Find current user's UID and extract others' per-user data from old calendar
+        accessUUID = (yield self.resourceOwnerPrincipal(request))
+        accessUUID = accessUUID.principalUID() if accessUUID else ""
+        oldperuser = PerUserDataFilter(accessUUID).extract(oldcalendar, rid, newcalendar.resourceUID())
+
+        # Get a resource for the new item
+        parentURL = parentForURL(request.path)
+        parent = (yield request.locateResource(parentURL))
+        newname =  str(uuid.uuid4()) + ".ics"
+        newchildURL = joinURL(parentURL, newname)
+        newchild = yield request.locateResource(newchildURL)
+        newchild._url = newchildURL
+
+        # Check that the new data is valid for storing in this collection
+        yield StoreCalendarObjectResource(
+            request = request,
+            destination = newchild,
+            destination_uri = newchildURL,
+            destinationcal = True,
+            destinationparent = parent,
+            calendar = newcalendar,
+            allowImplicitSchedule = False,
+            perUserMergeData = oldperuser,
+        ).run()
+
+        #
+        # Step 4: Update existing event to truncate recurrence
+        #
+
+        # Truncate recurrence
+        oldcalendar = PerUserDataFilter("").truncateRecurrenceDueToSplit(oldcalendar, rid)
+
+        # Add the recurrence-set relation property
+        if oldcalendar.recurrenceSet() is None:
+            oldcalendar.addPropertyToAllComponents(Property("RECURRENCE-SET", recurrenceSet))
+
+        # Store the data back
+        yield self._newStoreObject.setComponent(oldcalendar)
+
+        #
+        # Step 5: Trigger implicit scheduling and release the lock when done
+        #
+        pass
+    
+        #
+        # Step 6: Create response
+        #
+        # Return something that is equivalent to a multiget on the old and new resources with the
+        # client requesting getetag and option ally calendar-data (depending on whether Prefer is used).
+        #
+
+        # Look for Prefer header
+        prefer = request.headers.getHeader("prefer", {})
+        returnRepresentation = "return-representation" in prefer
+        
+        # Build responses
+        xmlresponses = []
+
+        # Old resource
+        uri = request.path
+        etag = (yield self.etag())
+        props = (
+            davxml.GETETag.fromString(etag.generate()),
+        )
+        if returnRepresentation:
+            calendar = (yield self.iCalendarForUser(request))
+            props += (
+                caldavxml.CalendarData.fromCalendar(calendar),
+            )
+        xmlresponses.append(
+            davxml.PropertyStatusResponse(
+                davxml.HRef.fromString(uri),
+                davxml.PropertyStatus(
+                    davxml.PropertyContainer(*props),
+                    davxml.Status.fromResponseCode(responsecode.OK),
+                )
+            )
+        )
+
+        # New resource
+        uri = newchildURL
+        etag = (yield newchild.etag())
+        props = (
+            davxml.GETETag.fromString(etag.generate()),
+        )
+        if returnRepresentation:
+            calendar = (yield newchild.iCalendarForUser(request))
+            props += (
+                caldavxml.CalendarData.fromCalendar(calendar),
+            )
+        xmlresponses.append(
+            davxml.PropertyStatusResponse(
+                davxml.HRef.fromString(uri),
+                davxml.PropertyStatus(
+                    davxml.PropertyContainer(*props),
+                    davxml.Status.fromResponseCode(responsecode.CREATED),
+                )
+            )
+        )
+
+        result = MultiStatusResponse(xmlresponses)
+        returnValue(result)
+
+#        # Now look for scheduling
+#        scheduler = ImplicitScheduler()
+#        do_implicit_action, _ignore = (
+#            yield scheduler.testImplicitSchedulingSplitRecurrence(
+#                request, self, oldcalendar
+#            )
+#        )
+#        if do_implicit_action and scheduler.state != "organizer":
+#            raise HTTPError(ErrorResponse(
+#                responsecode.FORBIDDEN,
+#                (caldav_namespace, "valid-attendee-change"),
+#                "Cannot split recurrence",
+#            ))
+#
+#        if do_implicit_action:
+#            lock = MemcacheLock(
+#                "ImplicitUIDLock",
+#                oldcalendar.resourceUID(),
+#                timeout=config.Scheduling.Options.UIDLockTimeoutSeconds,
+#                expire_time=config.Scheduling.Options.UIDLockExpirySeconds,
+#            )
+#
+#        try:
+#            if lock:
+#                yield lock.acquire()
+#
+#            yield super(CalendarObjectResource, self).storeRemove(request)
+#
+#            # Do scheduling
+#            yield scheduler.doImplicitScheduling()
+#
+#        except MemcacheLockTimeoutError:
+#            raise HTTPError(StatusResponse(
+#                CONFLICT,
+#                "Resource: %s currently in use on the server." % (where,))
+#            )
+#
+#        finally:
+#            if lock:
+#                # Release lock after commit or abort
+#                transaction.postCommit(lock.clean)
+#                transaction.postAbort(lock.clean)
+
+    # POST actions
+    POSTactionDispatch = {
+        "recurrence-split": action_SplitRecurrence,
+    }
+
+
+
 class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResource):
     """
     Wrapper around a L{txdav.carddav.iaddressbook.IAddressBook}.
@@ -2082,7 +2348,7 @@ class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResou
             returnData = returnData,
         )
         yield storer.run()
-        
+
         returnValue(storer.returndata if hasattr(storer, "returndata") else None)
 
     @inlineCallbacks
@@ -2140,7 +2406,7 @@ class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResou
         that address book's name.
         """
         defaultAddressBook = (yield self.isDefaultAddressBook(request))
-        
+
         result = (yield super(AddressBookCollectionResource, self).http_MOVE(request))
         if result == NO_CONTENT:
             destinationURI = urlsplit(request.headers.getHeader("destination"))[2]
@@ -2379,7 +2645,7 @@ class StoreNotificationObjectFile(_NewStoreFileMetaDataHelper, NotificationResou
     @requiresPermissions(fromParent=[davxml.Unbind()])
     def http_DELETE(self, request):
         """
-        Override http_DELETE to validate 'depth' header. 
+        Override http_DELETE to validate 'depth' header.
         """
         if not self.exists():
             log.debug("Resource not found: %s" % (self,))
@@ -2389,7 +2655,7 @@ class StoreNotificationObjectFile(_NewStoreFileMetaDataHelper, NotificationResou
 
     def http_PROPPATCH(self, request):
         """
-        No dead properties allowed on notification objects. 
+        No dead properties allowed on notification objects.
         """
         return FORBIDDEN
 

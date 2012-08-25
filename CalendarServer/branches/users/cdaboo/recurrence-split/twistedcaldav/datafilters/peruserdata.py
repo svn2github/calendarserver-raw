@@ -140,6 +140,80 @@ class PerUserDataFilter(CalendarFilter):
         self._mergeRepresentations(icalnew, icalold)
         return icalnew
 
+    def extract(self, icalold, fromRID, newUID):
+        """
+        Return an iCalendar object with just per-user components not including ones for
+        the specified user UUID, and only including the master component and RIDs on or after
+        the specified RID. Also, adjust to a new UID if needed.
+        
+        This method is used to aid recurrence splitting where we need to preserve per-user data in the
+        original component when it is split. 
+        
+        @param icalold: existing calendar data
+        @type icalold: L{Component} or C{str}
+        @param fromRID: RID that starts per-user components
+        @type fromRID: L{PyCalendarDateTime}
+        @param newUID: new iCalendar UID to use or None to leave unchanged
+        @type newUID: C{str} or C{None}
+        """
+
+        icalold = self.validCalendar(icalold)
+        extracted = icalold.duplicate()
+        for component in tuple(extracted.subcomponents()):
+            if component.name() != PerUserDataFilter.PERUSER_COMPONENT:
+                # Remove unwanted components
+                extracted.removeComponent(component)
+            else:
+                uuid = component.propertyValue(PerUserDataFilter.PERUSER_UID)
+                if uuid == self.uid:
+                    extracted.removeComponent(component)
+                else:
+                    # Adjust to any new UID
+                    if newUID:
+                        component.getProperty("UID").setValue(newUID)
+                    
+                    # Now filter out per instance components before the RID
+                    for perinstance in tuple(component.subcomponents()):
+                        if perinstance.name() != PerUserDataFilter.PERINSTANCE_COMPONENT:
+                            raise AssertionError("Wrong sub-component '%s' in a X-CALENDARSERVER-PERUSER component" % (perinstance.name(),))
+                        rid = perinstance.getRecurrenceIDUTC()
+                        if rid and rid < fromRID:
+                            component.removeComponent(perinstance)
+        
+        return extracted
+            
+    def truncateRecurrenceDueToSplit(self, calendar, splitRID):
+        """
+        Remove overridden components, per-user data at or beyond the specified RECURRENCE-ID.
+
+        @param calendar: calendar to operate on
+        @type calendar: L{Component} or C{str}
+        @param splitRID: RID to remove from
+        @type splitRID: L{PyCalendarDateTime}
+        """
+        
+        calendar = self.validCalendar(calendar)
+
+        # First do RRULE, override truncation
+        calendar.truncateRecurrenceDueToSplit(splitRID)
+    
+        # Now do per-user data
+        for component in tuple(calendar.subcomponents()):
+            if component.name() == PerUserDataFilter.PERUSER_COMPONENT:
+                # Now filter out per instance components on or after the RID
+                for perinstance in tuple(component.subcomponents()):
+                    if perinstance.name() != PerUserDataFilter.PERINSTANCE_COMPONENT:
+                        raise AssertionError("Wrong sub-component '%s' in a X-CALENDARSERVER-PERUSER component" % (perinstance.name(),))
+                    rid = perinstance.getRecurrenceIDUTC()
+                    if rid and rid >= splitRID:
+                        component.removeComponent(perinstance)
+                
+                # If none left, remove the overall per-user data
+                if len(tuple(component.subcomponents())) == 0:
+                    calendar.removeComponent(component)
+
+        return calendar
+
     def _mergeBack(self, ical, peruser):
         """
         Merge the per-user data back into the main calendar data.

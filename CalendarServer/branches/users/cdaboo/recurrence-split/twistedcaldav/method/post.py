@@ -45,23 +45,37 @@ def http_POST(self, request):
 
     # POST can support many different APIs
     
-    # First look at query params
-    if request.params:
-        if request.params == "add-member":
-            if config.EnableAddMember:
-                result = (yield POST_handler_add_member(self, request))
-                returnValue(result)
+    # Look for action argument
+    if request.args and "action" in request.args:
+        result = (yield POST_handler_action(self, request))
+        returnValue(result)
 
-    else:
-        # Content-type handlers
-        contentType = request.headers.getHeader("content-type")
-        if contentType:
-            if hasattr(self, "POST_handler_content_type"):
-                result = (yield self.POST_handler_content_type(request, (contentType.mediaType, contentType.mediaSubtype)))
-                returnValue(result)
+    # Check for add-member query param
+    if request.params and request.params == "add-member" and config.EnableAddMember:
+        result = (yield POST_handler_add_member(self, request))
+        returnValue(result)
+
+    # Content-type handlers
+    contentType = request.headers.getHeader("content-type")
+    if contentType and hasattr(self, "POST_handler_content_type"):
+        result = (yield self.POST_handler_content_type(request, (contentType.mediaType, contentType.mediaSubtype)))
+        returnValue(result)
 
     returnValue(responsecode.FORBIDDEN)
 
+@inlineCallbacks
+def POST_handler_action(self, request):
+    
+    action = request.args["action"][0]
+    if hasattr(self, "POSTactionDispatch") and action in self.POSTactionDispatch:
+        result = (yield self.POSTactionDispatch[action](self, request))
+        returnValue(result)
+
+    raise HTTPError(StatusResponse(
+        responsecode.BAD_REQUEST,
+        "No POST action handler for '%s' on this resource" % (action,),
+    ))
+    
 @inlineCallbacks
 def POST_handler_add_member(self, request):
 

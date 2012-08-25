@@ -595,8 +595,8 @@ class iCalDiff(object):
         rdates = component.properties("RDATE")
         for rdate in rdates:
             for value in rdate.value():
-                if isinstance(value, PyCalendarDateTime):
-                    value = value.duplicate().adjustToUTC()
+                if isinstance(value.getValue(), PyCalendarDateTime):
+                    value = value.getValue().duplicate().adjustToUTC()
                 newrdates.add(value)
         
         # EXDATEs

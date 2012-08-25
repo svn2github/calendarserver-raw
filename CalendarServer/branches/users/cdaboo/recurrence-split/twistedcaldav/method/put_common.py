@@ -133,6 +133,7 @@ class StoreCalendarObjectResource(object):
         internal_request=False,
         processing_organizer=None,
         returnData=False,
+        perUserMergeData=None,
     ):
         """
         Function that does common PUT/COPY/MOVE behavior.
@@ -155,6 +156,7 @@ class StoreCalendarObjectResource(object):
         @param internal_request:   True if this request originates internally and needs to bypass scheduling authorization checks.
         @param processing_organizer: True if implicit processing for an organizer, False if for an attendee, None if not implicit processing.
         @param returnData:         True if the caller wants the actual data written to the store returned
+        @param perUserMergeData:   L{Component} for per user data to merge in
         """
         
         # Check that all arguments are valid
@@ -196,19 +198,27 @@ class StoreCalendarObjectResource(object):
         self.internal_request = internal_request
         self.processing_organizer = processing_organizer
         self.returnData = returnData
+        self.perUserMergeData = perUserMergeData
 
         self.access = None
         self.hasPrivateComments = False
         self.isScheduleResource = False
 
+    def partialValidation(self):
+        """
+        Do a partial validation of source and destination calendar data.
+        """
+        return self.fullValidation(True)
+
     @inlineCallbacks
-    def fullValidation(self):
+    def fullValidation(self, partial=False):
         """
         Do full validation of source and destination calendar data.
         """
 
-        # Basic validation
-        self.validIfScheduleMatch()
+        # Basic validation - we skip this for the partial case
+        if not partial:
+            self.validIfScheduleMatch()
 
         if self.destinationcal:
 
@@ -984,7 +994,9 @@ class StoreCalendarObjectResource(object):
         if self.calendar:
             accessUID = (yield self.destination.resourceOwnerPrincipal(self.request))
             accessUID = accessUID.principalUID() if accessUID else ""
-            if self.destination.exists() and self.destinationcal:
+            if self.perUserMergeData is not None:
+                oldCal = self.perUserMergeData
+            elif self.destination.exists() and self.destinationcal:
                 oldCal = yield self.destination.iCalendar()
             else:
                 oldCal = None

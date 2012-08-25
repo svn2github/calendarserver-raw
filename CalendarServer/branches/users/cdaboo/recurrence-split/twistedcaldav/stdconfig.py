@@ -533,6 +533,8 @@ DEFAULT_CONFIG = {
     "MaxResourcesBatchUpload" : 100,      # Maximum number of resources in a batch POST
     "MaxBytesBatchUpload"     : 10485760, # Maximum size of a batch POST (10 MB)
     
+    "EnableRecurrenceSplitting" : True,   # POST to trigger recurrence split
+
     "Sharing": {
         "Enabled"             : False, # Overall on/off switch
         "AllowExternalUsers"  : False, # External (non-principal) sharees allowed
@@ -1457,6 +1459,8 @@ def _updateCompliance(configDict, reloading=False):
             compliance += caldavxml.caldav_query_extended_compliance
         if configDict.EnableDefaultAlarms:
             compliance += caldavxml.caldav_default_alarms_compliance
+        if configDict.EnableRecurrenceSplitting:
+            compliance += customxml.calendarserver_recurrence_split_compliance
     else:
         compliance = ()
 
