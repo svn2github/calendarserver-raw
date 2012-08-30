@@ -148,6 +148,18 @@ class AggregateDirectoryService(DirectoryService):
     def recordWithCalendarUserAddress(self, address):
         return self._queryAll("recordWithCalendarUserAddress", address)
 
+    def recordWithCachedGroupsAlias(self, recordType, alias):
+        """
+        @param recordType: the type of the record to look up.
+        @param alias: the cached-groups alias of the record to look up.
+        @type alias: C{str}
+
+        @return: a deferred L{IDirectoryRecord} with the given cached-groups
+            alias, or C{None} if no such record is found.
+        """
+        service = self.serviceForRecordType(recordType)
+        return service.recordWithCachedGroupsAlias(recordType, alias)
+
     @inlineCallbacks
     def recordsMatchingFields(self, fields, operand="or", recordType=None):
 
@@ -163,6 +175,41 @@ class AggregateDirectoryService(DirectoryService):
             generators.append(generator)
 
         returnValue(itertools.chain(*generators))
+
+
+    @inlineCallbacks
+    def recordsMatchingTokens(self, tokens, context=None):
+        """
+        @param tokens: The tokens to search on
+        @type tokens: C{list} of C{str} (utf-8 bytes)
+        @param context: An indication of what the end user is searching
+            for; "attendee", "location", or None
+        @type context: C{str}
+        @return: a deferred sequence of L{IDirectoryRecord}s which
+            match the given tokens and optional context.
+
+        Each token is searched for within each record's full name and
+        email address; if each token is found within a record that
+        record is returned in the results.
+
+        If context is None, all record types are considered.  If
+        context is "location", only locations are considered.  If
+        context is "attendee", only users, groups, and resources
+        are considered.
+
+        Combine the results from the sub-services.
+        """
+
+        services = set(self._recordTypes.values())
+
+        generators = []
+        for service in services:
+            generator = (yield service.recordsMatchingTokens(tokens,
+                context=context))
+            generators.append(generator)
+
+        returnValue(itertools.chain(*generators))
+
 
     def getGroups(self, guids):
         """

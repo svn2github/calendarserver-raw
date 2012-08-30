@@ -89,6 +89,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : True,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": True,
@@ -126,6 +127,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : False,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": False,
@@ -163,6 +165,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : True,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": True,
@@ -200,6 +203,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : True,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": True,
@@ -237,6 +241,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [1111, 2222, 4444, 5555, 7777, 8888],
             "BindSSLPorts": [3333, 6666, 9999, 11111],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : True,
             "HTTPPort": 8888,
             "RedirectHTTPToHTTPS": True,
@@ -271,6 +276,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : False,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": False,
@@ -300,6 +306,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : True,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": True,
@@ -320,6 +327,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         expected = {
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : False,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": False,
@@ -366,6 +374,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
             },
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : False,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": False,
@@ -404,6 +413,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
             },
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : False,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": False,
@@ -422,6 +432,136 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
 
         # Ensure XMPPNotifier is disabled
 
+        # Both CalDAV and CardDAV push enabled:
+        oldCalDAV = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : True,
+                        "CalDAV" : {
+                            "APSBundleID" : "com.apple.calendar.XServer",
+                        },
+                        "CardDAV" : {
+                            "APSBundleID" : "com.apple.contact.XServer",
+                        },
+                    },
+                },
+            },
+        }
+        oldCardDAV = { }
+        expected = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : False,
+                        "CalDAV" : {
+                            "APSBundleID" : "com.apple.calendar.XServer",
+                        },
+                        "CardDAV" : {
+                            "APSBundleID" : "com.apple.contact.XServer",
+                        },
+                    },
+                },
+            },
+            "BindHTTPPorts": [8008, 8800],
+            "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
+            "EnableSSL" : False,
+            "HTTPPort": 8008,
+            "RedirectHTTPToHTTPS": False,
+            "SSLAuthorityChain": "",
+            "SSLCertificate": "",
+            "SSLPort": 8443,
+            "SSLPrivateKey": "",
+        }
+        newCombined = { }
+        adminChanges = mergePlist(oldCalDAV, oldCardDAV, newCombined)
+        self.assertEquals(adminChanges, [["EnableAPNS", "yes"]])
+        self.assertEquals(newCombined, expected)
+
+        # Only with CalDAV push enabled:
+        oldCalDAV = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : True,
+                        "CalDAV" : {
+                            "APSBundleID" : "com.apple.calendar.XServer",
+                        },
+                    },
+                },
+            },
+        }
+        oldCardDAV = { }
+        expected = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : False,
+                        "CalDAV" : {
+                            "APSBundleID" : "com.apple.calendar.XServer",
+                        },
+                    },
+                },
+            },
+            "BindHTTPPorts": [8008, 8800],
+            "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
+            "EnableSSL" : False,
+            "HTTPPort": 8008,
+            "RedirectHTTPToHTTPS": False,
+            "SSLAuthorityChain": "",
+            "SSLCertificate": "",
+            "SSLPort": 8443,
+            "SSLPrivateKey": "",
+        }
+        newCombined = { }
+        adminChanges = mergePlist(oldCalDAV, oldCardDAV, newCombined)
+        self.assertEquals(adminChanges, [["EnableAPNS", "yes"]])
+        self.assertEquals(newCombined, expected)
+
+        # Only with CardDAV push enabled:
+        oldCalDAV = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : True,
+                        "CardDAV" : {
+                            "APSBundleID" : "com.apple.contact.XServer",
+                        },
+                    },
+                },
+            },
+        }
+        oldCardDAV = { }
+        expected = {
+            "Notifications": {
+                "Services" : {
+                    "XMPPNotifier" : {
+                        "Enabled" : False,
+                        "CardDAV" : {
+                            "APSBundleID" : "com.apple.contact.XServer",
+                        },
+                    },
+                },
+            },
+            "BindHTTPPorts": [8008, 8800],
+            "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
+            "EnableSSL" : False,
+            "HTTPPort": 8008,
+            "RedirectHTTPToHTTPS": False,
+            "SSLAuthorityChain": "",
+            "SSLCertificate": "",
+            "SSLPort": 8443,
+            "SSLPrivateKey": "",
+        }
+        newCombined = { }
+        adminChanges = mergePlist(oldCalDAV, oldCardDAV, newCombined)
+        self.assertEquals(adminChanges, [["EnableAPNS", "yes"]])
+        self.assertEquals(newCombined, expected)
+
+        # APNS push was not previously enabled:
         oldCalDAV = {
             "Notifications": {
                 "Services" : {
@@ -442,6 +582,7 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
             },
             "BindHTTPPorts": [8008, 8800],
             "BindSSLPorts": [8443, 8843],
+            "DSN" : "/Library/Server/PostgreSQL For Server Services/Socket:caldav:caldav:::",
             "EnableSSL" : False,
             "HTTPPort": 8008,
             "RedirectHTTPToHTTPS": False,
@@ -454,7 +595,6 @@ class MigrationTests(twistedcaldav.test.util.TestCase):
         adminChanges = mergePlist(oldCalDAV, oldCardDAV, newCombined)
         self.assertEquals(adminChanges, [])
         self.assertEquals(newCombined, expected)
-
 
     def test_examinePreviousSystem(self):
         """

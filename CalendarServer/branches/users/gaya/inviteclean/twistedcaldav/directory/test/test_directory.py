@@ -281,7 +281,7 @@ class GroupMembershipTests (TestCase):
 
         # Allow an update by unlocking the cache
         yield cache.releaseLock()
-        self.assertEquals((False, 8), (yield updater.updateCache()))
+        self.assertEquals((False, 8, 8), (yield updater.updateCache()))
 
         # Verify cache is populated:
         self.assertTrue((yield cache.isPopulated()))
@@ -364,13 +364,20 @@ class GroupMembershipTests (TestCase):
                 groups,
             )
 
+        # Verify CalendarUserProxyPrincipalResource.containsPrincipal( ) works
+        delegator = self._getPrincipalByShortName(DirectoryService.recordType_locations, "mercury")
+        proxyPrincipal = delegator.getChild("calendar-proxy-write")
+        for expected, name in [(True, "wsanchez"), (False, "cdaboo")]:
+            delegate = self._getPrincipalByShortName(DirectoryService.recordType_users, name)
+            self.assertEquals(expected, (yield proxyPrincipal.containsPrincipal(delegate)))
+
         # Verify that principals who were previously members of delegated-to groups but
         # are no longer members have their proxyFor info cleaned out of the cache:
         # Remove wsanchez from all groups in the directory, run the updater, then check
         # that wsanchez is only a proxy for gemini (since that assignment does not involve groups)
         self.directoryService.xmlFile = dirTest.child("accounts-modified.xml")
         self.directoryService._alwaysStat = True
-        self.assertEquals((False, 7), (yield updater.updateCache()))
+        self.assertEquals((False, 7, 1), (yield updater.updateCache()))
         delegate = self._getPrincipalByShortName(DirectoryService.recordType_users, "wsanchez")
         proxyFor = (yield delegate.proxyFor(True))
         self.assertEquals(
@@ -510,9 +517,10 @@ class GroupMembershipTests (TestCase):
         yield cache.acquireLock()
 
         self.assertFalse((yield cache.isPopulated()))
-        fast, numMembers = (yield updater.updateCache(fast=True))
+        fast, numMembers, numChanged = (yield updater.updateCache(fast=True))
         self.assertEquals(fast, False)
         self.assertEquals(numMembers, 8)
+        self.assertEquals(numChanged, 8)
         self.assertTrue(snapshotFile.exists())
         self.assertTrue((yield cache.isPopulated()))
 
@@ -528,9 +536,10 @@ class GroupMembershipTests (TestCase):
         self.assertEquals(numMembers, 0)
 
         # Try an update which faults in from the directory (fast=False)
-        fast, numMembers = (yield updater.updateCache(fast=False))
+        fast, numMembers, numChanged = (yield updater.updateCache(fast=False))
         self.assertEquals(fast, False)
         self.assertEquals(numMembers, 8)
+        self.assertEquals(numChanged, 0)
 
         # Verify the snapshot contains the pickled dictionary we expect
         members = pickle.loads(snapshotFile.getContent())
@@ -583,7 +592,62 @@ class GroupMembershipTests (TestCase):
             }
         )
 
+class RecordsMatchingTokensTests(TestCase):
 
+    @inlineCallbacks
+    def setUp(self):
+        super(RecordsMatchingTokensTests, self).setUp()
+
+        self.directoryService = XMLDirectoryService(
+            {
+                'xmlFile' : xmlFile,
+                'augmentService' :
+                    augment.AugmentXMLDB(xmlFiles=(augmentsFile.path,)),
+            }
+        )
+        calendaruserproxy.ProxyDBService = calendaruserproxy.ProxySqliteDB("proxies.sqlite")
+
+        # Set up a principals hierarchy for each service we're testing with
+        self.principalRootResources = {}
+        name = self.directoryService.__class__.__name__
+        url = "/" + name + "/"
+
+        provisioningResource = DirectoryPrincipalProvisioningResource(url, self.directoryService)
+
+        self.site.resource.putChild(name, provisioningResource)
+
+        self.principalRootResources[self.directoryService.__class__.__name__] = provisioningResource
+
+        yield XMLCalendarUserProxyLoader(proxiesFile.path).updateProxyDB()
+
+    def tearDown(self):
+        """ Empty the proxy db between tests """
+        return calendaruserproxy.ProxyDBService.clean()
+
+    @inlineCallbacks
+    def test_recordsMatchingTokens(self):
+        """
+        Exercise the default recordsMatchingTokens implementation
+        """
+        records = list((yield self.directoryService.recordsMatchingTokens(["Use", "01"])))
+        self.assertEquals(len(records), 1)
+        self.assertEquals(records[0].shortNames[0], "user01")
+
+        records = list((yield self.directoryService.recordsMatchingTokens(['"quotey"'],
+            context=self.directoryService.searchContext_attendee)))
+        self.assertEquals(len(records), 1)
+        self.assertEquals(records[0].shortNames[0], "doublequotes")
+
+        records = list((yield self.directoryService.recordsMatchingTokens(["coast"])))
+        self.assertEquals(len(records), 5)
+
+        records = list((yield self.directoryService.recordsMatchingTokens(["poll"],
+            context=self.directoryService.searchContext_location)))
+        self.assertEquals(len(records), 1)
+        self.assertEquals(records[0].shortNames[0], "apollo")
+
+
+ 
 class GUIDTests(TestCase):
 
     def setUp(self):

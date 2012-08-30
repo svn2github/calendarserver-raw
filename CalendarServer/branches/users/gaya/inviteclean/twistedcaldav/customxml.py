@@ -54,6 +54,11 @@ calendarserver_principal_property_search_compliance = (
     "calendarserver-principal-property-search",
 )
 
+calendarserver_principal_search_compliance = (
+    "calendarserver-principal-search",
+)
+
+
 calendarserver_sharing_compliance = (
     "calendarserver-sharing",
 )
@@ -1348,6 +1353,32 @@ class MaxBulkBytes (WebDAVTextElement):
 class CalendarColor(WebDAVTextElement):
     namespace = "http://apple.com/ns/ical/"
     name = "calendar-color"
+
+#
+# calendarserver-principal-search REPORT
+#
+
+@registerElement
+class CalendarServerPrincipalSearchToken (WebDAVTextElement):
+    """
+    Contains a search token.
+    """
+    namespace = calendarserver_namespace
+    name = "search-token"
+
+@registerElement
+class CalendarServerPrincipalSearch (WebDAVElement):
+
+    namespace = calendarserver_namespace
+    name = "calendarserver-principal-search"
+
+    allowed_children = {
+        (calendarserver_namespace, "search-token"          ): (0, None),
+        (calendarserver_namespace, "limit"                 ): (0, 1),
+        (dav_namespace, "prop"                             ): (0, 1),
+        (dav_namespace, "apply-to-principal-collection-set"): (0, 1),
+    }
+    allowed_attributes = { "context" : False }
 
 ##
 # Extensions to ResourceType

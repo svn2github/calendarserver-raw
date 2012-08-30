@@ -81,11 +81,43 @@ class IDirectoryService(Interface):
             directory service may not be aware of these addresses.
         """
 
+    def recordWithCachedGroupsAlias(recordType, alias):
+        """
+        @param recordType: the type of the record to look up.
+        @param alias: the cached-groups alias of the record to look up.
+        @type alias: C{str}
+
+        @return: a deferred L{IDirectoryRecord} with the given cached-groups
+            alias, or C{None} if no such record is found.
+        """
+
+
     def recordsMatchingFields(fields):
         """
         @return: a deferred sequence of L{IDirectoryRecord}s which
             match the given fields.
         """
+
+    def recordsMatchingTokens(tokens, context=None):
+        """
+        @param tokens: The tokens to search on
+        @type tokens: C{list} of C{str} (utf-8 bytes)
+        @param context: An indication of what the end user is searching
+            for; "attendee", "location", or None
+        @type context: C{str}
+        @return: a deferred sequence of L{IDirectoryRecord}s which
+            match the given tokens and optional context.
+
+        Each token is searched for within each record's full name and
+        email address; if each token is found within a record that
+        record is returned in the results.
+
+        If context is None, all record types are considered.  If
+        context is "location", only locations are considered.  If
+        context is "attendee", only users, groups, and resources
+        are considered.
+        """
+
 
     def setRealm(realmName):
         """

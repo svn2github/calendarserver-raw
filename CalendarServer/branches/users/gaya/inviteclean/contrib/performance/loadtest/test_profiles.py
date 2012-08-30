@@ -37,6 +37,8 @@ from contrib.performance.loadtest.population import Populator, CalendarClientSim
 from contrib.performance.loadtest.ical import IncorrectResponseCode, Calendar, Event, BaseClient
 from contrib.performance.loadtest.sim import _DirectoryRecord
 
+import os
+
 SIMPLE_EVENT = """\
 BEGIN:VCALENDAR
 VERSION:2.0
@@ -212,7 +214,10 @@ class StubClient(BaseClient):
         attendee changes due to a changed schedule tag.
     @ivar _pendingFailures: dict mapping URLs to failure objects
     """
-    def __init__(self, number):
+    def __init__(self, number, serializePath):
+        self.serializePath = serializePath
+        os.mkdir(self.serializePath)
+        self.title = "StubClient"
         self._events = {}
         self._calendars = {}
         self._pendingFailures = {}
@@ -232,8 +237,25 @@ class StubClient(BaseClient):
         self._pendingFailures[href] = failureObject
 
 
+    def serializeLocation(self):
+        """
+        Return the path to the directory where data for this user is serialized.
+        """
+        if self.serializePath is None or not os.path.isdir(self.serializePath):
+            return None
+        
+        key = "%s-%s" % (self.record.uid, "StubClient")
+        path = os.path.join(self.serializePath, key)
+        if not os.path.exists(path):
+            os.mkdir(path)
+        elif not os.path.isdir(path):
+            return None
+        
+        return path
+
+    
     def addEvent(self, href, vevent):
-        self._events[href] = Event(href, None, vevent)
+        self._events[href] = Event(self.serializePath, href, None, vevent)
         return succeed(None)
 
 
@@ -257,8 +279,9 @@ class StubClient(BaseClient):
 
 
     def addEventAttendee(self, href, attendee):
-        vevent = self._events[href].vevent
+        vevent = self._events[href].component
         vevent.mainComponent().addProperty(attendee)
+        self._events[href].component = vevent
 
 
     def changeEventAttendee(self, href, old, new):
@@ -269,9 +292,10 @@ class StubClient(BaseClient):
                         ('HTTP', 1, 1), PRECONDITION_FAILED,
                         'Precondition Failed', None, None)))
 
-        vevent = self._events[href].vevent
+        vevent = self._events[href].component
         vevent.mainComponent().removeProperty(old)
         vevent.mainComponent().addProperty(new)
+        self._events[href].component = vevent
         return succeed(None)
 
 
@@ -320,27 +344,31 @@ class InviterTests(TestCase):
 
 
     def _simpleAccount(self, userNumber, eventText):
+        client = StubClient(userNumber, self.mktemp())
+
         vevent = Component.fromString(eventText)
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'calendar', u'/cal/', None)
-        event = Event(calendar.url + u'1234.ics', None, vevent)
-        calendar.events = {u'1234.ics': event}
-        client = StubClient(userNumber)
-        client._events.update({event.url: event})
         client._calendars.update({calendar.url: calendar})
+
+        event = Event(client.serializeLocation(), calendar.url + u'1234.ics', None, vevent)
+
+        client._events.update({event.url: event})
+        calendar.events = {u'1234.ics': event}
 
         return vevent, event, calendar, client
 
 
     def test_enabled(self):
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
 
         inviter = Inviter(None, self.sim, client, userNumber, **{"enabled":False})
         self.assertEqual(inviter.enabled, False)
 
         inviter = Inviter(None, self.sim, client, userNumber, **{"enabled":True})
         self.assertEqual(inviter.enabled, True)
+
 
     def test_doNotAddAttendeeToInbox(self):
         """
@@ -362,7 +390,7 @@ class InviterTests(TestCase):
         does nothing.
         """
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         inviter = Inviter(None, self.sim, client, userNumber)
         inviter._invite()
         self.assertEquals(client._events, {})
@@ -378,7 +406,7 @@ class InviterTests(TestCase):
         userNumber = 19
         _ignore_vevent, event, calendar, client = self._simpleAccount(
             userNumber, SIMPLE_EVENT)
-        event.vevent = event.etag = event.scheduleTag = None
+        event.component = event.etag = event.scheduleTag = None
         inviter = Inviter(None, self.sim, client, userNumber)
         inviter._invite()
         self.assertEquals(client._events, {event.url: event})
@@ -391,12 +419,12 @@ class InviterTests(TestCase):
         attendee to it.
         """
         userNumber = 16
-        vevent, _ignore_event, _ignore_calendar, client = self._simpleAccount(
+        _ignore_vevent, event, _ignore_calendar, client = self._simpleAccount(
             userNumber, SIMPLE_EVENT)
         inviter = Inviter(Clock(), self.sim, client, userNumber)
-        inviter.setParameters(inviteeDistanceDistribution=Deterministic(1))
+        inviter.setParameters(inviteeDistribution=Deterministic(1))
         inviter._invite()
-        attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
+        attendees = tuple(event.component.mainComponent().properties('ATTENDEE'))
         self.assertEquals(len(attendees), 1)
         for paramname, paramvalue in {
             'CN': 'User %d' % (userNumber + 1,),
@@ -416,16 +444,16 @@ class InviterTests(TestCase):
         the attendee list, a different user is added instead.
         """
         selfNumber = 12
-        vevent, _ignore_event, _ignore_calendar, client = self._simpleAccount(
+        _ignore_vevent, event, _ignore_calendar, client = self._simpleAccount(
             selfNumber, SIMPLE_EVENT)
 
         otherNumber = 20
         values = [selfNumber - selfNumber, otherNumber - selfNumber]
 
         inviter = Inviter(Clock(), self.sim, client, selfNumber)
-        inviter.setParameters(inviteeDistanceDistribution=SequentialDistribution(values))
+        inviter.setParameters(inviteeDistribution=SequentialDistribution(values))
         inviter._invite()
-        attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
+        attendees = tuple(event.component.mainComponent().properties('ATTENDEE'))
         self.assertEquals(len(attendees), 1)
         for paramname, paramvalue in {
             'CN': 'User %d' % (otherNumber,),
@@ -445,18 +473,18 @@ class InviterTests(TestCase):
         invitee on the event, a different user is added instead.
         """
         selfNumber = 1
-        vevent, _ignore_event, _ignore_calendar, client = self._simpleAccount(
+        _ignore_vevent, event, _ignore_calendar, client = self._simpleAccount(
             selfNumber, INVITED_EVENT)
 
-        invitee = tuple(vevent.mainComponent().properties('ATTENDEE'))[0]
+        invitee = tuple(event.component.mainComponent().properties('ATTENDEE'))[0]
         inviteeNumber = int(invitee.parameterValue('CN').split()[1])
         anotherNumber = inviteeNumber + 5
         values = [inviteeNumber - selfNumber, anotherNumber - selfNumber]
 
         inviter = Inviter(Clock(), self.sim, client, selfNumber)
-        inviter.setParameters(inviteeDistanceDistribution=SequentialDistribution(values))
+        inviter.setParameters(inviteeDistribution=SequentialDistribution(values))
         inviter._invite()
-        attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
+        attendees = tuple(event.component.mainComponent().properties('ATTENDEE'))
         self.assertEquals(len(attendees), 3)
         for paramname, paramvalue in {
             'CN': 'User %02d' % (anotherNumber,),
@@ -480,7 +508,7 @@ class InviterTests(TestCase):
             selfNumber, INVITED_EVENT)
         inviter = Inviter(Clock(), self.sim, client, selfNumber)
         # Always return a user number which has already been invited.
-        inviter.setParameters(inviteeDistanceDistribution=Deterministic(2 - selfNumber))
+        inviter.setParameters(inviteeDistribution=Deterministic(2 - selfNumber))
         inviter._invite()
         attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
         self.assertEquals(len(attendees), 2)
@@ -517,12 +545,12 @@ class RealisticInviterTests(TestCase):
 
 
     def _simpleAccount(self, userNumber, eventText):
+        client = StubClient(userNumber, self.mktemp())
         vevent = Component.fromString(eventText)
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'calendar', u'/cal/', None)
-        event = Event(calendar.url + u'1234.ics', None, vevent)
+        event = Event(client.serializeLocation(), calendar.url + u'1234.ics', None, vevent)
         calendar.events = {u'1234.ics': event}
-        client = StubClient(userNumber)
         client._events.update({event.url: event})
         client._calendars.update({calendar.url: calendar})
 
@@ -531,7 +559,7 @@ class RealisticInviterTests(TestCase):
 
     def test_enabled(self):
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
 
         inviter = RealisticInviter(None, self.sim, client, userNumber, **{"enabled":False})
         self.assertEqual(inviter.enabled, False)
@@ -547,7 +575,7 @@ class RealisticInviterTests(TestCase):
         calendar = Calendar(
             caldavxml.schedule_inbox, set(), u'inbox', u'/sched/inbox', None)
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars.update({calendar.url: calendar})
 
         inviter = RealisticInviter(None, self.sim, client, userNumber, **{"enabled":False})
@@ -562,7 +590,7 @@ class RealisticInviterTests(TestCase):
         does nothing.
         """
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         inviter = RealisticInviter(None, self.sim, client, userNumber)
         inviter._invite()
         self.assertEquals(client._events, {})
@@ -576,16 +604,18 @@ class RealisticInviterTests(TestCase):
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'personal stuff', u'/cals/personal', None)
         userNumber = 16
-        client = StubClient(userNumber)
+        serializePath = self.mktemp()
+        os.mkdir(serializePath)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars.update({calendar.url: calendar})
         inviter = RealisticInviter(Clock(), self.sim, client, userNumber)
         inviter.setParameters(
-            inviteeDistanceDistribution=Deterministic(1),
+            inviteeDistribution=Deterministic(1),
             inviteeCountDistribution=Deterministic(1)
         )
         inviter._invite()
         self.assertEquals(len(client._events), 1)
-        attendees = tuple(client._events.values()[0].vevent.mainComponent().properties('ATTENDEE'))
+        attendees = tuple(client._events.values()[0].component.mainComponent().properties('ATTENDEE'))
         expected = set(("mailto:user%02d@example.com" %  (userNumber,), "mailto:user%02d@example.com" %  (userNumber + 1,),))
         for attendee in attendees:
             expected.remove(attendee.value())
@@ -601,7 +631,7 @@ class RealisticInviterTests(TestCase):
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'personal stuff', u'/cals/personal', None)
         selfNumber = 12
-        client = StubClient(selfNumber)
+        client = StubClient(selfNumber, self.mktemp())
         client._calendars.update({calendar.url: calendar})
 
         otherNumber = 20
@@ -609,12 +639,12 @@ class RealisticInviterTests(TestCase):
 
         inviter = RealisticInviter(Clock(), self.sim, client, selfNumber)
         inviter.setParameters(
-            inviteeDistanceDistribution=SequentialDistribution(values),
+            inviteeDistribution=SequentialDistribution(values),
             inviteeCountDistribution=Deterministic(1)
         )
         inviter._invite()
         self.assertEquals(len(client._events), 1)
-        attendees = tuple(client._events.values()[0].vevent.mainComponent().properties('ATTENDEE'))
+        attendees = tuple(client._events.values()[0].component.mainComponent().properties('ATTENDEE'))
         expected = set(("mailto:user%02d@example.com" %  (selfNumber,), "mailto:user%02d@example.com" %  (otherNumber,),))
         for attendee in attendees:
             expected.remove(attendee.value())
@@ -630,7 +660,7 @@ class RealisticInviterTests(TestCase):
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'personal stuff', u'/cals/personal', None)
         selfNumber = 1
-        client = StubClient(selfNumber)
+        client = StubClient(selfNumber, self.mktemp())
         client._calendars.update({calendar.url: calendar})
 
         inviteeNumber = 20
@@ -639,12 +669,12 @@ class RealisticInviterTests(TestCase):
 
         inviter = RealisticInviter(Clock(), self.sim, client, selfNumber)
         inviter.setParameters(
-            inviteeDistanceDistribution=SequentialDistribution(values),
+            inviteeDistribution=SequentialDistribution(values),
             inviteeCountDistribution=Deterministic(2)
         )
         inviter._invite()
         self.assertEquals(len(client._events), 1)
-        attendees = tuple(client._events.values()[0].vevent.mainComponent().properties('ATTENDEE'))
+        attendees = tuple(client._events.values()[0].component.mainComponent().properties('ATTENDEE'))
         expected = set((
             "mailto:user%02d@example.com" %  (selfNumber,),
             "mailto:user%02d@example.com" %  (inviteeNumber,),
@@ -664,11 +694,11 @@ class RealisticInviterTests(TestCase):
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'personal stuff', u'/cals/personal', None)
         userNumber = 1
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars.update({calendar.url: calendar})
         inviter = RealisticInviter(Clock(), self.sim, client, userNumber)
         inviter.setParameters(
-            inviteeDistanceDistribution=Deterministic(1),
+            inviteeDistribution=Deterministic(1),
             inviteeCountDistribution=Deterministic(2)
         )
         inviter._invite()
@@ -687,7 +717,7 @@ class AccepterTests(TestCase):
 
     def test_enabled(self):
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
 
         accepter = Accepter(None, self.sim, client, userNumber, **{"enabled":False})
         self.assertEqual(accepter.enabled, False)
@@ -700,7 +730,7 @@ class AccepterTests(TestCase):
         If an event on an unknown calendar changes, it is ignored.
         """
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         accepter = Accepter(None, self.sim, client, userNumber)
         accepter.eventChanged('/some/calendar/1234.ics')
 
@@ -714,7 +744,7 @@ class AccepterTests(TestCase):
         calendarURL = '/some/calendar/'
         calendar = Calendar(
             csxml.dropbox_home, set(), u'notification', calendarURL, None)
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars[calendarURL] = calendar
         accepter = Accepter(None, self.sim, client, userNumber)
         accepter.eventChanged(calendarURL + '1234.ics')
@@ -731,9 +761,9 @@ class AccepterTests(TestCase):
         calendarURL = '/some/calendar/'
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'calendar', calendarURL, None)
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars[calendarURL] = calendar
-        event = Event(calendarURL + u'1234.ics', None, vevent)
+        event = Event(client.serializeLocation(), calendarURL + u'1234.ics', None, vevent)
         client._events[event.url] = event
         accepter = Accepter(None, self.sim, client, userNumber)
         accepter.eventChanged(event.url)
@@ -754,9 +784,9 @@ class AccepterTests(TestCase):
         calendarURL = '/some/calendar/'
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'calendar', calendarURL, None)
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars[calendarURL] = calendar
-        event = Event(calendarURL + u'1234.ics', None, vevent)
+        event = Event(client.serializeLocation(), calendarURL + u'1234.ics', None, vevent)
         client._events[event.url] = event
         accepter = Accepter(clock, self.sim, client, userNumber)
         accepter.random = Deterministic()
@@ -777,10 +807,10 @@ class AccepterTests(TestCase):
         vevent = Component.fromString(INBOX_REPLY)
         inbox = Calendar(
             caldavxml.schedule_inbox, set(), u'the inbox', inboxURL, None)
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars[inboxURL] = inbox
 
-        inboxEvent = Event(inboxURL + u'4321.ics', None, vevent)
+        inboxEvent = Event(client.serializeLocation(), inboxURL + u'4321.ics', None, vevent)
         client._setEvent(inboxEvent.url, inboxEvent)
         accepter = Accepter(clock, self.sim, client, userNumber) 
         accepter.eventChanged(inboxEvent.url)
@@ -801,10 +831,10 @@ class AccepterTests(TestCase):
         vevent = Component.fromString(INBOX_REPLY)
         inbox = Calendar(
             caldavxml.schedule_inbox, set(), u'the inbox', inboxURL, None)
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars[inboxURL] = inbox
 
-        inboxEvent = Event(inboxURL + u'4321.ics', None, vevent)
+        inboxEvent = Event(client.serializeLocation(), inboxURL + u'4321.ics', None, vevent)
         client._setEvent(inboxEvent.url, inboxEvent)
         client._failDeleteWithObject(inboxEvent.url, IncorrectResponseCode(
                     NO_CONTENT,
@@ -830,7 +860,7 @@ class AccepterTests(TestCase):
         vevent = Component.fromString(INVITED_EVENT)
         attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
         userNumber = int(attendees[1].parameterValue('CN').split(None, 1)[1])
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
 
         calendarURL = '/some/calendar/'
         calendar = Calendar(
@@ -842,10 +872,10 @@ class AccepterTests(TestCase):
             caldavxml.schedule_inbox, set(), u'the inbox', inboxURL, None)
         client._calendars[inboxURL] = inbox
 
-        event = Event(calendarURL + u'1234.ics', None, vevent)
+        event = Event(client.serializeLocation(), calendarURL + u'1234.ics', None, vevent)
         client._setEvent(event.url, event)
 
-        inboxEvent = Event(inboxURL + u'4321.ics', None, vevent)
+        inboxEvent = Event(client.serializeLocation(), inboxURL + u'4321.ics', None, vevent)
         client._setEvent(inboxEvent.url, inboxEvent)
 
         accepter = Accepter(clock, self.sim, client, userNumber)
@@ -853,7 +883,7 @@ class AccepterTests(TestCase):
         accepter.eventChanged(event.url)
         clock.advance(randomDelay)
 
-        vevent = client._events[event.url].vevent
+        vevent = client._events[event.url].component
         attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
         self.assertEquals(len(attendees), 2)
         self.assertEquals(
@@ -880,9 +910,9 @@ class AccepterTests(TestCase):
         calendarURL = '/some/calendar/'
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'calendar', calendarURL, None)
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         client._calendars[calendarURL] = calendar
-        event = Event(calendarURL + u'1234.ics', None, vevent)
+        event = Event(client.serializeLocation(), calendarURL + u'1234.ics', None, vevent)
         client._events[event.url] = event
         accepter = Accepter(clock, self.sim, client, userNumber)
         accepter.setParameters(acceptDelayDistribution=Deterministic(randomDelay))
@@ -890,14 +920,14 @@ class AccepterTests(TestCase):
         clock.advance(randomDelay)
 
         # Now re-set the event so it has to be accepted again
-        event.vevent = Component.fromString(INVITED_EVENT)
+        event.component = Component.fromString(INVITED_EVENT)
 
         # And now re-deliver it
         accepter.eventChanged(event.url)
         clock.advance(randomDelay)
 
         # And ensure that it was accepted again
-        vevent = client._events[event.url].vevent
+        vevent = client._events[event.url].component
         attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
         self.assertEquals(len(attendees), 2)
         self.assertEquals(
@@ -915,7 +945,7 @@ class AccepterTests(TestCase):
         """
         clock = Clock()
         userNumber = 2
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
         randomDelay = 3
 
         calendarURL = '/some/calendar/'
@@ -924,7 +954,7 @@ class AccepterTests(TestCase):
         client._calendars[calendarURL] = calendar
 
         vevent = Component.fromString(INVITED_EVENT)
-        event = Event(calendarURL + u'1234.ics', None, vevent)
+        event = Event(client.serializeLocation(), calendarURL + u'1234.ics', None, vevent)
         client._setEvent(event.url, event)
 
         accepter = Accepter(clock, self.sim, client, userNumber)
@@ -951,7 +981,7 @@ class EventerTests(TestCase):
 
     def test_enabled(self):
         userNumber = 13
-        client = StubClient(userNumber)
+        client = StubClient(userNumber, self.mktemp())
 
         eventer = Eventer(None, self.sim, client, None, **{"enabled":False})
         self.assertEqual(eventer.enabled, False)
@@ -966,7 +996,7 @@ class EventerTests(TestCase):
         """
         calendar = Calendar(
             caldavxml.schedule_inbox, set(), u'inbox', u'/sched/inbox', None)
-        client = StubClient(21)
+        client = StubClient(21, self.mktemp())
         client._calendars.update({calendar.url: calendar})
 
         eventer = Eventer(None, self.sim, client, None)
@@ -982,7 +1012,7 @@ class EventerTests(TestCase):
         """
         calendar = Calendar(
             caldavxml.calendar, set(('VEVENT',)), u'personal stuff', u'/cals/personal', None)
-        client = StubClient(31)
+        client = StubClient(31, self.mktemp())
         client._calendars.update({calendar.url: calendar})
 
         eventer = Eventer(Clock(), self.sim, client, None)

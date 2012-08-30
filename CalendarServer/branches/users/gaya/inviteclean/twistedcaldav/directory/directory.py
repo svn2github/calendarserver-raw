@@ -77,6 +77,9 @@ class DirectoryService(LoggingMixIn):
     recordType_groups = "groups"
     recordType_locations = "locations"
     recordType_resources = "resources"
+
+    searchContext_location = "location"
+    searchContext_attendee = "attendee"
     
     def _generatedGUID(self):
         if not hasattr(self, "_guid"):
@@ -210,6 +213,18 @@ class DirectoryService(LoggingMixIn):
 
         return record if record and record.enabledForCalendaring else None
 
+    def recordWithCachedGroupsAlias(self, recordType, alias):
+        """
+        @param recordType: the type of the record to look up.
+        @param alias: the cached-groups alias of the record to look up.
+        @type alias: C{str}
+
+        @return: a deferred L{IDirectoryRecord} with the given cached-groups
+            alias, or C{None} if no such record is found.
+        """
+        # The default implementation uses guid
+        return succeed(self.recordWithGUID(alias))
+
     def allRecords(self):
         for recordType in self.recordTypes():
             for record in self.listRecords(recordType):
@@ -224,6 +239,95 @@ class DirectoryService(LoggingMixIn):
 
         return self.recordsMatchingFields(fields, operand=operand,
             recordType=recordType)
+
+    def recordTypesForSearchContext(self, context):
+        """
+        Map calendarserver-principal-search REPORT context value to applicable record types
+
+        @param context: The context value to map (either "location" or "attendee")
+        @type context: C{str}
+        @returns: The list of record types the context maps to
+        @rtype: C{list} of C{str}
+        """
+        if context == self.searchContext_location:
+            recordTypes = [self.recordType_locations]
+        elif context == self.searchContext_attendee:
+            recordTypes = [self.recordType_users, self.recordType_groups,
+                self.recordType_resources]
+        else:
+            recordTypes = list(self.recordTypes())
+        return recordTypes
+
+
+    def recordsMatchingTokens(self, tokens, context=None):
+        """
+        @param tokens: The tokens to search on
+        @type tokens: C{list} of C{str} (utf-8 bytes)
+        @param context: An indication of what the end user is searching
+            for; "attendee", "location", or None
+        @type context: C{str}
+        @return: a deferred sequence of L{IDirectoryRecord}s which
+            match the given tokens and optional context.
+
+        Each token is searched for within each record's full name and
+        email address; if each token is found within a record that
+        record is returned in the results.
+
+        If context is None, all record types are considered.  If
+        context is "location", only locations are considered.  If
+        context is "attendee", only users, groups, and resources
+        are considered.
+        """
+
+        # Default, bruteforce method; override with one optimized for each
+        # service
+
+        def fieldMatches(fieldValue, value):
+            if fieldValue is None:
+                return False
+            elif type(fieldValue) in types.StringTypes:
+                fieldValue = (fieldValue,)
+
+            for testValue in fieldValue:
+                testValue = testValue.lower()
+                value = value.lower()
+
+                try:
+                    testValue.index(value)
+                    return True
+                except ValueError:
+                    pass
+
+            return False
+
+        def recordMatches(record):
+            for token in tokens:
+                for fieldName in ["fullName", "emailAddresses"]:
+                    try:
+                        fieldValue = getattr(record, fieldName)
+                        if fieldMatches(fieldValue, token):
+                            break
+                    except AttributeError:
+                        # No value
+                        pass
+                else:
+                    return False
+            return True
+
+
+        def yieldMatches(recordTypes):
+            try:
+                for recordType in [r for r in recordTypes if r in self.recordTypes()]:
+                    for record in self.listRecords(recordType):
+                        if recordMatches(record):
+                            yield record
+
+            except UnknownRecordTypeError:
+                # Skip this service since it doesn't understand this record type
+                pass
+
+        recordTypes = self.recordTypesForSearchContext(context)
+        return succeed(yieldMatches(recordTypes))
 
 
     def recordsMatchingFields(self, fields, operand="or", recordType=None):
@@ -623,10 +727,12 @@ class GroupMembershipCacheUpdater(LoggingMixIn):
             self.log_info("Group membership snapshot file does not yet exist")
             fast = False
             previousMembers = {}
+            callGroupsChanged = False
         else:
             self.log_info("Group membership snapshot file exists: %s" %
                 (snapshotFile.path,))
             previousMembers = pickle.loads(snapshotFile.getContent())
+            callGroupsChanged = True
 
         if useLock:
             self.log_info("Attempting to acquire group membership cache lock")
@@ -644,7 +750,13 @@ class GroupMembershipCacheUpdater(LoggingMixIn):
             # populate proxy DB from external resource info
             self.log_info("Applying proxy assignment changes")
             assignmentCount = 0
+            totalNumAssignments = len(assignments)
+            currentAssignmentNum = 0
             for principalUID, members in assignments:
+                currentAssignmentNum += 1
+                if currentAssignmentNum % 1000 == 0:
+                    self.log_info("...proxy assignment %d of %d" % (currentAssignmentNum,
+                        totalNumAssignments))
                 try:
                     current = (yield self.proxyDB.getMembers(principalUID))
                     if members != current:
@@ -695,13 +807,6 @@ class GroupMembershipCacheUpdater(LoggingMixIn):
                 for member in groupMembers:
                     memberships = members.setdefault(member, set())
                     memberships.add(groupGUID)
-                    if member in previousMembers:
-                        # Remove from previousMembers; anything still left in
-                        # previousMembers when this loop is done will be
-                        # deleted from cache (since only members that were
-                        # previously in delegated-to groups but are no longer
-                        # would still be in previousMembers)
-                        del previousMembers[member]
 
             self.log_info("There are %d users delegated-to via groups" %
                 (len(members),))
@@ -721,14 +826,48 @@ class GroupMembershipCacheUpdater(LoggingMixIn):
 
         self.log_info("Storing %d group memberships in memcached" %
                        (len(members),))
+        changedMembers = set()
+        totalNumMembers = len(members)
+        currentMemberNum = 0
         for member, groups in members.iteritems():
+            currentMemberNum += 1
+            if currentMemberNum % 1000 == 0:
+                self.log_info("...membership %d of %d" % (currentMemberNum,
+                    totalNumMembers))
             # self.log_debug("%s is in %s" % (member, groups))
             yield self.cache.setGroupsFor(member, groups)
+            if groups != previousMembers.get(member, None):
+                # This principal has had a change in group membership
+                # so invalidate the PROPFIND response cache
+                changedMembers.add(member)
+            try:
+                # Remove from previousMembers; anything still left in
+                # previousMembers when this loop is done will be
+                # deleted from cache (since only members that were
+                # previously in delegated-to groups but are no longer
+                # would still be in previousMembers)
+                del previousMembers[member]
+            except KeyError:
+                pass
 
         # Remove entries for principals that no longer are in delegated-to
         # groups
         for member, groups in previousMembers.iteritems():
             yield self.cache.deleteGroupsFor(member)
+            changedMembers.add(member)
+
+        # For principals whose group membership has changed, call groupsChanged()
+        if callGroupsChanged and not fast and hasattr(self.directory, "principalCollection"):
+            for member in changedMembers:
+                record = yield self.directory.recordWithCachedGroupsAlias(
+                    self.directory.recordType_users, member)
+                if record is not None:
+                    principal = self.directory.principalCollection.principalForRecord(record)
+                    if principal is not None:
+                        self.log_debug("Group membership changed for %s (%s)" %
+                            (record.shortNames[0], record.guid,))
+                        if hasattr(principal, "groupsChanged"):
+                            yield principal.groupsChanged()
 
         yield self.cache.setPopulatedMarker()
 
@@ -738,7 +877,7 @@ class GroupMembershipCacheUpdater(LoggingMixIn):
 
         self.log_info("Group memberships cache updated")
 
-        returnValue((fast, len(members)))
+        returnValue((fast, len(members), len(changedMembers)))
 
 
 
@@ -940,6 +1079,14 @@ class GroupMembershipCacherServiceMaker(LoggingMixIn):
         # Setup the directory
         from calendarserver.tap.util import directoryFromConfig
         directory = directoryFromConfig(config)
+
+        # We have to set cacheNotifierFactory otherwise group cacher can't
+        # invalidate the cache tokens for principals whose membership has
+        # changed
+        if config.EnableResponseCache and config.Memcached.Pools.Default.ClientEnabled:
+            from twistedcaldav.directory.principal import DirectoryPrincipalResource
+            from twistedcaldav.cache import MemcacheChangeNotifier
+            DirectoryPrincipalResource.cacheNotifierFactory = MemcacheChangeNotifier
 
         # Setup the ProxyDB Service
         proxydbClass = namedClass(config.ProxyDBService.type)

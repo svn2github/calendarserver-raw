@@ -95,7 +95,7 @@ class ProfileBase(object):
             type="operation",
             phase="start",
             user=self._client.record.uid,
-            client_type=self._client._client_type,
+            client_type=self._client.title,
             client_id=self._client._client_id,
             label=label,
             lag=lag,
@@ -112,7 +112,7 @@ class ProfileBase(object):
                 phase="end",
                 duration=after - before,
                 user=self._client.record.uid,
-                client_type=self._client._client_type,
+                client_type=self._client.title,
                 client_id=self._client._client_id,
                 label=label,
                 success=success,
@@ -120,7 +120,22 @@ class ProfileBase(object):
             return passthrough
         deferred.addBoth(finished)
         return deferred
-        
+
+
+    def _failedOperation(self, label, reason):
+        """
+        Helper to emit a log event when an operation fails.
+        """
+        msg(
+            type="operation",
+            phase="failed",
+            user=self._client.record.uid,
+            client_type=self._client.title,
+            client_id=self._client._client_id,
+            label=label,
+            reason=reason,
+        )
+        self._sim._simFailure("%s: %s" % (label, reason,), self._reactor)
 
 
 
@@ -156,11 +171,11 @@ class Inviter(ProfileBase):
         self,
         enabled=True,
         sendInvitationDistribution=NormalDistribution(600, 60),
-        inviteeDistanceDistribution=UniformDiscreteDistribution(range(-10, 11))
+        inviteeDistribution=UniformDiscreteDistribution(range(-10, 11))
     ):
         self.enabled = enabled
         self._sendInvitationDistribution = sendInvitationDistribution
-        self._inviteeDistanceDistribution = inviteeDistanceDistribution
+        self._inviteeDistribution = inviteeDistribution
 
 
     def run(self):
@@ -180,7 +195,7 @@ class Inviter(ProfileBase):
 
         for _ignore_i in range(10):
             invitee = max(
-                0, self._number + self._inviteeDistanceDistribution.sample())
+                0, self._number + self._inviteeDistribution.sample())
             try:
                 record = self._sim.getUserRecord(invitee)
             except IndexError:
@@ -236,12 +251,12 @@ class Inviter(ProfileBase):
             while events:
                 uuid = self.random.choice(events)
                 events.remove(uuid)
-                event = calendar.events[uuid].vevent
+                event = calendar.events[uuid].component
                 if event is None:
                     continue
 
-                vevent = event.mainComponent()
-                organizer = vevent.getOrganizerProperty()
+                component = event.mainComponent()
+                organizer = component.getOrganizerProperty()
                 if organizer is not None and not self._isSelfAttendee(organizer):
                     # This event was organized by someone else, don't try to invite someone to it.
                     continue
@@ -249,7 +264,7 @@ class Inviter(ProfileBase):
                 href = calendar.url + uuid
 
                 # Find out who might attend
-                attendees = tuple(vevent.properties('ATTENDEE'))
+                attendees = tuple(component.properties('ATTENDEE'))
 
                 d = self._addAttendee(event, attendees)
                 d.addCallbacks(
@@ -291,7 +306,8 @@ END:VCALENDAR
         self,
         enabled=True,
         sendInvitationDistribution=NormalDistribution(600, 60),
-        inviteeDistanceDistribution=UniformDiscreteDistribution(range(-10, 11)),
+        inviteeDistribution=UniformDiscreteDistribution(range(-10, 11)),
+        inviteeClumping=True,
         inviteeCountDistribution=LogNormalDistribution(1.2, 1.2),
         eventStartDistribution=NearFutureDistribution(),
         eventDurationDistribution=UniformDiscreteDistribution([
@@ -303,7 +319,8 @@ END:VCALENDAR
     ):
         self.enabled = enabled
         self._sendInvitationDistribution = sendInvitationDistribution
-        self._inviteeDistanceDistribution = inviteeDistanceDistribution
+        self._inviteeDistribution = inviteeDistribution
+        self._inviteeClumping = inviteeClumping
         self._inviteeCountDistribution = inviteeCountDistribution
         self._eventStartDistribution = eventStartDistribution
         self._eventDurationDistribution = eventDurationDistribution
@@ -326,8 +343,12 @@ END:VCALENDAR
             invitees.add(att.value())
 
         for _ignore_i in range(10):
-            invitee = max(
-                0, self._number + self._inviteeDistanceDistribution.sample())
+
+            sample = self._inviteeDistribution.sample()
+            if self._inviteeClumping:
+                sample = self._number + sample
+            invitee = max(0, sample)
+
             try:
                 record = self._sim.getUserRecord(invitee)
             except IndexError:
@@ -401,6 +422,7 @@ END:VCALENDAR
                 try:
                     self._addAttendee(vevent, attendees)
                 except CannotAddAttendee:
+                    self._failedOperation("invite", "Cannot add attendee")
                     return succeed(None)
 
             href = '%s%s.ics' % (calendar.url, uid)
@@ -448,10 +470,10 @@ class Accepter(ProfileBase):
         if href in self._accepting:
             return
 
-        vevent = self._client._events[href].vevent
+        component = self._client._events[href].component
         # Check to see if this user is in the attendee list in the
         # NEEDS-ACTION PARTSTAT.
-        attendees = tuple(vevent.mainComponent().properties('ATTENDEE'))
+        attendees = tuple(component.mainComponent().properties('ATTENDEE'))
         for attendee in attendees:
             if self._isSelfAttendee(attendee):
                 if attendee.parameterValue('PARTSTAT') == 'NEEDS-ACTION':
@@ -465,8 +487,8 @@ class Accepter(ProfileBase):
         if href in self._accepting:
             return
 
-        vevent = self._client._events[href].vevent
-        method = vevent.propertyValue('METHOD')
+        component = self._client._events[href].component
+        method = component.propertyValue('METHOD')
         if method == "REPLY":
             # Replies are immediately deleted
             self._accepting.add(href)
@@ -705,8 +727,9 @@ class OperationLogger(SummarizingMixin):
     logger.
     """
     formats = {
-        u"start": u"%(user)s - - - - - - - - - - - %(label)8s BEGIN %(lag)s",
-        u"end"  : u"%(user)s - - - - - - - - - - - %(label)8s END [%(duration)5.2f s]",
+        u"start" : u"%(user)s - - - - - - - - - - - %(label)8s BEGIN %(lag)s",
+        u"end"   : u"%(user)s - - - - - - - - - - - %(label)8s END [%(duration)5.2f s]",
+        u"failed": u"%(user)s x x x x x x x x x x x %(label)8s FAILED %(reason)s",
         }
 
     lagFormat = u'{lag %5.2f ms}'

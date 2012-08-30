@@ -381,7 +381,7 @@ class OpenDirectoryService(CachingDirectoryService):
 
         guids = set()
 
-        self.log_info("Looking up which groups %s is a member of" % (guid,))
+        self.log_debug("Looking up which groups %s is a member of" % (guid,))
         try:
             self.log_debug("opendirectory.queryRecordsWithAttribute_list(%r,%r,%r,%r,%r,%r,%r)" % (
                 self.directory,
@@ -442,7 +442,7 @@ class OpenDirectoryService(CachingDirectoryService):
             if recordGUID:
                 guids.add(recordGUID)
 
-        self.log_info("%s is a member of %d groups" % (guid, len(guids)))
+        self.log_debug("%s is a member of %d groups" % (guid, len(guids)))
 
         return guids
 
@@ -529,6 +529,194 @@ class OpenDirectoryService(CachingDirectoryService):
                 return set([item.lower() if lower else item for item in attribute])
         else:
             return ()
+
+    def recordsMatchingTokens(self, tokens, context=None, lookupMethod=None):
+        """
+        @param tokens: The tokens to search on
+        @type tokens: C{list} of C{str} (utf-8 bytes)
+        @param context: An indication of what the end user is searching
+            for; "attendee", "location", or None
+        @type context: C{str}
+        @return: a deferred sequence of L{IDirectoryRecord}s which
+            match the given tokens and optional context.
+
+        Each token is searched for within each record's full name and
+        email address; if each token is found within a record that
+        record is returned in the results.
+
+        If context is None, all record types are considered.  If
+        context is "location", only locations are considered.  If
+        context is "attendee", only users, groups, and resources
+        are considered.
+        """
+
+        if lookupMethod is None:
+            lookupMethod=self.odModule.queryRecordsWithAttributes_list
+
+        def collectResults(results):
+            self.log_debug("Got back %d records from OD" % (len(results),))
+            for key, value in results:
+                self.log_debug("OD result: %s %s" % (key, value))
+                try:
+                    recordNodeName = value.get(
+                        dsattributes.kDSNAttrMetaNodeLocation)
+                    recordShortNames = self._uniqueTupleFromAttribute(
+                        value.get(dsattributes.kDSNAttrRecordName))
+
+                    recordGUID = value.get(dsattributes.kDS1AttrGeneratedUID)
+
+                    recordType = value.get(dsattributes.kDSNAttrRecordType)
+                    if isinstance(recordType, list):
+                        recordType = recordType[0]
+                    if not recordType:
+                        continue
+                    recordType = self._fromODRecordTypes[recordType]
+
+                    # Skip if group restriction is in place and guid is not
+                    # a member (but don't skip any groups)
+                    if (recordType != self.recordType_groups and
+                        self.restrictedGUIDs is not None):
+                        if str(recordGUID) not in self.restrictedGUIDs:
+                            continue
+
+                    recordAuthIDs = self._setFromAttribute(
+                        value.get(dsattributes.kDSNAttrAltSecurityIdentities))
+                    recordFullName = value.get(
+                        dsattributes.kDS1AttrDistinguishedName)
+                    recordFirstName = value.get(dsattributes.kDS1AttrFirstName)
+                    recordLastName = value.get(dsattributes.kDS1AttrLastName)
+                    recordEmailAddresses = self._setFromAttribute(
+                        value.get(dsattributes.kDSNAttrEMailAddress),
+                        lower=True)
+
+                    # Special case for groups, which have members.
+                    if recordType == self.recordType_groups:
+                        memberGUIDs = value.get(dsattributes.kDSNAttrGroupMembers)
+                        if memberGUIDs is None:
+                            memberGUIDs = ()
+                        elif type(memberGUIDs) is str:
+                            memberGUIDs = (memberGUIDs,)
+                        nestedGUIDs = value.get(dsattributes.kDSNAttrNestedGroups)
+                        if nestedGUIDs:
+                            if type(nestedGUIDs) is str:
+                                nestedGUIDs = (nestedGUIDs,)
+                            memberGUIDs += tuple(nestedGUIDs)
+                        else:
+                            nestedGUIDs = ()
+                    else:
+                        nestedGUIDs = ()
+                        memberGUIDs = ()
+
+                    # Create records but don't store them in our index or
+                    # send them to memcached, because these are transient,
+                    # existing only so we can create principal resource
+                    # objects that are used to generate the REPORT result.
+
+                    record = OpenDirectoryRecord(
+                        service               = self,
+                        recordType            = recordType,
+                        guid                  = recordGUID,
+                        nodeName              = recordNodeName,
+                        shortNames            = recordShortNames,
+                        authIDs               = recordAuthIDs,
+                        fullName              = recordFullName,
+                        firstName             = recordFirstName,
+                        lastName              = recordLastName,
+                        emailAddresses        = recordEmailAddresses,
+                        memberGUIDs           = memberGUIDs,
+                        nestedGUIDs           = nestedGUIDs,
+                        extProxies            = (),
+                        extReadOnlyProxies    = (),
+                    )
+
+                    # (Copied from below)
+                    # Look up augment information
+                    # TODO: this needs to be deferred but for now we hard code
+                    # the deferred result because we know it is completing
+                    # immediately.
+                    if self.augmentService is not None:
+                        d = self.augmentService.getAugmentRecord(record.guid,
+                            recordType)
+                        d.addCallback(lambda x:record.addAugmentInformation(x))
+
+                    yield record
+
+                except KeyError:
+                    pass
+
+        def multiQuery(directory, queries, recordTypes, attrs):
+            byGUID = { }
+            sets = []
+
+            caseInsensitive = True
+            for compound in queries:
+                compound = compound.generate()
+
+                self.log_debug("Calling OD: Types %s, Query %s" %
+                    (recordTypes, compound))
+
+                try:
+                    queryResults = lookupMethod(
+                        directory,
+                        compound,
+                        caseInsensitive,
+                        recordTypes,
+                        attrs,
+                    )
+
+                    newSet = set()
+                    for recordName, data in queryResults:
+                        guid = data.get(dsattributes.kDS1AttrGeneratedUID, None)
+                        if guid:
+                            byGUID[guid] = (recordName, data)
+                            newSet.add(guid)
+
+                    sets.append(newSet)
+
+                except self.odModule.ODError, e:
+                    self.log_error("Ignoring OD Error: %d %s" %
+                        (e.message[1], e.message[0]))
+                    continue
+
+            results = []
+            for guid in set.intersection(*sets):
+                recordName, data = byGUID.get(guid, None)
+                if data is not None:
+                    results.append((data[dsattributes.kDSNAttrRecordName], data))
+            return results
+
+        queries = buildQueriesFromTokens(tokens, self._ODFields)
+
+        # Starting with the record types corresponding to the context...
+        recordTypes = self.recordTypesForSearchContext(context)
+        # ...limit to the types this service supports...
+        recordTypes = [r for r in recordTypes if r in self.recordTypes()]
+        # ...and map those to OD representations...
+        recordTypes = [self._toODRecordTypes[r] for r in recordTypes]
+
+        if recordTypes:
+            results = multiQuery(
+                self.directory,
+                queries,
+                recordTypes,
+                [
+                    dsattributes.kDS1AttrGeneratedUID,
+                    dsattributes.kDSNAttrRecordName,
+                    dsattributes.kDSNAttrAltSecurityIdentities,
+                    dsattributes.kDSNAttrRecordType,
+                    dsattributes.kDS1AttrDistinguishedName,
+                    dsattributes.kDS1AttrFirstName,
+                    dsattributes.kDS1AttrLastName,
+                    dsattributes.kDSNAttrEMailAddress,
+                    dsattributes.kDSNAttrMetaNodeLocation,
+                    dsattributes.kDSNAttrGroupMembers,
+                    dsattributes.kDSNAttrNestedGroups,
+                ]
+            )
+            return succeed(collectResults(results))
+        else:
+            return succeed([])
+
 
     def recordsMatchingFields(self, fields, operand="or", recordType=None,
         lookupMethod=None):
@@ -1047,7 +1235,7 @@ class OpenDirectoryService(CachingDirectoryService):
 
         loop = 1
         while valuesToFetch:
-            self.log_info("getGroups loop %d" % (loop,))
+            self.log_debug("getGroups loop %d" % (loop,))
 
             results = []
 
@@ -1055,12 +1243,12 @@ class OpenDirectoryService(CachingDirectoryService):
                 fields = []
                 for value in batch:
                     fields.append(["guid", value, False, "equals"])
-                self.log_info("getGroups fetching batch of %d" %
+                self.log_debug("getGroups fetching batch of %d" %
                     (len(fields),))
                 result = list((yield self.recordsMatchingFields(fields,
                     recordType=self.recordType_groups)))
                 results.extend(result)
-                self.log_info("getGroups got back batch of %d for subtotal of %d" %
+                self.log_debug("getGroups got back batch of %d for subtotal of %d" %
                     (len(result), len(results)))
 
             # Reset values for next iteration
@@ -1074,7 +1262,7 @@ class OpenDirectoryService(CachingDirectoryService):
                 # record.nestedGUIDs() contains the sub groups of this group
                 for memberGUID in record.nestedGUIDs():
                     if memberGUID not in recordsByGUID:
-                        self.log_info("getGroups group %s contains group %s" %
+                        self.log_debug("getGroups group %s contains group %s" %
                             (record.guid, memberGUID))
                         valuesToFetch.add(memberGUID)
 
@@ -1099,6 +1287,35 @@ def buildQueries(recordTypes, fields, mapping):
                     queries.setdefault(key, []).append(recordType)
 
     return queries
+
+
+def buildQueriesFromTokens(tokens, mapping):
+    """
+    OD /Local doesn't support nested complex queries, so create a list of
+    complex queries that will be ANDed together in recordsMatchingTokens()
+
+    @param tokens: The tokens to search on
+    @type tokens: C{list} of C{str}
+    @param mapping: The mapping of DirectoryRecord attributes to OD attributes
+    @type mapping: C{dict}
+    @return: A list of expression objects
+    @type: C{list}
+    """
+
+    if len(tokens) == 0:
+        return None
+
+    fields = ["fullName", "emailAddresses"]
+
+    results = []
+    for token in tokens:
+        queries = []
+        for field in fields:
+            ODField = mapping[field]['odField']
+            query = dsquery.match(ODField, token, "contains")
+            queries.append(query)
+        results.append(dsquery.expression(dsquery.expression.OR, queries))
+    return results
 
 
 

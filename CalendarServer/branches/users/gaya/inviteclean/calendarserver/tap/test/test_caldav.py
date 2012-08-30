@@ -57,7 +57,8 @@ from twistedcaldav.test.util import TestCase, CapturingProcessProtocol
 
 from calendarserver.tap.caldav import (
     CalDAVOptions, CalDAVServiceMaker, CalDAVService, GroupOwnedUNIXServer,
-    DelayedStartupProcessMonitor, DelayedStartupLineLogger, TwistdSlaveProcess
+    DelayedStartupProcessMonitor, DelayedStartupLineLogger, TwistdSlaveProcess,
+    _CONTROL_SERVICE_NAME
 )
 from calendarserver.provision.root import RootResource
 from StringIO import StringIO
@@ -460,7 +461,7 @@ class CalDAVServiceMakerTests(BaseServiceMakerTests):
         self.config["ProcessType"] = "Combined"
         self.writeConfig()
         svc = self.makeService()
-        for serviceName in ["logging"]:
+        for serviceName in [_CONTROL_SERVICE_NAME]:
             socketService = svc.getServiceNamed(serviceName)
             self.assertIsInstance(socketService, GroupOwnedUNIXServer)
             m = socketService.kwargs.get("mode", 0666)
@@ -472,9 +473,9 @@ class CalDAVServiceMakerTests(BaseServiceMakerTests):
         for serviceName in ["stats"]:
             socketService = svc.getServiceNamed(serviceName)
             self.assertIsInstance(socketService, GroupOwnedUNIXServer)
-            m = socketService.kwargs.get("mode", 0444)
+            m = socketService.kwargs.get("mode", 0666)
             self.assertEquals(
-                m, int("440", 8),
+                m, int("660", 8),
                 "Wrong mode on %s: %s" % (serviceName, oct(m))
             )
             self.assertEquals(socketService.gid, alternateGroup)

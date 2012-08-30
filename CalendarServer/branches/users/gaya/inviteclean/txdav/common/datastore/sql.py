@@ -70,7 +70,7 @@ from twext.enterprise.dal.parseschema import significant
 
 from twext.enterprise.dal.syntax import \
     Delete, utcNowSQL, Union, Insert, Len, Max, Parameter, SavepointAction, \
-    Select, Update, ColumnSyntax, TableSyntax, Upper
+    Select, Update, ColumnSyntax, TableSyntax, Upper, Count, ALL_COLUMNS
 
 from twistedcaldav.config import config
 
@@ -84,6 +84,7 @@ from twistedcaldav.dateops import datetimeMktime, parseSQLTimestamp,\
     pyCalendarTodatetime
 
 from txdav.base.datastore.util import normalizeUUIDOrNot
+from twext.enterprise.queue import NullQueuer
 
 from pycalendar.datetime import PyCalendarDateTime
 
@@ -131,8 +132,13 @@ class CommonDataStore(Service, object):
 
     @ivar quota: the amount of space granted to each calendar home (in bytes)
         for storing attachments, or C{None} if quota should not be enforced.
-
     @type quota: C{int} or C{NoneType}
+
+    @ivar queuer: An object with an C{enqueueWork} method, from
+        L{twext.enterprise.queue}.  Initially, this is a L{NullQueuer}, so it
+        is always usable, but in a properly configured environment it will be
+        upgraded to a more capable object that can distribute work throughout a
+        cluster.
     """
 
     implements(ICalendarStore)
@@ -159,6 +165,7 @@ class CommonDataStore(Service, object):
         self.logSQL = logSQL
         self.logTransactionWaits = logTransactionWaits
         self.timeoutTransactions = timeoutTransactions
+        self.queuer = NullQueuer()
         self._migrating = False
         self._enableNotifications = True
 
@@ -334,6 +341,8 @@ class CommonStoreTransactionMonitor(object):
         if self.timeoutSeconds:
             self.delayedTimeout = self.callLater(self.timeoutSeconds, _forceAbort)
 
+
+
 class CommonStoreTransaction(object):
     """
     Transaction implementation for SQL database.
@@ -349,8 +358,6 @@ class CommonStoreTransaction(object):
         self._calendarHomes = {}
         self._addressbookHomes = {}
         self._notificationHomes = {}
-        self._postCommitOperations = []
-        self._postAbortOperations = []
         self._notifierFactory = notifierFactory
         self._notifiedAlready = set()
         self._bumpedAlready = set()
@@ -382,6 +389,10 @@ class CommonStoreTransaction(object):
         self.dialect = sqlTxn.dialect
 
         self._stats = TransactionStatsCollector(self._label, self._store.logStatsLogFile) if self._store.logStats else None
+        self._stats = (
+            TransactionStatsCollector(self._label, self._store.logStatsLogFile)
+            if self._store.logStats else None
+        )
         self.statementCount = 0
         self.iudCount = 0
         self.currentStatement = None
@@ -399,6 +410,22 @@ class CommonStoreTransaction(object):
         if not cls._homeClass:
             __import__("txdav.caldav.datastore.sql")
             __import__("txdav.carddav.datastore.sql")
+
+
+    def enqueue(self, workItem, **kw):
+        """
+        Enqueue a L{twext.enterprise.queue.WorkItem} for later execution.
+
+        For example::
+
+            yield (txn.enqueue(MyWorkItem, workDescription="some work to do")
+                   .whenProposed())
+
+        @return: a work proposal describing various events in the work's
+            life-cycle.
+        @rtype: L{twext.enterprise.queue.WorkProposal}
+        """
+        return self._store.queuer.enqueueWork(self, workItem, **kw)
 
 
     def store(self):
@@ -605,18 +632,18 @@ class CommonStoreTransaction(object):
         return self._apnSubscriptionsBySubscriberQuery.on(self, subscriberGUID=guid)
 
 
-    def postCommit(self, operation, immediately=False):
+    def postCommit(self, operation):
         """
         Run things after C{commit}.
         """
-        self._postCommitOperations.append((operation, immediately))
+        return self._sqlTxn.postCommit(operation)
 
 
     def postAbort(self, operation):
         """
         Run things after C{abort}.
         """
-        self._postAbortOperations.append(operation)
+        return self._sqlTxn.postAbort(operation)
 
 
     def isNotifiedAlready(self, obj):
@@ -773,30 +800,16 @@ class CommonStoreTransaction(object):
         """
         Commit the transaction and execute any post-commit hooks.
         """
-        @inlineCallbacks
-        def postCommit(ignored):
-            for operation, immediately in self._postCommitOperations:
-                if immediately:
-                    yield operation()
-                else:
-                    operation()
-            returnValue(ignored)
-
         if self._stats:
             self._stats.printReport()
-
-        return self._sqlTxn.commit().addCallback(postCommit)
+        return self._sqlTxn.commit()
 
 
     def abort(self):
         """
         Abort the transaction.
         """
-        def postAbort(ignored):
-            for operation in self._postAbortOperations:
-                operation()
-            return ignored
-        return self._sqlTxn.abort().addCallback(postAbort)
+        return self._sqlTxn.abort()
 
 
     def _oldEventsBase(limited): #@NoSelf
@@ -816,9 +829,9 @@ class CommonStoreTransaction(object):
             ],
             From=ch.join(co).join(cb).join(tr),
             Where=(
-                ch.RESOURCE_ID == cb.CALENDAR_HOME_RESOURCE_ID).And(
-                tr.CALENDAR_OBJECT_RESOURCE_ID == co.RESOURCE_ID).And(
-                cb.CALENDAR_RESOURCE_ID == tr.CALENDAR_RESOURCE_ID).And(
+                ch.RESOURCE_ID == cb.CALENDAR_HOME_RESOURCE_ID     ).And(
+                tr.CALENDAR_OBJECT_RESOURCE_ID == co.RESOURCE_ID   ).And(
+                cb.CALENDAR_RESOURCE_ID == tr.CALENDAR_RESOURCE_ID ).And(
                 cb.BIND_MODE == _BIND_MODE_OWN
             ),
             GroupBy=(
@@ -931,7 +944,7 @@ class CommonStoreTransaction(object):
         count = 0
         for dropboxID, path in results:
             attachment = Attachment(self, dropboxID, path)
-            (yield attachment.remove())
+            (yield attachment.remove( ))
             count += 1
         returnValue(count)
 
@@ -1386,7 +1399,7 @@ class CommonHome(LoggingMixIn):
     def _loadPropertyStore(self):
         props = yield PropertyStore.load(
             self.uid(),
-            None,
+            self.uid(),
             self._txn,
             self._resourceID,
             notifyCallback=self.notifyChanged
@@ -1908,9 +1921,9 @@ class _SharedSyncLogic(object):
             # REVISIONS table still exists so we have to detect that and do db
             # INSERT or UPDATE as appropriate
 
-            found = bool((
+            found = bool( (
                 yield self._insertFindPreviouslyNamedQuery.on(
-                    self._txn, resourceID=self._resourceID, name=name)))
+                    self._txn, resourceID=self._resourceID, name=name)) )
             if found:
                 self._syncTokenRevision = (
                     yield self._updatePreviouslyNamedQuery.on(
@@ -1945,19 +1958,19 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
     _objectResourceClass = None
 
-    _bindSchema = None
-    _homeSchema = None
-    _homeChildSchema = None
-    _homeChildMetaDataSchema = None
-    _revisionsSchema = None
-    _objectSchema = None
+    _bindSchema 				= None
+    _homeSchema 				= None
+    _homeChildSchema 			= None
+    _homeChildMetaDataSchema 	= None
+    _revisionsSchema 			= None
+    _objectSchema 				= None
 
-    _bindTable = None
-    _homeChildTable = None
+    _bindTable 			= None
+    _homeChildTable 	= None
     _homeChildBindTable = None
-    _revisionsTable = None
+    _revisionsTable 	= None
     _revisionsBindTable = None
-    _objectTable = None
+    _objectTable 		= None
 
 
     def __init__(self, home, name, resourceID, mode, status, message=None, ownerHome=None):
@@ -1969,20 +1982,20 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         else:
             notifiers = None
 
-        self._home = home
-        self._name = name
-        self._resourceID = resourceID
-        self._bindMode = mode
-        self._bindStatus = status
-        self._bindMessage = message
-        self._ownerHome = home if ownerHome is None else ownerHome
-        self._created = None
-        self._modified = None
-        self._objects = {}
-        self._objectNames = None
+        self._home 				= home
+        self._name 				= name
+        self._resourceID 		= resourceID
+        self._bindMode 			= mode
+        self._bindStatus 		= status
+        self._bindMessage 		= message
+        self._ownerHome 		= home if ownerHome is None else ownerHome
+        self._created 			= None
+        self._modified 			= None
+        self._objects 			= {}
+        self._objectNames 		= None
         self._syncTokenRevision = None
-        self._notifiers = notifiers
-        self._index = None  # Derived classes need to set this
+        self._notifiers 		= notifiers
+        self._index 			= None  # Derived classes need to set this
 
 
     @classproperty
@@ -2143,7 +2156,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
             sharedName = yield self._txn.subtransaction(doInsert)
         except AllRetriesFailed:
             # FIXME: catch more specific exception
-
             sharedName = (yield self._updateBindQuery.on(
                 self._txn,
                 mode=mode, status=status, message=message,
@@ -2428,7 +2440,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 message=bindMessage, ownerHome=self._home
             )
             yield new.initFromStore()
-
             result.append(new)
         returnValue(result)
 
@@ -2594,7 +2605,6 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         
         if not rows:
             returnValue(None)
-
         
         bindMode, homeID, resourceID, resourceName, bindStatus, bindMessage, ownerHomeID = rows[0] #@UnusedVariable
         
@@ -2623,7 +2633,8 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         return cls._bindFor((bind.RESOURCE_ID == Parameter("resourceID"))
                                .And(bind.HOME_RESOURCE_ID == Parameter("homeID"))
                                )
-
+                               
+                               
     @classmethod
     @inlineCallbacks
     def objectWithID(cls, home, resourceID):
@@ -2877,9 +2888,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
         # Set to non-existent state
         self._resourceID = None
-        self._created = None
-        self._modified = None
-        self._objects = {}
+        self._created    = None
+        self._modified   = None
+        self._objects    = {}
 
         yield self.notifyChanged()
 
@@ -2979,6 +2990,25 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
                 self._txn, resourceID=self._resourceID)
             self._objectNames = sorted([row[0] for row in rows])
         returnValue(self._objectNames)
+
+
+    @classproperty
+    def _objectCountQuery(cls): #@NoSelf
+        """
+        DAL query to count all object resources for a home child.
+        """
+        obj = cls._objectSchema
+        return Select([Count(ALL_COLUMNS)], From=obj,
+                      Where=obj.PARENT_RESOURCE_ID == Parameter('resourceID'))
+
+
+    @inlineCallbacks
+    def countObjectResources(self):
+        if self._objectNames is None:
+            rows = yield self._objectCountQuery.on(
+                self._txn, resourceID=self._resourceID)
+            returnValue(rows[0][0])
+        returnValue(len(self._objectNames))
 
 
     def objectResourceWithName(self, name):
@@ -3870,7 +3900,7 @@ class NotificationCollection(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     def _loadPropertyStore(self):
         self._propertyStore = yield PropertyStore.load(
             self._uid,
-            None,
+            self._uid,
             self._txn,
             self._resourceID,
             notifyCallback=self.notifyChanged

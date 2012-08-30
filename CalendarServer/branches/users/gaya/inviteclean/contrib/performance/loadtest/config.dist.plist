@@ -136,6 +136,10 @@
 				<!-- Arguments to use to initialize the OS_X_10_7 instance. -->
 				<key>params</key>
 				<dict>
+					<!-- Name that appears in logs. -->
+					<key>title</key>
+					<string>10.7</string>
+
 					<!-- OS_X_10_7 can poll the calendar home at some interval. This is 
 						in seconds. -->
 					<key>calendarHomePollInterval</key>
@@ -335,11 +339,18 @@
 								</dict>
 							</dict>
 
-							<!-- Define the distribution of who will be invited to an event. Each 
-								set of credentials loaded by the load tester has an index; samples from this 
-								distribution will be added to that index to arrive at the index of some other 
-								credentials, which will be the target of the invitation. -->
-							<key>inviteeDistanceDistribution</key>
+							<!-- Define the distribution of who will be invited to an event.
+							
+								When inviteeClumping is turned on each invitee is based on a sample of
+								users "close to" the organizer based on account index. If the clumping
+								is too "tight" for the requested number of attendees, then invites for
+								those larger numbers will simply fail (the sim will report that situation).
+								
+								When inviteeClumping is off invitees will be sampled across an entire
+								range of account indexes. In this case the distribution ought to be a
+								UniformIntegerDistribution with min=0 and max set to the number of accounts.
+							-->
+							<key>inviteeDistribution</key>
 							<dict>
 								<key>type</key>
 								<string>contrib.performance.stats.UniformIntegerDistribution</string>
@@ -354,18 +365,17 @@
 								</dict>
 							</dict>
 
+							<key>inviteeClumping</key>
+							<true/>
+
 							<!-- Define the distribution of how many attendees will be invited to an event.
-							    Experience shows that sigma should equal sqrt(mu) to give a peak at around 1.
-							    mu = 0.5  sigma = 0.71 gives an average of 1.6 attendees
-							    mu = 0.75 sigma = 0.87 gives an average of 2.6 attendees
-							    mu = 1.0  sigma = 1.0 gives an average of 4 attendees
-							    mu = 1.1  sigma = 1.05 gives an average of 4.7 attendees
-							    mu = 1.2  sigma = 1.1 gives an average of 5.5 attendees
-							    mu = 1.3  sigma = 1.14 gives an average of 6.5 attendees
-							    mu = 1.4  sigma = 1.18 gives an average of 7.6 attendees
-							    mu = 1.5  sigma = 1.22 gives an average of 8.8 attendees
-							    mu = 1.75  sigma = 1.32 gives an average of 12.5 attendees
-							    mu = 2.0  sigma = 1.41 gives an average of 17.4 attendees
+							
+								LogNormal is the best fit to observed data.
+
+
+								For LogNormal "mode" is the peak, "mean" is the mean value.	For invites,
+								mode should typically be 1, and mean whatever matches the user behavior.
+								Our typical mean is 6. 							
 							     -->
 							<key>inviteeCountDistribution</key>
 							<dict>
@@ -373,12 +383,12 @@
 								<string>contrib.performance.stats.LogNormalDistribution</string>
 								<key>params</key>
 								<dict>
-									<!-- mean -->
-									<key>mu</key>
-									<real>1.3</real>
-									<!-- standard deviation -->
-									<key>sigma</key>
-									<real>1.14</real>
+									<!-- mode - peak-->
+									<key>mode</key>
+									<integer>1</integer>
+									<!-- mean - average-->
+									<key>median</key>
+									<integer>6</integer>
 									<!-- maximum -->
 									<key>maximum</key>
 									<real>100</real>
@@ -484,20 +494,24 @@
 							<key>enabled</key>
 							<true/>
 
-							<!-- Define how long to wait after seeing a new invitation before 
-								accepting it. -->
+							<!-- Define how long to wait after seeing a new invitation before
+								accepting it.
+
+								For LogNormal "mode" is the peak, "median" is the 50% cummulative value
+								(i.e., half of the user have accepted by that time).								
+							-->
 							<key>acceptDelayDistribution</key>
 							<dict>
 								<key>type</key>
-								<string>contrib.performance.stats.NormalDistribution</string>
+								<string>contrib.performance.stats.LogNormalDistribution</string>
 								<key>params</key>
 								<dict>
-									<!-- mean -->
-									<key>mu</key>
-									<integer>360</integer>
-									<!-- standard deviation -->
-									<key>sigma</key>
-									<integer>60</integer>
+									<!-- mode - peak-->
+									<key>mode</key>
+									<integer>300</integer>
+									<!-- median - 50% done-->
+									<key>median</key>
+									<integer>1800</integer>
 								</dict>
 							</dict>
 						</dict>

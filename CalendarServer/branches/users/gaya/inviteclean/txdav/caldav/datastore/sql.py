@@ -142,7 +142,7 @@ class CalendarHome(CommonHome):
         for dropboxID, path in rows:
             attachment = Attachment._attachmentPathRoot(self._txn, dropboxID).child(path)
             if attachment.exists():
-                self._txn.postCommit(attachment.remove)
+                yield attachment.remove()
 
         yield Delete(
             From=at,
@@ -1098,12 +1098,13 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
             tr.TRANSPARENT                 : transp,
         }, Return=tr.INSTANCE_ID).on(txn))[0][0]
         peruserdata = component.perUserTransparency(rid)
-        for useruid, transp in peruserdata:
-            (yield Insert({
-                tpy.TIME_RANGE_INSTANCE_ID : instanceid,
-                tpy.USER_ID                : useruid,
-                tpy.TRANSPARENT            : transp,
-            }).on(txn))
+        for useruid, usertransp in peruserdata:
+            if usertransp != transp:
+                (yield Insert({
+                    tpy.TIME_RANGE_INSTANCE_ID : instanceid,
+                    tpy.USER_ID                : useruid,
+                    tpy.TRANSPARENT            : usertransp,
+                }).on(txn))
 
 
     @inlineCallbacks

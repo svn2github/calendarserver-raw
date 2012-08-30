@@ -830,6 +830,10 @@ class CommonHomeChild(FileMetaDataMixin, LoggingMixIn, FancyEqMixin):
         )
 
 
+    def countObjectResources(self):
+        return len(self.listObjectResources())
+
+
     def objectResourceWithName(self, name):
         if name in self._removedObjectResources:
             return None

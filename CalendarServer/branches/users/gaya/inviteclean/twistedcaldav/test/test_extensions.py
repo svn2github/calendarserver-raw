@@ -17,6 +17,7 @@
 
 from twext.python.filepath import CachingFilePath as FilePath
 from txdav.xml.element import WebDAVElement, ResourceType
+from txdav.xml.parser import WebDAVDocument
 from twext.web2.http_headers import MimeType
 from twext.web2.static import MetaDataMixin
 
@@ -24,7 +25,7 @@ from twisted.internet.defer import inlineCallbacks, Deferred, succeed
 from twisted.trial.unittest import TestCase
 from twisted.web.microdom import parseString
 
-from twistedcaldav.extensions import DAVFile, DAVResourceWithChildrenMixin
+from twistedcaldav.extensions import DAVFile, DAVResourceWithChildrenMixin, extractCalendarServerPrincipalSearchData
 
 from xml.etree.cElementTree import XML
 
@@ -219,3 +220,46 @@ class ChildTraversalTests(TestCase):
         self.assertEquals(len(result), 2)
         self.assertEquals(result[0].name, 'cheese')
         self.assertEquals(result[1], ['burger'])
+
+
+class CalendarServerPrincipalSearchTests(TestCase):
+    def test_extractCalendarServerPrincipalSearchData(self):
+        """
+        Exercise the parser for calendarserver-principal-search documents
+        """
+
+        data = """<B:calendarserver-principal-search xmlns:A="DAV:" xmlns:B="http://calendarserver.org/ns/" context="attendee">
+  <B:search-token>morgen</B:search-token>
+  <A:prop>
+    <A:principal-URL/>
+    <A:displayname/>
+  </A:prop>
+</B:calendarserver-principal-search>
+"""
+        doc = WebDAVDocument.fromString(data)
+        tokens, context, applyTo, clientLimit, propElement =  extractCalendarServerPrincipalSearchData(doc.root_element)
+        self.assertEquals(tokens, ["morgen"])
+        self.assertEquals(context, "attendee")
+        self.assertFalse(applyTo)
+        self.assertEquals(clientLimit, None)
+
+
+        data = """<B:calendarserver-principal-search xmlns:A="DAV:" xmlns:B="http://calendarserver.org/ns/">
+  <B:search-token>morgen</B:search-token>
+  <B:search-token>sagen</B:search-token>
+  <B:limit>
+      <B:nresults>42</B:nresults>
+  </B:limit>
+  <A:prop>
+    <A:principal-URL/>
+    <A:displayname/>
+  </A:prop>
+  <A:apply-to-principal-collection-set/>
+</B:calendarserver-principal-search>
+"""
+        doc = WebDAVDocument.fromString(data)
+        tokens, context, applyTo, clientLimit, propElement =  extractCalendarServerPrincipalSearchData(doc.root_element)
+        self.assertEquals(tokens, ["morgen", "sagen"])
+        self.assertEquals(context, None)
+        self.assertTrue(applyTo)
+        self.assertEquals(clientLimit, 42)
