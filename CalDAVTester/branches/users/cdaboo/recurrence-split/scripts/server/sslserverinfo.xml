@@ -77,6 +77,7 @@
 		<feature>proxy</feature>						<!-- calendar-user-proxy extension -->
 		<!-- <feature>proxy-authz</feature> -->			<!-- sudo user extension -->
 		<feature>query-extended</feature>				<!-- calendar-query-extended extension -->
+		<feature>recurrence-splitting</feature>			<!-- Supports POST to split recurrences -->
 		<feature>shared-calendars</feature>				<!-- Shared calendars extension -->
 		<feature>schedule-changes</feature>				<!-- schedule-changes property extension -->
 		<feature>split-calendars</feature>				<!-- Calendars are split by component type -->

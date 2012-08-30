@@ -52,6 +52,7 @@
 		<feature>prefer-noroot</feature>				<!-- Prefer header depth-noroot -->
 		<feature>quota</feature>						<!-- WebDAV QUOTA -->
 		<!-- <feature>quota-on-resources</feature> -->	<!-- WebDAV QUOTA on calendar and address book object resources -->
+		<feature>recurrence-splitting</feature>			<!-- Supports POST to split recurrences -->
 		<feature>resource-id</feature>					<!-- WebDAV BIND DAV:resource-id property -->
 		<feature>sync-report</feature>					<!-- WebDAV collection sync REPORT -->
 		<feature>sync-report-home</feature>				<!-- WebDAV collection sync REPORT on Homes -->

@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2010 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ Verifier that checks a multistatus response to make sure that the specified href
 are returned with appropriate status codes.
 """
 
+from urlparse import urlsplit
 from xml.etree.ElementTree import ElementTree
 from StringIO import StringIO
 
@@ -45,7 +46,7 @@ class Verifier(object):
         if len(prefix):
             prefix = prefix[0] if prefix[0] != "-" else ""
         else:
-            prefix = uri
+            prefix = urlsplit(uri)[2]
         okhrefs = [prefix + i for i in okhrefs]
         nohrefs = [prefix + i for i in nohrefs]
         badhrefs = [prefix + i for i in badhrefs]

@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2006-2011 Apple Inc. All rights reserved.
+# Copyright (c) 2006-2012 Apple Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -276,6 +276,12 @@ class caldavtest(object):
             self.dorequest( req, False, False, label=label )
 
     def dofindnew( self, collection, label = "" ):
+        """
+        Find the newest resource that is a child of the specified collection.
+        This does a PROPFIND on the specified collection and iterates over the results
+        ignoring the collection to find the newest child.
+        """
+
         hresult = ""
         req = request(self.manager)
         req.method = "PROPFIND"
@@ -313,6 +319,88 @@ class caldavtest(object):
                     return False, "           Wrong number of DAV:href elements\n"
                 href = href[0].text
                 if href != request_uri:
+
+                    # Get all property status
+                    propstatus = response.findall("{DAV:}propstat")
+                    for props in propstatus:
+                        # Determine status for this propstat
+                        status = props.findall("{DAV:}status")
+                        if len(status) == 1:
+                            statustxt = status[0].text
+                            status = False
+                            if statustxt.startswith("HTTP/1.1 ") and (len(statustxt) >= 10):
+                                status = (statustxt[9] == "2")
+                        else:
+                            status = False
+                        
+                        # Get properties for this propstat
+                        prop = props.findall("{DAV:}prop")
+                        for el in prop:
+
+                            # Get properties for this propstat
+                            glm = el.findall("{DAV:}getlastmodified")
+                            if len(glm) != 1:
+                                continue
+                            value = glm[0].text
+                            value = rfc822.parsedate(value)
+                            value = time.mktime(value)
+                            if value > latest:
+                                hresult = href
+                                latest = value
+
+        return hresult
+
+    def dofindother( self, sibling, label = "" ):
+        """
+        Find the newest resource that is a sibling of the specified resource (not the specified resource itself).
+        This does a PROPFIND on the parent of the specified resource and iterates over the results ignoring the parent
+        and specified resource to find the newest sibling.
+        """
+
+        hresult = ""
+        sibling = list(sibling)
+        notthis = sibling[0]
+        sibling[0] = "/".join(notthis.split("/")[:-1]) + "/"
+        req = request(self.manager)
+        
+        req.ruri = notthis
+        notthis_uri = req.getURI( self.manager.server_info )
+        
+        req.method = "PROPFIND"
+        req.ruris.append(sibling[0])
+        req.ruri = sibling[0]
+        req.headers["Depth"] = "1"
+        if len(sibling[1]):
+            req.user = sibling[1]
+        if len(sibling[2]):
+            req.pswd = sibling[2]
+        req.data = data()
+        req.data.value = """<?xml version="1.0" encoding="utf-8" ?>
+<D:propfind xmlns:D="DAV:">
+<D:prop>
+<D:getetag/>
+<D:getlastmodified/>
+</D:prop>
+</D:propfind>
+"""
+        req.data.content_type = "text/xml"
+        result, _ignore_resulttxt, response, respdata = self.dorequest( req, False, False, label="%s | %s" % (label, "FINDNEW") )
+        if result and (response is not None) and (response.status == 207) and (respdata is not None):
+            try:
+                tree = ElementTree(file=StringIO(respdata))
+            except Exception:
+                return hresult
+
+            latest = 0
+            request_uri = req.getURI( self.manager.server_info )
+            for response in tree.findall("{DAV:}response" ):
+    
+                # Get href for this response
+                href = response.findall("{DAV:}href")
+                if len(href) != 1:
+                    return False, "           Wrong number of DAV:href elements\n"
+                href = href[0].text
+                if href not in (request_uri, notthis_uri,):
 
                     # Get all property status
                     propstatus = response.findall("{DAV:}propstat")
@@ -469,6 +557,13 @@ class caldavtest(object):
         elif req.method == "GETNEW":
             collection = (req.ruri, req.user, req.pswd)
             self.grabbedlocation = self.dofindnew(collection, label=label)
+            req.method = "GET"
+            req.ruri = "$"
+            
+        # Special for GETOTHER
+        elif req.method == "GETOTHER":
+            collection = (req.ruri, req.user, req.pswd)
+            self.grabbedlocation = self.dofindother(collection, label=label)
             req.method = "GET"
             req.ruri = "$"
             
