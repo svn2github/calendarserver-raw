@@ -492,25 +492,6 @@ class CalDAVResource (
         """
         Need to special case schedule-calendar-transp for backwards compatability.
         """
-        
-        #TODO: Remove old code below
-        '''
-        if type(property) is tuple:
-            qname = property
-        else:
-            qname = property.qname()
-        isShareeCollection = self.isShareeCollection()
-        if isShareeCollection:
-            if self.isShadowableProperty(qname):
-                p = self.deadProperties().contains(qname)
-                if p:
-                    returnValue(p)
-                
-            elif (not self.isGlobalProperty(qname)):
-                result = self._hasSharedProperty(qname, request)
-                returnValue(result)
-        '''
-
         res = (yield self._hasGlobalProperty(property, request))
         returnValue(res)
 
@@ -571,22 +552,6 @@ class CalDAVResource (
 
                 returnValue(customxml.PubSubXMPPPushKeyProperty())
         
-        #TODO: Remove old code below
-        ''' 
-        isShareeCollection = self.isShareeCollection()
-        if isShareeCollection:
-            if self.isShadowableProperty(qname):
-                try:
-                    p = self.deadProperties().get(qname)
-                    returnValue(p)
-                except PropertyNotFoundError:
-                    pass
-                
-            elif (not self.isGlobalProperty(qname)):
-                result = self._readSharedProperty(qname, request)
-                returnValue(result)
-        '''
-
         res = (yield self._readGlobalProperty(qname, property, request))
         returnValue(res)
 
@@ -723,17 +688,6 @@ class CalDAVResource (
         assert isinstance(property, element.WebDAVElement), (
             "%r is not a WebDAVElement instance" % (property,)
         )
-        
-        #TODO: Remove old code below
-        '''
-        # Per-user Dav props currently only apply to a sharee's copy of a calendar
-        isShareeCollection = self.isShareeCollection()
-
-        if isShareeCollection and (self.isShadowableProperty(property.qname()) or (not self.isGlobalProperty(property.qname()))):
-            yield self._preProcessWriteProperty(property, request, isShare=True)
-            p = self.deadProperties().set(property)
-            returnValue(p)
-        '''
  
         res = (yield self._writeGlobalProperty(property, request))
         returnValue(res)
@@ -974,16 +928,6 @@ class CalDAVResource (
         This is the owner of the resource based on the URI used to access it. For a shared
         collection it will be the sharee, otherwise it will be the regular the ownerPrincipal.
         """
-        #TODO: Remove old code below:
-        '''
-        isShareeCollection = self.isShareeCollection()
-        if isShareeCollection:
-            returnValue(self._shareePrincipal)
-        else:
-            parent = (yield self.locateParent(
-                request, request.urlForResource(self)
-            ))
-        '''
         parent = (yield self.locateParent(
             request, request.urlForResource(self)
         ))
