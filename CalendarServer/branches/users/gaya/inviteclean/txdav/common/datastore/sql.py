@@ -388,7 +388,6 @@ class CommonStoreTransaction(object):
         self.paramstyle = sqlTxn.paramstyle
         self.dialect = sqlTxn.dialect
 
-        self._stats = TransactionStatsCollector(self._label, self._store.logStatsLogFile) if self._store.logStats else None
         self._stats = (
             TransactionStatsCollector(self._label, self._store.logStatsLogFile)
             if self._store.logStats else None
@@ -1958,19 +1957,19 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
 
     _objectResourceClass = None
 
-    _bindSchema 				= None
-    _homeSchema 				= None
-    _homeChildSchema 			= None
-    _homeChildMetaDataSchema 	= None
-    _revisionsSchema 			= None
-    _objectSchema 				= None
+    _bindSchema              = None
+    _homeSchema 			 = None
+    _homeChildSchema 		 = None
+    _homeChildMetaDataSchema = None
+    _revisionsSchema 		 = None
+    _objectSchema 			 = None
 
-    _bindTable 			= None
-    _homeChildTable 	= None
-    _homeChildBindTable = None
-    _revisionsTable 	= None
-    _revisionsBindTable = None
-    _objectTable 		= None
+    _bindTable           = None
+    _homeChildTable      = None
+    _homeChildBindTable  = None
+    _revisionsTable      = None
+    _revisionsBindTable  = None
+    _objectTable         = None
 
 
     def __init__(self, home, name, resourceID, mode, status, message=None, ownerHome=None):
@@ -1982,20 +1981,20 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         else:
             notifiers = None
 
-        self._home 				= home
-        self._name 				= name
-        self._resourceID 		= resourceID
-        self._bindMode 			= mode
+        self._home              = home
+        self._name              = name
+        self._resourceID        = resourceID
+        self._bindMode          = mode
         self._bindStatus 		= status
         self._bindMessage 		= message
         self._ownerHome 		= home if ownerHome is None else ownerHome
-        self._created 			= None
-        self._modified 			= None
-        self._objects 			= {}
-        self._objectNames 		= None
+        self._created           = None
+        self._modified          = None
+        self._objects           = {}
+        self._objectNames       = None
         self._syncTokenRevision = None
-        self._notifiers 		= notifiers
-        self._index 			= None  # Derived classes need to set this
+        self._notifiers         = notifiers
+        self._index             = None  # Derived classes need to set this
 
 
     @classproperty
