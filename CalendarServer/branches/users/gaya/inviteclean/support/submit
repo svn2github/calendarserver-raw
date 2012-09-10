@@ -40,8 +40,6 @@ package=false;
 ignore_uncommitted_changes=false;
     build_no_verify_source=false;
 
-
-
 usage ()
 {
   program="$(basename "$0")";
