@@ -244,27 +244,6 @@ class TransactionStatsCollector(object):
         @param args: the arguments (binds) to the SQL statement
         @type args: C{list}
         
-<<<<<<< .working
-        @return: C{tuple} containing the index in the statement list for this statement, and the start time
-        """
-        args = ["%s" % (arg,) for arg in args]
-        args = [((arg[:10] + "...") if len(arg) > 40 else arg) for arg in args]
-        self.statements.append(["%s %s" % (sql, args,), 0, 0])
-        return len(self.statements) - 1, time.time()
-
-    def endStatement(self, context, rows):
-        """
-        Called after an SQL query has executed.
-
-        @param context: the tuple returned from startStatement
-        @type context: C{tuple}
-        @param rows: number of rows returned from the query
-        @type rows: C{int}
-        """
-        index, tstamp = context
-        self.statements[index][1] = len(rows) if rows else 0
-        self.statements[index][2] = time.time() - tstamp
-=======
         @return: C{tuple} containing the index in the statement list for this statement, and the start time
         """
         args = ["%s" % (arg,) for arg in args]
@@ -289,18 +268,8 @@ class TransactionStatsCollector(object):
         """
         Print a report of all the SQL statements executed to date.
         """
->>>>>>> .merge-right.r9784
-        
-<<<<<<< .working
-    def printReport(self):
-        """
-        Print a report of all the SQL statements executed to date.
-        """
         
         toFile = StringIO()
-=======
-        toFile = StringIO()
->>>>>>> .merge-right.r9784
         toFile.write("*** SQL Stats ***\n")
         toFile.write("\n")
         toFile.write("Label: %s\n" % (self.label,))
@@ -2386,11 +2355,7 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         )
 
     @classproperty
-<<<<<<< .working
     def _sharedBindForResourceID(cls): #@NoSelf
-=======
-    def _bindEntriesFor(cls): #@NoSelf
->>>>>>> .merge-right.r9784
         bind = cls._bindSchema
         return cls._bindFor((bind.RESOURCE_ID == Parameter("resourceID"))
                             .And(bind.BIND_STATUS == _BIND_STATUS_ACCEPTED)
@@ -3473,7 +3438,6 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
 
         returnValue(results)
 
-<<<<<<< .working
     @classmethod
     def _allColumnsWithParentAndNames(cls, names): #@NoSelf
         obj = cls._objectSchema
@@ -3522,74 +3486,6 @@ class CommonObjectResource(LoggingMixIn, FancyEqMixin):
             # Get property stores for all these child resources
             if parent.objectResourcesHaveProperties():
                 propertyStores = (yield PropertyStore.forMultipleResourcesWithResourceIDs(
-                    parent._home.uid(),
-                    parent._txn,
-                    tuple([row[0] for row in dataRows]),
-                ))
-            else:
-                propertyStores = {}
-
-        # Create the actual objects merging in properties
-        for row in dataRows:
-            child = cls(parent, "", None)
-            child._initFromRow(tuple(row))
-            yield child._loadPropertyStore(
-                props=propertyStores.get(child._resourceID, None)
-            )
-            results.append(child)
-
-        returnValue(results)
-
-=======
-    @classmethod
-    def _allColumnsWithParentAndNames(cls, names): #@NoSelf
-        obj = cls._objectSchema
-        return Select(cls._allColumns, From=obj,
-                      Where=(obj.PARENT_RESOURCE_ID == Parameter("parentID")).And(
-                          obj.RESOURCE_NAME.In(Parameter("names", len(names)))))
-
->>>>>>> .merge-right.r9784
-
-    @classmethod
-    @inlineCallbacks
-    def loadAllObjectsWithNames(cls, parent, names):
-        """
-        Load all child objects with the specified names, doing so in batches.
-        """
-        names = tuple(names)
-        results = []
-        while(len(names)):
-            result_batch = (yield cls._loadAllObjectsWithNames(parent, names[:cls.BATCH_LOAD_SIZE]))
-            results.extend(result_batch)
-            names = names[cls.BATCH_LOAD_SIZE:]
-        
-        returnValue(results)
-            
-    @classmethod
-    @inlineCallbacks
-    def _loadAllObjectsWithNames(cls, parent, names):
-        """
-        Load all child objects with the specified names. This must create the
-        child classes and initialize them using "batched" SQL operations to keep
-        this constant wrt the number of children. This is an optimization for
-        Depth:1 operations on the collection.
-        """
-
-        # Optimize case of single name to load
-        if len(names) == 1:
-            obj = yield cls.objectWithName(parent, names[0], None)
-            returnValue([obj] if obj else [])
-
-        results = []
-
-        # Load from the main table first
-        dataRows = yield cls._allColumnsWithParentAndNames(names).on(
-            parent._txn, parentID=parent._resourceID, names=names)
-
-        if dataRows:
-            # Get property stores for all these child resources
-            if parent.objectResourcesHaveProperties():
-                propertyStores =(yield PropertyStore.forMultipleResourcesWithResourceIDs(
                     parent._home.uid(),
                     parent._txn,
                     tuple([row[0] for row in dataRows]),
