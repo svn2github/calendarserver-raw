@@ -73,19 +73,11 @@ class PropertyStore(AbstractPropertyStore):
 
     @classmethod
     @inlineCallbacks
-<<<<<<< .working
     def load(cls, defaultuser, shareUser, txn, resourceID, created=False, notifyCallback=None):
         """
         @param notifyCallback: a callable used to trigger notifications when the
             property store changes.
         """
-=======
-    def load(cls, defaultuser, txn, resourceID, created=False, notifyCallback=None):
-        """
-        @param notifyCallback: a callable used to trigger notifications when the
-            property store changes.
-        """
->>>>>>> .merge-right.r9784
         self = cls.__new__(cls)
         super(PropertyStore, self).__init__(defaultuser, shareUser)
         self._txn = txn
