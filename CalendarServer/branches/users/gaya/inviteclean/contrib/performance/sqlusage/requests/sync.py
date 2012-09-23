@@ -58,8 +58,8 @@ class SyncTest(HTTPTestBase):
     A sync operation
     """
 
-    def __init__(self, label, session, href, logFilePath, full, count):
-        super(SyncTest, self).__init__(label, session, href, logFilePath)
+    def __init__(self, label, sessions, logFilePath, full, count):
+        super(SyncTest, self).__init__(label, sessions, logFilePath)
         self.full = full
         self.count = count
         self.synctoken = ""
@@ -70,14 +70,14 @@ class SyncTest(HTTPTestBase):
         """
         if not self.full:
             # Get current sync token
-            results, _ignore_bad = self.session.getProperties(URL(path=self.baseHref), (davxml.sync_token,))
+            results, _ignore_bad = self.sessions[0].getProperties(URL(path=self.sessions[0].calendarHref), (davxml.sync_token,))
             self.synctoken = results[davxml.sync_token]
             
             # Add resources to create required number of changes
             now = PyCalendarDateTime.getNowUTC()
             for i in range(self.count):
-                href = joinURL(self.baseHref, "sync-collection-%d.ics" % (i+1,))
-                self.session.writeData(URL(path=href), ICAL % (now.getYear() + 1, i+1,), "text/calendar")
+                href = joinURL(self.sessions[0].calendarHref, "sync-collection-%d.ics" % (i+1,))
+                self.sessions[0].writeData(URL(path=href), ICAL % (now.getYear() + 1, i+1,), "text/calendar")
 
     def doRequest(self):
         """
@@ -89,7 +89,7 @@ class SyncTest(HTTPTestBase):
         )
 
         # Run sync collection
-        self.session.syncCollection(URL(path=self.baseHref), self.synctoken, props)
+        self.sessions[0].syncCollection(URL(path=self.sessions[0].calendarHref), self.synctoken, props)
 
     def cleanup(self):
         """
@@ -98,5 +98,5 @@ class SyncTest(HTTPTestBase):
         if not self.full:
             # Remove created resources
             for i in range(self.count):
-                href = joinURL(self.baseHref, "sync-collection-%d.ics" % (i+1,))
-                self.session.deleteResource(URL(path=href))
+                href = joinURL(self.sessions[0].calendarHref, "sync-collection-%d.ics" % (i+1,))
+                self.sessions[0].deleteResource(URL(path=href))

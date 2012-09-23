@@ -1958,11 +1958,11 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
     _objectResourceClass = None
 
     _bindSchema              = None
-    _homeSchema 			 = None
-    _homeChildSchema 		 = None
+    _homeSchema              = None
+    _homeChildSchema          = None
     _homeChildMetaDataSchema = None
-    _revisionsSchema 		 = None
-    _objectSchema 			 = None
+    _revisionsSchema          = None
+    _objectSchema              = None
 
     _bindTable           = None
     _homeChildTable      = None
@@ -1985,9 +1985,9 @@ class CommonHomeChild(LoggingMixIn, FancyEqMixin, _SharedSyncLogic):
         self._name              = name
         self._resourceID        = resourceID
         self._bindMode          = mode
-        self._bindStatus 		= status
-        self._bindMessage 		= message
-        self._ownerHome 		= home if ownerHome is None else ownerHome
+        self._bindStatus         = status
+        self._bindMessage         = message
+        self._ownerHome         = home if ownerHome is None else ownerHome
         self._created           = None
         self._modified          = None
         self._objects           = {}

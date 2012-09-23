@@ -38,9 +38,9 @@ regularCalendarType = davxml.ResourceType.calendar #@UndefinedVariable
 class SharingTests(HomeTestCase):
 
     class FakePrincipal(object):
-        
+
         class FakeRecord(object):
-            
+
             def __init__(self, name, cuaddr):
                 self.fullName = name
                 self.guid = name
@@ -53,24 +53,24 @@ class SharingTests(HomeTestCase):
                 name = cuaddr[9:]
             else:
                 name = cuaddr
-                
+
             self.path = "/principals/__uids__/%s" % (name,)
             self.homepath = "/calendars/__uids__/%s" % (name,)
             self.displayname = name.upper()
             self.record = self.FakeRecord(name, cuaddr)
-            
+
 
         def calendarHome(self, request):
             class FakeHome(object):
                 def removeShareByUID(self, request, uid):pass
             return FakeHome()
-        
+
         def principalURL(self):
             return self.path
-        
+
         def principalUID(self):
             return self.record.guid
-        
+
         def displayName(self):
             return self.displayname
 
@@ -88,7 +88,7 @@ class SharingTests(HomeTestCase):
         CalDAVResource.removeInviteNotification = lambda self, record, request: succeed(True)
 
         self.patch(CalDAVResource, "principalForCalendarUserAddress", lambda self, cuaddr: None if "bogus" in cuaddr else SharingTests.FakePrincipal(cuaddr))
-        self.patch(CalDAVResource, "principalForUID", lambda self, principalUID: SharingTests.FakePrincipal("urn:uuid:" + principalUID ))
+        self.patch(CalDAVResource, "principalForUID", lambda self, principalUID: SharingTests.FakePrincipal("urn:uuid:" + principalUID))
 
     def createDataStore(self):
         return self.calendarStore
@@ -105,7 +105,7 @@ class SharingTests(HomeTestCase):
 
 
     @inlineCallbacks
-    def _doPOST(self, body, resultcode = responsecode.OK):
+    def _doPOST(self, body, resultcode=responsecode.OK):
         request = SimpleRequest(self.site, "POST", "/calendar/")
         request.headers.setHeader("content-type", MimeType("text", "xml"))
         request.stream = MemoryStream(body)
@@ -115,7 +115,7 @@ class SharingTests(HomeTestCase):
         returnValue(response)
 
     def _clearUIDElementValue(self, xml):
-        
+
         for user in xml.children:
             for element in user.children:
                 if type(element) == customxml.UID:
@@ -137,7 +137,7 @@ class SharingTests(HomeTestCase):
         self.assertEquals(rtype, sharedOwnerType)
         propInvite = (yield self.resource.readProperty(customxml.Invite, request))
         self.assertEquals(propInvite, customxml.Invite())
-        
+
         isShared = (yield self.resource.isShared(request))
         self.assertTrue(isShared)
         isVShared = self.resource.isShareeCollection()
@@ -158,7 +158,7 @@ class SharingTests(HomeTestCase):
         self.assertEquals(rtype, sharedOwnerType)
         propInvite = (yield self.resource.readProperty(customxml.Invite, request))
         self.assertEquals(propInvite, customxml.Invite())
-        
+
         isShared = (yield self.resource.isShared(request))
         self.assertTrue(isShared)
         isVShared = self.resource.isShareeCollection()
@@ -179,7 +179,7 @@ class SharingTests(HomeTestCase):
         self.assertEquals(rtype, regularCalendarType)
         propInvite = (yield self.resource.readProperty(customxml.Invite, None))
         self.assertEquals(propInvite, None)
-        
+
         isShared = (yield self.resource.isShared(None))
         self.assertFalse(isShared)
         isVShared = self.resource.isShareeCollection()
@@ -187,7 +187,7 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def test_POSTaddInviteeAlreadyShared(self):
-        
+
         self.resource.upgradeToShare()
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
@@ -210,7 +210,7 @@ class SharingTests(HomeTestCase):
                 customxml.InviteStatusNoResponse(),
             )
         ))
-        
+
         isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
         isVShared = self.resource.isShareeCollection()
@@ -218,7 +218,7 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def test_POSTaddInviteeNotAlreadyShared(self):
-        
+
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
 <CS:share xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">
     <CS:set>
@@ -240,7 +240,7 @@ class SharingTests(HomeTestCase):
                 customxml.InviteStatusNoResponse(),
             )
         ))
-        
+
         isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
         isVShared = (yield self.resource.isShareeCollection())
@@ -248,7 +248,7 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def test_POSTupdateInvitee(self):
-        
+
         self.resource.upgradeToShare()
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
@@ -284,7 +284,7 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def test_POSTremoveInvitee(self):
-        
+
         self.resource.upgradeToShare()
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
@@ -310,7 +310,7 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def test_POSTaddMoreInvitees(self):
-        
+
         self.resource.upgradeToShare()
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
@@ -364,7 +364,7 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def test_POSTaddRemoveInvitees(self):
-        
+
         self.resource.upgradeToShare()
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
@@ -542,7 +542,7 @@ class SharingTests(HomeTestCase):
 
     @inlineCallbacks
     def test_POSTremoveInvalidInvitee(self):
-        
+
         self.resource.upgradeToShare()
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
@@ -579,7 +579,7 @@ class SharingTests(HomeTestCase):
                 customxml.InviteStatusInvalid(),
             )
         ))
-        
+
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
 <CS:share xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">
     <CS:remove>
