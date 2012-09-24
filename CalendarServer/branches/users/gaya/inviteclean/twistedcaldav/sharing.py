@@ -436,6 +436,8 @@ class SharedCollectionMixin(object):
                 if not (yield self.validUserIDForShare("urn:uuid:" + invitation.shareeUID(), request)):
                     yield self._updateInvitation(invitation, state="INVALID")
 
+        returnValue(len(invitations))
+
 
     def inviteUserToShare(self, userid, cn, ace, summary, request):
         """ Send out in invite first, and then add this user to the share list

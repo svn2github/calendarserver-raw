@@ -62,7 +62,8 @@ class SharingTests(HomeTestCase):
 
         def calendarHome(self, request):
             class FakeHome(object):
-                def removeShareByUID(self, request, uid):pass
+                def removeShareByUID(self, request, uid):
+                    pass
             return FakeHome()
 
         def principalURL(self):
@@ -87,6 +88,7 @@ class SharingTests(HomeTestCase):
         CalDAVResource.sendInviteNotification = lambda self, record, request: succeed(True)
         CalDAVResource.removeInviteNotification = lambda self, record, request: succeed(True)
 
+        self.patch(CalDAVResource, "validUserIDForShare", lambda self, userid, request: None if "bogus" in userid else SharingTests.FakePrincipal(userid).principalURL())
         self.patch(CalDAVResource, "principalForCalendarUserAddress", lambda self, cuaddr: None if "bogus" in cuaddr else SharingTests.FakePrincipal(cuaddr))
         self.patch(CalDAVResource, "principalForUID", lambda self, principalUID: SharingTests.FakePrincipal("urn:uuid:" + principalUID))
 
@@ -114,6 +116,7 @@ class SharingTests(HomeTestCase):
         self.assertEqual(response.code, resultcode)
         returnValue(response)
 
+
     def _clearUIDElementValue(self, xml):
 
         for user in xml.children:
@@ -122,68 +125,48 @@ class SharingTests(HomeTestCase):
                     element.children[0].data = ""
         return xml
 
+
     @inlineCallbacks
-    def test_upgradeToShareOnCreate(self):
-        request = SimpleRequest(self.site, "MKCOL", "/calendar/")
+    def test_upgradeToShare(self):
 
         rtype = self.resource.resourceType()
         self.assertEquals(rtype, regularCalendarType)
-        propInvite = (yield self.resource.readProperty(customxml.Invite, request))
-        self.assertEquals(propInvite, None)
+        isShared = (yield self.resource.isShared(None))
+        self.assertFalse(isShared)
+        isShareeCollection = self.resource.isShareeCollection()
+        self.assertFalse(isShareeCollection)
 
         self.resource.upgradeToShare()
 
         rtype = self.resource.resourceType()
         self.assertEquals(rtype, sharedOwnerType)
-        propInvite = (yield self.resource.readProperty(customxml.Invite, request))
-        self.assertEquals(propInvite, customxml.Invite())
-
-        isShared = (yield self.resource.isShared(request))
+        isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
-        isVShared = self.resource.isShareeCollection()
-        self.assertFalse(isVShared)
+        isShareeCollection = self.resource.isShareeCollection()
+        self.assertFalse(isShareeCollection)
 
-    @inlineCallbacks
-    def test_upgradeToShareAfterCreate(self):
-        request = SimpleRequest(self.site, "PROPPATCH", "/calendar/")
-
-        rtype = self.resource.resourceType()
-        self.assertEquals(rtype, regularCalendarType)
-        propInvite = (yield self.resource.readProperty(customxml.Invite, request))
-        self.assertEquals(propInvite, None)
-
-        self.resource.upgradeToShare()
-
-        rtype = self.resource.resourceType()
-        self.assertEquals(rtype, sharedOwnerType)
-        propInvite = (yield self.resource.readProperty(customxml.Invite, request))
-        self.assertEquals(propInvite, customxml.Invite())
-
-        isShared = (yield self.resource.isShared(request))
-        self.assertTrue(isShared)
-        isVShared = self.resource.isShareeCollection()
-        self.assertFalse(isVShared)
 
     @inlineCallbacks
     def test_downgradeFromShare(self):
-        self.resource.writeDeadProperty(sharedOwnerType)
-        self.resource.writeDeadProperty(customxml.Invite())
+
+        self.resource.upgradeToShare()
+
         rtype = self.resource.resourceType()
         self.assertEquals(rtype, sharedOwnerType)
-        propInvite = (yield self.resource.readProperty(customxml.Invite, None))
-        self.assertEquals(propInvite, customxml.Invite())
+        isShared = (yield self.resource.isShared(None))
+        self.assertTrue(isShared)
+        isShareeCollection = self.resource.isShareeCollection()
+        self.assertFalse(isShareeCollection)
 
         yield self.resource.downgradeFromShare(None)
 
         rtype = self.resource.resourceType()
         self.assertEquals(rtype, regularCalendarType)
-        propInvite = (yield self.resource.readProperty(customxml.Invite, None))
-        self.assertEquals(propInvite, None)
-
         isShared = (yield self.resource.isShared(None))
         self.assertFalse(isShared)
-        isVShared = self.resource.isShareeCollection()
-        self.assertFalse(isVShared)
+        isShareeCollection = self.resource.isShareeCollection()
+        self.assertFalse(isShareeCollection)
+
 
     @inlineCallbacks
     def test_POSTaddInviteeAlreadyShared(self):
@@ -213,8 +196,9 @@ class SharingTests(HomeTestCase):
 
         isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
-        isVShared = self.resource.isShareeCollection()
-        self.assertFalse(isVShared)
+        isShareeCollection = self.resource.isShareeCollection()
+        self.assertFalse(isShareeCollection)
+
 
     @inlineCallbacks
     def test_POSTaddInviteeNotAlreadyShared(self):
@@ -243,13 +227,15 @@ class SharingTests(HomeTestCase):
 
         isShared = (yield self.resource.isShared(None))
         self.assertTrue(isShared)
-        isVShared = (yield self.resource.isShareeCollection())
-        self.assertFalse(isVShared)
+        isShareeCollection = (yield self.resource.isShareeCollection())
+        self.assertFalse(isShareeCollection)
+
 
     @inlineCallbacks
     def test_POSTupdateInvitee(self):
 
-        self.resource.upgradeToShare()
+        isShared = (yield self.resource.isShared(None))
+        self.assertFalse(isShared)
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
 <CS:share xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">
@@ -261,6 +247,9 @@ class SharingTests(HomeTestCase):
 </CS:share>
 """)
 
+        isShared = (yield self.resource.isShared(None))
+        self.assertTrue(isShared)
+
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
 <CS:share xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">
     <CS:set>
@@ -270,6 +259,9 @@ class SharingTests(HomeTestCase):
     </CS:set>
 </CS:share>
 """)
+
+        isShared = (yield self.resource.isShared(None))
+        self.assertTrue(isShared)
 
         propInvite = (yield self.resource.readProperty(customxml.Invite, None))
         self.assertEquals(self._clearUIDElementValue(propInvite), customxml.Invite(
@@ -282,10 +274,12 @@ class SharingTests(HomeTestCase):
             )
         ))
 
+
     @inlineCallbacks
     def test_POSTremoveInvitee(self):
 
-        self.resource.upgradeToShare()
+        isShared = (yield self.resource.isShared(None))
+        self.assertFalse(isShared)
 
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
 <CS:share xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">
@@ -297,6 +291,9 @@ class SharingTests(HomeTestCase):
 </CS:share>
 """)
 
+        isShared = (yield self.resource.isShared(None))
+        self.assertTrue(isShared)
+
         yield self._doPOST("""<?xml version="1.0" encoding="utf-8" ?>
 <CS:share xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">
     <CS:remove>
@@ -305,8 +302,12 @@ class SharingTests(HomeTestCase):
 </CS:share>
 """)
 
+        isShared = (yield self.resource.isShared(None))
+        self.assertFalse(isShared)
+
         propInvite = (yield self.resource.readProperty(customxml.Invite, None))
-        self.assertEquals(self._clearUIDElementValue(propInvite), customxml.Invite())
+        self.assertEquals(propInvite, None)
+
 
     @inlineCallbacks
     def test_POSTaddMoreInvitees(self):
@@ -361,6 +362,7 @@ class SharingTests(HomeTestCase):
                 customxml.InviteStatusNoResponse(),
             ),
         ))
+
 
     @inlineCallbacks
     def test_POSTaddRemoveInvitees(self):
@@ -462,6 +464,7 @@ class SharingTests(HomeTestCase):
             ),
         ))
 
+
     @inlineCallbacks
     def test_POSTremoveNonInvitee(self):
         """
@@ -505,7 +508,7 @@ class SharingTests(HomeTestCase):
 """)
 
         propInvite = (yield self.resource.readProperty(customxml.Invite, None))
-        self.assertEquals(self._clearUIDElementValue(propInvite), customxml.Invite())
+        self.assertEquals(propInvite, None)
 
 
     @inlineCallbacks
@@ -535,9 +538,7 @@ class SharingTests(HomeTestCase):
         )
         propInvite = (yield self.resource.readProperty(customxml.Invite, None))
 
-        self.assertEquals(
-            self._clearUIDElementValue(propInvite), customxml.Invite()
-        )
+        self.assertEquals(propInvite, None)
 
 
     @inlineCallbacks
@@ -566,6 +567,7 @@ class SharingTests(HomeTestCase):
             )
         ))
 
+        self.resource.validUserIDForShare = lambda userid, request: None
         self.resource.principalForCalendarUserAddress = lambda cuaddr: None
         self.resource.principalForUID = lambda principalUID: None
 
@@ -589,7 +591,7 @@ class SharingTests(HomeTestCase):
 """)
 
         propInvite = (yield self.resource.readProperty(customxml.Invite, None))
-        self.assertEquals(self._clearUIDElementValue(propInvite), customxml.Invite())
+        self.assertEquals(propInvite, None)
 
 
     @inlineCallbacks
@@ -599,6 +601,8 @@ class SharingTests(HomeTestCase):
         to the sharee, so that delegates of the sharee get the same level of
         access.
         """
+
+        access = "read"
 
         def stubWikiAccessMethod(userID, wikiID):
             return access
@@ -657,11 +661,14 @@ class SharingTests(HomeTestCase):
 
             def locateChild(self, req, segments):
                 pass
-            def renderHTTP(req):
+
+
+            def renderHTTP(self, req):
                 pass
+
+
             def ownerPrincipal(self, req):
                 return succeed(StubWikiPrincipal())
-
 
         collection = TestCollection()
         collection._share = StubShare()
@@ -669,7 +676,6 @@ class SharingTests(HomeTestCase):
         request = SimpleRequest(self.site, "GET", "/wikifoo")
 
         # Simulate the wiki server granting Read access
-        access = "read"
         acl = (yield collection.shareeAccessControlList(request,
             wikiAccessMethod=stubWikiAccessMethod))
         self.assertFalse("<write/>" in acl.toxml())
@@ -681,7 +687,7 @@ class SharingTests(HomeTestCase):
         self.assertTrue("<write/>" in acl.toxml())
 
 
-"""
+'''
 class DatabaseSharingTests(SharingTests):
 
     @inlineCallbacks
@@ -693,4 +699,4 @@ class DatabaseSharingTests(SharingTests):
     def createDataStore(self):
         return self.calendarStore
 
-"""
+'''
