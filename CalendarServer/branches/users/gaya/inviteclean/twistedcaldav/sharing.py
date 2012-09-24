@@ -622,13 +622,13 @@ class SharedCollectionMixin(object):
                 shareeHomeResource = yield sharee.calendarHome(request)
             elif self.isAddressBookCollection():
                 shareeHomeResource = yield sharee.addressBookHome(request)
-            yield shareeHomeResource.removeShareByUID(request, invitation.uid())
+            displayName = (yield shareeHomeResource.removeShareByUID(request, invitation.uid()))
             # If current user state is accepted then we send an invite with the new state, otherwise
             # we cancel any existing invites for the user
             if invitation and invitation.state() != "ACCEPTED":
                 yield self.removeInviteNotification(invitation, request)
             elif invitation:
-                yield self.sendInviteNotification(invitation, request, notificationState="DELETED")
+                yield self.sendInviteNotification(invitation, request, displayName=displayName, notificationState="DELETED")
 
         # Direct shares for  with valid sharee principal will already be deleted
         yield self._newStoreObject.unshareWith(invitation._shareeHomeChild.viewerHome())
@@ -643,7 +643,7 @@ class SharedCollectionMixin(object):
 
 
     @inlineCallbacks
-    def sendInviteNotification(self, invitation, request, notificationState=None):
+    def sendInviteNotification(self, invitation, request, notificationState=None, displayName=None):
 
         ownerPrincipal = (yield self.ownerPrincipal(request))
         owner = ownerPrincipal.principalURL()
@@ -659,16 +659,19 @@ class SharedCollectionMixin(object):
         notificationResource = (yield request.locateResource(sharee.notificationURL()))
         notifications = notificationResource._newStoreNotifications
 
+        '''
         # Look for existing notification
         # oldnotification is not used don't query for it
-        # oldnotification = (yield notifications.notificationObjectWithUID(invitation.uid()))
-        # if oldnotification:
+        oldnotification = (yield notifications.notificationObjectWithUID(invitation.uid()))
+        if oldnotification:
             # TODO: rollup changes?
-        #    pass
+            pass
+        '''
 
         # Generate invite XML
         userid = "urn:uuid:" + invitation.shareeUID()
         state = notificationState if notificationState else invitation.state()
+        summary = invitation.summary() if displayName is None else displayName
 
         typeAttr = {'shared-type':self.sharedResourceType()}
         xmltype = customxml.InviteNotification(**typeAttr)
@@ -686,7 +689,7 @@ class SharedCollectionMixin(object):
                     element.HRef.fromString(owner),
                     customxml.CommonName.fromString(ownerCN),
                 ),
-                customxml.InviteSummary.fromString(invitation.summary()),
+                customxml.InviteSummary.fromString(summary),
                 self.getSupportedComponentSet() if self.isCalendarCollection() else None,
                 **typeAttr
             ),
@@ -1268,16 +1271,20 @@ class SharedHomeMixin(LinkFollowerMixIn):
         ))
 
 
+    @inlineCallbacks
     def removeShare(self, request, share):
         """
         Remove a shared collection named in resourceName
         """
 
         if share.direct():
-            return self.removeDirectShare(request, share)
+            yield self.removeDirectShare(request, share)
+            returnValue(None)
         else:
             # Send a decline when an invite share is removed only
-            return self.declineShare(request, share.url(), share.uid())
+            result = yield self.declineShare(request, share.url(), share.uid())
+            returnValue(result)
+
 
     @inlineCallbacks
     def removeShareByUID(self, request, shareUID):
@@ -1288,9 +1295,10 @@ class SharedHomeMixin(LinkFollowerMixIn):
 
         share = yield self._shareForUID(shareUID, request)
         if share:
-            yield self.removeDirectShare(request, share)
-
-        returnValue(True)
+            displayName = (yield self.removeDirectShare(request, share))
+            returnValue(displayName)
+        else:
+            returnValue(None)
 
     @inlineCallbacks
     def removeDirectShare(self, request, share):
@@ -1300,6 +1308,8 @@ class SharedHomeMixin(LinkFollowerMixIn):
         """
 
         shareURL = joinURL(self.url(), share.name())
+        shared = (yield request.locateResource(shareURL))
+        displayname = shared.displayName()
 
         if self.isCalendarCollection():
             # For backwards compatibility we need to sync this up with the calendar-free-busy-set on the inbox
@@ -1314,6 +1324,8 @@ class SharedHomeMixin(LinkFollowerMixIn):
             yield share._sharerHomeChild.unshareWith(share._shareeHomeChild.viewerHome())
         else:
             yield share._sharerHomeChild.updateShare(share._shareeHomeChild, status=_BIND_STATUS_DECLINED)
+
+        returnValue(displayname)
 
 
     @inlineCallbacks
