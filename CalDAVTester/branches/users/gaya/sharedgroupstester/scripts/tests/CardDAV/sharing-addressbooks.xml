@@ -1178,11 +1178,7 @@
 			</request>
 		</test>
 		<test name='20' ignore='no'>
-			<description>Delete shared group</description>
-			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
-				<method>DELETE</method>
-				<ruri>$</ruri>
-			</request>
+			<description>Sharer deletes shared group</description>
 			<request print-response='no'>
 				<method>DELETE</method>
 				<ruri>$addressbookpath1:/3.vcf</ruri>
