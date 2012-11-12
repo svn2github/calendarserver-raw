@@ -297,6 +297,34 @@
 				</verify>
 			</request>
 		</test>
+		<test name='13' ignore='no'>
+			<description>Sharee sees shared group as vcard</description>
+			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
+				<method>GET</method>
+				<ruri>$sharedaddressbook:/shared</ruri>
+				<verify>
+					<callback>addressDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CardDAV/sharing/addressbooks/read-write/9.vcf</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='14' ignore='no'>
+			<description>Sharee cannot delete group as vcard</description>
+			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
+				<method>DELETE</method>
+				<ruri>$sharedaddressbook:/shared</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>403</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
 	</test-suite>
 	
 	<test-suite name='Default address book cannot be shared address book' ignore='no'>
@@ -713,6 +741,34 @@
 				</verify>
 			</request>
 		</test>
+		<test name='12.1' ignore='no'>
+			<description>Sharee sees shared group as vcard</description>
+			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
+				<method>GET</method>
+				<ruri>$sharedaddressbook:/addressbook</ruri>
+				<verify>
+					<callback>addressDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CardDAV/sharing/addressbooks/main/11.vcf</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='12.2' ignore='no'>
+			<description>Sharee cannot delete group as vcard</description>
+			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
+				<method>DELETE</method>
+				<ruri>$sharedaddressbook:/addressbook</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>403</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
 		<test name='13' ignore='no'>
 			<description>Unshare main address book</description>
 			<request print-response='no'>
@@ -905,7 +961,7 @@
 			</request>
 		</test>
 		<test name='6' ignore='no'>
-			<description>Shared address book exists</description>
+			<description>Sharee sees shared group as address book</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>PROPFIND</method>
 				<ruri>$sharedaddressbook:/</ruri>
@@ -932,6 +988,34 @@
 						<name>notexists</name>
 						<value>$verify-property-prefix:/{DAV:}current-user-privilege-set/{DAV:}privilege/{DAV:}admin</value>
 						<value>$verify-property-prefix:/{DAV:}current-user-privilege-set/{DAV:}privilege/{DAV:}all</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='6a' ignore='no'>
+			<description>Sharee sees shared group as vcard</description>
+			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
+				<method>GET</method>
+				<ruri>$sharedaddressbook:/3.vcf</ruri>
+				<verify>
+					<callback>addressDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CardDAV/sharing/addressbooks/group/3.vcf</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='6b' ignore='no'>
+			<description>Sharee cannot delete group as vcard</description>
+			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
+				<method>DELETE</method>
+				<ruri>$sharedaddressbook:/3.vcf</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
