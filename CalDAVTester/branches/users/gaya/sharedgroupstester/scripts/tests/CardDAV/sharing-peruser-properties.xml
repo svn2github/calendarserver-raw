@@ -220,8 +220,8 @@
 				<verify>
 					<callback>propfindItems</callback>
 					<arg>
-						<name>okprops</name>
-						<value>{DAV:}displayname$The Shared Address Book</value>
+						<name>badprops</name>
+						<value>{DAV:}displayname</value>
 					</arg>
 				</verify>
 			</request>
