@@ -297,7 +297,7 @@
 				</verify>
 			</request>
 		</test>
-		<test name='13' ignore='no'>
+		<test name='13' ignore='yes'>
 			<description>Sharee sees group with shared address book members</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>GET</method>
@@ -315,7 +315,7 @@
 				</verify>
 			</request>
 		</test>
-		<test name='14' ignore='no'>
+		<test name='14' ignore='yes'>
 			<description>Sharee cannot delete special group</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>DELETE</method>
@@ -745,7 +745,7 @@
 				</verify>
 			</request>
 		</test>
-		<test name='12.1' ignore='no'>
+		<test name='12.1' ignore='yes'>
 			<description>Sharee sees group with shared address book members</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>GET</method>
@@ -763,7 +763,7 @@
 				</verify>
 			</request>
 		</test>
-		<test name='12.2' ignore='no'>
+		<test name='12.2' ignore='yes'>
 			<description>Sharee cannot delete special group</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>DELETE</method>
@@ -853,7 +853,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Share group' ignore='no'>
+	<test-suite name='Share group' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>Sharee create 2 persons and a group</description>
 			<request print-response='no'>
