@@ -297,11 +297,11 @@
 				</verify>
 			</request>
 		</test>
-		<test name='13' ignore='yes'>
+		<test name='13' ignore='no'>
 			<description>Sharee sees group with shared address book members</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>GET</method>
-				<ruri>$sharedaddressbook:/shared</ruri>
+				<ruri>$sharedaddressbook:/shared.vcf</ruri>
 				<verify>
 					<callback>addressDataMatch</callback>
 					<arg>
@@ -315,11 +315,11 @@
 				</verify>
 			</request>
 		</test>
-		<test name='14' ignore='yes'>
+		<test name='14' ignore='no'>
 			<description>Sharee cannot delete special group</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>DELETE</method>
-				<ruri>$sharedaddressbook:/shared</ruri>
+				<ruri>$sharedaddressbook:/shared.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 					<arg>
@@ -745,11 +745,11 @@
 				</verify>
 			</request>
 		</test>
-		<test name='12.1' ignore='yes'>
+		<test name='12.1' ignore='no'>
 			<description>Sharee sees group with shared address book members</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>GET</method>
-				<ruri>$sharedaddressbook:/addressbook</ruri>
+				<ruri>$sharedaddressbook:/addressbook.vcf</ruri>
 				<verify>
 					<callback>addressDataMatch</callback>
 					<arg>
@@ -763,11 +763,11 @@
 				</verify>
 			</request>
 		</test>
-		<test name='12.2' ignore='yes'>
+		<test name='12.2' ignore='no'>
 			<description>Sharee cannot delete special group</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>DELETE</method>
-				<ruri>$sharedaddressbook:/addressbook</ruri>
+				<ruri>$sharedaddressbook:/addressbook.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 					<arg>
