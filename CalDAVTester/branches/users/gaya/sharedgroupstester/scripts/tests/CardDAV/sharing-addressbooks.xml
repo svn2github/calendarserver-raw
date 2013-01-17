@@ -853,7 +853,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Share group' ignore='yes'>
+	<test-suite name='Share group' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>Sharee create 2 persons and a group</description>
 			<request print-response='no'>
