@@ -171,6 +171,10 @@ class serverinfo(object):
             if key and value:
                 if repeat:
                     for count in range(1, int(repeat) + 1):
-                        self.subsdict[key % (count,)] = (value % (count,)) if "%" in value else value
+                        self.subsdict[
+                                key % tuple(
+                                    [count] * (key.count("%02d") + key.count("%d")))
+                            ] = value % tuple(
+                                [count] * (value.count("%02d") + value.count("%d")))
                 else:
                     self.subsdict[key] = value

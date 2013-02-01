@@ -35,6 +35,7 @@
 			<method>DELETEALL</method>
 			<ruri>$notificationpath2:/</ruri>
 		</request>
+		<!-- no more AddressBook MKCOL
 		<request end-delete="yes">
 			<method>MKCOL</method>
 			<ruri>$addressbookhome1:/shared/</ruri>
@@ -46,9 +47,10 @@
 				<callback>statusCode</callback>
 			</verify>
 		</request>
+		-->
 	</start>
 	
-	<test-suite name='Read-write addressbooks' ignore='no'>
+	<test-suite name='Read-write addressbooks' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>POST invitation</description>
 			<request print-response='no'>
@@ -331,7 +333,7 @@
 		</test>
 	</test-suite>
 	
-	<test-suite name='Default address book cannot be shared address book' ignore='no'>
+	<test-suite name='Default address book cannot be shared address book' ignore='yes'>
 		<require-feature>
 			<feature>default-addressbook</feature>
 		</require-feature>
@@ -377,7 +379,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Change to read-only address book' ignore='no'>
+	<test-suite name='Change to read-only address book' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>POST invitation</description>
 			<request print-response='no'>
@@ -853,7 +855,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Share group' ignore='no'>
+	<test-suite name='Share group' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>Sharee create 2 persons and a group</description>
 			<request print-response='no'>
