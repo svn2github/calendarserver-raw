@@ -148,6 +148,13 @@ class InvalidSubscriptionValues(ValueError):
     Invalid APN subscription values passed in.
     """
 
+# IMIP Tokens
+
+class InvalidIMIPTokenValues(ValueError):
+    """
+    Invalid IMIP token values passed in.
+    """
+
 #
 # Interfaces
 #
@@ -240,6 +247,28 @@ class ICommonTransaction(ITransaction):
         @return: tuples of (token, key, timestamp, userAgent, ipAddr)
         """
 
+    def imipCreateToken(token):
+        """
+        """
+
+    def imipLookupByToken(token):
+        """
+        """
+
+
+    def imipGetToken(organizer, attendee, icaluid):
+        """
+        """
+
+
+    def imipRemoveToken(token):
+        """
+        """
+
+
+    def purgeOldIMIPTokens(olderThan):
+        """
+        """
 
 class IShareableCollection(Interface):
     """

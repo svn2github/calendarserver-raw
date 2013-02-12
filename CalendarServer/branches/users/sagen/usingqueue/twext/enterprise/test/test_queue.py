@@ -54,6 +54,9 @@ from twext.enterprise.fixtures import buildConnectionPool
 from zope.interface.verify import verifyObject
 from twisted.test.proto_helpers import StringTransport
 
+from twext.enterprise.queue import _BaseQueuer
+import twext.enterprise.queue
+
 class Clock(_Clock):
     """
     More careful L{IReactorTime} fake which mimics the exception behavior of
@@ -626,4 +629,28 @@ class PeerConnectionPoolIntegrationTests(TestCase):
         rows = yield inTransaction(self.store.newTransaction, op2)
         self.assertEquals(rows, [[4321, 7]])
 
+
+class DummyProposal(object):
+
+    def __init__(self, *ignored):
+        pass
+
+    def _start(self):
+        pass
+
+class BaseQueuerTests(TestCase):
+
+    def setUp(self):
+        self.proposal = None
+        self.patch(twext.enterprise.queue, "WorkProposal", DummyProposal)
+
+    def _proposalCallback(self, proposal):
+        self.proposal = proposal
+
+    def test_proposalCallbacks(self):
+        queuer = _BaseQueuer()
+        queuer.registerProposalCallback(self._proposalCallback)
+        self.assertEqual(self.proposal, None)
+        queuer.enqueueWork(None, None)
+        self.assertNotEqual(self.proposal, None)
 

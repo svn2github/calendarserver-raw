@@ -337,6 +337,26 @@ class CommonStoreTransaction(DataStoreTransaction):
         return NotImplementedError
 
 
+    def imipCreateToken(self, token):
+        return NotImplementedError
+
+
+    def imipLookupByToken(self, token):
+        return NotImplementedError
+
+
+    def imipGetToken(self, organizer, attendee, icaluid):
+        return NotImplementedError
+
+
+    def imipRemoveToken(self, token):
+        return NotImplementedError
+
+
+    def purgeOldIMIPTokens(self, olderThan):
+        return NotImplementedError
+
+
     def isNotifiedAlready(self, obj):
         return obj in self._notifiedAlready
 

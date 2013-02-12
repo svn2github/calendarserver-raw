@@ -139,6 +139,16 @@ class ApplePushNotifierService(service.MultiService, LoggingMixIn):
         return service
 
 
+    _theService = None
+
+    @classmethod
+    def getService(cls, settings, store, serverHostName):
+        if cls._theService is None:
+            cls._theService = cls.makeService(settings, store, serverHostName)
+            cls._theService.startService()
+        return cls._theService
+
+
     def startService(self):
         """
         In addition to starting the provider and feedback sub-services, start a

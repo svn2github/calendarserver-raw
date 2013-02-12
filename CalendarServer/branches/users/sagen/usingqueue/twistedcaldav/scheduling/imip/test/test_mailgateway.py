@@ -20,7 +20,6 @@ from cStringIO import StringIO
 from pycalendar.datetime import PyCalendarDateTime
 
 from twisted.internet.defer import inlineCallbacks
-from twisted.python.modules import getModule
 from twisted.web.template import Element, renderer, flattenString
 
 from twistedcaldav.config import config, ConfigDict
@@ -28,14 +27,16 @@ from twistedcaldav.directory import augment
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.ical import Component
 from twistedcaldav.scheduling.imip.mailgateway import MailGatewayTokensDatabase
-from twistedcaldav.scheduling.imip.mailgateway import MailHandler
 from twistedcaldav.scheduling.imip.mailgateway import StringFormatTemplateLoader
 from twistedcaldav.scheduling.imip.mailgateway import injectionSettingsFromURL
 from twistedcaldav.scheduling.imip.mailgateway import serverForOrganizer
+from twistedcaldav.scheduling.imip.outbound import MailSender
 from twistedcaldav.scheduling.ischedule.localservers import Servers
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
 from twistedcaldav.test.util import TestCase
 from twistedcaldav.test.util import xmlFile, augmentsFile
+
+from txdav.common.datastore.test.util import buildStore
 
 import datetime
 import email
@@ -68,10 +69,32 @@ END:VEVENT
 END:VCALENDAR
 """
 
+class DummySender(object):
+
+    def __init__(self):
+        self.reset()
+        self.shouldSucceed = True
+
+    def reset(self):
+        self.fromAddr = None
+        self.toAddr = None
+        self.msgId = None
+        self.message = None
+
+    def sendMessage(self, fromAddr, toAddr, msgId, message):
+        self.fromAddr = fromAddr
+        self.toAddr = toAddr
+        self.msgId = msgId
+        self.message = message
+        return succeed(self.shouldSucceed)
+
+
 class MailHandlerTests(TestCase):
 
     def setUp(self):
         super(MailHandlerTests, self).setUp()
+
+        self.store = yield buildStore(self, None)
 
         self._setupServers(serverData)
         self.directory = XMLDirectoryService(
@@ -81,10 +104,8 @@ class MailHandlerTests(TestCase):
                     augment.AugmentXMLDB(xmlFiles=(augmentsFile.path,)),
             }
         )
-        self.handler = MailHandler(dataRoot=":memory:", directory=self.directory)
-        module = getModule(__name__)
+        self.handler = MailSender("server@example.com", 7, DummySender())
         self.dataPath = module.filePath.sibling("data")
-
 
     def _setupServers(self, data):
         self.patch(config, "ServerHostName", "caldav1.example.com")
@@ -135,6 +156,7 @@ class MailHandlerTests(TestCase):
         attendee = "mailto:you@example.com"
         icaluid = "123"
         pastDate = datetime.date(2009, 1, 1)
+        txn = self.store.newTransaction()
         self.handler.db._db_execute(
             """
             insert into TOKENS (TOKEN, ORGANIZER, ATTENDEE, ICALUID, DATESTAMP)

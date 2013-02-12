@@ -33,9 +33,13 @@ from twistedcaldav.caldavxml import caldav_namespace
 from twistedcaldav.config import config
 from twistedcaldav.util import AuthorizedHTTPGetter
 from twistedcaldav.scheduling.delivery import DeliveryService
+from twistedcaldav.scheduling.imip.outbound import IMIPInvitationWork
 from twistedcaldav.scheduling.itip import iTIPRequestStatus
 from twext.internet.gaiendpoint import GAIEndpoint
 from twext.internet.adaptendpoint import connect
+from twistedcaldav.directory.util import transactionFromRequest
+
+
 
 
 __all__ = [
@@ -105,8 +109,10 @@ class ScheduleViaIMip(DeliveryService):
 
                     fromAddr = str(self.scheduler.originator.cuaddr)
 
-                    log.debug("POSTing iMIP message to gateway...  To: '%s', From :'%s'\n%s" % (toAddr, fromAddr, caldata,))
-                    yield self.postToGateway(fromAddr, toAddr, caldata)
+                    txn = transactionFromRequest(self.scheduler.request, self.scheduler.request._newStoreTransaction.store)
+                    log.debug("Submitting iMIP message...  To: '%s', From :'%s'\n%s" % (toAddr, fromAddr, caldata,))
+                    yield txn.enqueue(IMIPInvitationWork, fromAddr=fromAddr, toAddr=toAddr, icalendarText=caldata)
+
 
                 except Exception, e:
                     # Generated failed response for this recipient

@@ -296,3 +296,16 @@ class IQueuer(Interface):
         @rtype: L{twext.enterprise.queue.WorkItem}
         """
 
+
+    def registerProposalCallback(self, callback):
+        """
+        Tells the IQueuer to call a callback method whenever a new WorkProposal
+        is created.
+
+        @param callback: a callable which accepts a single parameter, a
+            L{WorkProposal}
+        """
+
+    def transferProposalCallbacks(self, newQueuer):
+        """
+        """

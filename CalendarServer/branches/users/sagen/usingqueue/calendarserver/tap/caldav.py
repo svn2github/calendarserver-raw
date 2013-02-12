@@ -70,7 +70,6 @@ from txdav.common.datastore.upgrade.migrate import UpgradeToDatabaseService
 from twistedcaldav.config import ConfigurationError
 from twistedcaldav.config import config
 from twistedcaldav.localization import processLocalizationFiles
-from twistedcaldav.scheduling.imip.resource import IMIPReplyInboxResource
 from twistedcaldav import memcachepool
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
 from twistedcaldav.upgrade import UpgradeFileSystemFormatService, PostDBImportService
@@ -511,7 +510,6 @@ class SlaveSpawnerService(Service):
 
         - regular slave processes (CalDAV workers)
         - notifier
-        - mail gateway
     """
 
     def __init__(self, maker, monitor, dispenser, dispatcher, configPath,
@@ -540,50 +538,6 @@ class SlaveSpawnerService(Service):
             )
             self.monitor.addProcessObject(process, PARENT_ENVIRONMENT)
 
-        if (
-            config.Notifications.Enabled and
-            config.Notifications.InternalNotificationHost == "localhost"
-        ):
-            self.maker.log_info("Adding notification service")
-
-            notificationsArgv = [
-                sys.executable,
-                sys.argv[0],
-            ]
-            if config.UserName:
-                notificationsArgv.extend(("-u", config.UserName))
-            if config.GroupName:
-                notificationsArgv.extend(("-g", config.GroupName))
-            notificationsArgv.extend((
-                "--reactor=%s" % (config.Twisted.reactor,),
-                "-n", self.maker.notifierTapName,
-                "-f", self.configPath,
-            ))
-            self.monitor.addProcess("notifications", notificationsArgv,
-                env=PARENT_ENVIRONMENT)
-
-        if (
-            config.Scheduling.iMIP.Enabled and
-            config.Scheduling.iMIP.MailGatewayServer == "localhost"
-        ):
-            self.maker.log_info("Adding mail gateway service")
-
-            mailGatewayArgv = [
-                sys.executable,
-                sys.argv[0],
-            ]
-            if config.UserName:
-                mailGatewayArgv.extend(("-u", config.UserName))
-            if config.GroupName:
-                mailGatewayArgv.extend(("-g", config.GroupName))
-            mailGatewayArgv.extend((
-                "--reactor=%s" % (config.Twisted.reactor,),
-                "-n", self.maker.mailGatewayTapName,
-                "-f", self.configPath,
-            ))
-
-            self.monitor.addProcess("mailgateway", mailGatewayArgv,
-                               env=PARENT_ENVIRONMENT)
 
         if config.GroupCaching.Enabled and config.GroupCaching.EnableUpdater:
             self.maker.log_info("Adding group caching service")
@@ -667,7 +621,6 @@ class CalDAVServiceMaker (LoggingMixIn):
     #
     # Default tap names
     #
-    mailGatewayTapName = "caldav_mailgateway"
     notifierTapName = "caldav_notifier"
     groupMembershipCacherTapName = "caldav_groupcacher"
 
@@ -801,9 +754,9 @@ class CalDAVServiceMaker (LoggingMixIn):
         oldLogLevel = logLevelForNamespace(None)
         setLogLevelForNamespace(None, "info")
 
+        # Note: 'additional' was used for IMIP reply resource, and perhaps
+        # we can remove this
         additional = []
-        if config.Scheduling.iMIP.Enabled:
-            additional.append(("inbox", IMIPReplyInboxResource, [], ("digest",)))
 
         #
         # Configure the service
@@ -836,7 +789,7 @@ class CalDAVServiceMaker (LoggingMixIn):
             from txdav.common.datastore.sql import CommonDataStore as SQLStore
             if isinstance(store, SQLStore):
                 def queueMasterAvailable(connectionFromMaster):
-                    store.queuer = connectionFromMaster
+                    store.queuer = store.queuer.transferProposalCallbacks(connectionFromMaster)
                 queueFactory = QueueWorkerFactory(store.newTransaction, schema,
                                                   queueMasterAvailable)
                 controlSocketClient.addFactory(_QUEUE_ROUTE, queueFactory)

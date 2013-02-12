@@ -57,7 +57,7 @@ from twistedcaldav.directory.directory import GroupMembershipCache
 from twistedcaldav.directory.internal import InternalDirectoryService
 from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
 from twistedcaldav.directory.wiki import WikiDirectoryService
-from twistedcaldav.notify import NotifierFactory, getPubSubConfiguration
+from calendarserver.push.notifier import NotifierFactory 
 from calendarserver.push.applepush import APNSubscriptionResource
 from twistedcaldav.directorybackedaddressbook import DirectoryBackedAddressBookResource
 from twistedcaldav.resource import AuthenticationWrapper
@@ -223,11 +223,9 @@ def storeFromConfig(config, txnFactory):
     # Configure NotifierFactory
     #
     if config.Notifications.Enabled:
-        notifierFactory = NotifierFactory(
-            config.Notifications.InternalNotificationHost,
-            config.Notifications.InternalNotificationPort,
-            pubSubConfig=getPubSubConfiguration(config)
-        )
+        # FIXME: NotifierFactory needs reference to the store in order
+        # to get a txn in order to create a Work item
+        notifierFactory = NotifierFactory(None, config.ServerHostName)
     else:
         notifierFactory = None
     quota = config.UserQuota
@@ -239,7 +237,7 @@ def storeFromConfig(config, txnFactory):
         else:
             uri = "http://%s:%s" % (config.ServerHostName, config.HTTPPort,)
         attachments_uri = uri + "/calendars/__uids__/%(home)s/dropbox/%(dropbox_id)s/%(name)s"
-        return CommonSQLDataStore(
+        store = CommonSQLDataStore(
             txnFactory, notifierFactory,
             FilePath(config.AttachmentsRoot), attachments_uri,
             config.EnableCalDAV, config.EnableCardDAV,
@@ -256,11 +254,13 @@ def storeFromConfig(config, txnFactory):
             cacheExpireSeconds=config.QueryCaching.ExpireSeconds
         )
     else:
-        return CommonFileDataStore(
+        store = CommonFileDataStore(
             FilePath(config.DocumentRoot),
             notifierFactory, config.EnableCalDAV, config.EnableCardDAV,
             quota=quota
         )
+    notifierFactory.store = store
+    return store
 
 
 
@@ -268,7 +268,6 @@ def directoryFromConfig(config):
     """
     Create an L{AggregateDirectoryService} from the given configuration.
     """
-
     #
     # Setup the Augment Service
     #
@@ -362,7 +361,7 @@ def directoryFromConfig(config):
 
 
 
-def getRootResource(config, newStore, resources=None):
+def getRootResource(config, newStore, resources=None, directory=None):
     """
     Set up directory service and resource hierarchy based on config.
     Return root resource.
@@ -398,7 +397,8 @@ def getRootResource(config, newStore, resources=None):
     directoryBackedAddressBookResourceClass = DirectoryBackedAddressBookResource
     apnSubscriptionResourceClass = APNSubscriptionResource
 
-    directory = directoryFromConfig(config)
+    if directory is None:
+        directory = directoryFromConfig(config)
 
     #
     # Setup the ProxyDB Service
@@ -705,6 +705,10 @@ def getRootResource(config, newStore, resources=None):
         authWrapper,
         directory,
     )
+
+    # FIXME:  Storing a reference to the root resource on the store
+    # until scheduling no longer needs resource objects
+    newStore.rootResource = root
 
     return logWrapper
 

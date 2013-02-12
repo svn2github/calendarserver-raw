@@ -46,6 +46,7 @@ from twistedcaldav.directory.xmlfile import XMLDirectoryService
 from twistedcaldav.ical import Component
 from twistedcaldav.scheduling.cuaddress import LocalCalendarUser
 from twistedcaldav.scheduling.imip.mailgateway import MailGatewayTokensDatabase
+from twistedcaldav.scheduling.imip.inbound import MailRetrievalService
 from twistedcaldav.scheduling.scheduler import DirectScheduler
 from twistedcaldav.util import normalizationLookup
 
@@ -1048,6 +1049,8 @@ class PostDBImportService(Service, object):
         Start the service.
         """
 
+        directory = directoryFromConfig(self.config)
+
         # Load proxy assignments from XML if specified
         if self.config.ProxyLoadFromFile:
             proxydbClass = namedClass(self.config.ProxyDBService.type)
@@ -1063,7 +1066,6 @@ class PostDBImportService(Service, object):
             if proxydb is None:
                 proxydbClass = namedClass(self.config.ProxyDBService.type)
                 proxydb = proxydbClass(**self.config.ProxyDBService.params)
-            directory = directoryFromConfig(self.config)
 
             updater = GroupMembershipCacheUpdater(proxydb,
                 directory, self.config.GroupCaching.ExpireSeconds,
@@ -1081,6 +1083,13 @@ class PostDBImportService(Service, object):
         self.store.setMigrating(True)
         yield self.processInboxItems()
         self.store.setMigrating(False)
+
+        # Initiate inbound mail handling
+        if self.config.Scheduling.iMIP.Enabled:
+            log.debug("Initializing inbound mail retrieval")
+            inboundMailService = MailRetrievalService(self.store, directory)
+            inboundMailService.setServiceParent(self.parent)
+
 
 
     @inlineCallbacks
