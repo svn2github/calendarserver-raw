@@ -1285,6 +1285,24 @@
 				</verify>
 			</request>
 		</test>
+		<test name="20a" ignore="yes">
+			<description>Unshare main address book</description>
+			<request print-response="no">
+				<method>POST</method>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CardDAV/sharing/addressbooks/group/15a.xml</filepath>
+				</data>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>200</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
 		<test name='21' ignore='no'>
 			<description>Check Sharee notification collection and delete invite-deleted</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
