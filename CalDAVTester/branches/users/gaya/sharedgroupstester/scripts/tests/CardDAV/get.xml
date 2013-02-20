@@ -260,7 +260,7 @@
 				</grabheader>
 			</request>
 		</test>
-		<test name='2'>
+		<test name='2' ignore='yes'>
 			<description>Create a addressbook</description>
 			<request>
 				<method>DELAY</method>

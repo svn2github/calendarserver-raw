@@ -42,7 +42,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='MKCOL with body'>
+	<test-suite name='MKCOL with body' ignore='yes'>
 		<test name='1'>
 			<description>MKCOL with correct request body</description>
 			<request end-delete='yes'>

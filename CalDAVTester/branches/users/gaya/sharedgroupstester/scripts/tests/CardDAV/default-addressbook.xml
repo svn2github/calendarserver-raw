@@ -51,7 +51,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Change property'>
+	<test-suite name='Change property' ignore='yes'>
 		<test name='1'>
 			<description>MKCOL with correct request body</description>
 			<request end-delete='yes'>

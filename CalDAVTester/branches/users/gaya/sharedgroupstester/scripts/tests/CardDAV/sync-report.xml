@@ -25,6 +25,7 @@
 	</require-feature>
 
 	<start>
+<!--
 		<request end-delete="yes">
 			<method>MKCOL</method>
 			<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
@@ -73,6 +74,7 @@
 				<filepath>Resource/CardDAV/vreports/put/2.vcf</filepath>
 			</data>
 		</request>
+-->
 	</start>
 	
 	<test-suite name='support-report-set' ignore='no'>
