@@ -230,7 +230,7 @@
 		</test>
 	</test-suite>
 	
-	<test-suite name='GET on home'>
+	<test-suite name='GET on home' ignore='yes'>
 		<require-feature>
 			<feature>directory listing</feature>
 		</require-feature>

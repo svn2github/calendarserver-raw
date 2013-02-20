@@ -130,7 +130,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Move delete'>
+	<test-suite name='Move delete' ignore='yes'>
 		<test name='1'>
 			<description>MOVE</description>
 			<request end-delete='yes'>
@@ -169,7 +169,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='No default delete'>
+	<test-suite name='No default delete' ignore='yes'>
 		<test name='1'>
 			<description>DELETE</description>
 			<request end-delete='yes'>

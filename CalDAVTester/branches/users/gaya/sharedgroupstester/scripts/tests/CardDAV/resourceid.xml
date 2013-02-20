@@ -26,7 +26,7 @@
 
 	<start/>
 	
-	<test-suite name='Address book with move'>
+	<test-suite name='Address book with move' ignore='yes'>
 		<test name='1'>
 			<description>Simple MKCOL</description>
 			<request end-delete='yes'>

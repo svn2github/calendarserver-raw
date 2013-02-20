@@ -35,6 +35,7 @@
 			<method>DELETEALL</method>
 			<ruri>$notificationpath2:/</ruri>
 		</request>
+<!--
 		<request end-delete="yes">
 			<method>MKCOL</method>
 			<ruri>$addressbookhome1:/shared/</ruri>
@@ -46,9 +47,10 @@
 				<callback>statusCode</callback>
 			</verify>
 		</request>
+-->
 	</start>
 	
-	<test-suite name='Set up share'>
+	<test-suite name='Set up share' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>POST invitation</description>
 			<request print-response='no'>
@@ -166,7 +168,7 @@
 		</test>
 	</test-suite>
 	
-	<test-suite name='prop patches - non-global' ignore='no'>
+	<test-suite name='prop patches - non-global' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>PROPPATCH of displayname</description>
 			<request print-response='no'>
@@ -287,7 +289,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='prop patches - shadowable' ignore='no'>
+	<test-suite name='prop patches - shadowable' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>PROPPATCH of addressbook-description</description>
 			<request print-response='no'>

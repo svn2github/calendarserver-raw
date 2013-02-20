@@ -176,7 +176,7 @@
 			<description>On addressbook</description>
 			<request>
 				<method>PROPFIND</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>0</value>
@@ -205,7 +205,7 @@
 		</test>
 	</test-suite>
 	
-	<test-suite name='simple reports - empty token - no props' ignore='no'>
+	<test-suite name='simple reports - empty token - no props' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>initial query - addressbook depth:1</description>
 			<request print-response='no'>
@@ -572,7 +572,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - no props' ignore='no'>
+	<test-suite name='simple reports - diff token - no props' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>initial query - grab token</description>
 			<request print-response='no'>
@@ -753,7 +753,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - empty token - props' ignore='no'>
+	<test-suite name='simple reports - empty token - props' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>initial query</description>
 			<request print-response='no'>
@@ -910,7 +910,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - props' ignore='no'>
+	<test-suite name='simple reports - diff token - props' ignore='yes'>
 		<test name='1' ignore='no'>
 			<description>initial query - grab token</description>
 			<request print-response='no'>
@@ -1126,7 +1126,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - no props - home depth:infinity' ignore='no'>
+	<test-suite name='simple reports - diff token - no props - home depth:infinity' ignore='yes'>
 		<require-feature>
 			<feature>sync-report-home</feature>
 		</require-feature>
@@ -1374,7 +1374,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - props - home depth:infinity' ignore='no'>
+	<test-suite name='simple reports - diff token - props - home depth:infinity' ignore='yes'>
 		<require-feature>
 			<feature>sync-report-home</feature>
 		</require-feature>
@@ -1617,7 +1617,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - delete/create addressbook - home depth:infinity' ignore='no'>
+	<test-suite name='simple reports - diff token - delete/create addressbook - home depth:infinity' ignore='yes'>
 		<require-feature>
 			<feature>sync-report-home</feature>
 		</require-feature>
