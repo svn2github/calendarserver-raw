@@ -3,7 +3,7 @@
 <!DOCTYPE caldavtest SYSTEM "caldavtest.dtd">
 
 <!--
- Copyright (c) 2012 Apple Inc. All rights reserved.
+ Copyright (c) 2012-2013 Apple Inc. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -282,7 +282,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -340,7 +340,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -457,7 +457,7 @@
 				<ruri>$calendarpath1:/1.ics?action=attachment-remove&amp;managed-id=$managed-id:</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<verify>
 					<callback>calendarDataMatch</callback>
@@ -498,7 +498,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -556,7 +556,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -639,7 +639,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -687,7 +687,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -762,7 +762,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<verify>
 					<callback>calendarDataMatch</callback>
@@ -789,7 +789,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -813,7 +813,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -861,7 +861,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -940,7 +940,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<verify>
 					<callback>prepostcondition</callback>
@@ -1026,7 +1026,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -1074,7 +1074,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -1149,7 +1149,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -1189,13 +1189,17 @@
 						<value>Cal-Managed-ID$$managed-id:</value>
 					</arg>
 				</verify>
+				<grabheader>
+					<name>Location</name>
+					<variable>$location2:</variable>
+				</grabheader>
 			</request>
 		</test>
 		<test name='5' ignore='no'>
 			<description>Check for attachment</description>
 			<request>
 				<method>GET</method>
-				<ruri>$location:</ruri>
+				<ruri>$location2:</ruri>
 				<verify>
 					<callback>dataMatch</callback>
 					<arg>
@@ -1224,7 +1228,21 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='8' ignore='no'>
+			<description>Check for attachment</description>
+			<request>
+				<method>GET</method>
+				<ruri>$location2:</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -1272,7 +1290,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -1351,7 +1369,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -1441,7 +1459,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -1477,7 +1495,7 @@
 				<ruri>$calendarpath1:/1.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -1507,7 +1525,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -1598,7 +1616,7 @@
 				<ruri>$calendarpath2:/2.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -1692,7 +1710,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -1707,7 +1725,7 @@
 				<ruri>$calendarpath1:/1.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -1737,7 +1755,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -1828,7 +1846,7 @@
 				<ruri>$calendarpath1:/2.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -1911,7 +1929,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -1944,13 +1962,17 @@
 						<value>;MANAGED-ID=$managed_id1:</value>
 					</arg>
 				</verify>
+				<grabheader>
+					<name>Location</name>
+					<variable>$location2:</variable>
+				</grabheader>
 			</request>
 		</test>
 		<test name='7' ignore='no'>
 			<description>Check for attachment</description>
 			<request>
 				<method>GET</method>
-				<ruri>$attach1:</ruri>
+				<ruri>$location2:</ruri>
 				<verify>
 					<callback>dataMatch</callback>
 					<arg>
@@ -2017,7 +2039,21 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='13' ignore='no'>
+			<description>Check for attachment</description>
+			<request>
+				<method>GET</method>
+				<ruri>$location2:</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -2067,7 +2103,7 @@
 				<ruri>$calendarpath1:/1.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -2097,7 +2133,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -2188,7 +2224,7 @@
 				<ruri>$calendarpath1:/2.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -2214,7 +2250,7 @@
 				<ruri>$calendarpath1:/2.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -2240,6 +2276,7 @@
 					<arg>
 						<name>notcontains</name>
 						<value>;MANAGED-ID=$managed_id1:</value>
+						<value>None</value>
 					</arg>
 				</verify>
 				<grabheader>
@@ -2293,7 +2330,7 @@
 				<ruri>$calendarpath1:/1.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -2317,7 +2354,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -2379,7 +2416,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
@@ -2394,7 +2431,7 @@
 				<ruri>$calendarpath1:/1.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -2424,7 +2461,7 @@
 				</header>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/plain</content-type>
@@ -2515,7 +2552,7 @@
 				<ruri>$calendarpath1:/1.ics</ruri>
 				<header>
 					<name>Prefer</name>
-					<value>return-representation</value>
+					<value>return=representation</value>
 				</header>
 				<data>
 					<content-type>text/calendar; charset=utf-8</content-type>
@@ -2563,7 +2600,7 @@
 					<callback>statusCode</callback>
 					<arg>
 						<name>status</name>
-						<value>404</value>
+						<value>403</value>
 					</arg>
 				</verify>
 			</request>
