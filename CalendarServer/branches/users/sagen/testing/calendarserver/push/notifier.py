@@ -31,11 +31,12 @@ log = Logger()
 
 class PushNotificationWork(WorkItem, fromTable(schema.PUSH_NOTIFICATION_WORK)):
 
+    group = "PUSH_ID"
+
     @inlineCallbacks
     def doWork(self):
 
         # FIXME: Coalescing goes here?
-
         pushDistributor = self.transaction._pushDistributor
         if pushDistributor is not None:
             yield pushDistributor.enqueue(self.pushID)
