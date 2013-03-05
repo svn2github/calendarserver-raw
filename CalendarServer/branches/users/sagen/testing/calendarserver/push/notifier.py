@@ -24,6 +24,7 @@ from twisted.internet.defer import inlineCallbacks, succeed
 from twext.enterprise.dal.record import fromTable
 from twext.enterprise.queue import WorkItem
 from txdav.common.datastore.sql_tables import schema
+from twext.enterprise.dal.syntax import Delete
 
 
 log = Logger()
@@ -36,7 +37,11 @@ class PushNotificationWork(WorkItem, fromTable(schema.PUSH_NOTIFICATION_WORK)):
     @inlineCallbacks
     def doWork(self):
 
-        # FIXME: Coalescing goes here?
+        # Delete all other work items with the same pushID
+        yield Delete(From=self.table,
+                     Where=self.table.PUSH_ID == self.pushID 
+                    ).on(self.transaction)
+
         pushDistributor = self.transaction._pushDistributor
         if pushDistributor is not None:
             yield pushDistributor.enqueue(self.pushID)
