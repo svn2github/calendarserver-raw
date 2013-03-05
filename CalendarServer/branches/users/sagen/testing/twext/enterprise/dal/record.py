@@ -193,7 +193,7 @@ class Record(object):
         results = (yield cls.query(transaction,
                                 cls._primaryKeyComparison(primaryKey)))
         if len(results) != 1:
-            returnValue(None)
+            raise NoSuchRecord()
         else:
             returnValue(results[0])
 

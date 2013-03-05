@@ -18,8 +18,8 @@
 Notification framework for Calendar Server
 """
 
+import datetime
 from twext.python.log import LoggingMixIn, Logger
-
 from twisted.internet.defer import inlineCallbacks, succeed
 from twext.enterprise.dal.record import fromTable
 from twext.enterprise.queue import WorkItem
@@ -123,9 +123,10 @@ class NotifierFactory(LoggingMixIn):
     work queue.
     """
 
-    def __init__(self, store, hostname, reactor=None):
+    def __init__(self, store, hostname, coalesceSeconds, reactor=None):
         self.store = store
         self.hostname = hostname
+        self.coalesceSeconds = coalesceSeconds
 
         if reactor is None:
             from twisted.internet import reactor
@@ -134,7 +135,10 @@ class NotifierFactory(LoggingMixIn):
     @inlineCallbacks
     def send(self, id):
         txn = self.store.newTransaction()
-        yield txn.enqueue(PushNotificationWork, pushID=self.pushKeyForId(id))
+        notBefore = datetime.datetime.utcnow() + datetime.timedelta(
+            seconds=self.coalesceSeconds)
+        yield txn.enqueue(PushNotificationWork, pushID=self.pushKeyForId(id),
+            notBefore=notBefore)
         yield txn.commit()
 
     def newNotifier(self, label="default", id=None, prefix=None):
