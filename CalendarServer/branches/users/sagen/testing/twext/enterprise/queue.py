@@ -827,14 +827,15 @@ def ultimatelyPerform(txnFactory, table, workID):
     def work(txn):
         workItemClass = WorkItem.forTable(table)
         workItem = yield workItemClass.load(txn, workID)
-        if workItem.group is not None:
-            yield NamedLock.acquire(txn, workItem.group)
-        # TODO: what if we fail?  error-handling should be recorded someplace,
-        # the row should probably be marked, re-tries should be triggerable
-        # administratively.
-        yield workItem.delete()
-        # TODO: verify that workID is the primary key someplace.
-        yield workItem.doWork()
+        if workItem is not None:
+            if workItem.group is not None:
+                yield NamedLock.acquire(txn, workItem.group)
+            # TODO: what if we fail?  error-handling should be recorded someplace,
+            # the row should probably be marked, re-tries should be triggerable
+            # administratively.
+            yield workItem.delete()
+            # TODO: verify that workID is the primary key someplace.
+            yield workItem.doWork()
     return inTransaction(txnFactory, work)
 
 
