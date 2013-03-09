@@ -39,7 +39,9 @@ from twistedcaldav import caldavxml
 from twistedcaldav.directory import calendaruserproxy
 from twistedcaldav.directory.appleopendirectory import OpenDirectoryService
 from twistedcaldav.directory.calendaruserproxyloader import XMLCalendarUserProxyLoader
-from twistedcaldav.directory.directory import DirectoryService, GroupMembershipCacheUpdater
+from twistedcaldav.directory.directory import DirectoryService
+from twistedcaldav.directory.directory import GroupMembershipCacheUpdater
+from twistedcaldav.directory.directory import scheduleNextGroupCachingUpdate
 from twistedcaldav.directory.principal import DirectoryCalendarPrincipalResource
 from twistedcaldav.directory.resourceinfo import ResourceInfoDatabase
 from twistedcaldav.directory.xmlfile import XMLDirectoryService
@@ -1069,11 +1071,14 @@ class PostDBImportService(Service, object):
                 proxydb = proxydbClass(**self.config.ProxyDBService.params)
 
             updater = GroupMembershipCacheUpdater(proxydb,
-                directory, self.config.GroupCaching.ExpireSeconds,
-                self.config.GroupCaching.LockSeconds,
+                directory,
+                self.config.GroupCaching.UpdateSeconds,
+                self.config.GroupCaching.ExpireSeconds,
                 namespace=self.config.GroupCaching.MemcachedPool,
                 useExternalProxies=self.config.GroupCaching.UseExternalProxies)
             yield updater.updateCache(fast=True)
+            # Set in motion the work queue based updates:
+            yield scheduleNextGroupCachingUpdate(self.store, 0)
 
             uid, gid = getCalendarServerIDs(self.config)
             dbPath = os.path.join(self.config.DataRoot, "proxies.sqlite")

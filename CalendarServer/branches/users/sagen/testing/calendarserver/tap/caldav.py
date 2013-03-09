@@ -70,6 +70,8 @@ from txdav.common.datastore.upgrade.migrate import UpgradeToDatabaseService
 
 from twistedcaldav.config import ConfigurationError
 from twistedcaldav.config import config
+from twistedcaldav.directory import calendaruserproxy
+from twistedcaldav.directory.directory import GroupMembershipCacheUpdater
 from twistedcaldav.localization import processLocalizationFiles
 from twistedcaldav import memcachepool
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
@@ -542,27 +544,6 @@ class SlaveSpawnerService(Service):
             )
             self.monitor.addProcessObject(process, PARENT_ENVIRONMENT)
 
-        if config.GroupCaching.Enabled and config.GroupCaching.EnableUpdater:
-            self.maker.log_info("Adding group caching service")
-
-            groupMembershipCacherArgv = [
-                sys.executable,
-                sys.argv[0],
-            ]
-            if config.UserName:
-                groupMembershipCacherArgv.extend(("-u", config.UserName))
-            if config.GroupName:
-                groupMembershipCacherArgv.extend(("-g", config.GroupName))
-            groupMembershipCacherArgv.extend((
-                "--reactor=%s" % (config.Twisted.reactor,),
-                "-n", self.maker.groupMembershipCacherTapName,
-                "-f", self.configPath,
-                "-o", "PIDFile=groupcacher.pid",
-            ))
-
-            self.monitor.addProcess("groupcacher", groupMembershipCacherArgv,
-                               env=PARENT_ENVIRONMENT)
-
 
 
 class ReExecService(MultiService, LoggingMixIn):
@@ -620,11 +601,6 @@ class CalDAVServiceMaker (LoggingMixIn):
     tapname = "caldav"
     description = "Calendar and Contacts Server"
     options = CalDAVOptions
-
-    #
-    # Default tap names
-    #
-    groupMembershipCacherTapName = "caldav_groupcacher"
 
 
     def makeService(self, options):
@@ -771,10 +747,24 @@ class CalDAVServiceMaker (LoggingMixIn):
         else:
             mailRetriever = None
 
+        # Optionally set up group cacher
+        if config.GroupCaching.Enabled:
+            groupCacher = GroupMembershipCacheUpdater(
+                calendaruserproxy.ProxyDBService,
+                directory,
+                config.GroupCaching.UpdateSeconds,
+                config.GroupCaching.ExpireSeconds,
+                namespace=config.GroupCaching.MemcachedPool,
+                useExternalProxies=config.GroupCaching.UseExternalProxies
+                )
+        else:
+            groupCacher = None
+
         def decorateTransaction(txn):
             txn._pushDistributor = pushDistributor
             txn._rootResource = result.rootResource
             txn._mailRetriever = mailRetriever
+            txn._groupCacher = groupCacher
 
         store.callWithNewTransactions(decorateTransaction)
 
@@ -1046,10 +1036,24 @@ class CalDAVServiceMaker (LoggingMixIn):
             else:
                 mailRetriever = None
 
+            # Optionally set up group cacher
+            if config.GroupCaching.Enabled:
+                groupCacher = GroupMembershipCacheUpdater(
+                    calendaruserproxy.ProxyDBService,
+                    directory,
+                    config.GroupCaching.UpdateSeconds,
+                    config.GroupCaching.ExpireSeconds,
+                    namespace=config.GroupCaching.MemcachedPool,
+                    useExternalProxies=config.GroupCaching.UseExternalProxies
+                    )
+            else:
+                groupCacher = None
+
             def decorateTransaction(txn):
                 txn._pushDistributor = pushDistributor
                 txn._rootResource = result.rootResource
                 txn._mailRetriever = mailRetriever
+                txn._groupCacher = groupCacher
 
             store.callWithNewTransactions(decorateTransaction)
 

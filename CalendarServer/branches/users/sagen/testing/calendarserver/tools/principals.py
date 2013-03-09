@@ -42,6 +42,7 @@ from twistedcaldav.directory.directory import UnknownRecordTypeError, DirectoryE
 from calendarserver.tools.util import loadConfig, getDirectory, setupMemcached,  booleanArgument, checkDirectory
 from twistedcaldav.directory.augment import allowedAutoScheduleModes
 
+
 __all__ = [
     "principalForPrincipalID", "proxySubprincipal", "addProxy", "removeProxy",
     "ProxyError", "ProxyWarning", "updateRecord"
