@@ -51,8 +51,8 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Change property' ignore='yes'>
-		<test name='1'>
+	<test-suite name='Change property' ignore='no'>
+		<test name='1'  ignore='yes'>
 			<description>MKCOL with correct request body</description>
 			<request end-delete='yes'>
 				<method>MKCOL</method>
@@ -123,7 +123,7 @@
 					<callback>propfindItems</callback>
 					<arg>
 						<name>okprops</name>
-						<value><![CDATA[{urn:ietf:params:xml:ns:carddav}default-addressbook-URL$<href xmlns="DAV:">$addressbookhome1:/adbktest1/</href>]]></value>
+						<value><![CDATA[{urn:ietf:params:xml:ns:carddav}default-addressbook-URL$<href xmlns="DAV:">$addressbookpath1:/</href>]]></value>
 					</arg>
 				</verify>
 			</request>
@@ -169,8 +169,8 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='No default delete' ignore='yes'>
-		<test name='1'>
+	<test-suite name='No default delete'>
+		<test name='1' ignore='yes'>
 			<description>DELETE</description>
 			<request end-delete='yes'>
 				<method>DELETE</method>
@@ -206,7 +206,7 @@
 			<description>DELETE</description>
 			<request end-delete='yes'>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/adbktest2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
