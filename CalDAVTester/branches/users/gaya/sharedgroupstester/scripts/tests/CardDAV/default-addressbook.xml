@@ -134,7 +134,7 @@
 				<ruri>$addressbookhome1:/</ruri>
 				<data>
 					<content-type>text/xml; charset=utf-8</content-type>
-					<filepath>Resource/CardDAV/default-addressbook/4.xml</filepath>
+					<filepath>Resource/CardDAV/default-addressbook/3.xml</filepath>
 				</data>
 				<verify>
 					<callback>propfindItems</callback>
