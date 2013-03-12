@@ -113,6 +113,7 @@
 	</test-suite>
 
 	<test-suite name='No default delete'>
+<!--  
 		<test name='1' ignore='yes'>
 			<description>DELETE</description>
 			<request end-delete='yes'>
@@ -127,6 +128,7 @@
 				</verify>
 			</request>
 		</test>
+-->
 		<test name='2'>
 			<description>Set property on home</description>
 			<request print-response='no'>
