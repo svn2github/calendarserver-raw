@@ -27,6 +27,7 @@
 
 	<start/>
 
+<!--
 	<test-suite name='non-ascii' ignore="yes">
 		<test name='1' ignore="no">
 			<description>MKCOL with high-ascii</description>
@@ -81,7 +82,9 @@
 			</request>
 		</test>
 	</test-suite>
+ -->
 	
+<!--
 	<test-suite name='double byte' ignore="yes">
 		<test name='1' ignore="no">
 			<description>MKCOL with double byte</description>
@@ -136,6 +139,7 @@
 			</request>
 		</test>
 	</test-suite>
+ -->
 <!--
 	<test-suite name='Non-ascii resource URI' ignore="no">
 		<test name='1' ignore="no">
