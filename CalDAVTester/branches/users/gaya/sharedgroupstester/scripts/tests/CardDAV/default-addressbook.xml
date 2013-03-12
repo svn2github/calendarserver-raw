@@ -52,24 +52,6 @@
 	</test-suite>
 
 	<test-suite name='Change property' ignore='no'>
-		<test name='1'  ignore='yes'>
-			<description>MKCOL with correct request body</description>
-			<request end-delete='yes'>
-				<method>MKCOL</method>
-				<ruri>$addressbookhome1:/adbktest1/</ruri>
-				<data>
-					<content-type>text/xml; charset=utf-8</content-type>
-					<filepath>Resource/Common/MKCOL/addressbook.xml</filepath>
-				</data>
-				<verify>
-					<callback>statusCode</callback>
-					<arg>
-						<name>status</name>
-						<value>201</value>
-					</arg>
-				</verify>
-			</request>
-		</test>
 		<test name='2'>
 			<description>Set invalid property on home</description>
 			<request print-response='no'>
@@ -124,45 +106,6 @@
 					<arg>
 						<name>okprops</name>
 						<value><![CDATA[{urn:ietf:params:xml:ns:carddav}default-addressbook-URL$<href xmlns="DAV:">$addressbookpath1:/</href>]]></value>
-					</arg>
-				</verify>
-			</request>
-		</test>
-	</test-suite>
-
-	<test-suite name='Move delete' ignore='yes'>
-		<test name='1'>
-			<description>MOVE</description>
-			<request end-delete='yes'>
-				<method>MOVE</method>
-				<ruri>$addressbookhome1:/adbktest1/</ruri>
-				<header>
-					<name>Destination</name>
-					<value>$host:$addressbookhome1:/adbktest2/</value>
-				</header>
-				<verify>
-					<callback>statusCode</callback>
-				</verify>
-			</request>
-		</test>
-		<test name='2'>
-			<description>PROPFIND on home</description>
-			<request end-delete='yes'>
-				<method>PROPFIND</method>
-				<ruri>$addressbookhome1:/</ruri>
-				<header>
-					<name>Depth</name>
-					<value>0</value>
-				</header>
-				<data>
-					<content-type>text/xml; charset=utf-8</content-type>
-					<filepath>Resource/CardDAV/default-addressbook/1.xml</filepath>
-				</data>
-				<verify>
-					<callback>propfindItems</callback>
-					<arg>
-						<name>okprops</name>
-						<value><![CDATA[{urn:ietf:params:xml:ns:carddav}default-addressbook-URL$<href xmlns="DAV:">$addressbookhome1:/adbktest2/</href>]]></value>
 					</arg>
 				</verify>
 			</request>
