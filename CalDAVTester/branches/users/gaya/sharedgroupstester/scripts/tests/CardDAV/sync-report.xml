@@ -25,18 +25,13 @@
 	</require-feature>
 
 	<start>
-<!--
-		<request end-delete="yes">
-			<method>MKCOL</method>
-			<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
-			<data>
-				<content-type>text/xml; charset=utf-8</content-type>
-				<filepath>Resource/Common/MKCOL/addressbook.xml</filepath>
-			</data>
+		<request print-response='no'>
+			<method>DELETE</method>
+			<ruri>$addressbookpath1:/</ruri>
 		</request>
 		<request>
 			<method>PUT</method>
-			<ruri>$addressbookhome1:/syncaddressbook1/1.vcf</ruri>
+			<ruri>$addressbookpath1:/1.vcf</ruri>
 			<data>
 				<content-type>text/vcard; charset=utf-8</content-type>
 				<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -44,37 +39,12 @@
 		</request>
 		<request>
 			<method>PUT</method>
-			<ruri>$addressbookhome1:/syncaddressbook1/2.vcf</ruri>
+			<ruri>$addressbookpath1:/2.vcf</ruri>
 			<data>
 				<content-type>text/vcard; charset=utf-8</content-type>
 				<filepath>Resource/CardDAV/vreports/put/2.vcf</filepath>
 			</data>
 		</request>
-		<request end-delete="yes">
-			<method>MKCOL</method>
-			<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
-			<data>
-				<content-type>text/xml; charset=utf-8</content-type>
-				<filepath>Resource/Common/MKCOL/addressbook.xml</filepath>
-			</data>
-		</request>
-		<request>
-			<method>PUT</method>
-			<ruri>$addressbookhome1:/syncaddressbook2/1.vcf</ruri>
-			<data>
-				<content-type>text/vcard; charset=utf-8</content-type>
-				<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
-			</data>
-		</request>
-		<request>
-			<method>PUT</method>
-			<ruri>$addressbookhome1:/syncaddressbook2/2.vcf</ruri>
-			<data>
-				<content-type>text/vcard; charset=utf-8</content-type>
-				<filepath>Resource/CardDAV/vreports/put/2.vcf</filepath>
-			</data>
-		</request>
--->
 	</start>
 	
 	<test-suite name='support-report-set' ignore='no'>
@@ -205,12 +175,12 @@
 		</test>
 	</test-suite>
 	
-	<test-suite name='simple reports - empty token - no props' ignore='yes'>
+	<test-suite name='simple reports - empty token - no props' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>initial query - addressbook depth:1</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -250,8 +220,6 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook2/</value>
 					</arg>
 				</verify>
 			</request>
@@ -277,12 +245,8 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook1/1.vcf</value>
-						<value>syncaddressbook1/2.vcf</value>
-						<value>syncaddressbook2/</value>
-						<value>syncaddressbook2/1.vcf</value>
-						<value>syncaddressbook2/2.vcf</value>
+						<value>$addressbook:/1.vcf</value>
+						<value>$addressbook:/2.vcf</value>
 					</arg>
 				</verify>
 			</request>
@@ -291,7 +255,7 @@
 			<description>add new resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/3.vcf</filepath>
@@ -305,7 +269,7 @@
 			<description>new resource - addressbook depth:1</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -346,8 +310,6 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook2/</value>
 					</arg>
 				</verify>
 			</request>
@@ -373,13 +335,9 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook1/1.vcf</value>
-						<value>syncaddressbook1/2.vcf</value>
-						<value>syncaddressbook1/3.vcf</value>
-						<value>syncaddressbook2/</value>
-						<value>syncaddressbook2/1.vcf</value>
-						<value>syncaddressbook2/2.vcf</value>
+						<value>$addressbook:/1.vcf</value>
+						<value>$addressbook:/2.vcf</value>
+						<value>$addressbook:/3.vcf</value>
 					</arg>
 				</verify>
 			</request>
@@ -388,7 +346,7 @@
 			<description>remove new resource</description>
 			<request>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
@@ -398,7 +356,7 @@
 			<description>remove new resource - addressbook depth:1</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -438,8 +396,6 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook2/</value>
 					</arg>
 				</verify>
 			</request>
@@ -465,12 +421,8 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook1/1.vcf</value>
-						<value>syncaddressbook1/2.vcf</value>
-						<value>syncaddressbook2/</value>
-						<value>syncaddressbook2/1.vcf</value>
-						<value>syncaddressbook2/2.vcf</value>
+						<value>$addressbook:/1.vcf</value>
+						<value>$addressbook:/2.vcf</value>
 					</arg>
 				</verify>
 			</request>
@@ -479,7 +431,7 @@
 			<description>changed resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -493,7 +445,7 @@
 			<description>changed resource - addressbook depth:1</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -533,8 +485,6 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook2/</value>
 					</arg>
 				</verify>
 			</request>
@@ -560,24 +510,20 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook1/</value>
-						<value>syncaddressbook1/1.vcf</value>
-						<value>syncaddressbook1/2.vcf</value>
-						<value>syncaddressbook2/</value>
-						<value>syncaddressbook2/1.vcf</value>
-						<value>syncaddressbook2/2.vcf</value>
+						<value>$addressbook:/1.vcf</value>
+						<value>$addressbook:/2.vcf</value>
 					</arg>
 				</verify>
 			</request>
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - no props' ignore='yes'>
+	<test-suite name='simple reports - diff token - no props' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>initial query - grab token</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -604,7 +550,7 @@
 			<description>new resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/3.vcf</filepath>
@@ -615,7 +561,7 @@
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -641,14 +587,14 @@
 			<description>remove resource (treated as new)</description>
 			<request>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -670,7 +616,7 @@
 			<description>remove resource (treated as old)</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -696,7 +642,7 @@
 			<description>changed resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -707,7 +653,7 @@
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -733,7 +679,7 @@
 			<description>no change</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -753,12 +699,12 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - empty token - props' ignore='yes'>
+	<test-suite name='simple reports - empty token - props' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>initial query</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -789,7 +735,7 @@
 			<description>new resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/3.vcf</filepath>
@@ -800,7 +746,7 @@
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -832,14 +778,14 @@
 			<description>remove resource new resource</description>
 			<request>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -870,7 +816,7 @@
 			<description>changed resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -881,7 +827,7 @@
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -910,12 +856,12 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - props' ignore='yes'>
+	<test-suite name='simple reports - diff token - props' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>initial query - grab token</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -950,7 +896,7 @@
 			<description>new resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/3.vcf</filepath>
@@ -961,7 +907,7 @@
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -995,14 +941,14 @@
 			<description>remove resource (treated as new)</description>
 			<request>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -1024,7 +970,7 @@
 			<description>remove resource (treated as old)</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -1053,7 +999,7 @@
 			<description>changed resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -1064,7 +1010,7 @@
 			</request>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -1098,7 +1044,7 @@
 			<description>no change</description>
 			<request print-response='no'>
 				<method>REPORT</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>1</value>
@@ -1126,7 +1072,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - no props - home depth:infinity' ignore='yes'>
+	<test-suite name='simple reports - diff token - no props - home depth:infinity' ignore='no'>
 		<require-feature>
 			<feature>sync-report-home</feature>
 		</require-feature>
@@ -1134,23 +1080,11 @@
 			<description>Initialize</description>
 			<request print-response='no'>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook1/</ruri>
-			</request>
-			<request print-response='no'>
-				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook2/</ruri>
-			</request>
-			<request end-delete="yes">
-				<method>MKCOL</method>
-				<ruri>$addressbookhome1:/syncaddressbook3/</ruri>
-				<data>
-					<content-type>text/xml; charset=utf-8</content-type>
-					<filepath>Resource/Common/MKCOL/addressbook.xml</filepath>
-				</data>
+				<ruri>$addressbookpath1:/</ruri>
 			</request>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook3/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -1158,31 +1092,7 @@
 			</request>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook3/2.vcf</ruri>
-				<data>
-					<content-type>text/vcard; charset=utf-8</content-type>
-					<filepath>Resource/CardDAV/vreports/put/2.vcf</filepath>
-				</data>
-			</request>
-			<request end-delete="yes">
-				<method>MKCOL</method>
-				<ruri>$addressbookhome1:/syncaddressbook4/</ruri>
-				<data>
-					<content-type>text/xml; charset=utf-8</content-type>
-					<filepath>Resource/Common/MKCOL/addressbook.xml</filepath>
-				</data>
-			</request>
-			<request>
-				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook4/1.vcf</ruri>
-				<data>
-					<content-type>text/vcard; charset=utf-8</content-type>
-					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
-				</data>
-			</request>
-			<request>
-				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook4/2.vcf</ruri>
+				<ruri>$addressbookpath1:/2.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/2.vcf</filepath>
@@ -1207,12 +1117,8 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook3/</value>
-						<value>syncaddressbook3/1.vcf</value>
-						<value>syncaddressbook3/2.vcf</value>
-						<value>syncaddressbook4/</value>
-						<value>syncaddressbook4/1.vcf</value>
-						<value>syncaddressbook4/2.vcf</value>
+						<value>$addressbook:/1.vcf</value>
+						<value>$addressbook:/2.vcf</value>
 					</arg>
 				</verify>
 				<grabelement>
@@ -1225,7 +1131,7 @@
 			<description>new resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook3/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/3.vcf</filepath>
@@ -1249,7 +1155,7 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>okhrefs</name>
-						<value>syncaddressbook3/3.vcf</value>
+						<value>$addressbook:/3.vcf</value>
 					</arg>
 				</verify>
 				<grabelement>
@@ -1262,7 +1168,7 @@
 			<description>remove resource (treated as new)</description>
 			<request>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook3/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
@@ -1282,7 +1188,7 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>badhrefs</name>
-						<value>syncaddressbook3/3.vcf</value>
+						<value>$addressbook:/3.vcf</value>
 					</arg>
 				</verify>
 			</request>
@@ -1304,7 +1210,7 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>badhrefs</name>
-						<value>syncaddressbook3/3.vcf</value>
+						<value>$addressbook:/3.vcf</value>
 					</arg>
 				</verify>
 				<grabelement>
@@ -1317,7 +1223,7 @@
 			<description>changed resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook3/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -1341,7 +1247,7 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>okhrefs</name>
-						<value>syncaddressbook3/1.vcf</value>
+						<value>$addressbook:/1.vcf</value>
 					</arg>
 				</verify>
 				<grabelement>
@@ -1374,7 +1280,7 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='simple reports - diff token - props - home depth:infinity' ignore='yes'>
+	<test-suite name='simple reports - diff token - props - home depth:infinity' ignore='no'>
 		<require-feature>
 			<feature>sync-report-home</feature>
 		</require-feature>
@@ -1396,12 +1302,8 @@
 					<arg>
 						<name>okhrefs</name>
 						<value>$addressbook:/</value>
-						<value>syncaddressbook3/</value>
-						<value>syncaddressbook3/1.vcf</value>
-						<value>syncaddressbook3/2.vcf</value>
-						<value>syncaddressbook4/</value>
-						<value>syncaddressbook4/1.vcf</value>
-						<value>syncaddressbook4/2.vcf</value>
+						<value>$addressbook:/1.vcf</value>
+						<value>$addressbook:/2.vcf</value>
 					</arg>
 				</verify>
 				<verify>
@@ -1422,7 +1324,7 @@
 			<description>new resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook4/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/3.vcf</filepath>
@@ -1446,7 +1348,7 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>okhrefs</name>
-						<value>syncaddressbook4/3.vcf</value>
+						<value>$addressbook:/3.vcf</value>
 					</arg>
 				</verify>
 				<verify>
@@ -1467,7 +1369,7 @@
 			<description>remove resource (treated as new)</description>
 			<request>
 				<method>DELETE</method>
-				<ruri>$addressbookhome1:/syncaddressbook4/3.vcf</ruri>
+				<ruri>$addressbookpath1:/3.vcf</ruri>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
@@ -1487,21 +1389,21 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>badhrefs</name>
-						<value>syncaddressbook4/3.vcf</value>
+						<value>$addressbook:/3.vcf</value>
 					</arg>
 				</verify>
 				<verify>
 					<callback>propfindItems</callback>
 					<arg>
 						<name>ignore</name>
-						<value>$addressbookhome1:/syncaddressbook4/</value>
+						<value>$addressbookpath1:/</value>
 					</arg>
 				</verify>
 				<verify>
 					<callback>propfindItems</callback>
 					<arg>
 						<name>ignore</name>
-						<value>$addressbookhome1:/syncaddressbook4/3.vcf</value>
+						<value>$addressbookpath1:/3.vcf</value>
 					</arg>
 					<arg>
 						<name>okprops</name>
@@ -1528,7 +1430,7 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>badhrefs</name>
-						<value>syncaddressbook4/3.vcf</value>
+						<value>$addressbook:/3.vcf</value>
 					</arg>
 				</verify>
 				<verify>
@@ -1544,7 +1446,7 @@
 			<description>changed resource</description>
 			<request>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/syncaddressbook3/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/vreports/put/1.vcf</filepath>
@@ -1568,7 +1470,7 @@
 					<callback>multistatusItems</callback>
 					<arg>
 						<name>okhrefs</name>
-						<value>syncaddressbook3/1.vcf</value>
+						<value>$addressbook:/1.vcf</value>
 					</arg>
 				</verify>
 				<verify>
