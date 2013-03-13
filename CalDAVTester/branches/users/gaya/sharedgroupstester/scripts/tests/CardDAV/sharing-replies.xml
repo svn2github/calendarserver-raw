@@ -35,27 +35,14 @@
 			<method>DELETEALL</method>
 			<ruri>$notificationpath2:/</ruri>
 		</request>
-<!--
-		<request end-delete="yes">
-			<method>MKCOL</method>
-			<ruri>$addressbookhome1:/shared/</ruri>
-			<data>
-				<content-type>text/xml; charset=utf-8</content-type>
-				<filepath>Resource/Common/MKCOL/addressbook.xml</filepath>
-			</data>
-			<verify>
-				<callback>statusCode</callback>
-			</verify>
-		</request>
--->
 	</start>
 	
-	<test-suite name='Send first reply' ignore='yes'>
+	<test-suite name='Send first reply' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>POST invitation</description>
 			<request print-response='no'>
 				<method>POST</method>
-				<ruri>$addressbookhome1:/shared/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<data>
 					<content-type>text/xml; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/sharing/replies/accept/1.xml</filepath>
@@ -122,7 +109,7 @@
 			<description>Check accept status</description>
 			<request print-response='no'>
 				<method>PROPFIND</method>
-				<ruri>$addressbookhome1:/shared/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>0</value>
@@ -193,7 +180,7 @@
 			<description>Check sharer addressbook displyname</description>
 			<request print-response='no'>
 				<method>PROPFIND</method>
-				<ruri>$addressbookhome1:/shared/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>0</value>
@@ -213,7 +200,7 @@
 		</test>
 	</test-suite>
 	
-	<test-suite name='Update reply' ignore='yes'>
+	<test-suite name='Update reply' ignore='no'>
 		<test name='1'>
 			<description>Sharee replies DECLINED</description>
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
@@ -232,7 +219,7 @@
 			<description>Check declined status</description>
 			<request print-response='no'>
 				<method>PROPFIND</method>
-				<ruri>$addressbookhome1:/shared/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<header>
 					<name>Depth</name>
 					<value>0</value>
