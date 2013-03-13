@@ -28,6 +28,10 @@
 
 	<start>
 		<request user="$userid1:" pswd="$pswd1:">
+			<method>DELETE</method>
+			<ruri>$addressbookpath1:/</ruri>
+		</request>
+		<request user="$userid1:" pswd="$pswd1:">
 			<method>DELETEALL</method>
 			<ruri>$notificationpath1:/</ruri>
 		</request>
@@ -35,27 +39,14 @@
 			<method>DELETEALL</method>
 			<ruri>$notificationpath2:/</ruri>
 		</request>
-		<!-- no more AddressBook MKCOL
-		<request end-delete="yes">
-			<method>MKCOL</method>
-			<ruri>$addressbookhome1:/shared/</ruri>
-			<data>
-				<content-type>text/xml; charset=utf-8</content-type>
-				<filepath>Resource/Common/MKCOL/addressbook.xml</filepath>
-			</data>
-			<verify>
-				<callback>statusCode</callback>
-			</verify>
-		</request>
-		-->
 	</start>
 	
-	<test-suite name='Read-write addressbooks' ignore='yes'>
+	<test-suite name='Read-write addressbooks' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>POST invitation</description>
 			<request print-response='no'>
 				<method>POST</method>
-				<ruri>$addressbookhome1:/shared/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<data>
 					<content-type>text/xml; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/sharing/addressbooks/read-write/1.xml</filepath>
@@ -205,7 +196,7 @@
 			<description>Sharer sees vcard</description>
 			<request print-response='no'>
 				<method>GET</method>
-				<ruri>$addressbookhome1:/shared/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<verify>
 					<callback>addressDataMatch</callback>
 					<arg>
@@ -219,7 +210,7 @@
 			<description>Sharer changes vcard</description>
 			<request print-response='no'>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/shared/1.vcf</ruri>
+				<ruri>$addressbookpath1:/1.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/sharing/addressbooks/read-write/6.vcf</filepath>
@@ -247,7 +238,7 @@
 			<description>Sharer creates vcard</description>
 			<request print-response='no'>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/shared/2.vcf</ruri>
+				<ruri>$addressbookpath1:/2.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/sharing/addressbooks/read-write/7.vcf</filepath>
@@ -289,7 +280,7 @@
 			<description>Sharer sees changed event</description>
 			<request print-response='no'>
 				<method>GET</method>
-				<ruri>$addressbookhome1:/shared/2.vcf</ruri>
+				<ruri>$addressbookpath1:/2.vcf</ruri>
 				<verify>
 					<callback>addressDataMatch</callback>
 					<arg>
@@ -299,41 +290,9 @@
 				</verify>
 			</request>
 		</test>
-		<test name='13' ignore='no'>
-			<description>Sharee sees group with shared address book members</description>
-			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
-				<method>GET</method>
-				<ruri>$sharedaddressbook:/shared.vcf</ruri>
-				<verify>
-					<callback>addressDataMatch</callback>
-					<arg>
-						<name>filepath</name>
-						<value>Resource/CardDAV/sharing/addressbooks/read-write/9.vcf</value>
-					</arg>
-					<arg>
-						<name>filter</name>
-						<value>UID</value>
-					</arg>
-				</verify>
-			</request>
-		</test>
-		<test name='14' ignore='no'>
-			<description>Sharee cannot delete special group</description>
-			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
-				<method>DELETE</method>
-				<ruri>$sharedaddressbook:/shared.vcf</ruri>
-				<verify>
-					<callback>statusCode</callback>
-					<arg>
-						<name>status</name>
-						<value>403</value>
-					</arg>
-				</verify>
-			</request>
-		</test>
 	</test-suite>
 	
-	<test-suite name='Default address book cannot be shared address book' ignore='yes'>
+	<test-suite name='Default address book cannot be shared address book' ignore='no'>
 		<require-feature>
 			<feature>default-addressbook</feature>
 		</require-feature>
@@ -379,12 +338,12 @@
 		</test>
 	</test-suite>
 
-	<test-suite name='Change to read-only address book' ignore='yes'>
+	<test-suite name='Change to read-only address book' ignore='no'>
 		<test name='1' ignore='no'>
 			<description>POST invitation</description>
 			<request print-response='no'>
 				<method>POST</method>
-				<ruri>$addressbookhome1:/shared/</ruri>
+				<ruri>$addressbookpath1:/</ruri>
 				<data>
 					<content-type>text/xml; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/sharing/addressbooks/read-only/1.xml</filepath>
@@ -500,7 +459,7 @@
 			<description>Sharer creates vcard</description>
 			<request print-response='no'>
 				<method>PUT</method>
-				<ruri>$addressbookhome1:/shared/4.vcf</ruri>
+				<ruri>$addressbookpath1:/4.vcf</ruri>
 				<data>
 					<content-type>text/vcard; charset=utf-8</content-type>
 					<filepath>Resource/CardDAV/sharing/addressbooks/read-only/6.vcf</filepath>
@@ -543,6 +502,21 @@
 			</request>
 		</test>
 	</test-suite><test-suite name="Share main address book" ignore="no">
+		<test name="0" ignore="no">
+			<description>clear main address book and notifications</description>
+			<request user="$userid1:" pswd="$pswd1:">
+				<method>DELETE</method>
+				<ruri>$addressbookpath1:/</ruri>
+			</request>
+			<request user="$userid1:" pswd="$pswd1:">
+				<method>DELETEALL</method>
+				<ruri>$notificationpath1:/</ruri>
+			</request>
+			<request user="$userid2:" pswd="$pswd2:">
+				<method>DELETEALL</method>
+				<ruri>$notificationpath2:/</ruri>
+			</request>
+		</test>
 		<test name="1" ignore="no">
 			<description>POST invitation</description>
 			<request print-response="no">

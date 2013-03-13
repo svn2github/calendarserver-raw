@@ -26,7 +26,16 @@
 		<feature>shared-addressbooks</feature>
 	</require-feature>
 
-	<start/>
+	<start>
+		<request user="$userid2:" pswd="$pswd2:">
+			<method>DELETE</method>
+			<ruri>$addressbookpath1:/</ruri>
+		</request>
+		<request user="$userid1:" pswd="$pswd1:">
+			<method>DELETEALL</method>
+			<ruri>$notificationpath1:/</ruri>
+		</request>
+	</start>
 	
 	<test-suite name='OPTIONS header' ignore='no'>
 		<test name='1'>

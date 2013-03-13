@@ -27,6 +27,10 @@
 	</require-feature>
 
 	<start>
+		<request user="$userid2:" pswd="$pswd2:">
+			<method>DELETE</method>
+			<ruri>$addressbookpath1:/</ruri>
+		</request>
 		<request user="$userid1:" pswd="$pswd1:">
 			<method>DELETEALL</method>
 			<ruri>$notificationpath1:/</ruri>
