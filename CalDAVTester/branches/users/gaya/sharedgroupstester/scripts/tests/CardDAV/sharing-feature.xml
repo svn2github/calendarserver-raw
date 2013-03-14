@@ -27,7 +27,7 @@
 	</require-feature>
 
 	<start>
-		<request user="$userid2:" pswd="$pswd2:">
+		<request user="$userid1:" pswd="$pswd1:">
 			<method>DELETE</method>
 			<ruri>$addressbookpath1:/</ruri>
 		</request>
