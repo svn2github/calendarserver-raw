@@ -49,7 +49,7 @@ from twisted.internet.defer import succeed, inlineCallbacks, returnValue
 from twext.python.log import Logger, LoggingMixIn
 
 from twistedcaldav.config import config
-# from twistedcaldav.stdconfig import DEFAULT_CONFIG_FILE
+from twistedcaldav.stdconfig import DEFAULT_CONFIG_FILE
 
 from twistedcaldav.directory.idirectory import IDirectoryService, IDirectoryRecord
 from twistedcaldav.directory.util import uuidFromName, normalizeUUID
