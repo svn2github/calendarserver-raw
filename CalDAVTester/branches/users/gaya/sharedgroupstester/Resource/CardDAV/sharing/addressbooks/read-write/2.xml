@@ -14,6 +14,6 @@
       <href xmlns='DAV:'>$principaluri1:</href>
       <common-name>User 01</common-name>
     </organizer>
-    <summary>My Shared Address Book</summary>
+    <summary>My Main Shared Address Book</summary>
   </invite-notification>
 </notification>
