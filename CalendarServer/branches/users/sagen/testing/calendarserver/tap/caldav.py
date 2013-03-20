@@ -1003,10 +1003,34 @@ class CalDAVServiceMaker (LoggingMixIn):
     def makeService_Single(self, options):
         """
         Create a service to be used in a single-process, stand-alone
-        configuration.
+        configuration.  Memcached will be spawned automatically.
         """
         def slaveSvcCreator(pool, store, logObserver):
             result = self.requestProcessingService(options, store, logObserver)
+
+            # Optionally launch memcached.  Note, this is not going through a
+            # ProcessMonitor because there is code elsewhere that needs to
+            # access memcached before startService() gets called, so we're just
+            # directly using Popen to spawn memcached.
+            for name, pool in config.Memcached.Pools.items():
+                if pool.ServerEnabled:
+                    self.log_info(
+                        "Adding memcached service for pool: %s" % (name,)
+                    )
+                    memcachedArgv = [
+                        config.Memcached.memcached,
+                        "-p", str(pool.Port),
+                        "-l", pool.BindAddress,
+                        "-U", "0",
+                    ]
+                    if config.Memcached.MaxMemory is not 0:
+                        memcachedArgv.extend(
+                            ["-m", str(config.Memcached.MaxMemory)]
+                        )
+                    if config.UserName:
+                        memcachedArgv.extend(["-u", config.UserName])
+                    memcachedArgv.extend(config.Memcached.Options)
+                    Popen(memcachedArgv)
 
             # Optionally set up push notifications
             pushDistributor = None
