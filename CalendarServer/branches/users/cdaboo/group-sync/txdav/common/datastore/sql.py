@@ -1855,8 +1855,7 @@ class CommonHome(LoggingMixIn):
     @inlineCallbacks
     def doChangesQuery(self, revision):
         """
-            Do the changes query.
-            Subclasses may override.
+        Do the changes query. Subclasses may override.
         """
         result = yield self._changesQuery.on(self._txn,
                                          resourceID=self._resourceID,
@@ -1891,6 +1890,8 @@ class CommonHome(LoggingMixIn):
         just report the changes since that one. When a shared collection is removed from a home, we again
         record a revision for the sharee home and sharee collection name with the "deleted" flag set. That way
         the shared collection can be reported as removed.
+
+        See docstr for L{_SharedSyncLogic} for more details.
 
         @param revision: the sync revision to compare to
         @type revision: C{str}
@@ -2273,6 +2274,71 @@ class _SharedSyncLogic(object):
     """
     Logic for maintaining sync-token shared between notification collections and
     shared collections.
+    """
+
+    """
+    Here is a detailed description of how we track changes to allow for efficient client synchronization.
+
+    One important aspect of this is to not track every single change as that does not scale well. Instead
+    we only track the last change to any particular resource, so we scale with the number of resources
+    and not the number of changes - the former being bounded, whereas the later is not).
+
+    Another tricky part is the need to record deleted resources - those will not have a corresponding row
+    (and thus a resource_id) anywhere else, so we need to record those by name (which is the quantity that
+    ultimately needs to be reported back to the caller).
+
+    Also, we have to deal with sharing - where changes need to be reported differently for the owner and
+    sharees (e.g., if one sharee is removed from a shared resource they need to be told of the removal, but
+    no one else needs to know). For shared collections, changes to resources in the collection are tracked
+    via the owner's home collection id. The actual share and unshare of the collection are tracked via
+    an entry under the sharee's home collection id.
+
+    Each CommonHome/CommonHomeChild/CommonObject set of resources will have a corresponding XXX_REVISIONS
+    table associated with it. A REVISION_SEQ sequence is used to incrementally assign a number to each
+    change.
+
+    The XXX_REVISIONS table has the following columns:
+
+    XXX_HOME_RESOURCE_ID - the resource_id of the CommonHomeChild to which the set of changes are relevant.
+        For changes to CommonObject's this will be the owner's CommonHome resource_id. For changes to
+        owned CommonHomeChild (create or delete) collections, this will also be the owner's CommonHome
+        resource_id. For changes to shared CommonHomeChild (share accept or share remove) collections this
+        will be the sharee's CommonHome resource_id.
+
+    XXX_RESOURCE_ID - the resource_id of the CommonHomeChild impacted by a change. This is used for
+        CommonHomeChild's that exist. It is null when recording the removal of a CommonHomeChild (in
+        which case the XXX_NAME column will contain the name of the CommonHomeChild when it was
+        removed).
+
+    XXX_NAME - the name of an owned CommonHomeChild when it was removed, or a shared CommonHomeChild
+        when it was accepted or removed.
+
+    RESOURCE_NAME - when recording a change to a CommonObject, this the the name of the object.
+
+    REVISION - the revision number associated with the latest change to the object.
+
+    DELETED - indicates whether the revision is due to a change or deletion of the associated object.
+
+    The possible changes that can occur are as follows:
+
+    1. New owned/shared collection: XXX_NAME, RESOURCE_NAME will be null, DELETED will be 0.
+    2. Changed collection: same as 1.
+    3. Deleted/removed owned/shared collection: XXX_RESOURCE_ID, RESOURCE_NAME will be null, DELETED will be 1.
+
+    4. New/changed resource: XXX_NAME will be null, DELETED will be 0.
+    5. Deleted resource: XXX_NAME will be null, DELETED will be 1.
+
+    When determining changes for a CommonHomeChild, all that needs to be done is a query on the resource_id
+    for that collection. That is true for both owned and shared CommonHomeChild collections.
+
+    When determining changes for a CommonHome, owned collections/resources and shared collection (but not
+    shared resource) changes are simply found by a query on the CommonHome resource_id. To find changes to
+    shared resources in existing shared collections, a separate CommonHomeChild query has to be done for
+    each, taking into account the revision where the shared collection first appeared.
+
+    Sync-tokens for CommonHome and CommonHomeChild are simply determined by querying for the maximum revision
+    for all collections/resources within the resource being queried. The token is then formed from the resource_id
+    of the targeted resource and the max revision.
     """
 
     @classproperty
