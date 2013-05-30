@@ -199,7 +199,7 @@ class caldavtest(object):
             return "i"
         else:
             result = False
-            resulttxt = ""
+            overalltxt = ""
             postgresCount = self.postgresInit()
             if test.stats:
                 reqstats = stats()
@@ -208,12 +208,13 @@ class caldavtest(object):
             for ctr in range(test.count): #@UnusedVariable
                 for req_count, req in enumerate(test.requests):
                     result, resulttxt, _ignore_response, _ignore_respdata = self.dorequest(req, test.details, True, False, reqstats, etags=etags, label="%s | #%s" % (label, req_count + 1,), count=ctr + 1)
+                    overalltxt += resulttxt
                     if not result:
                         break
             loglevel = [manager.LOG_ERROR, manager.LOG_HIGH][result]
             self.manager.log(loglevel, ["[FAILED]", "[OK]"][result])
-            if len(resulttxt) > 0:
-                self.manager.log(loglevel, resulttxt)
+            if len(overalltxt) > 0:
+                self.manager.log(loglevel, overalltxt)
             if result and test.stats:
                 self.manager.log(manager.LOG_MEDIUM, "Total Time: %.3f secs" % (reqstats.totaltime,), indent=8)
                 self.manager.log(manager.LOG_MEDIUM, "Average Time: %.3f secs" % (reqstats.totaltime / reqstats.count,), indent=8)
@@ -226,15 +227,17 @@ class caldavtest(object):
             return True
         description += " " * max(1, STATUSTXT_WIDTH - len(description))
         self.manager.log(manager.LOG_HIGH, description, before=1, after=0)
+        overalltxt = ""
         for req_count, req in enumerate(list):
             result, resulttxt, _ignore_response, _ignore_respdata = self.dorequest(req, False, doverify, forceverify, label="%s | #%s" % (label, req_count + 1), count=count)
+            overalltxt += resulttxt
             if not result:
-                resulttxt += "\nFailure during multiple requests #%d out of %d, request=%s" % (req_count + 1, len(list), str(req))
+                overalltxt += "\nFailure during multiple requests #%d out of %d, request=%s" % (req_count + 1, len(list), str(req))
                 break
         loglevel = [manager.LOG_ERROR, manager.LOG_HIGH][result]
         self.manager.log(loglevel, ["[FAILED]", "[OK]"][result])
-        if len(resulttxt) > 0:
-            self.manager.log(loglevel, resulttxt)
+        if len(overalltxt) > 0:
+            self.manager.log(loglevel, overalltxt)
         return result
 
 

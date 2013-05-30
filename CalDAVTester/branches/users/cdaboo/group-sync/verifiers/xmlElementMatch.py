@@ -142,6 +142,12 @@ class Verifier(object):
         return results
 
 
+    def splitRootFromPath(self, path):
+        piece = path.find("}")
+        splitat = path[piece:].find("/")
+        return path[:piece + splitat], path[piece + splitat + 1:]
+
+
     def matchPath(self, root, path):
 
         result = True
@@ -157,7 +163,7 @@ class Verifier(object):
         if actual_path[0] == '/':
             actual_path = actual_path[1:]
         if '/' in actual_path:
-            root_path, child_path = actual_path.split('/', 1)
+            root_path, child_path = self.splitRootFromPath(actual_path)
             if root.tag != root_path:
                 resulttxt += "        Items not returned in XML for %s\n" % (path,)
             nodes = root.findall(child_path)

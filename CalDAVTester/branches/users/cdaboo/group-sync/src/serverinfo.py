@@ -113,10 +113,27 @@ class serverinfo(object):
             # basename() - extract just the URL last path segment from the value
             if variable.startswith("basename("):
                 variable = variable[len("basename("):-1]
-                value = value.rstrip("/").split("/")[-1]
+                value = self._variable_basename(value)
+
+            # parentname() - extract just the URL second to last path segment from the value
+            elif variable.startswith("parentname("):
+                variable = variable[len("parentname("):-1]
+                value = self._variable_parentname(value)
+
             processed[variable] = value
 
         self.addsubs(processed, self.extrasubsdict)
+
+
+    def _variable_basename(self, value):
+        return value.rstrip("/").split("/")[-1]
+
+
+    def _variable_parentname(self, value):
+        try:
+            return value.rstrip("/").split("/")[-2]
+        except IndexError:
+            return ""
 
 
     def parseXML(self, node):
