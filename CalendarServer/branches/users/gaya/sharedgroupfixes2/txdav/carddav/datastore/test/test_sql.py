@@ -574,11 +574,11 @@ END:VCARD
             )
         groupObject = yield adbk.createAddressBookObjectWithName("g.vcf", group)
 
-        aboForeignMembers = schema.ABO_FOREIGN_MEMBERS
         aboMembers = schema.ABO_MEMBERS
-        memberRows = yield Select([aboMembers.GROUP_ID, aboMembers.MEMBER_ID], From=aboMembers,).on(txn)
+        memberRows = yield Select([aboMembers.GROUP_ID, aboMembers.MEMBER_ID], From=aboMembers).on(txn)
         self.assertEqual(memberRows, [])
 
+        aboForeignMembers = schema.ABO_FOREIGN_MEMBERS
         foreignMemberRows = yield Select([aboForeignMembers.GROUP_ID, aboForeignMembers.MEMBER_ADDRESS], From=aboForeignMembers).on(txn)
         self.assertEqual(foreignMemberRows, [[groupObject._resourceID, "urn:uuid:uid3"]])
 
@@ -597,7 +597,7 @@ END:VCARD
             )
         subgroupObject = yield adbk.createAddressBookObjectWithName("sg.vcf", subgroup)
 
-        memberRows = yield Select([aboMembers.GROUP_ID, aboMembers.MEMBER_ID], From=aboMembers,).on(txn)
+        memberRows = yield Select([aboMembers.GROUP_ID, aboMembers.MEMBER_ID], From=aboMembers).on(txn)
         self.assertEqual(sorted(memberRows), sorted([
                                                      [groupObject._resourceID, subgroupObject._resourceID],
                                                      [subgroupObject._resourceID, personObject._resourceID],
@@ -607,7 +607,7 @@ END:VCARD
         self.assertEqual(foreignMemberRows, [])
 
         yield subgroupObject.remove()
-        memberRows = yield Select([aboMembers.GROUP_ID, aboMembers.MEMBER_ID], From=aboMembers,).on(txn)
+        memberRows = yield Select([aboMembers.GROUP_ID, aboMembers.MEMBER_ID], From=aboMembers).on(txn)
         self.assertEqual(memberRows, [])
 
         foreignMemberRows = yield Select([aboForeignMembers.GROUP_ID, aboForeignMembers.MEMBER_ADDRESS], From=aboForeignMembers,
@@ -901,8 +901,9 @@ END:VCARD
         self.assertEqual(normalAB._bindRevision, 0)
         otherHome = yield self.homeUnderTest(name="home2")
         otherGroup = yield otherHome.objectWithShareUID(newGroupShareUID)
+        self.assertNotEqual(otherGroup._bindRevision, 0)
         otherAB = otherGroup.addressbook()
-        self.assertNotEqual(otherAB._bindRevision, 0)
+        self.assertEqual(otherAB._bindRevision, None)
 
 
     @inlineCallbacks
@@ -952,8 +953,9 @@ END:VCARD
         self.assertEqual(normalAB._bindRevision, 0)
         otherHome = yield self.homeUnderTest(name="home2")
         otherGroup = yield otherHome.invitedObjectWithShareUID(newGroupShareUID)
+        self.assertEqual(otherGroup._bindRevision, 0)
         otherAB = otherGroup.addressbook()
-        self.assertEqual(otherAB._bindRevision, 0)
+        self.assertEqual(otherAB._bindRevision, None)
         yield self.commit()
 
         normalAB = yield self.addressbookUnderTest(home="home3")
@@ -967,8 +969,9 @@ END:VCARD
         self.assertEqual(normalAB._bindRevision, 0)
         otherHome = yield self.homeUnderTest(name="home2")
         otherGroup = yield otherHome.objectWithShareUID(newGroupShareUID)
+        self.assertNotEqual(otherGroup._bindRevision, 0)
         otherAB = otherGroup.addressbook()
-        self.assertNotEqual(otherAB._bindRevision, 0)
+        self.assertEqual(otherAB._bindRevision, None)
 
 
     @inlineCallbacks
@@ -1022,23 +1025,28 @@ END:VCARD
         self.assertEqual(normalAB._bindRevision, 0)
         otherHome = yield self.homeUnderTest(name="home2")
         otherGroup = yield otherHome.objectWithShareUID(newGroupShareUID)
+        self.assertNotEqual(otherGroup._bindRevision, 0)
         otherAB = otherGroup.addressbook()
-        self.assertNotEqual(otherAB._bindRevision, 0)
+        self.assertEqual(otherAB._bindRevision, None)
 
-        changed, deleted = yield otherAB.resourceNamesSinceRevision(otherAB._bindRevision - 1)
-        self.assertNotEqual(len(changed), 0)
+        changed, deleted = yield otherAB.resourceNamesSinceRevision(otherGroup._bindRevision - 1)
+        print("revision=%s, changed=%s, deleted=%s" % (otherGroup._bindRevision - 1, changed, deleted,))
+        self.assertEqual(set(changed), set(['1.vcf', '4.vcf', '2.vcf', ]))
         self.assertEqual(len(deleted), 0)
 
-        changed, deleted = yield otherAB.resourceNamesSinceRevision(otherAB._bindRevision)
+        changed, deleted = yield otherAB.resourceNamesSinceRevision(otherGroup._bindRevision)
+        print("revision=%s, changed=%s, deleted=%s" % (otherGroup._bindRevision, changed, deleted,))
         self.assertEqual(len(changed), 0)
         self.assertEqual(len(deleted), 0)
 
-        for depth in ("1", "infinity",):
-            changed, deleted = yield otherHome.resourceNamesSinceRevision(otherAB._bindRevision - 1, depth)
-            self.assertNotEqual(len(changed), 0)
+        for depth, result in (("1", ['home3/']), ("infinity", ['home3/1.vcf', 'home3/4.vcf', 'home3/2.vcf', 'home3/'])):
+            changed, deleted = yield otherHome.resourceNamesSinceRevision(otherGroup._bindRevision - 1, depth)
+            print("revision=%s, depth=%s, changed=%s, deleted=%s" % (otherGroup._bindRevision - 1, depth, changed, deleted,))
+            self.assertEqual(set(changed), set(result))
             self.assertEqual(len(deleted), 0)
 
-            changed, deleted = yield otherHome.resourceNamesSinceRevision(otherAB._bindRevision, depth)
+            changed, deleted = yield otherHome.resourceNamesSinceRevision(otherGroup._bindRevision, depth)
+            print("revision=%s, depth=%s, changed=%s, deleted=%s" % (otherGroup._bindRevision, depth, changed, deleted,))
             self.assertEqual(len(changed), 0)
             self.assertEqual(len(deleted), 0)
 
