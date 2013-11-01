@@ -29,9 +29,10 @@ from cStringIO import StringIO
 
 from pycalendar.datetime import PyCalendarDateTime
 
-from twext.enterprise.dal.syntax import \
-    Delete, utcNowSQL, Union, Insert, Len, Max, Parameter, SavepointAction, \
-    Select, Update, ColumnSyntax, TableSyntax, Upper, Count, ALL_COLUMNS, Sum
+from twext.enterprise.dal.syntax import (
+    Delete, utcNowSQL, Union, Insert, Len, Max, Parameter, SavepointAction,
+    Select, Update, ColumnSyntax, TableSyntax, Upper, Count, ALL_COLUMNS, Sum,
+    DatabaseLock, DatabaseUnlock)
 from twext.enterprise.ienterprise import AlreadyFinishedError
 from twext.enterprise.queue import LocalQueuer
 from twext.enterprise.util import parseSQLTimestamp
@@ -314,6 +315,7 @@ class TransactionStatsCollector(object):
         self.label = label
         self.logFileName = logFileName
         self.statements = []
+        self.startTime = time.time()
 
 
     def startStatement(self, sql, args):
@@ -329,7 +331,7 @@ class TransactionStatsCollector(object):
         """
         args = ["%s" % (arg,) for arg in args]
         args = [((arg[:10] + "...") if len(arg) > 40 else arg) for arg in args]
-        self.statements.append(["%s %s" % (sql, args,), 0, 0])
+        self.statements.append(["%s %s" % (sql, args,), 0, 0, 0])
         return len(self.statements) - 1, time.time()
 
 
@@ -343,8 +345,10 @@ class TransactionStatsCollector(object):
         @type rows: C{int}
         """
         index, tstamp = context
+        t = time.time()
         self.statements[index][1] = len(rows) if rows else 0
-        self.statements[index][2] = time.time() - tstamp
+        self.statements[index][2] = t - tstamp
+        self.statements[index][3] = t
 
 
     def printReport(self):
@@ -352,25 +356,36 @@ class TransactionStatsCollector(object):
         Print a report of all the SQL statements executed to date.
         """
 
+        total_statements = len(self.statements)
+        total_rows = sum([statement[1] for statement in self.statements])
+        total_time = sum([statement[2] for statement in self.statements]) * 1000.0
+
         toFile = StringIO()
         toFile.write("*** SQL Stats ***\n")
         toFile.write("\n")
         toFile.write("Label: %s\n" % (self.label,))
         toFile.write("Unique statements: %d\n" % (len(set([statement[0] for statement in self.statements]),),))
-        toFile.write("Total statements: %d\n" % (len(self.statements),))
-        toFile.write("Total rows: %d\n" % (sum([statement[1] for statement in self.statements]),))
-        toFile.write("Total time (ms): %.3f\n" % (sum([statement[2] for statement in self.statements]) * 1000.0,))
-        for sql, rows, t in self.statements:
+        toFile.write("Total statements: %d\n" % (total_statements,))
+        toFile.write("Total rows: %d\n" % (total_rows,))
+        toFile.write("Total time (ms): %.3f\n" % (total_time,))
+        t_last_end = self.startTime
+        for sql, rows, t_taken, t_end in self.statements:
             toFile.write("\n")
             toFile.write("SQL: %s\n" % (sql,))
             toFile.write("Rows: %s\n" % (rows,))
-            toFile.write("Time (ms): %.3f\n" % (t * 1000.0,))
+            toFile.write("Time (ms): %.3f\n" % (t_taken * 1000.0,))
+            toFile.write("Idle (ms): %.3f\n" % ((t_end - t_taken - t_last_end) * 1000.0,))
+            toFile.write("Elapsed (ms): %.3f\n" % ((t_end - self.startTime) * 1000.0,))
+            t_last_end = t_end
+        toFile.write("Commit (ms): %.3f\n" % ((time.time() - t_last_end) * 1000.0,))
         toFile.write("***\n\n")
 
         if self.logFileName:
             open(self.logFileName, "a").write(toFile.getvalue())
         else:
             log.error(toFile.getvalue())
+
+        return (total_statements, total_rows, total_time,)
 
 
 
@@ -483,6 +498,8 @@ class CommonStoreTransaction(object):
         self.iudCount = 0
         self.currentStatement = None
 
+        self.logItems = {}
+
 
     def enqueue(self, workItem, **kw):
         """
@@ -550,14 +567,6 @@ class CommonStoreTransaction(object):
         ).on(self)
 
 
-    def calendarHomeWithUID(self, uid, create=False):
-        return self.homeWithUID(ECALENDARTYPE, uid, create=create)
-
-
-    def addressbookHomeWithUID(self, uid, create=False):
-        return self.homeWithUID(EADDRESSBOOKTYPE, uid, create=create)
-
-
     def _determineMemo(self, storeType, uid, create=False): #@UnusedVariable
         """
         Determine the memo dictionary to use for homeWithUID.
@@ -589,6 +598,14 @@ class CommonStoreTransaction(object):
             raise RuntimeError("Unknown home type.")
 
         return self._homeClass[storeType].homeWithUID(self, uid, create)
+
+
+    def calendarHomeWithUID(self, uid, create=False):
+        return self.homeWithUID(ECALENDARTYPE, uid, create=create)
+
+
+    def addressbookHomeWithUID(self, uid, create=False):
+        return self.homeWithUID(EADDRESSBOOKTYPE, uid, create=create)
 
 
     @inlineCallbacks
@@ -1029,8 +1046,10 @@ class CommonStoreTransaction(object):
         """
         Commit the transaction and execute any post-commit hooks.
         """
+
+        # Do stats logging as a postCommit because there might be some pending preCommit SQL we want to log
         if self._stats:
-            self._stats.printReport()
+            self.postCommit(self.statsReport)
         return self._sqlTxn.commit()
 
 
@@ -1039,6 +1058,16 @@ class CommonStoreTransaction(object):
         Abort the transaction.
         """
         return self._sqlTxn.abort()
+
+
+    def statsReport(self):
+        """
+        Print the stats report and record log items
+        """
+        sql_statements, sql_rows, sql_time = self._stats.printReport()
+        self.logItems["sql-s"] = str(sql_statements)
+        self.logItems["sql-r"] = str(sql_rows)
+        self.logItems["sql-t"] = "%.1f" % (sql_time,)
 
 
     def _oldEventsBase(self, limit):
@@ -1373,11 +1402,11 @@ class CommonStoreTransaction(object):
 
 
     def acquireUpgradeLock(self):
-        return self.execSQL("select pg_advisory_lock(1)")
+        return DatabaseLock().on(self)
 
 
     def releaseUpgradeLock(self):
-        return self.execSQL("select pg_advisory_unlock(1)")
+        return DatabaseUnlock().on(self)
 
 
 
@@ -1415,6 +1444,7 @@ class CommonHome(object):
         self._txn = transaction
         self._ownerUID = ownerUID
         self._resourceID = None
+        self._dataVersion = None
         self._childrenLoaded = False
         self._children = {}
         self._notifiers = None
@@ -1658,6 +1688,23 @@ class CommonHome(object):
         if queryCacher is not None:
             cacheKey = queryCacher.keyForHomeMetaData(self._resourceID)
             yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
+
+
+    @classproperty
+    def _dataVersionQuery(cls): #@NoSelf
+        ch = cls._homeSchema
+        return Select(
+            [ch.DATAVERSION], From=ch,
+            Where=ch.RESOURCE_ID == Parameter("resourceID")
+        )
+
+
+    @inlineCallbacks
+    def dataVersion(self):
+        if self._dataVersion is None:
+            self._dataVersion = (yield self._dataVersionQuery.on(
+                self._txn, resourceID=self._resourceID))[0][0]
+        returnValue(self._dataVersion)
 
 
     def name(self):
@@ -2195,6 +2242,7 @@ class CommonHome(object):
         the resource has changed.  We ensure we only do this once per object
         per transaction.
         """
+
         if self._txn.isNotifiedAlready(self):
             returnValue(None)
         self._txn.notificationAddedForObject(self)
@@ -2205,8 +2253,14 @@ class CommonHome(object):
 
         # Send notifications
         if self._notifiers:
-            for notifier in self._notifiers.values():
+            # cache notifiers run in post commit
+            notifier = self._notifiers.get("cache", None)
+            if notifier:
                 self._txn.postCommit(notifier.notify)
+            # push notifiers add their work items immediately
+            notifier = self._notifiers.get("push", None)
+            if notifier:
+                yield notifier.notify(self._txn)
 
 
     @classproperty
@@ -2320,16 +2374,20 @@ class _SharedSyncLogic(object):
         raise NotImplementedError()
 
 
-    @classproperty
-    def _objectNamesSinceRevisionQuery(cls): #@NoSelf
+    @classmethod
+    def _objectNamesSinceRevisionQuery(cls, deleted=True): #@NoSelf
         """
         DAL query for (resource, deleted-flag)
         """
         rev = cls._revisionsSchema
-        return Select([rev.RESOURCE_NAME, rev.DELETED],
-                      From=rev,
-                      Where=(rev.REVISION > Parameter("revision")).And(
-                          rev.RESOURCE_ID == Parameter("resourceID")))
+        where = (rev.REVISION > Parameter("revision")).And(rev.RESOURCE_ID == Parameter("resourceID"))
+        if not deleted:
+            where = where.And(rev.DELETED == False)
+        return Select(
+            [rev.RESOURCE_NAME, rev.DELETED],
+            From=rev,
+            Where=where,
+        )
 
 
     def resourceNamesSinceToken(self, token):
@@ -2354,10 +2412,10 @@ class _SharedSyncLogic(object):
         """
 
         results = [
-            (name if name else "", deleted)
-            for name, deleted in
-            (yield self._objectNamesSinceRevisionQuery.on(
-                self._txn, revision=revision, resourceID=self._resourceID))
+            (name if name else "", deleted) for name, deleted in
+                (yield self._objectNamesSinceRevisionQuery(deleted=(revision != 0)).on(
+                    self._txn, revision=revision, resourceID=self._resourceID)
+                )
         ]
         results.sort(key=lambda x: x[1])
 
@@ -2435,14 +2493,14 @@ class _SharedSyncLogic(object):
     @classproperty
     def _bumpSyncTokenQuery(cls): #@NoSelf
         """
-        DAL query to change collection sync token.
+        DAL query to change collection sync token. Note this can impact multiple rows if the
+        collection is shared.
         """
         rev = cls._revisionsSchema
         return Update(
             {rev.REVISION: schema.REVISION_SEQ, },
             Where=(rev.RESOURCE_ID == Parameter("resourceID")).And
-                  (rev.RESOURCE_NAME == None),
-            Return=rev.REVISION
+                  (rev.RESOURCE_NAME == None)
         )
 
 
@@ -2451,8 +2509,11 @@ class _SharedSyncLogic(object):
 
         if not self._txn.isRevisionBumpedAlready(self):
             self._txn.bumpRevisionForObject(self)
-            self._syncTokenRevision = (yield self._bumpSyncTokenQuery.on(
-                self._txn, resourceID=self._resourceID))[0][0]
+            yield self._bumpSyncTokenQuery.on(
+                self._txn,
+                resourceID=self._resourceID,
+            )
+            self._syncTokenRevision = None
 
 
     @classproperty
@@ -2931,7 +2992,7 @@ class SharingMixIn(object):
 
 
     @inlineCallbacks
-    def updateShareFromSharingInvitation(self, invitation, mode=None, status=None, message=None, name=None):
+    def updateShareFromSharingInvitation(self, invitation, mode=None, status=None, message=None):
         """
         Like L{updateShare} except that the original invitation is provided. That is used
         to find the actual sharee L{CommonHomeChild} which is then passed to L{updateShare}.
@@ -2944,12 +3005,12 @@ class SharingMixIn(object):
         if shareeView is None:
             shareeView = yield shareeHome.invitedObjectWithShareUID(invitation.uid())
 
-        result = yield self.updateShare(shareeView, mode, status, message, name)
+        result = yield self.updateShare(shareeView, mode, status, message)
         returnValue(result)
 
 
     @inlineCallbacks
-    def updateShare(self, shareeView, mode=None, status=None, message=None, name=None):
+    def updateShare(self, shareeView, mode=None, status=None, message=None):
         """
         Update share mode, status, and message for a home child shared with
         this (owned) L{CommonHomeChild}.
@@ -2970,9 +3031,6 @@ class SharingMixIn(object):
             will be used as the default display name, or None to not update
         @type message: L{str}
 
-        @param name: The bind resource name or None to not update
-        @type message: L{str}
-
         @return: the name of the shared item in the sharee's home.
         @rtype: a L{Deferred} which fires with a L{str}
         """
@@ -2984,8 +3042,7 @@ class SharingMixIn(object):
         columnMap = dict([(k, v if v != "" else None)
                           for k, v in {bind.BIND_MODE:mode,
                             bind.BIND_STATUS:status,
-                            bind.MESSAGE:message,
-                            bind.RESOURCE_NAME:name}.iteritems() if v is not None])
+                            bind.MESSAGE:message}.iteritems() if v is not None])
 
         if len(columnMap):
 
@@ -3016,7 +3073,9 @@ class SharingMixIn(object):
             queryCacher = self._txn._queryCacher
             if queryCacher:
                 cacheKey = queryCacher.keyForObjectWithName(shareeView._home._resourceID, shareeView._name)
-                queryCacher.invalidateAfterCommit(self._txn, cacheKey)
+                yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
+                cacheKey = queryCacher.keyForObjectWithResourceID(shareeView._home._resourceID, shareeView._resourceID)
+                yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
 
             shareeView._name = sharedname[0][0]
 
@@ -3074,7 +3133,9 @@ class SharingMixIn(object):
             queryCacher = self._txn._queryCacher
             if queryCacher:
                 cacheKey = queryCacher.keyForObjectWithName(shareeHome._resourceID, shareeChild._name)
-                queryCacher.invalidateAfterCommit(self._txn, cacheKey)
+                yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
+                cacheKey = queryCacher.keyForObjectWithResourceID(shareeHome._resourceID, shareeChild._resourceID)
+                yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
         else:
             deletedBindName = None
 
@@ -3339,10 +3400,9 @@ class SharingMixIn(object):
     def invalidateQueryCache(self):
         queryCacher = self._txn._queryCacher
         if queryCacher is not None:
-            cacheKey = queryCacher.keyForHomeChildMetaData(self._resourceID)
-            yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
-            cacheKey = queryCacher.keyForObjectWithName(self._home._resourceID, self._name)
-            yield queryCacher.invalidateAfterCommit(self._txn, cacheKey)
+            yield queryCacher.invalidateAfterCommit(self._txn, queryCacher.keyForHomeChildMetaData(self._resourceID))
+            yield queryCacher.invalidateAfterCommit(self._txn, queryCacher.keyForObjectWithName(self._home._resourceID, self._name))
+            yield queryCacher.invalidateAfterCommit(self._txn, queryCacher.keyForObjectWithResourceID(self._home._resourceID, self._resourceID))
 
 
 
@@ -3519,6 +3579,7 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
             if rows and queryCacher:
                 # Cache the result
                 queryCacher.setAfterCommit(home._txn, cacheKey, rows)
+                queryCacher.setAfterCommit(home._txn, queryCacher.keyForObjectWithResourceID(home._resourceID, rows[0][2]), rows)
 
         if not rows:
             returnValue(None)
@@ -3559,8 +3620,24 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
         @return: an L{CommonHomeChild} or C{None} if no such child
             exists.
         """
-        rows = yield cls._bindForResourceIDAndHomeID.on(
-            home._txn, resourceID=resourceID, homeID=home._resourceID)
+
+        rows = None
+        queryCacher = home._txn._queryCacher
+
+        if queryCacher:
+            # Retrieve data from cache
+            cacheKey = queryCacher.keyForObjectWithResourceID(home._resourceID, resourceID)
+            rows = yield queryCacher.get(cacheKey)
+
+        if rows is None:
+            # No cached copy
+            rows = yield cls._bindForResourceIDAndHomeID.on(home._txn, resourceID=resourceID, homeID=home._resourceID)
+
+            if rows and queryCacher:
+                # Cache the result (under both the ID and name values)
+                queryCacher.setAfterCommit(home._txn, cacheKey, rows)
+                queryCacher.setAfterCommit(home._txn, queryCacher.keyForObjectWithName(home._resourceID, rows[0][3]), rows)
+
         if not rows:
             returnValue(None)
 
@@ -3741,6 +3818,8 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
         if queryCacher:
             cacheKey = queryCacher.keyForObjectWithName(self._home._resourceID, oldName)
             yield queryCacher.invalidateAfterCommit(self._home._txn, cacheKey)
+            cacheKey = queryCacher.keyForObjectWithResourceID(self._home._resourceID, self._resourceID)
+            yield queryCacher.invalidateAfterCommit(self._home._txn, cacheKey)
 
         yield self._renameQuery.on(self._txn, name=name,
                                    resourceID=self._resourceID,
@@ -3773,6 +3852,8 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
         queryCacher = self._home._txn._queryCacher
         if queryCacher:
             cacheKey = queryCacher.keyForObjectWithName(self._home._resourceID, self._name)
+            yield queryCacher.invalidateAfterCommit(self._home._txn, cacheKey)
+            cacheKey = queryCacher.keyForObjectWithResourceID(self._home._resourceID, self._resourceID)
             yield queryCacher.invalidateAfterCommit(self._home._txn, cacheKey)
 
         yield self._deletedSyncToken()
@@ -4260,8 +4341,14 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
 
         # Send notifications
         if self._notifiers:
-            for notifier in self._notifiers.values():
+            # cache notifiers run in post commit
+            notifier = self._notifiers.get("cache", None)
+            if notifier:
                 self._txn.postCommit(notifier.notify)
+            # push notifiers add their work items immediately
+            notifier = self._notifiers.get("push", None)
+            if notifier:
+                yield notifier.notify(self._txn)
 
 
     @classproperty
@@ -4484,7 +4571,7 @@ class CommonObjectResource(FancyEqMixin, object):
     @inlineCallbacks
     def create(cls, parent, name, component, options=None):
 
-        child = (yield cls.objectWithName(parent, name, None))
+        child = (yield parent.objectResourceWithName(name))
         if child:
             raise ObjectResourceNameAlreadyExistsError(name)
 
@@ -5081,15 +5168,21 @@ class NotificationCollection(FancyEqMixin, _SharedSyncLogic):
         the resource has changed.  We ensure we only do this once per object
         per transaction.
         """
-        yield
         if self._txn.isNotifiedAlready(self):
             returnValue(None)
         self._txn.notificationAddedForObject(self)
 
         # Send notifications
         if self._notifiers:
-            for notifier in self._notifiers.values():
+            # cache notifiers run in post commit
+            notifier = self._notifiers.get("cache", None)
+            if notifier:
                 self._txn.postCommit(notifier.notify)
+            # push notifiers add their work items immediately
+            notifier = self._notifiers.get("push", None)
+            if notifier:
+                yield notifier.notify(self._txn)
+
         returnValue(None)
 
 

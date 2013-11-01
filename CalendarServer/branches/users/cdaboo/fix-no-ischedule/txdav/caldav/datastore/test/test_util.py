@@ -354,18 +354,17 @@ class HomeMigrationTests(CommonCommonTests, BaseTestCase):
         }, self.storeUnderTest())
         txn = self.transactionUnderTest()
         emptyHome = yield txn.calendarHomeWithUID("empty_home")
-        self.assertIdentical((yield emptyHome.calendarWithName("calendar")),
-                             None)
+        self.assertIdentical((yield emptyHome.calendarWithName("calendar")), None)
         nonEmpty = yield txn.calendarHomeWithUID("non_empty_home")
         yield migrateHome(emptyHome, nonEmpty)
         yield self.commit()
         txn = self.transactionUnderTest()
         emptyHome = yield txn.calendarHomeWithUID("empty_home")
         nonEmpty = yield txn.calendarHomeWithUID("non_empty_home")
-        self.assertIdentical((yield nonEmpty.calendarWithName("inbox")),
-                             None)
-        self.assertIdentical((yield nonEmpty.calendarWithName("calendar")),
-                             None)
+
+        self.assertIdentical((yield nonEmpty.calendarWithName("calendar")), None)
+        self.assertNotIdentical((yield nonEmpty.calendarWithName("inbox")), None)
+        self.assertNotIdentical((yield nonEmpty.calendarWithName("other-default-calendar")), None)
 
 
     @staticmethod
@@ -526,16 +525,25 @@ class HomeMigrationTests(CommonCommonTests, BaseTestCase):
                 "different-name": self.sampleEvent("other-uid", "tgt other"),
             },
         )
+
         txn = self.transactionUnderTest()
-        c1 = yield txn.calendarHomeWithUID("conflict1")
         c2 = yield txn.calendarHomeWithUID("conflict2")
         otherCal = yield c2.createCalendarWithName("othercal")
-        otherCal.createCalendarObjectWithName(
+        yield otherCal.createCalendarObjectWithName(
             "some-name", Component.fromString(
                 self.sampleEvent("oc", "target calendar")[0]
             )
         )
+        yield self.commit()
+
+        txn = self.transactionUnderTest()
+        c1 = yield txn.calendarHomeWithUID("conflict1")
+        c2 = yield txn.calendarHomeWithUID("conflict2")
         yield migrateHome(c1, c2, merge=True)
+        yield self.commit()
+
+        txn = self.transactionUnderTest()
+        c2 = yield txn.calendarHomeWithUID("conflict2")
         targetCal = yield c2.calendarWithName("conflicted")
         yield self.checkSummary("same-name", "target", targetCal)
         yield self.checkSummary("different-name", "tgt other", targetCal)

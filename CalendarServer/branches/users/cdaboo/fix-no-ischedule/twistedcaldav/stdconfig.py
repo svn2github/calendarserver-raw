@@ -54,7 +54,7 @@ DEFAULT_SERVICE_PARAMS = {
     },
     "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
         "node": "/Search",
-        "cacheTimeout": 10, # Minutes
+        "cacheTimeout": 1, # Minutes
         "batchSize": 100, # for splitting up large queries
         "negativeCaching": False,
         "restrictEnabledRecords": False,
@@ -62,7 +62,7 @@ DEFAULT_SERVICE_PARAMS = {
         "recordTypes": ("users", "groups"),
     },
     "twistedcaldav.directory.ldapdirectory.LdapDirectoryService": {
-        "cacheTimeout": 10, # Minutes
+        "cacheTimeout": 1, # Minutes
         "negativeCaching": False,
         "warningThresholdSeconds": 3,
         "batchSize": 500, # for splitting up large queries
@@ -307,8 +307,14 @@ DEFAULT_CONFIG = {
     "FailIfUpgradeNeeded"  : True, # Set to True to prevent the server or utility tools
                                    # tools from running if the database needs a schema
                                    # upgrade.
-    "StopAfterUpgradeTriggerFile" : "stop_after_upgrade", # if this file exists
-        # in ConfigRoot, stop the service after finishing upgrade phase
+    "StopAfterUpgradeTriggerFile" : "stop_after_upgrade",   # if this file exists in ConfigRoot, stop
+                                                            # the service after finishing upgrade phase
+
+    "UpgradeHomePrefix"    : "",    # When upgrading, only upgrade homes where the owner UID starts with
+                                    # with the specified prefix. The upgrade will only be partial and only
+                                    # apply to upgrade pieces that affect entire homes. The upgrade will
+                                    # need to be run again without this prefix set to complete the overall
+                                    # upgrade.
 
     #
     # Types of service provided
@@ -449,6 +455,7 @@ DEFAULT_CONFIG = {
     #
     "AccessLogFile"  : "access.log", # Apache-style access log
     "ErrorLogFile"   : "error.log", # Server activity log
+    "AgentLogFile"   : "agent.log", # Agent activity log
     "ErrorLogEnabled"   : True, # True = use log file, False = stdout
     "ErrorLogRotateMB"  : 10, # Rotate error log after so many megabytes
     "ErrorLogMaxRotatedFiles"  : 5, # Retain this many error log files
@@ -563,8 +570,8 @@ DEFAULT_CONFIG = {
         }
     },
 
-    "EnableTimezonesByReference" : False, # Strip out VTIMEZONES that are known
-    "UsePackageTimezones" : False, # Use timezone data from twistedcaldav.zoneinfo - don't copy to Data directory
+    "EnableTimezonesByReference" : True, # Strip out VTIMEZONES that are known
+    "UsePackageTimezones"        : False, # Use timezone data from twistedcaldav.zoneinfo - don't copy to Data directory
 
     "EnableBatchUpload"       : True, # POST batch uploads
     "MaxResourcesBatchUpload" : 100, # Maximum number of resources in a batch POST
@@ -825,7 +832,12 @@ DEFAULT_CONFIG = {
                                    # connections used per worker process.
 
     "ListenBacklog": 2024,
-    "IdleConnectionTimeOut": 15,
+
+    "IncomingDataTimeOut": 60,          # Max. time between request lines
+    "PipelineIdleTimeOut": 15,          # Max. time between pipelined requests
+    "IdleConnectionTimeOut": 60 * 6,    # Max. time for response processing
+    "CloseConnectionTimeOut": 15,       # Max. time for client close
+
     "UIDReservationTimeOut": 30 * 60,
 
     "MaxMultigetWithDataHrefs": 5000,
@@ -996,6 +1008,10 @@ DEFAULT_CONFIG = {
     # America/Los_Angeles.
     "DefaultTimezone" : "",
 
+    # After this many seconds of no admin requests, shutdown the agent.  Zero
+    # means no automatic shutdown.
+    "AgentInactivityTimeoutSeconds"  : 4 * 60 * 60,
+
     # These two aren't relative to ConfigRoot:
     "Includes": [], # Other plists to parse after this one
     "WritableConfigFile" : "", # which config file calendarserver_config should
@@ -1082,6 +1098,7 @@ RELATIVE_PATHS = [
     ("ConfigRoot", ("Scheduling", "iSchedule", "DKIM", "PrivateExchanges",)),
     ("LogRoot", "AccessLogFile"),
     ("LogRoot", "ErrorLogFile"),
+    ("LogRoot", "AgentLogFile"),
     ("LogRoot", ("Postgres", "LogFile",)),
     ("LogRoot", ("LogDatabase", "StatisticsLogFile",)),
     ("LogRoot", "AccountingLogRoot"),
@@ -1537,6 +1554,8 @@ def _updateCompliance(configDict, reloading=False):
             compliance += caldavxml.caldav_managed_attachments_compliance
         if configDict.Scheduling.Options.TimestampAttendeePartStatChanges:
             compliance += customxml.calendarserver_partstat_changes_compliance
+        if configDict.EnableTimezonesByReference:
+            compliance += caldavxml.caldav_timezones_by_reference_compliance
     else:
         compliance = ()
 

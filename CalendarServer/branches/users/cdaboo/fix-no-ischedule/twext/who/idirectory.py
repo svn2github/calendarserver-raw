@@ -51,15 +51,21 @@ class DirectoryServiceError(Exception):
     Directory service generic error.
     """
 
+
+
 class DirectoryConfigurationError(DirectoryServiceError):
     """
     Directory configurtion error.
     """
 
+
+
 class DirectoryAvailabilityError(DirectoryServiceError):
     """
     Directory not available.
     """
+
+
 
 class UnknownRecordTypeError(DirectoryServiceError):
     """
@@ -69,15 +75,21 @@ class UnknownRecordTypeError(DirectoryServiceError):
         DirectoryServiceError.__init__(self, token)
         self.token = token
 
+
+
 class QueryNotSupportedError(DirectoryServiceError):
     """
     Query not supported.
     """
 
+
+
 class NoSuchRecordError(DirectoryServiceError):
     """
     Record does not exist.
     """
+
+
 
 class NotAllowedError(DirectoryServiceError):
     """
@@ -123,6 +135,7 @@ class FieldName(Names):
     fullNames.multiValue      = True
     emailAddresses.multiValue = True
 
+
     @staticmethod
     def isMultiValue(name):
         return getattr(name, "multiValue", False)
@@ -157,7 +170,10 @@ class IDirectoryService(Interface):
     A directory service may allow support the editing, removal and
     addition of records.
     """
-    realmName = Attribute("The name of the authentication realm this service represents.")
+    realmName = Attribute(
+        "The name of the authentication realm this service represents."
+    )
+
 
     def recordTypes():
         """
@@ -165,98 +181,132 @@ class IDirectoryService(Interface):
             types that are kept in this directory.
         """
 
+
     def recordsFromExpression(self, expression):
         """
         Find records matching an expression.
+
         @param expression: an expression to apply
         @type expression: L{object}
+
         @return: a deferred iterable of matching L{IDirectoryRecord}s.
+
         @raises: L{QueryNotSupportedError} if the expression is not
             supported by this directory service.
         """
+
 
     def recordsFromQuery(expressions, operand=Operand.AND):
         """
         Find records by composing a query consisting of an iterable of
         expressions and an operand.
+
         @param expressions: expressions to query against
         @type expressions: iterable of L{object}s
+
         @param operand: an operand
         @type operand: a L{NamedConstant}
+
         @return: a deferred iterable of matching L{IDirectoryRecord}s.
+
         @raises: L{QueryNotSupportedError} if the query is not
             supported by this directory service.
         """
+
 
     def recordsWithFieldValue(fieldName, value):
         """
         Find records that have the given field name with the given
         value.
+
         @param fieldName: a field name
         @type fieldName: L{NamedConstant}
+
         @param value: a value to match
         @type value: L{bytes}
+
         @return: a deferred iterable of L{IDirectoryRecord}s.
         """
+
 
     def recordWithUID(uid):
         """
         Find the record that has the given UID.
+
         @param uid: a UID
         @type uid: L{bytes}
+
         @return: a deferred iterable of L{IDirectoryRecord}s, or
             C{None} if there is no such record.
         """
-               
+
+
     def recordWithGUID(guid):
         """
         Find the record that has the given GUID.
+
         @param guid: a GUID
         @type guid: L{bytes}
+
         @return: a deferred iterable of L{IDirectoryRecord}s, or
             C{None} if there is no such record.
         """
+
 
     def recordsWithRecordType(recordType):
         """
         Find the records that have the given record type.
+
         @param recordType: a record type
         @type recordType: L{NamedConstant}
+
         @return: a deferred iterable of L{IDirectoryRecord}s.
         """
+
 
     def recordWithShortName(recordType, shortName):
         """
         Find the record that has the given record type and short name.
+
         @param recordType: a record type
         @type recordType: L{NamedConstant}
+
         @param shortName: a short name
         @type shortName: L{bytes}
+
         @return: a deferred iterable of L{IDirectoryRecord}s, or
             C{None} if there is no such record.
         """
+
 
     def recordsWithEmailAddress(emailAddress):
         """
         Find the records that have the given email address.
+
         @param emailAddress: an email address
         @type emailAddress: L{bytes}
+
         @return: a deferred iterable of L{IDirectoryRecord}s, or
             C{None} if there is no such record.
         """
 
+
     def updateRecords(records, create=False):
         """
         Updates existing directory records.
+
         @param records: the records to update
         @type records: iterable of L{IDirectoryRecord}s
+
         @param create: if true, create records if necessary
         @type create: boolean
         """
 
+
     def removeRecords(uids):
         """
         Removes the records with the given UIDs.
+
         @param uids: the UIDs of the records to remove
         @type uids: iterable of L{bytes}
         """
@@ -294,6 +344,7 @@ class IDirectoryRecord(Interface):
     service = Attribute("The L{IDirectoryService} this record exists in.")
     fields  = Attribute("A mapping with L{NamedConstant} keys.")
 
+
     def members():
         """
         Find the records that are members of this group.  Only direct
@@ -301,6 +352,7 @@ class IDirectoryRecord(Interface):
         @return: a deferred iterable of L{IDirectoryRecord}s which are
             direct members of this group.
         """
+
 
     def groups():
         """
