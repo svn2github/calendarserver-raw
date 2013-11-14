@@ -1,8 +1,0 @@
-*.pyc
-*.so
-dropin.cache
-
-/build/
-/data/
-/calendarserver/version.py
-/conf/caldavd-dev.plist
