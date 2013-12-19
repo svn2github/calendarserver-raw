@@ -526,10 +526,6 @@
 			<request user="$userid2:" pswd="$pswd2:" print-response='no'>
 				<method>DELETE</method>
 				<ruri>$shareecalendar2:/</ruri>
-				<data substitutions='yes'>
-					<content-type>application/xml; charset=utf-8</content-type>
-					<filepath>Resource/CalDAV/sharing/invites/double/5.xml</filepath>
-				</data>
 				<verify>
 					<callback>statusCode</callback>
 				</verify>
