@@ -110,35 +110,7 @@ class CalendarHomeExternal(CommonHomeExternal, CalendarHome):
         raise AssertionError("CommonHomeExternal: not supported")
 
 
-    def defaultCalendar(self, componentType, create=True):
-        """
-        No children.
-        """
-        raise AssertionError("CommonHomeExternal: not supported")
-
-
-    def isDefaultCalendar(self, calendar):
-        """
-        No children.
-        """
-        raise AssertionError("CommonHomeExternal: not supported")
-
-
-    def getDefaultAlarm(self, vevent, timed):
-        """
-        No children.
-        """
-        raise AssertionError("CommonHomeExternal: not supported")
-
-
     def setDefaultAlarm(self, alarm, vevent, timed):
-        """
-        No children.
-        """
-        raise AssertionError("CommonHomeExternal: not supported")
-
-
-    def getAvailability(self):
         """
         No children.
         """

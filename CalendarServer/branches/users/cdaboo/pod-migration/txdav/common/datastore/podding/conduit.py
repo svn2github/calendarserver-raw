@@ -993,8 +993,11 @@ class PoddingConduit(object):
 
         target = yield self._migrate_recv(txn, message, actionName)
         try:
-            # Operate on the L{CommonHomeChild}
-            value = yield getattr(target, method)(*message.get("arguments", ()), **message.get("keywords", {}))
+            # Operate on the target
+            if method is not None:
+                value = yield getattr(target, method)(*message.get("arguments", ()), **message.get("keywords", {}))
+            else:
+                value = target
         except Exception as e:
             returnValue({
                 "result": "exception",
@@ -1024,6 +1027,7 @@ class PoddingConduit(object):
         )
 
 # Migrate calls
+PoddingConduit._make_migrate_action("get", None, transform_recv=PoddingConduit._to_externalize)
 PoddingConduit._make_migrate_action("loadchildren", "loadChildren", transform_recv=PoddingConduit._to_externalize_list)
 
 # Calls on L{CommonHomeChild} objects

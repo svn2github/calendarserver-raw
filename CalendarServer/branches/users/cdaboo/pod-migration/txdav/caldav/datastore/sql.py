@@ -936,6 +936,42 @@ class CalendarHome(CommonHome):
             yield inbox.notifyPropertyChanged()
 
 
+    @inlineCallbacks
+    def postSyncChildren(self, externalHome, final):
+        """
+        Synchronize the metadata from the external side.
+        """
+
+        yield super(CalendarHome, self).postSyncChildren(externalHome, final)
+
+        # Default collections
+        children = yield self.loadChildren()
+        id_map = dict([(child.external_id(), child.id()) for child in children if child.owned()])
+
+        chm = self._homeMetaDataSchema
+        for component, attr in self._componentDefaultAttribute.items():
+            external_id = getattr(externalHome, attr)
+            internal_id = id_map.get(external_id)
+            if internal_id != getattr(self, attr):
+                setattr(self, attr, internal_id)
+                yield Update(
+                    {self._componentDefaultColumn[component]: internal_id},
+                    Where=chm.RESOURCE_ID == self._resourceID,
+                ).on(self._txn)
+
+        # Default alarms
+        for vevent in (True, False):
+            for timed in (True, False):
+                external_default = externalHome.getDefaultAlarm(vevent, timed)
+                if external_default != self.getDefaultAlarm(vevent, timed):
+                    yield self.setDefaultAlarm(external_default, vevent, timed)
+
+        # Availability
+        external_availability = externalHome.getAvailability()
+        if external_availability != self.getAvailability():
+            yield self.setAvailability(external_availability)
+
+
 CalendarHome._register(ECALENDARTYPE)
 
 

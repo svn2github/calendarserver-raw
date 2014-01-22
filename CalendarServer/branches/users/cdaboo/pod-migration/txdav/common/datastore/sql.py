@@ -1640,13 +1640,13 @@ class CommonHome(SharingHomeMixIn):
 
     @classmethod
     @inlineCallbacks
-    def makeClass(cls, transaction, homeData, metadataData):
+    def makeClass(cls, txn, homeData, metadataData):
         """
         Build the actual home class taking into account the possibility that we might need to
         switch in the external version of the class.
 
-        @param transaction: transaction
-        @type transaction: L{CommonStoreTransaction}
+        @param txn: transaction
+        @type txn: L{CommonStoreTransaction}
         @param ownerUID: owner UID of home to load
         @type ownerUID: C{str}
         @param migration: migration status for home to load
@@ -1663,9 +1663,9 @@ class CommonHome(SharingHomeMixIn):
         # If the status is external we need to convert this object to a CommonHomeExternal class which will
         # have the right behavior for non-hosted external users.
         if status == _HOME_STATUS_EXTERNAL and migration == _MIGRATION_STATUS_NONE:
-            home = cls._externalClass(transaction, ownerUID, resourceID)
+            home = cls._externalClass(txn, ownerUID, resourceID)
         else:
-            home = cls(transaction, ownerUID, migration=migration)
+            home = cls(txn, ownerUID, migration=migration)
 
         for attr, value in zip(cls.homeAttributes(), homeData):
             setattr(home, attr, value)
@@ -1675,7 +1675,7 @@ class CommonHome(SharingHomeMixIn):
 
         yield home._loadPropertyStore()
 
-        for factory_type, factory in transaction._notifierFactories.items():
+        for factory_type, factory in txn._notifierFactories.items():
             home.addNotifier(factory_type, factory.newNotifier(home))
 
         yield home.made()
@@ -1685,12 +1685,12 @@ class CommonHome(SharingHomeMixIn):
 
     @classmethod
     @inlineCallbacks
-    def _getDBData(cls, transaction, ownerUID, migration=_MIGRATION_STATUS_NONE, no_cache=False):
+    def _getDBData(cls, txn, ownerUID, migration=_MIGRATION_STATUS_NONE, no_cache=False):
         """
         Given a set of identifying information, load the metadataData rows for the object.
 
-        @param transaction: transaction
-        @type transaction: L{CommonStoreTransaction}
+        @param txn: transaction
+        @type txn: L{CommonStoreTransaction}
         @param ownerUID: owner UID of home to load
         @type ownerUID: C{str}
         @param migration: migration status for home to load
@@ -1699,14 +1699,14 @@ class CommonHome(SharingHomeMixIn):
         @type no_cache: C{bool}
         """
 
-        queryCacher = transaction._queryCacher
+        queryCacher = txn._queryCacher
         homeData = None
         if queryCacher:
             cacheKey = queryCacher.keyForHomeData(cls._homeType, ownerUID, migration)
             homeData = yield queryCacher.get(cacheKey)
 
         if homeData is None:
-            homeData = yield cls._homeColumnsFromOwnerQuery.on(transaction, ownerUID=ownerUID, migration=migration)
+            homeData = yield cls._homeColumnsFromOwnerQuery.on(txn, ownerUID=ownerUID, migration=migration)
             if homeData:
                 homeData = homeData[0]
                 if not no_cache and queryCacher:
@@ -1725,20 +1725,20 @@ class CommonHome(SharingHomeMixIn):
 
         if metadataData is None:
             # Don't have a cached copy
-            metadataData = (yield cls._metaDataQuery.on(transaction, resourceID=resourceID))
+            metadataData = (yield cls._metaDataQuery.on(txn, resourceID=resourceID))
             if metadataData:
                 metadataData = metadataData[0]
             else:
                 metadataData = None
             if queryCacher:
                 # Cache the metadataData
-                yield queryCacher.setAfterCommit(transaction, cacheKey, metadataData)
+                yield queryCacher.setAfterCommit(txn, cacheKey, metadataData)
 
         returnValue((homeData, metadataData))
 
 
-    def __init__(self, transaction, ownerUID, migration=_MIGRATION_STATUS_NONE):
-        self._txn = transaction
+    def __init__(self, txn, ownerUID, migration=_MIGRATION_STATUS_NONE):
+        self._txn = txn
         self._ownerUID = ownerUID
         self._resourceID = None
         self._status = _HOME_STATUS_NORMAL
@@ -1768,6 +1768,34 @@ class CommonHome(SharingHomeMixIn):
         Called after class has been built. This is here to allow sub-classes to do their own initialization stuff.
         """
         return succeed(None)
+
+
+    def externalize(self):
+        """
+        Create a dictionary mapping key attributes so this object can be sent over a cross-pod call
+        and reconstituted at the other end. Note that the other end may have a different schema so
+        the attributes may not match exactly and will need to be processed accordingly.
+        """
+        serialized = {}
+        serialized["home"] = dict([(attr[1:], getattr(self, attr, None)) for attr in self.homeAttributes()])
+        serialized["metadata"] = dict([(attr[1:], getattr(self, attr, None)) for attr in self.metadataAttributes()])
+        return serialized
+
+
+    @classmethod
+    @inlineCallbacks
+    def internalize(cls, txn, mapping):
+        """
+        Given a mapping generated by L{externalize}, convert the values into an array of database
+        like items that conforms to the ordering of L{_allColumns} so it can be fed into L{makeClass}.
+        Note that there may be a schema mismatch with the external data, so treat missing items as
+        C{None} and ignore extra items.
+        """
+
+        home = [mapping["home"].get(row[1:]) for row in cls.homeAttributes()]
+        metadata = [mapping["metadata"].get(row[1:]) for row in cls.metadataAttributes()]
+        child = yield cls.makeClass(txn, home, metadata)
+        returnValue(child)
 
 
     def quotaAllowedBytes(self):
@@ -2714,19 +2742,66 @@ class CommonHome(SharingHomeMixIn):
 
         assert self._migration == _MIGRATION_STATUS_MIGRATING
 
-        # Get external home for the user (create if needed)
-        otherHome = yield self._txn.homeWithUID(self._homeType, user, create=True)
-        assert otherHome._status == _HOME_STATUS_EXTERNAL
+        # Get external home for the user. This is a "virtual" home in that it does not exist in
+        # the local DB - it is a representation of the remote object.
+        externalHome = yield self.getExternal()
+        assert externalHome._status == _HOME_STATUS_EXTERNAL
 
         # Force the external home to look like it is migrating. This will enable certain external API calls
         # that are normally disabled for sharing (e.g., ability to load all child resources).
-        otherHome._migration = _MIGRATION_STATUS_MIGRATING
+        externalHome._migration = _MIGRATION_STATUS_MIGRATING
+
+        # Do sequence of sync operations - note that we may need to sync the home both before and after
+        # the children are sync'd
+        yield self.preSyncChildren(externalHome, final)
+        yield self.syncChildren(externalHome, final)
+        yield self.postSyncChildren(externalHome, final)
+
+
+    @inlineCallbacks
+    def getExternal(self):
+        """
+        Get a new L{CommonHomeExternal} object initialized to look like the remote object, i.e., with
+        all the remote attributes/metadata set as per the remote data.
+
+        @return: a L{CommonHomeExternal}.
+        """
+        remote = yield self._txn.store().conduit.send_get(self)
+        remote["home"]["status"] = _HOME_STATUS_EXTERNAL
+        remote = yield self.internalize(self._txn, remote)
+        returnValue(remote)
+
+
+    def preSyncChildren(self, externalHome, final):
+        """
+        Synchronize the external home with this home. This is called before the children are
+        sync'd - it needs to setup this home with attributes from the remote needed to sync children.
+        """
+        return succeed(None)
+
+
+    def postSyncChildren(self, externalHome, final):
+        """
+        Synchronize the external home with this home. This is called after the children are
+        sync'd - so attributes of the home that depend on child are valid and can be copied or
+        translated to their local equivalents (e.g., references to child resource-ids).
+        """
+
+        # TODO: quota setting
+        return succeed(None)
+
+
+    @inlineCallbacks
+    def syncChildren(self, externalHome, final):
+        """
+        Synchronize the remote children of the local external home.
+        """
 
         local_children = yield self.loadChildren()
         local_children = dict([(child.external_id(), child) for child in local_children if child.owned()])
 
         # Get list of owned child collections
-        remote_children = yield otherHome.loadChildren()
+        remote_children = yield externalHome.loadChildren()
         remote_children = dict([(child.id(), child) for child in remote_children if child.owned()])
 
         # Remove local ones to longer present on remote

@@ -47,6 +47,7 @@ from txdav.common.datastore.test.util import populateCalendarsFrom, CommonCommon
 from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError, \
     ObjectResourceNameNotAllowedError
 from txdav.common.idirectoryservice import DirectoryRecordNotFoundError
+from txdav.caldav.datastore.sql_external import CalendarHomeExternal
 
 
 class TestConduit (CommonCommonTests, txweb2.dav.test.util.TestCase):
@@ -1089,6 +1090,23 @@ class TestConduitAPIForMigration(MultiStoreConduitTest):
     """
     Test that the conduit api works for migration.
     """
+
+    @inlineCallbacks
+    def test_get(self):
+        """
+        Test that action=loadallobjects works.
+        """
+
+        yield self.homeUnderTest(txn=self.newOtherTransaction(), name="puser01", create=True)
+        yield self.otherCommit()
+
+        remote_home = yield self.homeUnderTest(name="puser01", create=True)
+        remote_home._migration = _MIGRATION_STATUS_MIGRATING
+
+        result = yield remote_home.get()
+        self.assertTrue(isinstance(result, CalendarHomeExternal))
+        self.assertEqual(result.name(), remote_home.name())
+
 
     @inlineCallbacks
     def test_loadallobjects(self):
