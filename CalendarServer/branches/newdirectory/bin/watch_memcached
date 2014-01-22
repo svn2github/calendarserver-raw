@@ -1,0 +1,25 @@
+#!/bin/sh
+# -*- sh-basic-offset: 2 -*-
+
+set -e
+set -u
+
+if [ $# -gt 0 ]; then
+  interval="$1"; shift;
+else
+  interval="5";
+fi;
+
+watch ()
+{
+  while :; do
+    echo stats;
+    sleep "${interval}";
+    echo "----------------------------------------" >&2;
+  done | nc localhost 11211 2>&1;
+}
+
+if ! watch; then
+  echo "Error contacting memcached for stats.";
+  exit 1;
+fi;
