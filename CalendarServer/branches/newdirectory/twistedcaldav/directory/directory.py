@@ -15,6 +15,7 @@
 # limitations under the License.
 ##
 
+raise NotImplementedError("!!!!! die !!!!!")
 
 """
 Generic directory service classes.

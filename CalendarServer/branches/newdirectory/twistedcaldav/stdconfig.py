@@ -48,120 +48,120 @@ if platform.isMacOSX():
 else:
     DEFAULT_CONFIG_FILE = "/etc/caldavd/caldavd.plist"
 
-DEFAULT_SERVICE_PARAMS = {
-    "twistedcaldav.directory.xmlfile.XMLDirectoryService": {
+DEFAULT_SERVICE_CONFIG = {
+    "XML": {
         "xmlFile": "accounts.xml",
         "recordTypes": ("users", "groups"),
-        "statSeconds" : 15,
+        "statSeconds": 15,
     },
-    "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
-        "node": "/Search",
-        "cacheTimeout": 1, # Minutes
-        "batchSize": 100, # for splitting up large queries
-        "negativeCaching": False,
-        "restrictEnabledRecords": False,
-        "restrictToGroup": "",
-        "recordTypes": ("users", "groups"),
-    },
-    "twistedcaldav.directory.ldapdirectory.LdapDirectoryService": {
-        "cacheTimeout": 1, # Minutes
-        "negativeCaching": False,
-        "warningThresholdSeconds": 3,
-        "batchSize": 500, # for splitting up large queries
-        "requestTimeoutSeconds" : 10,
-        "requestResultsLimit" : 200,
-        "optimizeMultiName" : False,
-        "queryLocationsImplicitly": True,
-        "restrictEnabledRecords": False,
-        "restrictToGroup": "",
-        "recordTypes": ("users", "groups"),
-        "uri": "ldap://localhost/",
-        "tls": False,
-        "tlsCACertFile": None,
-        "tlsCACertDir": None,
-        "tlsRequireCert": None, # never, allow, try, demand, hard
-        "credentials": {
-            "dn": None,
-            "password": None,
-        },
-        "authMethod": "LDAP",
-        "rdnSchema": {
-            "base": "dc=example,dc=com",
-            "guidAttr": "entryUUID",
-            "users": {
-                "rdn": "ou=People",
-                "attr": "uid", # used only to synthesize email address
-                "emailSuffix": None, # used only to synthesize email address
-                "filter": None, # additional filter for this type
-                "loginEnabledAttr" : "", # attribute controlling login
-                "loginEnabledValue" : "yes", # "True" value of above attribute
-                "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
-                "calendarEnabledValue" : "yes", # "True" value of above attribute
-                "mapping" : { # maps internal record names to LDAP
-                    "recordName": "uid",
-                    "fullName" : "cn",
-                    "emailAddresses" : ["mail"],
-                    "firstName" : "givenName",
-                    "lastName" : "sn",
-                },
-            },
-            "groups": {
-                "rdn": "ou=Group",
-                "attr": "cn", # used only to synthesize email address
-                "emailSuffix": None, # used only to synthesize email address
-                "filter": None, # additional filter for this type
-                "mapping" : { # maps internal record names to LDAP
-                    "recordName": "cn",
-                    "fullName" : "cn",
-                    "emailAddresses" : ["mail"],
-                    "firstName" : "givenName",
-                    "lastName" : "sn",
-                },
-            },
-            "locations": {
-                "rdn": "ou=Places",
-                "attr": "cn", # used only to synthesize email address
-                "emailSuffix": None, # used only to synthesize email address
-                "filter": None, # additional filter for this type
-                "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
-                "calendarEnabledValue" : "yes", # "True" value of above attribute
-                "mapping" : { # maps internal record names to LDAP
-                    "recordName": "cn",
-                    "fullName" : "cn",
-                    "emailAddresses" : ["mail"],
-                    "firstName" : "givenName",
-                    "lastName" : "sn",
-                },
-            },
-            "resources": {
-                "rdn": "ou=Resources",
-                "attr": "cn", # used only to synthesize email address
-                "emailSuffix": None, # used only to synthesize email address
-                "filter": None, # additional filter for this type
-                "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
-                "calendarEnabledValue" : "yes", # "True" value of above attribute
-                "mapping" : { # maps internal record names to LDAP
-                    "recordName": "cn",
-                    "fullName" : "cn",
-                    "emailAddresses" : ["mail"],
-                    "firstName" : "givenName",
-                    "lastName" : "sn",
-                },
-            },
-        },
-        "groupSchema": {
-            "membersAttr": "member", # how members are specified
-            "nestedGroupsAttr": None, # how nested groups are specified
-            "memberIdAttr": None, # which attribute the above refer to
-        },
-        "resourceSchema": {
-            "resourceInfoAttr": None, # contains location/resource info
-            "autoAcceptGroupAttr": None, # auto accept group
-        },
-        "poddingSchema": {
-            "serverIdAttr": None, # maps to augments server-id
-        },
-    },
+    # "twistedcaldav.directory.appleopendirectory.OpenDirectoryService": {
+    #     "node": "/Search",
+    #     "cacheTimeout": 1, # Minutes
+    #     "batchSize": 100, # for splitting up large queries
+    #     "negativeCaching": False,
+    #     "restrictEnabledRecords": False,
+    #     "restrictToGroup": "",
+    #     "recordTypes": ("users", "groups"),
+    # },
+    # "twistedcaldav.directory.ldapdirectory.LdapDirectoryService": {
+    #     "cacheTimeout": 1, # Minutes
+    #     "negativeCaching": False,
+    #     "warningThresholdSeconds": 3,
+    #     "batchSize": 500, # for splitting up large queries
+    #     "requestTimeoutSeconds" : 10,
+    #     "requestResultsLimit" : 200,
+    #     "optimizeMultiName" : False,
+    #     "queryLocationsImplicitly": True,
+    #     "restrictEnabledRecords": False,
+    #     "restrictToGroup": "",
+    #     "recordTypes": ("users", "groups"),
+    #     "uri": "ldap://localhost/",
+    #     "tls": False,
+    #     "tlsCACertFile": None,
+    #     "tlsCACertDir": None,
+    #     "tlsRequireCert": None, # never, allow, try, demand, hard
+    #     "credentials": {
+    #         "dn": None,
+    #         "password": None,
+    #     },
+    #     "authMethod": "LDAP",
+    #     "rdnSchema": {
+    #         "base": "dc=example,dc=com",
+    #         "guidAttr": "entryUUID",
+    #         "users": {
+    #             "rdn": "ou=People",
+    #             "attr": "uid", # used only to synthesize email address
+    #             "emailSuffix": None, # used only to synthesize email address
+    #             "filter": None, # additional filter for this type
+    #             "loginEnabledAttr" : "", # attribute controlling login
+    #             "loginEnabledValue" : "yes", # "True" value of above attribute
+    #             "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
+    #             "calendarEnabledValue" : "yes", # "True" value of above attribute
+    #             "mapping" : { # maps internal record names to LDAP
+    #                 "recordName": "uid",
+    #                 "fullName" : "cn",
+    #                 "emailAddresses" : ["mail"],
+    #                 "firstName" : "givenName",
+    #                 "lastName" : "sn",
+    #             },
+    #         },
+    #         "groups": {
+    #             "rdn": "ou=Group",
+    #             "attr": "cn", # used only to synthesize email address
+    #             "emailSuffix": None, # used only to synthesize email address
+    #             "filter": None, # additional filter for this type
+    #             "mapping" : { # maps internal record names to LDAP
+    #                 "recordName": "cn",
+    #                 "fullName" : "cn",
+    #                 "emailAddresses" : ["mail"],
+    #                 "firstName" : "givenName",
+    #                 "lastName" : "sn",
+    #             },
+    #         },
+    #         "locations": {
+    #             "rdn": "ou=Places",
+    #             "attr": "cn", # used only to synthesize email address
+    #             "emailSuffix": None, # used only to synthesize email address
+    #             "filter": None, # additional filter for this type
+    #             "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
+    #             "calendarEnabledValue" : "yes", # "True" value of above attribute
+    #             "mapping" : { # maps internal record names to LDAP
+    #                 "recordName": "cn",
+    #                 "fullName" : "cn",
+    #                 "emailAddresses" : ["mail"],
+    #                 "firstName" : "givenName",
+    #                 "lastName" : "sn",
+    #             },
+    #         },
+    #         "resources": {
+    #             "rdn": "ou=Resources",
+    #             "attr": "cn", # used only to synthesize email address
+    #             "emailSuffix": None, # used only to synthesize email address
+    #             "filter": None, # additional filter for this type
+    #             "calendarEnabledAttr" : "", # attribute controlling enabledForCalendaring
+    #             "calendarEnabledValue" : "yes", # "True" value of above attribute
+    #             "mapping" : { # maps internal record names to LDAP
+    #                 "recordName": "cn",
+    #                 "fullName" : "cn",
+    #                 "emailAddresses" : ["mail"],
+    #                 "firstName" : "givenName",
+    #                 "lastName" : "sn",
+    #             },
+    #         },
+    #     },
+    #     "groupSchema": {
+    #         "membersAttr": "member", # how members are specified
+    #         "nestedGroupsAttr": None, # how nested groups are specified
+    #         "memberIdAttr": None, # which attribute the above refer to
+    #     },
+    #     "resourceSchema": {
+    #         "resourceInfoAttr": None, # contains location/resource info
+    #         "autoAcceptGroupAttr": None, # auto accept group
+    #     },
+    #     "poddingSchema": {
+    #         "serverIdAttr": None, # maps to augments server-id
+    #     },
+    # },
 }
 
 DEFAULT_RESOURCE_PARAMS = {
@@ -372,8 +372,8 @@ DEFAULT_CONFIG = {
     #    users, groups, locations and resources) to the server.
     #
     "DirectoryService": {
-        "type": "twistedcaldav.directory.xmlfile.XMLDirectoryService",
-        "params": DEFAULT_SERVICE_PARAMS["twistedcaldav.directory.xmlfile.XMLDirectoryService"],
+        "name": "XML",
+        "config": DEFAULT_SERVICE_CONFIG["XML"],
     },
 
     #

@@ -28,77 +28,85 @@ __all__ = [
 
 import errno
 import os
-from time import sleep
+# from time import sleep
 from socket import fromfd, AF_UNIX, SOCK_STREAM, socketpair
 import psutil
+from urllib import quote
 
 from twext.python.filepath import CachingFilePath as FilePath
 from twext.python.log import Logger
-from txweb2.auth.basic import BasicCredentialFactory
-from txweb2.dav import auth
-from txweb2.http_headers import Headers
-from txweb2.resource import Resource
-from txweb2.static import File as FileResource
+from twisted.python.usage import UsageError
+from twext.enterprise.ienterprise import POSTGRES_DIALECT
+from twext.enterprise.ienterprise import ORACLE_DIALECT
+from twext.enterprise.adbapi2 import (
+    ConnectionPool, ConnectionPoolConnection, ConnectionPoolClient
+)
+from twext.who.aggregate import AggregateDirectoryService
 
 from twisted.application.service import Service
 from twisted.cred.portal import Portal
-from twisted.internet.defer import inlineCallbacks, returnValue, Deferred, succeed
+from twisted.internet.defer import (
+    inlineCallbacks, returnValue, Deferred, succeed
+)
 from twisted.internet import reactor as _reactor
 from twisted.internet.reactor import addSystemEventTrigger
 from twisted.internet.tcp import Connection
 from twisted.python.reflect import namedClass
 # from twisted.python.failure import Failure
 
-from twistedcaldav.bind import doBind
-from twistedcaldav.cache import CacheStoreNotifierFactory
-from twistedcaldav.directory import calendaruserproxy
-from twistedcaldav.directory.addressbook import DirectoryAddressBookHomeProvisioningResource
-from twistedcaldav.directory.aggregate import AggregateDirectoryService
-from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
-from twistedcaldav.directory.digest import QopDigestCredentialFactory
-from twistedcaldav.directory.directory import GroupMembershipCache
-from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
-from twistedcaldav.directory.wiki import WikiDirectoryService
-from calendarserver.push.notifier import NotifierFactory
-from calendarserver.push.applepush import APNSubscriptionResource
-from twistedcaldav.directorybackedaddressbook import DirectoryBackedAddressBookResource
-from twistedcaldav.resource import AuthenticationWrapper
-from txdav.caldav.datastore.scheduling.ischedule.dkim import DKIMUtils, DomainKeyResource
-from txdav.caldav.datastore.scheduling.ischedule.resource import IScheduleInboxResource
-from twistedcaldav.simpleresource import SimpleResource, SimpleRedirectResource
-from twistedcaldav.timezones import TimezoneCache
-from twistedcaldav.timezoneservice import TimezoneServiceResource
-from twistedcaldav.timezonestdservice import TimezoneStdServiceResource
-from twext.enterprise.ienterprise import POSTGRES_DIALECT
-from twext.enterprise.ienterprise import ORACLE_DIALECT
-from twext.enterprise.adbapi2 import ConnectionPool, ConnectionPoolConnection
+from txweb2.auth.basic import BasicCredentialFactory
+from txweb2.dav import auth
+from txweb2.http_headers import Headers
+from txweb2.resource import Resource
+from txweb2.static import File as FileResource
 
-
-try:
-    from twistedcaldav.authkerb import NegotiateCredentialFactory
-    NegotiateCredentialFactory  # pacify pyflakes
-except ImportError:
-    NegotiateCredentialFactory = None
-
-from twext.enterprise.adbapi2 import ConnectionPoolClient
 from txdav.base.datastore.dbapiclient import DBAPIConnector, OracleConnector
 from txdav.base.datastore.dbapiclient import postgresPreflight
 from txdav.base.datastore.subpostgres import PostgresService
-
-from calendarserver.accesslog import DirectoryLogWrapperResource
-from calendarserver.provision.root import RootResource
-from calendarserver.tools.util import checkDirectory
-from calendarserver.webadmin.resource import WebAdminResource
-from calendarserver.webcal.resource import WebCalendarResource
-
 from txdav.common.datastore.podding.resource import ConduitResource
 from txdav.common.datastore.sql import CommonDataStore as CommonSQLDataStore
 from txdav.common.datastore.file import CommonDataStore as CommonFileDataStore
 from txdav.common.datastore.sql import current_sql_schema
 from txdav.common.datastore.upgrade.sql.upgrade import NotAllowedToUpgrade
-from twext.python.filepath import CachingFilePath
-from urllib import quote
-from twisted.python.usage import UsageError
+from txdav.caldav.datastore.scheduling.ischedule.dkim import (
+    DKIMUtils, DomainKeyResource
+)
+from txdav.caldav.datastore.scheduling.ischedule.resource import (
+    IScheduleInboxResource
+)
+
+from twistedcaldav.config import ConfigurationError
+from twistedcaldav.bind import doBind
+from twistedcaldav.cache import CacheStoreNotifierFactory
+from twistedcaldav.directory import calendaruserproxy
+from twistedcaldav.directory.addressbook import DirectoryAddressBookHomeProvisioningResource
+# from twistedcaldav.directory.aggregate import AggregateDirectoryService
+from twistedcaldav.directory.calendar import DirectoryCalendarHomeProvisioningResource
+from twistedcaldav.directory.digest import QopDigestCredentialFactory
+# from twistedcaldav.directory.directory import GroupMembershipCache
+from twistedcaldav.directory.principal import DirectoryPrincipalProvisioningResource
+# from twistedcaldav.directory.wiki import WikiDirectoryService
+from twistedcaldav.directorybackedaddressbook import (
+    DirectoryBackedAddressBookResource
+)
+from twistedcaldav.resource import AuthenticationWrapper
+from twistedcaldav.simpleresource import SimpleResource, SimpleRedirectResource
+from twistedcaldav.timezones import TimezoneCache
+from twistedcaldav.timezoneservice import TimezoneServiceResource
+from twistedcaldav.timezonestdservice import TimezoneStdServiceResource
+
+try:
+    from twistedcaldav.authkerb import NegotiateCredentialFactory
+except ImportError:
+    NegotiateCredentialFactory = None
+
+from calendarserver.push.notifier import NotifierFactory
+from calendarserver.push.applepush import APNSubscriptionResource
+from calendarserver.accesslog import DirectoryLogWrapperResource
+from calendarserver.provision.root import RootResource
+from calendarserver.tools.util import checkDirectory
+from calendarserver.webadmin.resource import WebAdminResource
+from calendarserver.webcal.resource import WebCalendarResource
 
 
 log = Logger()
@@ -122,7 +130,7 @@ def pgServiceFromConfig(config, subServiceFactory, uid=None, gid=None):
 
     @rtype: L{PostgresService}
     """
-    dbRoot = CachingFilePath(config.DatabaseRoot)
+    dbRoot = FilePath(config.DatabaseRoot)
     # Construct a PostgresService exactly as the parent would, so that we
     # can establish connection information.
     return PostgresService(
@@ -237,7 +245,7 @@ def storeFromConfig(config, txnFactory, directoryService=None):
         notifierFactories["cache"] = CacheStoreNotifierFactory()
 
     if directoryService is None:
-        directoryService = directoryFromConfig(config)
+        directoryService = directoryServiceFromConfig(config)
 
     quota = config.UserQuota
     if quota == 0:
@@ -281,93 +289,109 @@ def storeFromConfig(config, txnFactory, directoryService=None):
 
 
 
-def directoryFromConfig(config):
+def directoryServiceFromSubConfig(subConfig):
+    name = subConfig["name"]
+
+    log.info("Setting up {0} directory service.".format(name))
+
+    if name == "XML":
+        directoryClass = namedClass("twext.who.xml.DirectoryService")
+        filePath = FilePath(subConfig["path"])
+        reloadInterval = int(
+            subConfig.get("reloadInterval", directoryClass.reloadInterval)
+        )
+        directory = directoryClass(filePath)
+        directory.reloadInterval = reloadInterval
+
+    else:
+        raise ConfigurationError(
+            "Unknown directory service name: {0}".format(name)
+        )
+
+
+
+def directoryServiceFromConfig(config):
     """
     Create an L{AggregateDirectoryService} from the given configuration.
     """
-    #
-    # Setup the Augment Service
-    #
-    if config.AugmentService.type:
-        augmentClass = namedClass(config.AugmentService.type)
-        log.info("Configuring augment service of type: {augmentClass}",
-            augmentClass=augmentClass)
-        try:
-            augmentService = augmentClass(**config.AugmentService.params)
-        except IOError:
-            log.error("Could not start augment service")
-            raise
-    else:
-        augmentService = None
+    # #
+    # # Setup the Augment Service
+    # #
+    # if config.AugmentService.type:
+    #     augmentClass = namedClass(config.AugmentService.type)
+    #     log.info("Configuring augment service of type: {augmentClass}",
+    #         augmentClass=augmentClass)
+    #     try:
+    #         augmentService = augmentClass(**config.AugmentService.params)
+    #     except IOError:
+    #         log.error("Could not start augment service")
+    #         raise
+    # else:
+    #     augmentService = None
 
-    #
-    # Setup the group membership cacher
-    #
-    if config.GroupCaching.Enabled:
-        groupMembershipCache = GroupMembershipCache(
-            config.GroupCaching.MemcachedPool,
-            expireSeconds=config.GroupCaching.ExpireSeconds)
-    else:
-        groupMembershipCache = None
+    # #
+    # # Setup the group membership cacher
+    # #
+    # if config.GroupCaching.Enabled:
+    #     groupMembershipCache = GroupMembershipCache(
+    #         config.GroupCaching.MemcachedPool,
+    #         expireSeconds=config.GroupCaching.ExpireSeconds)
+    # else:
+    #     groupMembershipCache = None
+
+    # config.DirectoryService.params.augmentService = augmentService
+    # config.DirectoryService.params.groupMembershipCache = groupMembershipCache
 
     #
     # Setup the Directory
     #
-    directories = []
+    services = []
 
-    directoryClass = namedClass(config.DirectoryService.type)
-    principalResourceClass = DirectoryPrincipalProvisioningResource
+    baseService = directoryServiceFromSubConfig(config.DirectoryService)
+    services.append(baseService)
 
-    log.info("Configuring directory service of type: {directoryType}",
-        directoryType=config.DirectoryService.type)
+    # # Wait for the directory to become available
+    # while not baseService.isAvailable():
+    #     sleep(5)
 
-    config.DirectoryService.params.augmentService = augmentService
-    config.DirectoryService.params.groupMembershipCache = groupMembershipCache
-    baseDirectory = directoryClass(config.DirectoryService.params)
+    # #
+    # # Setup the Locations and Resources Service
+    # #
+    # if config.ResourceService.Enabled:
+    #     resourceClass = namedClass(config.ResourceService.type)
 
-    # Wait for the directory to become available
-    while not baseDirectory.isAvailable():
-        sleep(5)
+    #     log.info("Configuring resource service of type: {resourceClass}",
+    #         resourceClass=resourceClass)
 
-    directories.append(baseDirectory)
+    #     # config.ResourceService.params.augmentService = augmentService
+    #     # config.ResourceService.params.groupMembershipCache = groupMembershipCache
+    #     resourceDirectory = resourceClass(config.ResourceService.params)
+    #     resourceDirectory.realmName = baseDirectory.realmName
+    #     directories.append(resourceDirectory)
 
-    #
-    # Setup the Locations and Resources Service
-    #
-    if config.ResourceService.Enabled:
-        resourceClass = namedClass(config.ResourceService.type)
-
-        log.info("Configuring resource service of type: {resourceClass}",
-            resourceClass=resourceClass)
-
-        config.ResourceService.params.augmentService = augmentService
-        config.ResourceService.params.groupMembershipCache = groupMembershipCache
-        resourceDirectory = resourceClass(config.ResourceService.params)
-        resourceDirectory.realmName = baseDirectory.realmName
-        directories.append(resourceDirectory)
-
-    #
-    # Add wiki directory service
-    #
-    if config.Authentication.Wiki.Enabled:
-        wikiDirectory = WikiDirectoryService()
-        wikiDirectory.realmName = baseDirectory.realmName
-        directories.append(wikiDirectory)
-
-    directory = AggregateDirectoryService(directories, groupMembershipCache)
+    # #
+    # # Add wiki directory service
+    # #
+    # if config.Authentication.Wiki.Enabled:
+    #     wikiDirectory = WikiDirectoryService()
+    #     wikiDirectory.realmName = baseDirectory.realmName
+    #     directories.append(wikiDirectory)
 
     #
     # Use system-wide realm on OSX
     #
-    try:
-        import ServerFoundation
-        realmName = ServerFoundation.XSAuthenticator.defaultRealm().encode("utf-8")
-        directory.setRealm(realmName)
-    except ImportError:
-        pass
-    log.info("Setting up principal collection: {cls}", cls=principalResourceClass)
-    principalResourceClass("/principals/", directory)
-    return directory
+    # try:
+    #     import ServerFoundation
+    #     realmName = ServerFoundation.XSAuthenticator.defaultRealm().encode("utf-8")
+    # except ImportError:
+    #     pass
+
+    aggregateService = AggregateDirectoryService(
+        baseService.realmName, services
+    )
+    DirectoryPrincipalProvisioningResource("/principals/", aggregateService)
+
+    return aggregateService
 
 
 
