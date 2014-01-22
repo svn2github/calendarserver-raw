@@ -55,7 +55,6 @@ from twistedcaldav.dateops import normalizeForIndex, datetimeMktime, \
     pyCalendarTodatetime, parseSQLDateToPyCalendar
 from twistedcaldav.ical import Component, InvalidICalendarDataError, Property
 from twistedcaldav.instance import InvalidOverriddenInstanceError
-from twistedcaldav.memcacher import Memcacher
 
 from txdav.base.propertystore.base import PropertyName
 from txdav.caldav.datastore.query.builder import buildExpression
@@ -415,8 +414,6 @@ class CalendarHome(CommonHome):
     _notifierPrefix = "CalDAV"
     _dataVersionKey = "CALENDAR-DATAVERSION"
 
-    _cacher = Memcacher("SQL.calhome", pickle=True, key_normalization=False)
-
     _componentCalendarName = {
         "VEVENT": "calendar",
         "VTODO": "tasks",
@@ -517,7 +514,10 @@ class CalendarHome(CommonHome):
             Where=rp.RESOURCE_ID == self._resourceID
         ).on(self._txn)
 
-        yield self._cacher.delete(str(self._ownerUID))
+        queryCacher = self._txn._queryCacher
+        if queryCacher:
+            cacheKey = queryCacher.keyForHomeData(self._homeType, self._ownerUID, self._migration)
+            yield queryCacher.delete(cacheKey)
 
 
     @inlineCallbacks

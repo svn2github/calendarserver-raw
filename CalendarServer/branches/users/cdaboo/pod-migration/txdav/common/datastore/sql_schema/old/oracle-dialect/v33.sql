@@ -17,11 +17,9 @@ create table NAMED_LOCK (
 
 create table CALENDAR_HOME (
     "RESOURCE_ID" integer primary key,
-    "OWNER_UID" nvarchar2(255),
+    "OWNER_UID" nvarchar2(255) unique,
     "STATUS" integer default 0 not null,
-    "MIGRATION" integer default 0 not null,
-    "DATAVERSION" integer default 0 not null, 
-    unique("OWNER_UID", "MIGRATION")
+    "DATAVERSION" integer default 0 not null
 );
 
 create table HOME_STATUS (
@@ -31,14 +29,6 @@ create table HOME_STATUS (
 
 insert into HOME_STATUS (DESCRIPTION, ID) values ('normal', 0);
 insert into HOME_STATUS (DESCRIPTION, ID) values ('external', 1);
-create table MIGRATION_STATUS (
-    "ID" integer primary key,
-    "DESCRIPTION" nvarchar2(16) unique
-);
-
-insert into MIGRATION_STATUS (DESCRIPTION, ID) values ('none', 0);
-insert into MIGRATION_STATUS (DESCRIPTION, ID) values ('migrating', 1);
-insert into MIGRATION_STATUS (DESCRIPTION, ID) values ('migrated', 2);
 create table CALENDAR (
     "RESOURCE_ID" integer primary key
 );
@@ -67,11 +57,9 @@ create table CALENDAR_METADATA (
 
 create table NOTIFICATION_HOME (
     "RESOURCE_ID" integer primary key,
-    "OWNER_UID" nvarchar2(255),
+    "OWNER_UID" nvarchar2(255) unique,
     "STATUS" integer default 0 not null,
-    "MIGRATION" integer default 0 not null,
-    "DATAVERSION" integer default 0 not null, 
-    unique("OWNER_UID", "MIGRATION")
+    "DATAVERSION" integer default 0 not null
 );
 
 create table NOTIFICATION (
@@ -231,11 +219,9 @@ create table RESOURCE_PROPERTY (
 create table ADDRESSBOOK_HOME (
     "RESOURCE_ID" integer primary key,
     "ADDRESSBOOK_PROPERTY_STORE_ID" integer not null,
-    "OWNER_UID" nvarchar2(255),
+    "OWNER_UID" nvarchar2(255) unique,
     "STATUS" integer default 0 not null,
-    "MIGRATION" integer default 0 not null,
-    "DATAVERSION" integer default 0 not null, 
-    unique("OWNER_UID", "MIGRATION")
+    "DATAVERSION" integer default 0 not null
 );
 
 create table ADDRESSBOOK_HOME_METADATA (
@@ -414,7 +400,7 @@ create table CALENDARSERVER (
     "VALUE" nvarchar2(255)
 );
 
-insert into CALENDARSERVER (NAME, VALUE) values ('VERSION', '34');
+insert into CALENDARSERVER (NAME, VALUE) values ('VERSION', '33');
 insert into CALENDARSERVER (NAME, VALUE) values ('CALENDAR-DATAVERSION', '5');
 insert into CALENDARSERVER (NAME, VALUE) values ('ADDRESSBOOK-DATAVERSION', '2');
 insert into CALENDARSERVER (NAME, VALUE) values ('NOTIFICATION-DATAVERSION', '1');

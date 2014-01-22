@@ -53,12 +53,9 @@ create table NAMED_LOCK (
 
 create table CALENDAR_HOME (
   RESOURCE_ID      integer      primary key default nextval('RESOURCE_ID_SEQ'), -- implicit index
-  OWNER_UID        varchar(255) not null,
+  OWNER_UID        varchar(255) not null unique,                                -- implicit index
   STATUS           integer      default 0 not null,                             -- enum HOME_STATUS
-  MIGRATION        integer      default 0 not null,                             -- enum MIGRATION_STATUS
-  DATAVERSION      integer      default 0 not null,
-  
-  unique(OWNER_UID, MIGRATION) -- implicit index
+  DATAVERSION      integer      default 0 not null
 );
 
 -- Enumeration of statuses
@@ -70,16 +67,6 @@ create table HOME_STATUS (
 
 insert into HOME_STATUS values (0, 'normal' );
 insert into HOME_STATUS values (1, 'external');
-
-
-create table MIGRATION_STATUS (
-  ID          integer     primary key,
-  DESCRIPTION varchar(16) not null unique
-);
-
-insert into MIGRATION_STATUS values (0, 'none' );
-insert into MIGRATION_STATUS values (1, 'migrating');
-insert into MIGRATION_STATUS values (2, 'migrated');
 
 
 --------------
@@ -136,12 +123,9 @@ create table CALENDAR_METADATA (
 
 create table NOTIFICATION_HOME (
   RESOURCE_ID integer      primary key default nextval('RESOURCE_ID_SEQ'), -- implicit index
-  OWNER_UID   varchar(255) not null,
+  OWNER_UID   varchar(255) not null unique,                                -- implicit index
   STATUS      integer      default 0 not null,                             -- enum HOME_STATUS
-  MIGRATION   integer      default 0 not null,                             -- enum MIGRATION_STATUS
-  DATAVERSION integer      default 0 not null,
-  
-  unique(OWNER_UID, MIGRATION) -- implicit index
+  DATAVERSION integer      default 0 not null
 );
 
 create table NOTIFICATION (
@@ -414,12 +398,9 @@ create table RESOURCE_PROPERTY (
 create table ADDRESSBOOK_HOME (
   RESOURCE_ID      				integer			primary key default nextval('RESOURCE_ID_SEQ'), -- implicit index
   ADDRESSBOOK_PROPERTY_STORE_ID	integer      	default nextval('RESOURCE_ID_SEQ') not null, 	-- implicit index
-  OWNER_UID        				varchar(255) 	not null,
+  OWNER_UID        				varchar(255) 	not null unique,                                -- implicit index
   STATUS           				integer      	default 0 not null,                             -- enum HOME_STATUS
-  MIGRATION        				integer 	    default 0 not null,                             -- enum MIGRATION_STATUS
-  DATAVERSION      				integer      	default 0 not null,
-  
-  unique(OWNER_UID, MIGRATION) -- implicit index
+  DATAVERSION      				integer      	default 0 not null
 );
 
 
@@ -770,7 +751,7 @@ create table CALENDARSERVER (
   VALUE                         varchar(255)
 );
 
-insert into CALENDARSERVER values ('VERSION', '34');
+insert into CALENDARSERVER values ('VERSION', '33');
 insert into CALENDARSERVER values ('CALENDAR-DATAVERSION', '5');
 insert into CALENDARSERVER values ('ADDRESSBOOK-DATAVERSION', '2');
 insert into CALENDARSERVER values ('NOTIFICATION-DATAVERSION', '1');

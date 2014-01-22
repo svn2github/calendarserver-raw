@@ -138,9 +138,19 @@ _homeStatus = _schemaConstants(
     schema.HOME_STATUS.ID
 )
 
-
 _HOME_STATUS_NORMAL = _homeStatus('normal')
 _HOME_STATUS_EXTERNAL = _homeStatus('external')
+
+
+_migrationStatus = _schemaConstants(
+    schema.MIGRATION_STATUS.DESCRIPTION,
+    schema.MIGRATION_STATUS.ID
+)
+
+_MIGRATION_STATUS_NONE = _migrationStatus('none')
+_MIGRATION_STATUS_MIGRATING = _migrationStatus('migrating')
+_MIGRATION_STATUS_MIGRATED = _migrationStatus('migrated')
+
 
 _bindStatus = _schemaConstants(
     schema.CALENDAR_BIND_STATUS.DESCRIPTION,

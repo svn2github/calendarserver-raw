@@ -41,7 +41,6 @@ from twisted.python import hashlib
 
 from twistedcaldav import carddavxml, customxml
 from twistedcaldav.config import config
-from twistedcaldav.memcacher import Memcacher
 from twistedcaldav.vcard import Component as VCard, InvalidVCardDataError, Property, \
     vCardProductID
 
@@ -58,7 +57,8 @@ from txdav.common.datastore.sql import CommonHome, CommonHomeChild, \
 from txdav.common.datastore.sql_tables import _ABO_KIND_PERSON, \
     _ABO_KIND_GROUP, _ABO_KIND_RESOURCE, _ABO_KIND_LOCATION, schema, \
     _BIND_MODE_OWN, _BIND_MODE_WRITE, _BIND_STATUS_ACCEPTED, \
-    _BIND_STATUS_INVITED, _BIND_MODE_INDIRECT, _BIND_STATUS_DECLINED
+    _BIND_STATUS_INVITED, _BIND_MODE_INDIRECT, _BIND_STATUS_DECLINED, \
+    _MIGRATION_STATUS_NONE, _MIGRATION_STATUS_MIGRATING, _HOME_STATUS_EXTERNAL
 from txdav.common.icommondatastore import InternalDataStoreError, \
     InvalidUIDError, UIDExistsError, ObjectResourceTooBigError, \
     InvalidObjectResourceError, InvalidComponentForStoreError, \
@@ -84,12 +84,11 @@ class AddressBookHome(CommonHome):
 
     _notifierPrefix = "CardDAV"
     _dataVersionKey = "ADDRESSBOOK-DATAVERSION"
-    _cacher = Memcacher("SQL.adbkhome", pickle=True, key_normalization=False)
 
 
-    def __init__(self, transaction, ownerUID):
+    def __init__(self, transaction, ownerUID, migration=_MIGRATION_STATUS_NONE):
 
-        super(AddressBookHome, self).__init__(transaction, ownerUID)
+        super(AddressBookHome, self).__init__(transaction, ownerUID, migration=migration)
         self._addressbookPropertyStoreID = None
         self._addressbook = None
 
@@ -116,6 +115,8 @@ class AddressBookHome(CommonHome):
         return (
             cls._homeSchema.RESOURCE_ID,
             cls._homeSchema.OWNER_UID,
+            cls._homeSchema.STATUS,
+            cls._homeSchema.MIGRATION,
             cls._homeSchema.ADDRESSBOOK_PROPERTY_STORE_ID,
         )
 
@@ -131,38 +132,35 @@ class AddressBookHome(CommonHome):
         return (
             "_resourceID",
             "_ownerUID",
+            "_status",
+            "_migration",
             "_addressbookPropertyStoreID",
         )
 
 
     @inlineCallbacks
-    def initFromStore(self, no_cache=False):
+    def made(self):
         """
-        Initialize this object from the store. We read in and cache all the
-        extra meta-data from the DB to avoid having to do DB queries for those
-        individually later.
+        Create the default owned address book.
         """
 
-        result = yield super(AddressBookHome, self).initFromStore(no_cache)
-        if result is not None:
-            # Created owned address book
-            addressbook = AddressBook(
-                home=self,
-                name="addressbook",
-                resourceID=self._resourceID,
-                mode=_BIND_MODE_OWN,
-                status=_BIND_STATUS_ACCEPTED,
-            )
-            yield addressbook._loadPropertyStore()
+        # Created owned address book
+        c = AddressBook._externalClass if self.external() else AddressBook
+        addressbook = c(
+            home=self,
+            name="addressbook",
+            resourceID=self._resourceID,
+            mode=_BIND_MODE_OWN,
+            status=_BIND_STATUS_ACCEPTED,
+        )
+        yield addressbook._loadPropertyStore()
 
-            # Extra check for shared
-            invites = yield addressbook.sharingInvites()
-            if len(invites) != 0:
-                addressbook._bindMessage = "shared"
+        # Extra check for shared
+        invites = yield addressbook.sharingInvites()
+        if len(invites) != 0:
+            addressbook._bindMessage = "shared"
 
-            self._addressbook = addressbook
-
-        returnValue(result)
+        self._addressbook = addressbook
 
 
     @inlineCallbacks
@@ -194,7 +192,10 @@ class AddressBookHome(CommonHome):
             )
         ).on(self._txn)
 
-        yield self._cacher.delete(str(self._ownerUID))
+        queryCacher = self._txn._queryCacher
+        if queryCacher:
+            cacheKey = queryCacher.keyForHomeData(self._homeType, self._ownerUID, self._migration)
+            yield queryCacher.delete(cacheKey)
 
 
     @inlineCallbacks
@@ -352,6 +353,49 @@ class AddressBookHome(CommonHome):
         returnValue(result)
 
 
+    #
+    # Migration related
+    #
+
+    @inlineCallbacks
+    def migrateToThisPod(self, user, final):
+        """
+        Migrate data for the specified user (on a different pod) to this pod. L{final} is
+        C{True} when this is the final incremental sync (where we need to sync everything).
+        When C{False} we only sync owned child collections (without properties).
+
+        @param user: the user to migrate
+        @type user: C{str}
+        @param final: whether or not this is the final sync
+        @type final: C{bool}
+        """
+
+        assert self._migration == _MIGRATION_STATUS_MIGRATING
+
+        # Get external home for the user (create if needed)
+        otherHome = yield self._txn.homeWithUID(self._homeType, user, create=True)
+        assert otherHome._status == _HOME_STATUS_EXTERNAL
+
+        # Force the external home to look like it is migrating. This will enable certain external API calls
+        # that are normally disabled for sharing (e.g., ability to load all child resources).
+        otherHome._migration = _MIGRATION_STATUS_MIGRATING
+
+        local_children = yield self.loadChildren()
+        local_children = dict([(child.external_id(), child) for child in local_children if child.owned()])
+
+        # Get list of owned child collections
+        remote_children = yield otherHome.loadChildren()
+        remote_children = dict([(child.external_id(), child) for child in remote_children if child.owned()])
+
+        # For address books, there is only one owned child
+        assert len(local_children) == 1
+        assert len(remote_children) == 1
+
+        local_child = local_children.values()[0]
+        remote_child = remote_children.values()[0]
+        yield local_child.migrateToThisPod(remote_child, final)
+
+
 AddressBookHome._register(EADDRESSBOOKTYPE)
 
 
@@ -500,7 +544,9 @@ class AddressBook(AddressBookSharingMixIn, CommonHomeChild):
         overallBindStatus = _BIND_STATUS_INVITED
         minBindRevision = None
         for row in rows:
-            bindMode, homeID, resourceGroupID, externalID, name, bindStatus, bindRevision, bindMessage = row[:cls.bindColumnCount] #@UnusedVariable
+            resourceGroupID = row[cls.bindColumns().index(cls._bindSchema.RESOURCE_ID)]
+            bindStatus = row[cls.bindColumns().index(cls._bindSchema.BIND_STATUS)]
+            bindRevision = row[cls.bindColumns().index(cls._bindSchema.BIND_REVISION)]
             if groupID is None:
                 groupID = resourceGroupID
             minBindRevision = min(minBindRevision, bindRevision) if minBindRevision is not None else bindRevision
@@ -1124,7 +1170,7 @@ END:VCARD
             home._txn, homeID=home._resourceID
         )
         for groupRow in groupRows:
-            bindMode, homeID, resourceID, externalID, bindName, bindStatus, bindRevision, bindMessage = groupRow[:AddressBookObject.bindColumnCount] #@UnusedVariable
+            resourceID = groupRow[cls.bindColumns().index(cls._bindSchema.RESOURCE_ID)]
             ownerAddressBookID = yield AddressBookObject.ownerAddressBookIDFromGroupID(home._txn, resourceID)
             ownerHome = yield home._txn.homeWithResourceID(home._homeType, ownerAddressBookID, create=True)
             names |= set([ownerHome.uid()])
@@ -1152,7 +1198,7 @@ END:VCARD
         )
         # get ownerHomeIDs
         for dataRow in dataRows:
-            bindMode, homeID, resourceID, externalID, bindName, bindStatus, bindRevision, bindMessage = dataRow[:cls.bindColumnCount] #@UnusedVariable
+            resourceID = dataRow[cls.bindColumns().index(cls._bindSchema.RESOURCE_ID)]
             ownerHome = yield home.ownerHomeWithChildID(resourceID)
             ownerHomeToDataRowMap[ownerHome] = dataRow
 
@@ -1161,12 +1207,15 @@ END:VCARD
             home._txn, homeID=home._resourceID
         )
         for groupBindRow in groupBindRows:
-            bindMode, homeID, resourceID, externalID, name, bindStatus, bindRevision, bindMessage = groupBindRow[:AddressBookObject.bindColumnCount] #@UnusedVariable
+            resourceID = dataRow[cls.bindColumns().index(cls._bindSchema.RESOURCE_ID)]
             ownerAddressBookID = yield AddressBookObject.ownerAddressBookIDFromGroupID(home._txn, resourceID)
             ownerHome = yield home.ownerHomeWithChildID(ownerAddressBookID)
             if ownerHome not in ownerHomeToDataRowMap:
-                groupBindRow[0] = _BIND_MODE_INDIRECT
-                groupBindRow[3:7] = 4 * [None]  # bindName, bindStatus, bindRevision, bindMessage
+                groupBindRow[cls.bindColumns().index(cls._bindSchema.BIND_MODE)] = _BIND_MODE_INDIRECT
+                groupBindRow[cls.bindColumns().index(cls._bindSchema.BIND_NAME)] = None
+                groupBindRow[cls.bindColumns().index(cls._bindSchema.BIND_STATUS)] = None
+                groupBindRow[cls.bindColumns().index(cls._bindSchema.BIND_REVISION)] = None
+                groupBindRow[cls.bindColumns().index(cls._bindSchema.MESSAGE)] = None
                 ownerHomeToDataRowMap[ownerHome] = groupBindRow
 
         if ownerHomeToDataRowMap:
@@ -1404,7 +1453,8 @@ END:VCARD
             readWriteGroupIDs = set()
             readOnlyGroupIDs = set()
             for groupBindRow in groupBindRows:
-                bindMode, homeID, resourceID, externalID, name, bindStatus, bindRevision, bindMessage = groupBindRow[:AddressBookObject.bindColumnCount] #@UnusedVariable
+                resourceID = groupBindRow[self.bindColumns().index(self._bindSchema.RESOURCE_ID)]
+                bindMode = groupBindRow[self.bindColumns().index(self._bindSchema.BIND_MODE)]
                 if bindMode == _BIND_MODE_WRITE:
                     readWriteGroupIDs.add(resourceID)
                 else:
@@ -1465,7 +1515,7 @@ END:VCARD
         readWriteGroupIDs = []
         readOnlyGroupIDs = []
         for groupBindRow in groupBindRows:
-            bindMode, homeID, resourceID, externalID, name, bindStatus, bindRevision, bindMessage = groupBindRow[:AddressBookObject.bindColumnCount] #@UnusedVariable
+            #bindMode, homeID, resourceID, externalID, name, bindStatus, bindRevision, bindMessage = groupBindRow[:AddressBookObject.bindColumnCount] #@UnusedVariable
             if bindMode == _BIND_MODE_WRITE:
                 readWriteGroupIDs.append(resourceID)
             else:
@@ -1898,12 +1948,12 @@ class AddressBookObject(CommonObjectResource, AddressBookObjectSharingMixIn):
         yield child._loadPropertyStore(propstore)
 
         if groupBindData:
-            bindMode, homeID, resourceID, externalID, bindName, bindStatus, bindRevision, bindMessage = groupBindData[:AddressBookObject.bindColumnCount] #@UnusedVariable
-            child._bindMode = bindMode
-            child._bindStatus = bindStatus
-            child._bindMessage = bindMessage
-            child._bindName = bindName
-            child._bindRevision = bindRevision
+            bindData = dict(zip(cls.bindColumns(), groupBindData[:AddressBookObject.bindColumnCount]))
+            child._bindMode = bindData[cls._bindSchema.BIND_MODE]
+            child._bindStatus = bindData[cls._bindSchema.BIND_STATUS]
+            child._bindMessage = bindData[cls._bindSchema.MESSAGE]
+            child._bindName = bindData[cls._bindSchema.RESOURCE_NAME]
+            child._bindRevision = bindData[cls._bindSchema.BIND_REVISION]
         else:
             invites = yield child.sharingInvites()
             if len(invites):
@@ -2195,7 +2245,8 @@ class AddressBookObject(CommonObjectResource, AddressBookObjectSharingMixIn):
         )
         if groupBindRows:
             groupBindRow = groupBindRows[0]
-            bindMode, homeID, resourceID, externalID, bindName, bindStatus, bindRevision, bindMessage = groupBindRow[:AddressBookObject.bindColumnCount] #@UnusedVariable
+            resourceID = groupBindRow[cls.bindColumns().index(cls._bindSchema.RESOURCE_ID)]
+            bindStatus = groupBindRow[cls.bindColumns().index(cls._bindSchema.BIND_STATUS)]
 
             if accepted is not None and (bindStatus == _BIND_STATUS_ACCEPTED) != bool(accepted):
                 returnValue(None)

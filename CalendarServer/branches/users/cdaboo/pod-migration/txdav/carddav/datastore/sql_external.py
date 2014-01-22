@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from txdav.common.datastore.sql_tables import _MIGRATION_STATUS_MIGRATING
 """
 SQL backend for CardDAV storage when resources are external.
 """
@@ -62,7 +63,11 @@ class AddressBookHomeExternal(CommonHomeExternal, AddressBookHome):
         """
         No children.
         """
-        raise AssertionError("CommonHomeExternal: not supported")
+        # Only available if migrating
+        if self._migration != _MIGRATION_STATUS_MIGRATING:
+            raise AssertionError("CommonHomeExternal: not supported")
+
+        return super(CommonHomeExternal, self).addressbook()
 
 
 

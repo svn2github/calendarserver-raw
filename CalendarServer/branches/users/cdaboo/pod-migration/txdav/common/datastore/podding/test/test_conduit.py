@@ -41,7 +41,8 @@ from txdav.common.datastore.podding.conduit import PoddingConduit, \
 from txdav.common.datastore.podding.resource import ConduitResource
 from txdav.common.datastore.podding.test.util import MultiStoreConduitTest, \
     FakeConduitRequest
-from txdav.common.datastore.sql_tables import _BIND_STATUS_ACCEPTED
+from txdav.common.datastore.sql_tables import _BIND_STATUS_ACCEPTED, \
+    _MIGRATION_STATUS_MIGRATING
 from txdav.common.datastore.test.util import populateCalendarsFrom, CommonCommonTests
 from txdav.common.icommondatastore import ObjectResourceNameAlreadyExistsError, \
     ObjectResourceNameNotAllowedError
@@ -123,19 +124,19 @@ class TestConduit (CommonCommonTests, txweb2.dav.test.util.TestCase):
     }
 
 
-    def test_validRequst(self):
+    def test_validShareRequest(self):
         """
         Cross-pod request fails when there is no shared secret header present.
         """
 
         conduit = PoddingConduit(self.storeUnderTest())
-        r1, r2 = conduit.validRequst("user01", "puser02")
+        r1, r2 = conduit.validShareRequest("user01", "puser02")
         self.assertTrue(r1 is not None)
         self.assertTrue(r2 is not None)
 
-        self.assertRaises(DirectoryRecordNotFoundError, conduit.validRequst, "bogus01", "user02")
-        self.assertRaises(DirectoryRecordNotFoundError, conduit.validRequst, "user01", "bogus02")
-        self.assertRaises(FailedCrossPodRequestError, conduit.validRequst, "user01", "user02")
+        self.assertRaises(DirectoryRecordNotFoundError, conduit.validShareRequest, "bogus01", "user02")
+        self.assertRaises(DirectoryRecordNotFoundError, conduit.validShareRequest, "user01", "bogus02")
+        self.assertRaises(FailedCrossPodRequestError, conduit.validShareRequest, "user01", "user02")
 
 
 
@@ -145,7 +146,7 @@ class TestConduitToConduit(MultiStoreConduitTest):
 
         @inlineCallbacks
         def send_fake(self, txn, ownerUID, shareeUID):
-            _ignore_owner, sharee = self.validRequst(ownerUID, shareeUID)
+            _ignore_owner, sharee = self.validShareRequest(ownerUID, shareeUID)
             action = {
                 "action": "fake",
                 "echo": "bravo"
@@ -202,9 +203,9 @@ class TestConduitToConduit(MultiStoreConduitTest):
 
 
 
-class TestConduitAPI(MultiStoreConduitTest):
+class TestConduitAPIForSharing(MultiStoreConduitTest):
     """
-    Test that the conduit api works.
+    Test that the conduit api works for sharing.
     """
 
     nowYear = {"now": DateTime.getToday().getYear()}
@@ -1081,3 +1082,25 @@ END:VCALENDAR
         attachment = yield ManagedAttachment.load(self.transactionUnderTest(), resourceID, managedID)
         self.assertTrue(attachment is None)
         yield self.commit()
+
+
+
+class TestConduitAPIForMigration(MultiStoreConduitTest):
+    """
+    Test that the conduit api works for migration.
+    """
+
+    @inlineCallbacks
+    def test_loadallobjects(self):
+        """
+        Test that action=loadallobjects works.
+        """
+
+        yield self.homeUnderTest(txn=self.newOtherTransaction(), name="puser01", create=True)
+        yield self.otherCommit()
+
+        remote_home = yield self.homeUnderTest(name="puser01", create=True)
+        remote_home._migration = _MIGRATION_STATUS_MIGRATING
+
+        results = yield remote_home.loadChildren()
+        self.assertEqual(set([result.name() for result in results]), set(("calendar", "tasks", "inbox",)))

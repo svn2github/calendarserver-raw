@@ -104,6 +104,12 @@ class QueryCacher(Memcacher):
         return "objectWithExternalID:%s:%s" % (homeResourceID, externalID)
 
 
+    # Home
+
+    def keyForHomeData(self, homeType, ownerUID, migration):
+        return "homeData:%s.%s.%s" % (homeType, migration, ownerUID)
+
+
     # Home metadata (Created/Modified)
 
     def keyForHomeMetaData(self, homeResourceID):

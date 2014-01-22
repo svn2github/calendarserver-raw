@@ -26,7 +26,8 @@ from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from txdav.base.propertystore.sql import PropertyStore
 from txdav.common.datastore.sql import CommonHome, CommonHomeChild, \
     CommonObjectResource
-from txdav.common.datastore.sql_tables import _HOME_STATUS_EXTERNAL
+from txdav.common.datastore.sql_tables import _HOME_STATUS_EXTERNAL, \
+    _MIGRATION_STATUS_MIGRATING
 from txdav.common.icommondatastore import NonExistentExternalShare, \
     ExternalShareFailed
 
@@ -38,9 +39,15 @@ class CommonHomeExternal(CommonHome):
     A CommonHome for a user not hosted on this system, but on another pod. This is needed to provide a
     "reference" to the external user so we can share with them. Actual operations to list child resources, etc
     are all stubbed out since no data for the user is actually hosted in this store.
+
+    For sharing, we actually load child resources that are of the "internal" class as those know how to
+    proxy sharing calls to the remote side.
+
+    For migration, we want the child resources to always be external.
     """
 
     def __init__(self, transaction, ownerUID, resourceID):
+        self._childClass = self._childClass._externalClass
         super(CommonHomeExternal, self).__init__(transaction, ownerUID)
         self._resourceID = resourceID
         self._status = _HOME_STATUS_EXTERNAL
@@ -69,11 +76,18 @@ class CommonHomeExternal(CommonHome):
         raise AssertionError("CommonHomeExternal: not supported")
 
 
+    @inlineCallbacks
     def loadChildren(self):
         """
         No children.
         """
-        raise AssertionError("CommonHomeExternal: not supported")
+
+        # Only available if migrating
+        if self._migration != _MIGRATION_STATUS_MIGRATING:
+            raise AssertionError("CommonHomeExternal: not supported")
+
+        results = yield super(CommonHomeExternal, self).loadChildren()
+        returnValue(results)
 
 
     def listChildren(self):
@@ -209,9 +223,22 @@ class CommonHomeChildExternal(CommonHomeChild):
     specific apis to the other pod using cross-pod requests.
     """
 
+    @classmethod
+    @inlineCallbacks
+    def loadAllObjects(cls, home):
+        mapping_list = yield home._txn.store().conduit.send_loadchildren(home)
+
+        results = []
+        if mapping_list:
+            for mapping in mapping_list:
+                child = yield cls.internalize(home, mapping)
+                results.append(child)
+        returnValue(results)
+
+
     def external(self):
         """
-        Is this an external home.
+        Is this an external home child.
 
         @return: a string.
         """

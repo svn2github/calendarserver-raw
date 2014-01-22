@@ -60,7 +60,7 @@ from txdav.base.datastore.subpostgres import PostgresService
 from txdav.base.propertystore.base import PropertyName
 from txdav.caldav.icalendarstore import ComponentUpdateState
 from txdav.common.datastore.sql import CommonDataStore, current_sql_schema
-from txdav.common.datastore.sql_tables import schema
+from txdav.common.datastore.sql_tables import schema, _MIGRATION_STATUS_NONE
 from txdav.common.icommondatastore import NoSuchHomeChildError
 
 from zope.interface.exceptions import BrokenMethodImplementation, \
@@ -342,10 +342,8 @@ class SQLStoreBuilder(object):
         yield cleanupTxn.commit()
 
         # Deal with memcached items that must be cleared
-        from txdav.caldav.datastore.sql import CalendarHome
-        CalendarHome._cacher.flushAll()
-        from txdav.carddav.datastore.sql import AddressBookHome
-        AddressBookHome._cacher.flushAll()
+        if storeToClean.queryCacher:
+            storeToClean.queryCacher.flushAll()
         from txdav.base.propertystore.sql import PropertyStore
         PropertyStore._cacher.flushAll()
 
@@ -723,13 +721,13 @@ class CommonCommonTests(object):
 
 
     @inlineCallbacks
-    def homeUnderTest(self, txn=None, name="home1", create=False):
+    def homeUnderTest(self, txn=None, name="home1", create=False, migration=_MIGRATION_STATUS_NONE):
         """
         Get the calendar home detailed by C{requirements['home1']}.
         """
         if txn is None:
             txn = self.transactionUnderTest()
-        returnValue((yield txn.calendarHomeWithUID(name, create=create)))
+        returnValue((yield txn.calendarHomeWithUID(name, create=create, migration=migration)))
 
 
     @inlineCallbacks
@@ -752,13 +750,13 @@ class CommonCommonTests(object):
                      .calendarObjectWithName(name)))
 
 
-    def addressbookHomeUnderTest(self, txn=None, name="home1"):
+    def addressbookHomeUnderTest(self, txn=None, name="home1", create=False, migration=_MIGRATION_STATUS_NONE):
         """
         Get the addressbook home detailed by C{requirements['home1']}.
         """
         if txn is None:
             txn = self.transactionUnderTest()
-        return txn.addressbookHomeWithUID(name)
+        return txn.addressbookHomeWithUID(name, create=create, migration=migration)
 
 
     @inlineCallbacks

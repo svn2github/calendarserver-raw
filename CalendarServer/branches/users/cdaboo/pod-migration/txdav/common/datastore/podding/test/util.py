@@ -172,6 +172,7 @@ class MultiStoreConduitTest(CommonCommonTests, txweb2.dav.test.util.TestCase):
         store = yield builder.buildStore(self, self.notifierFactory, directory)
         store.queryCacher = None     # Cannot use query caching
         store.conduit = self.makeConduit(store)
+        store.name = "internal" if internal else "external"
         returnValue(store)
 
 

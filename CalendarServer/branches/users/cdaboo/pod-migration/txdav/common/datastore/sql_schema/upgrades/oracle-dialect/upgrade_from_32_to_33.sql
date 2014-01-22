@@ -15,7 +15,7 @@
 ----
 
 ---------------------------------------------------
--- Upgrade database schema from VERSION 30 to 31 --
+-- Upgrade database schema from VERSION 32 to 33 --
 ---------------------------------------------------
 
 -- Add timestamp to revision tables --
@@ -42,4 +42,4 @@ create table REVISION_CLEANUP_WORK (
  
 -- Update version --
 
-update CALENDARSERVER set VALUE = '31' where NAME = 'VERSION';
+update CALENDARSERVER set VALUE = '33' where NAME = 'VERSION';
