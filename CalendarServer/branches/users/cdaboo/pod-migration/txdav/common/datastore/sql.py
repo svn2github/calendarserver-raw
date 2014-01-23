@@ -55,6 +55,7 @@ from twistedcaldav.dateops import datetimeMktime, pyCalendarTodatetime
 from txdav.base.datastore.util import QueryCacher
 from txdav.base.datastore.util import normalizeUUIDOrNot
 from txdav.base.propertystore.base import PropertyName
+from txdav.base.propertystore.memory import PropertyStore as MemoryPropertyStore
 from txdav.base.propertystore.none import PropertyStore as NonePropertyStore
 from txdav.base.propertystore.sql import PropertyStore
 from txdav.caldav.icalendarstore import ICalendarTransaction, ICalendarStore
@@ -1640,7 +1641,7 @@ class CommonHome(SharingHomeMixIn):
 
     @classmethod
     @inlineCallbacks
-    def makeClass(cls, txn, homeData, metadataData):
+    def makeClass(cls, txn, homeData, metadataData, properties=None):
         """
         Build the actual home class taking into account the possibility that we might need to
         switch in the external version of the class.
@@ -1673,7 +1674,10 @@ class CommonHome(SharingHomeMixIn):
         for attr, value in zip(cls.metadataAttributes(), metadataData):
             setattr(home, attr, value)
 
-        yield home._loadPropertyStore()
+        if properties is None:
+            yield home._loadPropertyStore()
+        else:
+            home._propertyStore = MemoryPropertyStore(home.uid(), properties)
 
         for factory_type, factory in txn._notifierFactories.items():
             home.addNotifier(factory_type, factory.newNotifier(home))
@@ -1770,6 +1774,7 @@ class CommonHome(SharingHomeMixIn):
         return succeed(None)
 
 
+    @inlineCallbacks
     def externalize(self):
         """
         Create a dictionary mapping key attributes so this object can be sent over a cross-pod call
@@ -1779,7 +1784,8 @@ class CommonHome(SharingHomeMixIn):
         serialized = {}
         serialized["home"] = dict([(attr[1:], getattr(self, attr, None)) for attr in self.homeAttributes()])
         serialized["metadata"] = dict([(attr[1:], getattr(self, attr, None)) for attr in self.metadataAttributes()])
-        return serialized
+        serialized["properties"] = (yield self.properties().serialize())
+        returnValue(serialized)
 
 
     @classmethod
@@ -1794,7 +1800,7 @@ class CommonHome(SharingHomeMixIn):
 
         home = [mapping["home"].get(row[1:]) for row in cls.homeAttributes()]
         metadata = [mapping["metadata"].get(row[1:]) for row in cls.metadataAttributes()]
-        child = yield cls.makeClass(txn, home, metadata)
+        child = yield cls.makeClass(txn, home, metadata, properties=mapping["properties"])
         returnValue(child)
 
 
@@ -4217,7 +4223,7 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
 
     @classmethod
     @inlineCallbacks
-    def makeClass(cls, home, bindData, additionalBindData, metadataData, propstore=None, ownerHome=None):
+    def makeClass(cls, home, bindData, additionalBindData, metadataData, propstore=None, ownerHome=None, properties=None):
         """
         Given the various database rows, build the actual class.
 
@@ -4281,11 +4287,14 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
             for attr, value in zip(child.metadataAttributes(), metadataData):
                 setattr(child, attr, value)
 
-        # We have to re-adjust the property store object to account for possible shared
-        # collections as previously we loaded them all as if they were owned
-        if propstore and bindMode != _BIND_MODE_OWN:
-            propstore._setDefaultUserUID(ownerHome.uid())
-        yield child._loadPropertyStore(propstore)
+        if properties is None:
+            # We have to re-adjust the property store object to account for possible shared
+            # collections as previously we loaded them all as if they were owned
+            if propstore and bindMode != _BIND_MODE_OWN:
+                propstore._setDefaultUserUID(ownerHome.uid())
+            yield child._loadPropertyStore(propstore)
+        else:
+            home._propertyStore = MemoryPropertyStore(ownerHome.uid(), properties)
 
         returnValue(child)
 
@@ -4565,6 +4574,7 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
         returnValue(child)
 
 
+    @inlineCallbacks
     def externalize(self):
         """
         Create a dictionary mapping key attributes so this object can be sent over a cross-pod call
@@ -4575,7 +4585,8 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
         serialized["bind"] = dict([(attr[1:], getattr(self, attr, None)) for attr in self.bindAttributes()])
         serialized["additionalBind"] = dict([(attr[1:], getattr(self, attr, None)) for attr in self.additionalBindAttributes()])
         serialized["metadata"] = dict([(attr[1:], getattr(self, attr, None)) for attr in self.metadataAttributes()])
-        return serialized
+        serialized["properties"] = (yield self.properties().serialize())
+        returnValue(serialized)
 
 
     @classmethod
@@ -4591,7 +4602,7 @@ class CommonHomeChild(FancyEqMixin, Memoizable, _SharedSyncLogic, HomeChildBase,
         bind = [mapping["bind"].get(row[1:]) for row in cls.bindAttributes()]
         additionalBind = [mapping["additionalBind"].get(row[1:]) for row in cls.additionalBindAttributes()]
         metadata = [mapping["metadata"].get(row[1:]) for row in cls.metadataAttributes()]
-        child = yield cls.makeClass(parent, bind, additionalBind, metadata)
+        child = yield cls.makeClass(parent, bind, additionalBind, metadata, properties=mapping["properties"])
         returnValue(child)
 
 
@@ -5848,7 +5859,7 @@ class CommonObjectResource(FancyEqMixin, object):
         and reconstituted at the other end. Note that the other end may have a different schema so
         the attributes may not match exactly and will need to be processed accordingly.
         """
-        return dict([(attr[1:], getattr(self, attr, None)) for attr in itertools.chain(self._rowAttributes(), self._otherSerializedAttributes())])
+        return succeed(dict([(attr[1:], getattr(self, attr, None)) for attr in itertools.chain(self._rowAttributes(), self._otherSerializedAttributes())]))
 
 
     @classmethod

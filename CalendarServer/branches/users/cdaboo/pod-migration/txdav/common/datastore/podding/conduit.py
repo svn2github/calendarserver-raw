@@ -16,7 +16,7 @@
 
 from twext.python.log import Logger
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, maybeDeferred
 from twisted.python.reflect import namedClass
 
 from txdav.caldav.datastore.scheduling.freebusy import generateFreeBusyInfo
@@ -699,9 +699,11 @@ class PoddingConduit(object):
                 "message": str(e),
             })
 
+        if transform is not None:
+            value = yield maybeDeferred(transform, value)
         returnValue({
             "result": "ok",
-            "value": transform(value) if transform is not None else value,
+            "value": value,
         })
 
 
@@ -794,8 +796,15 @@ class PoddingConduit(object):
 
 
     @staticmethod
+    @inlineCallbacks
     def _to_externalize_list(value):
-        return [v.externalize() for v in value] if value is not None else None
+        results = None
+        if value is not None:
+            results = []
+            for v in value:
+                v = yield v.externalize()
+                results.append(v)
+        returnValue(results)
 
 
     @classmethod
@@ -970,7 +979,11 @@ class PoddingConduit(object):
             action["keywords"] = kwargs
         result = yield self.sendRequest(target.transaction(), recipient, action)
         if result["result"] == "ok":
-            returnValue(result["value"] if transform is None else transform(result["value"]))
+            if transform is not None:
+                value = yield maybeDeferred(transform, result["value"])
+            else:
+                value = result["value"]
+            returnValue(value)
         elif result["result"] == "exception":
             raise namedClass(result["class"])(result["message"])
 
@@ -1005,9 +1018,11 @@ class PoddingConduit(object):
                 "message": str(e),
             })
 
+        if transform is not None:
+            value = yield maybeDeferred(transform, value)
         returnValue({
             "result": "ok",
-            "value": transform(value) if transform is not None else value,
+            "value": value,
         })
 
 

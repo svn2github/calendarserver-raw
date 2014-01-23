@@ -378,23 +378,43 @@ class PropertyStore(AbstractPropertyStore):
 
 
     @inlineCallbacks
-    def copyAllProperties(self, other):
+    def serialize(self):
         """
-        Copy all the properties from another store into this one. This needs to be done
-        independently of the UID.
+        Return a C{dict} of all properties, where the dict key is a C{tuple} of the property name
+        and the viewer UID, and the values are C{str} representations of the XML.
+        """
+        results = {}
+        rows = yield self._allWithID.on(self._txn, resourceID=self._resourceID)
+        for key_str, uid, value_str in rows:
+            results[(key_str, uid)] = value_str
+        returnValue(results)
+
+
+    @inlineCallbacks
+    def deserialize(self, props):
+        """
+        Copy all properties from the specified C{dict} into this store. The dict comes from an L{serialize} call.
         """
 
-        rows = yield other._allWithID.on(other._txn, resourceID=other._resourceID)
-        for key_str, uid, value_str in rows:
-            wasCached = [(key_str, uid) in self._cached]
-            if wasCached[0]:
-                yield self._updateQuery.on(
-                    self._txn, resourceID=self._resourceID, value=value_str,
-                    name=key_str, uid=uid)
+        for key, value_str in props.items():
+            key_str, uid = key
+            if key in self._cached:
+                if self._cached[key] != value_str:
+                    yield self._updateQuery.on(
+                        self._txn,
+                        resourceID=self._resourceID,
+                        value=value_str,
+                        name=key_str,
+                        uid=uid
+                    )
             else:
                 yield self._insertQuery.on(
-                    self._txn, resourceID=self._resourceID, value=value_str,
-                    name=key_str, uid=uid)
+                    self._txn,
+                    resourceID=self._resourceID,
+                    value=value_str,
+                    name=key_str,
+                    uid=uid
+                )
 
         # Invalidate entire set of cached per-user data for this resource and reload
         self._cached = {}

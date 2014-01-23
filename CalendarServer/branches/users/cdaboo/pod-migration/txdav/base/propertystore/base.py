@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
+from twisted.internet.defer import inlineCallbacks
 
 """
 Base property store.
@@ -254,12 +255,30 @@ class AbstractPropertyStore(DictMixin, object):
         return key in self._globalKeys
 
 
+    @inlineCallbacks
     def copyAllProperties(self, other):
         """
         Copy all the properties from another store into this one. This needs to be done
-        independently of the UID. Each underlying store will need to implement this.
+        independently of the UID.
         """
-        pass
+
+        other_props = yield other.serialize()
+        yield self.deserialize(other_props)
+
+
+    def serialize(self):
+        """
+        Return a C{dict} of all properties, where the dict key is a C{tuple} of the property name
+        and the viewer UID, and the values are C{str} representations of the XML.
+        """
+        raise NotImplementedError()
+
+
+    def deserialize(self, props):
+        """
+        Copy all properties from the specified C{dict} into this store. The dict comes from an L{serialize} call.
+        """
+        raise NotImplementedError()
 
 
 

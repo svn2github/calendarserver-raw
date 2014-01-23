@@ -1103,7 +1103,7 @@ class TestConduitAPIForMigration(MultiStoreConduitTest):
         remote_home = yield self.homeUnderTest(name="puser01", create=True)
         remote_home._migration = _MIGRATION_STATUS_MIGRATING
 
-        result = yield remote_home.get()
+        result = yield remote_home.getExternal()
         self.assertTrue(isinstance(result, CalendarHomeExternal))
         self.assertEqual(result.name(), remote_home.name())
 
