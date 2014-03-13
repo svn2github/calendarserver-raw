@@ -1,0 +1,135 @@
+<accounts realm="Test Realm">
+  <location repeat="10">
+    <uid>location%02d</uid>
+    <guid>location%02d</guid>
+    <password>location%02d</password>
+    <name>Room %02d</name>
+  </location>
+  <resource repeat="20">
+    <uid>resource%02d</uid>
+    <guid>resource%02d</guid>
+    <password>resource%02d</password>
+    <name>Resource %02d</name>
+  </resource>
+  <location>
+    <uid>fantastic</uid>
+    <guid>4D66A20A-1437-437D-8069-2F14E8322234</guid>
+    <name>Fantastic Conference Room</name>
+    <extras>
+      <associatedAddress>63A2F949-2D8D-4C8D-B8A5-DCF2A94610F3</associatedAddress>
+    </extras>
+  </location>
+  <location>
+    <uid>jupiter</uid>
+    <guid>jupiter</guid>
+    <name>Jupiter Conference Room, Building 2, 1st Floor</name>
+  </location>
+  <location>
+    <uid>uranus</uid>
+    <guid>uranus</guid>
+    <name>Uranus Conference Room, Building 3, 1st Floor</name>
+  </location>
+  <location>
+    <uid>morgensroom</uid>
+    <guid>03DFF660-8BCC-4198-8588-DD77F776F518</guid>
+    <name>Morgen's Room</name>
+  </location>
+  <location>
+    <uid>mercury</uid>
+    <guid>mercury</guid>
+    <name>Mercury Conference Room, Building 1, 2nd Floor</name>
+  </location>
+  <location>
+    <uid>delegatedroom</uid>
+    <guid>delegatedroom</guid>
+    <name>Delegated Conference Room</name>
+  </location>
+  <location>
+    <uid>mars</uid>
+    <guid>redplanet</guid>
+    <name>Mars Conference Room, Building 1, 1st Floor</name>
+  </location>
+  <location>
+    <uid>sharissroom</uid>
+    <guid>80689D41-DAF8-4189-909C-DB017B271892</guid>
+    <name>Shari's Room</name>
+    <extras>
+      <associatedAddress>6F9EE33B-78F6-481B-9289-3D0812FF0D64</associatedAddress>
+    </extras>
+  </location>
+  <location>
+    <uid>pluto</uid>
+    <guid>pluto</guid>
+    <name>Pluto Conference Room, Building 2, 1st Floor</name>
+  </location>
+  <location>
+    <uid>saturn</uid>
+    <guid>saturn</guid>
+    <name>Saturn Conference Room, Building 2, 1st Floor</name>
+  </location>
+  <location>
+    <uid>pretend</uid>
+    <guid>06E3BDCB-9C19-485A-B14E-F146A80ADDC6</guid>
+    <name>Pretend Conference Room</name>
+    <extras>
+      <associatedAddress>76E7ECA6-08BC-4AE7-930D-F2E7453993A5</associatedAddress>
+    </extras>
+  </location>
+  <location>
+    <uid>neptune</uid>
+    <guid>neptune</guid>
+    <name>Neptune Conference Room, Building 2, 1st Floor</name>
+  </location>
+  <location>
+    <uid>Earth</uid>
+    <guid>Earth</guid>
+    <name>Earth Conference Room, Building 1, 1st Floor</name>
+  </location>
+  <location>
+    <uid>venus</uid>
+    <guid>venus</guid>
+    <name>Venus Conference Room, Building 1, 2nd Floor</name>
+  </location>
+  <resource>
+    <uid>sharisotherresource</uid>
+    <guid>CCE95217-A57B-481A-AC3D-FEC9AB6CE3A9</guid>
+    <name>Shari's Other Resource</name>
+  </resource>
+  <resource>
+    <uid>sharisresource</uid>
+    <guid>C38BEE7A-36EE-478C-9DCB-CBF4612AFE65</guid>
+    <name>Shari's Resource</name>
+  </resource>
+  <resource>
+    <uid>sharisotherresource1</uid>
+    <guid>0CE0BF31-5F9E-4801-A489-8C70CF287F5F</guid>
+    <name>Shari's Other Resource1</name>
+  </resource>
+  <address>
+    <uid>testaddress1</uid>
+    <guid>6F9EE33B-78F6-481B-9289-3D0812FF0D64</guid>
+    <name>Test Address One</name>
+    <extras>
+      <streetAddress>20300 Stevens Creek Blvd, Cupertino, CA 95014</streetAddress>
+      <geo>37.322281,-122.028345</geo>
+    </extras>
+  </address>
+  <address>
+    <uid>il2</uid>
+    <guid>63A2F949-2D8D-4C8D-B8A5-DCF2A94610F3</guid>
+    <name>IL2</name>
+    <extras>
+      <streetAddress>2 Infinite Loop, Cupertino, CA 95014</streetAddress>
+      <geo>37.332633,-122.030502</geo>
+    </extras>
+  </address>
+  <address>
+    <uid>il1</uid>
+    <guid>76E7ECA6-08BC-4AE7-930D-F2E7453993A5</guid>
+    <name>IL1</name>
+    <extras>
+      <streetAddress>1 Infinite Loop, Cupertino, CA 95014</streetAddress>
+      <geo>37.331741,-122.030333</geo>
+    </extras>
+  </address>
+</accounts>
