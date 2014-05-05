@@ -1,9 +1,0 @@
-# Requirements for development.
-
-# Get our own dependencies (from setup.py)
--e .
-
-# Additional dependencies for development
-pyflakes
-docutils>=0.11
-mockldap>=0.1.4
