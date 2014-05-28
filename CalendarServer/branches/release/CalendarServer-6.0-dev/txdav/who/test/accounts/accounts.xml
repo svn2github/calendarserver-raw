@@ -1,0 +1,356 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+Copyright (c) 2006-2014 Apple Inc. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+ -->
+
+<!DOCTYPE accounts SYSTEM "accounts.dtd">
+
+<directory realm="Test Realm">
+  <record type="user">
+    <uid>admin</uid>
+    <short-name>admin</short-name>
+    <password>admin</password>
+    <full-name>Super User</full-name>
+  </record>
+  <record type="user">
+    <uid>apprentice</uid>
+    <short-name>apprentice</short-name>
+    <password>apprentice</password>
+    <full-name>Apprentice Super User</full-name>
+  </record>
+  <record type="user">
+    <uid>wsanchez</uid>
+    <short-name>wsanchez</short-name>
+    <email>wsanchez@example.com</email>
+    <password>test</password>
+    <full-name>Wilfredo Sanchez Vega</full-name>
+  </record>
+  <record type="user">
+    <uid>cdaboo</uid>
+    <short-name>cdaboo</short-name>
+    <email>cdaboo@example.com</email>
+    <password>test</password>
+    <full-name>cyrus Daboo</full-name>
+  </record>
+  <record type="user">
+    <uid>sagen</uid>
+    <short-name>sagen</short-name>
+    <email>sagen@example.com</email>
+    <password>test</password>
+    <full-name>Morgen Sagen</full-name>
+  </record>
+  <record type="user">
+    <uid>dre</uid>
+    <short-name>andre</short-name>
+    <email>dre@example.com</email>
+    <password>test</password>
+    <full-name>Andre LaBranche</full-name>
+  </record>
+  <record type="user">
+    <uid>glyph</uid>
+    <short-name>glyph</short-name>
+    <email>glyph@example.com</email>
+    <password>test</password>
+    <full-name>Glyph Lefkowitz</full-name>
+  </record>
+  <record type="user">
+    <uid>i18nuser</uid>
+    <short-name>i18nuser</short-name>
+    <email>i18nuser@example.com</email>
+    <password>i18nuser</password>
+    <full-name>まだ</full-name>
+  </record>
+
+  <!-- twext.who xml doesn't (yet) support repeat
+  <user repeat="101">
+    <uid>user%02d</uid>
+    <uid>User %02d</uid>
+    <short-name>user%02d</short-name>
+    <password>user%02d</password>
+    <full-name>User %02d</full-name>
+    <email>user%02d@example.com</email>
+  </record>
+  <user repeat="10">
+    <uid>public%02d</uid>
+    <short-name>public%02d</short-name>
+    <password>public%02d</password>
+    <full-name>Public %02d</full-name>
+  </record>
+  -->
+  <record type="user">
+    <short-name>user01</short-name>
+    <uid>user01</uid>
+    <password>user01</password>
+    <full-name>User 01</full-name>
+    <email>user01@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user02</short-name>
+    <uid>user02</uid>
+    <password>user02</password>
+    <full-name>User 02</full-name>
+    <email>user02@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user03</short-name>
+    <uid>user03</uid>
+    <password>user03</password>
+    <full-name>User 03</full-name>
+    <email>user03@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user04</short-name>
+    <uid>user04</uid>
+    <password>user04</password>
+    <full-name>User 04</full-name>
+    <email>user04@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user05</short-name>
+    <uid>user05</uid>
+    <password>user05</password>
+    <full-name>User 05</full-name>
+    <email>user05@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user06</short-name>
+    <uid>user06</uid>
+    <password>user06</password>
+    <full-name>User 06</full-name>
+    <email>user06@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user07</short-name>
+    <uid>user07</uid>
+    <password>user07</password>
+    <full-name>User 07</full-name>
+    <email>user07@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user08</short-name>
+    <uid>user08</uid>
+    <password>user08</password>
+    <full-name>User 08</full-name>
+    <email>user08@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user09</short-name>
+    <uid>user09</uid>
+    <password>user09</password>
+    <full-name>User 09</full-name>
+    <email>user09@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user10</short-name>
+    <uid>user10</uid>
+    <password>user10</password>
+    <full-name>User 10</full-name>
+    <email>user10@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user11</short-name>
+    <uid>user11</uid>
+    <password>user11</password>
+    <full-name>User 11</full-name>
+    <email>user11@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user12</short-name>
+    <uid>user12</uid>
+    <password>user12</password>
+    <full-name>User 12</full-name>
+    <email>user12@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user13</short-name>
+    <uid>user13</uid>
+    <password>user13</password>
+    <full-name>User 13</full-name>
+    <email>user13@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user14</short-name>
+    <uid>user14</uid>
+    <password>user14</password>
+    <full-name>User 14</full-name>
+    <email>user14@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user15</short-name>
+    <uid>user15</uid>
+    <password>user15</password>
+    <full-name>User 15</full-name>
+    <email>user15@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user16</short-name>
+    <uid>user16</uid>
+    <password>user16</password>
+    <full-name>User 16</full-name>
+    <email>user16@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user17</short-name>
+    <uid>user17</uid>
+    <password>user17</password>
+    <full-name>User 17</full-name>
+    <email>user17@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user18</short-name>
+    <uid>user18</uid>
+    <password>user18</password>
+    <full-name>User 18</full-name>
+    <email>user18@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user19</short-name>
+    <uid>user19</uid>
+    <password>user19</password>
+    <full-name>User 19</full-name>
+    <email>user19@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user20</short-name>
+    <uid>user20</uid>
+    <password>user20</password>
+    <full-name>User 20</full-name>
+    <email>user20@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user21</short-name>
+    <uid>user21</uid>
+    <password>user21</password>
+    <full-name>User 21</full-name>
+    <email>user21@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user22</short-name>
+    <uid>user22</uid>
+    <password>user22</password>
+    <full-name>User 22</full-name>
+    <email>user22@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user23</short-name>
+    <uid>user23</uid>
+    <password>user23</password>
+    <full-name>User 23</full-name>
+    <email>user23@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user24</short-name>
+    <uid>user24</uid>
+    <password>user24</password>
+    <full-name>User 24</full-name>
+    <email>user24@example.com</email>
+  </record>
+
+  <record type="user">
+    <short-name>user25</short-name>
+    <uid>user25</uid>
+    <password>user25</password>
+    <full-name>User 25</full-name>
+    <email>user25@example.com</email>
+  </record>
+
+  <record type="group">
+    <uid>group01</uid>
+    <short-name>group01</short-name>
+    <password>group01</password>
+    <full-name>Group 01</full-name>
+      <member-uid type="users">user01</member-uid>
+  </record>
+  <record type="group">
+    <uid>group02</uid>
+    <short-name>group02</short-name>
+    <password>group02</password>
+    <full-name>Group 02</full-name>
+      <member-uid type="users">user06</member-uid>
+      <member-uid type="users">user07</member-uid>
+  </record>
+  <record type="group">
+    <uid>group03</uid>
+    <short-name>group03</short-name>
+    <password>group03</password>
+    <full-name>Group 03</full-name>
+      <member-uid type="users">user08</member-uid>
+      <member-uid type="users">user09</member-uid>
+  </record>
+  <record type="group">
+    <uid>group04</uid>
+    <short-name>group04</short-name>
+    <password>group04</password>
+    <full-name>Group 04</full-name>
+      <member-uid type="groups">group02</member-uid>
+      <member-uid type="groups">group03</member-uid>
+      <member-uid type="users">user10</member-uid>
+  </record>
+  <record type="group"> <!-- delegategroup -->
+    <uid>group05</uid>
+    <short-name>group05</short-name>
+    <password>group05</password>
+    <full-name>Group 05</full-name>
+      <member-uid type="groups">group06</member-uid>
+      <member-uid type="users">user20</member-uid>
+  </record>
+  <record type="group"> <!-- delegatesubgroup -->
+    <uid>group06</uid>
+    <short-name>group06</short-name>
+    <password>group06</password>
+    <full-name>Group 06</full-name>
+      <member-uid type="users">user21</member-uid>
+  </record>
+  <record type="group"> <!-- readonlydelegategroup -->
+    <uid>group07</uid>
+    <short-name>group07</short-name>
+    <password>group07</password>
+    <full-name>Group 07</full-name>
+      <member-uid type="users">user22</member-uid>
+      <member-uid type="users">user23</member-uid>
+      <member-uid type="users">user24</member-uid>
+  </record>
+  <record type="group">
+    <uid>disabledgroup</uid>
+    <short-name>disabledgroup</short-name>
+    <password>disabledgroup</password>
+    <full-name>Disabled Group</full-name>
+      <member-uid type="users">user01</member-uid>
+  </record>
+</directory>
