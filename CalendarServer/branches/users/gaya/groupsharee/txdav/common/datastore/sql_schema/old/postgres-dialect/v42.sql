@@ -212,7 +212,6 @@ insert into CALENDAR_BIND_MODE values (1, 'read' );
 insert into CALENDAR_BIND_MODE values (2, 'write');
 insert into CALENDAR_BIND_MODE values (3, 'direct');
 insert into CALENDAR_BIND_MODE values (4, 'indirect');
-insert into CALENDAR_BIND_MODE values (5, 'group');			-- bind mode is determined by group bind mode. TODO: May not be needed
 
 -- Enumeration of statuses
 
@@ -809,20 +808,6 @@ create table GROUP_ATTENDEE (
 create index GROUP_ATTENDEE_RESOURCE_ID on
   GROUP_ATTENDEE(RESOURCE_ID);
 
-
-create table GROUP_SHAREE (
-  GROUP_ID                      integer not null references GROUPS on delete cascade,
-  CALENDAR_HOME_RESOURCE_ID 	integer not null references CALENDAR_HOME on delete cascade,
-  CALENDAR_RESOURCE_ID      	integer not null references CALENDAR on delete cascade,
-  GROUP_BIND_MODE               integer not null, -- enum CALENDAR_BIND_MODE
-  MEMBERSHIP_HASH               varchar(255) not null,
-  
-  primary key (GROUP_ID, CALENDAR_HOME_RESOURCE_ID, CALENDAR_RESOURCE_ID) -- implicit index
-);
-
-create index GROUP_SHAREE_RESOURCE_ID on
-  CALENDAR_BIND(CALENDAR_RESOURCE_ID);
-
 ---------------
 -- Delegates --
 ---------------
@@ -1097,7 +1082,7 @@ create table CALENDARSERVER (
   VALUE                         varchar(255)
 );
 
-insert into CALENDARSERVER values ('VERSION', '43');
+insert into CALENDARSERVER values ('VERSION', '42');
 insert into CALENDARSERVER values ('CALENDAR-DATAVERSION', '6');
 insert into CALENDARSERVER values ('ADDRESSBOOK-DATAVERSION', '2');
 insert into CALENDARSERVER values ('NOTIFICATION-DATAVERSION', '1');
