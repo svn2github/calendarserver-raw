@@ -48,7 +48,7 @@ from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from twisted.python import hashlib
 from twisted.python.failure import Failure
 
-from twistedcaldav import caldavxml, customxml, ical
+from twistedcaldav import customxml, ical
 from twistedcaldav.config import config
 from twistedcaldav.datafilters.peruserdata import PerUserDataFilter
 from twistedcaldav.dateops import normalizeForIndex, datetimeMktime, \
@@ -56,6 +56,7 @@ from twistedcaldav.dateops import normalizeForIndex, datetimeMktime, \
 from twistedcaldav.ical import Component, InvalidICalendarDataError, Property
 from twistedcaldav.instance import InvalidOverriddenInstanceError
 from twistedcaldav.memcacher import Memcacher
+from twistedcaldav.timezones import TimezoneException
 
 from txdav.base.propertystore.base import PropertyName
 from txdav.caldav.datastore.query.builder import buildExpression
@@ -80,7 +81,7 @@ from txdav.caldav.icalendarstore import ICalendarHome, ICalendar, ICalendarObjec
     InvalidDefaultCalendar, \
     InvalidAttachmentOperation, DuplicatePrivateCommentsError, \
     TimeRangeUpperLimit, TimeRangeLowerLimit, InvalidSplit, \
-    AttachmentSizeTooLarge
+    AttachmentSizeTooLarge, UnknownTimezone
 from txdav.caldav.icalendarstore import QuotaExceeded
 from txdav.common.datastore.sql import CommonHome, CommonHomeChild, \
     CommonObjectResource, ECALENDARTYPE
@@ -94,8 +95,9 @@ from txdav.common.icommondatastore import IndexedSearchException, \
     ObjectResourceNameNotAllowedError, TooManyObjectResourcesError, \
     InvalidUIDError, UIDExistsError, UIDExistsElsewhereError, \
     InvalidResourceMove, InvalidComponentForStoreError, \
-    NoSuchObjectResourceError
+    NoSuchObjectResourceError, ConcurrentModification
 from txdav.xml import element
+from txdav.xml.parser import WebDAVDocument
 
 from txdav.idav import ChangeCategory
 
@@ -966,6 +968,10 @@ class Calendar(CommonHomeChild):
 
     _supportedComponents = None
 
+    _shadowProperties = tuple([PropertyName.fromString(prop) for prop in config.Sharing.Calendars.CollectionProperties.Shadowable])
+    _proxyProperties = tuple([PropertyName.fromString(prop) for prop in config.Sharing.Calendars.CollectionProperties.ProxyOverride])
+    _globalProperties = tuple([PropertyName.fromString(prop) for prop in config.Sharing.Calendars.CollectionProperties.Global])
+
     def __init__(self, *args, **kw):
         """
         Initialize a calendar pointing at a record in a database.
@@ -1294,17 +1300,9 @@ class Calendar(CommonHomeChild):
     def initPropertyStore(self, props):
         # Setup peruser special properties
         props.setSpecialProperties(
-            # Shadowable
-            (
-                PropertyName.fromElement(caldavxml.CalendarDescription),
-                PropertyName.fromElement(caldavxml.CalendarTimeZone),
-            ),
-
-            # Global
-            (
-                PropertyName.fromElement(customxml.GETCTag),
-                PropertyName.fromElement(caldavxml.SupportedCalendarComponentSet),
-            ),
+            self._shadowProperties,
+            self._globalProperties,
+            self._proxyProperties,
         )
 
 
@@ -1353,9 +1351,9 @@ class Calendar(CommonHomeChild):
         Sub-classes should override to expose the properties they care about.
         """
         props = {}
-        for elem in (element.DisplayName, caldavxml.CalendarDescription, caldavxml.CalendarTimeZone, customxml.CalendarColor,):
-            if PropertyName.fromElement(elem) in self.properties():
-                props[elem.sname()] = str(self.properties()[PropertyName.fromElement(elem)])
+        for ename in (PropertyName.fromElement(element.DisplayName),) + self._shadowProperties:
+            if ename in self.properties():
+                props[ename.toString()] = self.properties()[ename].toxml()
         return props
 
 
@@ -1366,15 +1364,15 @@ class Calendar(CommonHomeChild):
         care about.
         """
         # Initialize these for all shares
-        for elem in (caldavxml.CalendarDescription, caldavxml.CalendarTimeZone,):
-            if PropertyName.fromElement(elem) not in self.properties() and elem.sname() in props:
-                self.properties()[PropertyName.fromElement(elem)] = elem.fromString(props[elem.sname()])
+        for ename in self._shadowProperties:
+            if ename not in self.properties() and ename.toString() in props:
+                self.properties()[ename] = WebDAVDocument.fromString(props[ename]).root_element
 
         # Only initialize these for direct shares
         if self.direct():
-            for elem in (element.DisplayName, customxml.CalendarColor,):
-                if PropertyName.fromElement(elem) not in self.properties() and elem.sname() in props:
-                    self.properties()[PropertyName.fromElement(elem)] = elem.fromString(props[elem.sname()])
+            for ename in (PropertyName.fromElement(element.DisplayName),):
+                if ename not in self.properties() and ename.toString() in props:
+                    self.properties()[ename] = WebDAVDocument.fromString(props[ename]).root_element
 
 
     # FIXME: this is DAV-ish.  Data store calendar objects don't have
@@ -1894,6 +1892,10 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
 
         # Basic validation
 
+        # Possible timezone stripping
+        if config.EnableTimezonesByReference:
+            component.stripKnownTimezones()
+
         # Do validation on external requests
         if internal_state == ComponentUpdateState.NORMAL:
 
@@ -1919,10 +1921,6 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
 
             # Valid attendee list size check
             yield self.validAttendeeListSizeCheck(component, inserting)
-
-        # Possible timezone stripping
-        if config.EnableTimezonesByReference:
-            component.stripKnownTimezones()
 
         # Check location/resource organizer requirement
         self.validLocationResourceOrganizer(component, inserting, internal_state)
@@ -2098,12 +2096,16 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
 
         try:
             component.validCalendarData(validateRecurrences=self._txn._migrating)
-        except InvalidICalendarDataError, e:
+        except InvalidICalendarDataError as e:
             raise InvalidObjectResourceError(str(e))
         try:
             component.validCalendarForCalDAV(methodAllowed=self.calendar().isInbox())
-        except InvalidICalendarDataError, e:
+        except InvalidICalendarDataError as e:
             raise InvalidComponentForStoreError(str(e))
+        except TimezoneException as e:
+            # tzid not available
+            raise UnknownTimezone(str(e))
+
         try:
             if self._txn._migrating:
                 component.validOrganizerForScheduling(doFix=True)
@@ -2169,17 +2171,14 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
                 cutype == "RESOURCE" and config.Scheduling.Options.TrackUnscheduledResourceData):
 
                 # Find current principal and update modified by details
-                if self._txn._authz_uid is not None:
-                    authz = yield self.directoryService().recordWithUID(self._txn._authz_uid.decode("utf-8"))
-                    prop = Property("X-CALENDARSERVER-MODIFIED-BY", authz.canonicalCalendarUserAddress())
-                    prop.setParameter("CN", authz.displayName)
-                    for candidate in authz.calendarUserAddresses:
-                        if candidate.startswith("mailto:"):
-                            prop.setParameter("EMAIL", candidate[7:])
-                            break
-                    component.replacePropertyInAllComponents(prop)
-                else:
-                    component.removeAllPropertiesWithName("X-CALENDARSERVER-MODIFIED-BY")
+                authz = yield self.directoryService().recordWithUID(self.calendar().viewerHome().authzuid().decode("utf-8"))
+                prop = Property("X-CALENDARSERVER-MODIFIED-BY", authz.canonicalCalendarUserAddress())
+                prop.setParameter("CN", authz.displayName)
+                for candidate in authz.calendarUserAddresses:
+                    if candidate.startswith("mailto:"):
+                        prop.setParameter("EMAIL", candidate[7:])
+                        break
+                component.replacePropertyInAllComponents(prop)
                 self._componentChanged = True
 
 
@@ -2197,7 +2196,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
 
             # Only DAV:owner is able to set the property to other than PUBLIC
             if internal_state == ComponentUpdateState.NORMAL:
-                if (self._txn._authz_uid is None or self.calendar().viewerHome().uid() != self._txn._authz_uid) and access != Component.ACCESS_PUBLIC:
+                if (self.calendar().viewerHome().uid() != self.calendar().viewerHome().authzuid()) and access != Component.ACCESS_PUBLIC:
                     raise InvalidCalendarAccessError("Private event access level change not allowed")
 
             self.accessMode = access
@@ -3916,13 +3915,16 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
 
 
     def initPropertyStore(self, props):
-        # Setup peruser special properties
+        # Setup peruser special properties - these are hard-coded for now as clients are not expected
+        # to be using properties on resources - but we do use one special "live" property which we
+        # keep in the propstore.
         props.setSpecialProperties(
             (
             ),
             (
                 PropertyName.fromElement(customxml.ScheduleChanges),
             ),
+            (),
         )
 
 
@@ -4046,7 +4048,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
             in L{CalendarObject.splitAt}).
         @type rid: L{DateTime}
         @param olderUID: sets the iCalendar UID to be used in the new resource created during the split.
-            If L{None} a UUID is generated and used.
+            If set to L{None}, a UUID is generated and used.
         @type olderUID: L{str}
         """
 
@@ -4068,7 +4070,7 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
         newerUID = calendar.resourceUID()
         if olderUID is None:
             olderUID = str(uuid.uuid4())
-            olderResourceName = olderUID
+            olderResourceName = "{0}.ics".format(olderUID)
         else:
             olderResourceName = "{0}.ics".format(olderUID.encode("base64")[:-1].rstrip("="))
 
@@ -4105,10 +4107,19 @@ class CalendarObject(CommonObjectResource, CalendarObjectBase):
     @inlineCallbacks
     def splitForAttendee(self, rid=None, olderUID=None):
         """
-        Split this attendee resource as per L{split}.
+        Split this attendee resource as per L{split}. Note this is also used on any Organizer inbox items.
+        Also, for inbox items, we are not protected by the ImplicitUID lock - it is possible that the inbox
+        resource gets deleted whilst we are iterating the entire set of UIDs, so we need to handle a
+        L{ConcurrentModification} error here by ignoring it.
         """
         splitter = iCalSplitter(config.Scheduling.Options.Splitting.Size, config.Scheduling.Options.Splitting.PastDays)
-        ical = (yield self.component())
+        try:
+            ical = (yield self.component())
+        except ConcurrentModification:
+            # Resource was deleted between the time we looked it up and now - this is OK,
+            # We can simply ignore it as there is nothing left to split
+            returnValue(None)
+
         ical_old, ical_new = splitter.split(ical, rid=rid, olderUID=olderUID)
         ical_new.bumpiTIPInfo(oldcalendar=ical, doSequence=True)
         ical_old.bumpiTIPInfo(oldcalendar=None, doSequence=True)

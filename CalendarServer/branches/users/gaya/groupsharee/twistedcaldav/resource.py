@@ -858,7 +858,7 @@ class CalDAVResource (
         Return the DAV:owner property value (MUST be a DAV:href or None).
         """
 
-        if hasattr(self, "_newStoreObject"):
+        if getattr(self, "_newStoreObject", None) is not None:
             if not hasattr(self._newStoreObject, "ownerHome"):
                 home = self._newStoreObject.parentCollection().ownerHome()
             else:
@@ -2635,11 +2635,16 @@ class CalendarHomeResource(DefaultAlarmPropertyMixin, CommonHomeResource):
         if config.EnableProxyPrincipals:
             # Server may be read only
             if config.EnableReadOnlyServer:
-                rw_proxy_privs = (
+                ro_proxy_privs = rw_proxy_privs = (
                     element.Privilege(element.Read()),
                     element.Privilege(element.ReadCurrentUserPrivilegeSet()),
                 )
             else:
+                ro_proxy_privs = (
+                    element.Privilege(element.Read()),
+                    element.Privilege(element.ReadCurrentUserPrivilegeSet()),
+                    element.Privilege(element.WriteProperties()),
+                )
                 rw_proxy_privs = (
                     element.Privilege(element.Read()),
                     element.Privilege(element.ReadCurrentUserPrivilegeSet()),
@@ -2650,10 +2655,7 @@ class CalendarHomeResource(DefaultAlarmPropertyMixin, CommonHomeResource):
                 # DAV:read/DAV:read-current-user-privilege-set access for this principal's calendar-proxy-read users.
                 element.ACE(
                     element.Principal(element.HRef(joinURL(myPrincipal.principalURL(), "calendar-proxy-read/"))),
-                    element.Grant(
-                        element.Privilege(element.Read()),
-                        element.Privilege(element.ReadCurrentUserPrivilegeSet()),
-                    ),
+                    element.Grant(*ro_proxy_privs),
                     element.Protected(),
                     TwistedACLInheritable(),
                 ),

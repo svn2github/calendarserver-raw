@@ -38,6 +38,8 @@ from OpenSSL.SSL import Error as SSLError
 
 from zope.interface import implements
 
+from twistedcaldav.stdconfig import config
+
 from twisted.python.log import FileLogObserver, ILogObserver
 from twisted.python.logfile import LogFile
 from twisted.python.usage import Options, UsageError
@@ -70,6 +72,7 @@ from twext.enterprise.jobqueue import PeerConnectionPool
 from twext.enterprise.jobqueue import WorkerFactory as QueueWorkerFactory
 from twext.application.service import ReExecService
 from txdav.who.groups import GroupCacherPollingWork
+from calendarserver.tools.purge import PrincipalPurgePollingWork
 
 from txweb2.channel.http import (
     LimitingHTTPFactory, SSLRedirectRequest, HTTPChannel
@@ -96,7 +99,7 @@ from txdav.dps.client import DirectoryService as DirectoryProxyClientService
 from txdav.who.groups import GroupCacher
 
 from twistedcaldav import memcachepool
-from twistedcaldav.config import config, ConfigurationError
+from twistedcaldav.config import ConfigurationError
 from twistedcaldav.localization import processLocalizationFiles
 from twistedcaldav.stdconfig import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE
 from twistedcaldav.upgrade import (
@@ -566,7 +569,7 @@ class WorkSchedulingService(Service):
     """
     log = Logger()
 
-    def __init__(self, store, doImip, doGroupCaching):
+    def __init__(self, store, doImip, doGroupCaching, doPrincipalPurging):
         """
         @param store: the Store to use for enqueuing work
         @param doImip: whether to schedule imip polling
@@ -577,6 +580,7 @@ class WorkSchedulingService(Service):
         self.store = store
         self.doImip = doImip
         self.doGroupCaching = doGroupCaching
+        self.doPrincipalPurging = doPrincipalPurging
 
 
     @inlineCallbacks
@@ -595,6 +599,11 @@ class WorkSchedulingService(Service):
                 self.store,
                 int(config.LogID) if config.LogID else 5
             )
+        if self.doPrincipalPurging:
+            yield PrincipalPurgePollingWork.initialSchedule(
+                self.store,
+                int(config.LogID) if config.LogID else 5
+            )
         yield FindMinValidRevisionWork.initialSchedule(
             self.store,
             int(config.LogID) if config.LogID else 5
@@ -603,13 +612,6 @@ class WorkSchedulingService(Service):
             self.store,
             int(config.LogID) if config.LogID else 5
         )
-
-        # FIXME: uncomment this when purge is working
-        # from calendarserver.tools.purge import scheduleNextPrincipalPurgeUpdate
-        # yield PrincipalPurgePollingWork.initialSchedule(
-        #     self.store,
-        #     int(config.LogID) if config.LogID else 5
-        # )
 
 
 
@@ -1098,7 +1100,8 @@ class CalDAVServiceMaker (object):
         WorkSchedulingService(
             store,
             config.Scheduling.iMIP.Enabled,
-            (config.GroupCaching.Enabled and config.GroupCaching.EnableUpdater)
+            (config.GroupCaching.Enabled and config.GroupCaching.EnableUpdater),
+            config.AutomaticPurging.Enabled
         ).setServiceParent(service)
 
         # For calendarserver.tap.test

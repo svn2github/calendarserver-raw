@@ -60,7 +60,7 @@ from txdav.caldav.icalendarstore import (
     InvalidPerUserDataMerge,
     AttendeeAllowedError, ResourceDeletedError, InvalidAttachmentOperation,
     ShareeAllowedError, DuplicatePrivateCommentsError, InvalidSplit
-, AttachmentSizeTooLarge)
+, AttachmentSizeTooLarge, UnknownTimezone)
 from txdav.carddav.iaddressbookstore import (
     KindChangeNotAllowedError, GroupWithUnsharedAddressNotAllowedError
 )
@@ -1318,6 +1318,10 @@ class CalendarCollectionResource(DefaultAlarmPropertyMixin, _CalendarCollectionB
         returnValue(result)
 
 
+    def canBeShared(self):
+        return config.Sharing.Enabled and config.Sharing.Calendars.Enabled
+
+
     @inlineCallbacks
     def storeResourceData(self, newchild, component, returnChangedData=False):
 
@@ -1684,36 +1688,37 @@ class CalendarObjectDropbox(_GetChildHelper):
             proxyprivs.remove(davxml.Privilege(davxml.ReadACL()))
 
             principal = yield self.principalForUID(invite.shareeUID)
-            aces += (
-                # Inheritable specific access for the resource's associated principal.
-                davxml.ACE(
-                    davxml.Principal(davxml.HRef(principal.principalURL())),
-                    davxml.Grant(*userprivs),
-                    davxml.Protected(),
-                    TwistedACLInheritable(),
-                ),
-            )
-
-            if config.EnableProxyPrincipals:
+            if principal is not None:
                 aces += (
-                    # DAV:read/DAV:read-current-user-privilege-set access for this principal's calendar-proxy-read users.
+                    # Inheritable specific access for the resource's associated principal.
                     davxml.ACE(
-                        davxml.Principal(davxml.HRef(joinURL(principal.principalURL(), "calendar-proxy-read/"))),
-                        davxml.Grant(
-                            davxml.Privilege(davxml.Read()),
-                            davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
-                        ),
-                        davxml.Protected(),
-                        TwistedACLInheritable(),
-                    ),
-                    # DAV:read/DAV:read-current-user-privilege-set/DAV:write access for this principal's calendar-proxy-write users.
-                    davxml.ACE(
-                        davxml.Principal(davxml.HRef(joinURL(principal.principalURL(), "calendar-proxy-write/"))),
-                        davxml.Grant(*proxyprivs),
+                        davxml.Principal(davxml.HRef(principal.principalURL())),
+                        davxml.Grant(*userprivs),
                         davxml.Protected(),
                         TwistedACLInheritable(),
                     ),
                 )
+
+                if config.EnableProxyPrincipals:
+                    aces += (
+                        # DAV:read/DAV:read-current-user-privilege-set access for this principal's calendar-proxy-read users.
+                        davxml.ACE(
+                            davxml.Principal(davxml.HRef(joinURL(principal.principalURL(), "calendar-proxy-read/"))),
+                            davxml.Grant(
+                                davxml.Privilege(davxml.Read()),
+                                davxml.Privilege(davxml.ReadCurrentUserPrivilegeSet()),
+                            ),
+                            davxml.Protected(),
+                            TwistedACLInheritable(),
+                        ),
+                        # DAV:read/DAV:read-current-user-privilege-set/DAV:write access for this principal's calendar-proxy-write users.
+                        davxml.ACE(
+                            davxml.Principal(davxml.HRef(joinURL(principal.principalURL(), "calendar-proxy-write/"))),
+                            davxml.Grant(*proxyprivs),
+                            davxml.Protected(),
+                            TwistedACLInheritable(),
+                        ),
+                    )
 
         returnValue(aces)
 
@@ -2729,6 +2734,7 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
         ShareeAllowedError: (_CommonObjectResource._storeExceptionError, (calendarserver_namespace, "sharee-privilege-needed",),),
         DuplicatePrivateCommentsError: (_CommonObjectResource._storeExceptionError, (calendarserver_namespace, "no-duplicate-private-comments",),),
         LockTimeout: (_CommonObjectResource._storeExceptionUnavailable, "Lock timed out.",),
+        UnknownTimezone: (_CommonObjectResource._storeExceptionError, (caldav_namespace, "valid-timezone"),),
     }
 
     StoreMoveExceptionsErrors = {
@@ -2823,6 +2829,10 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
         returnValue(response)
 
 
+    def canBeShared(self):
+        return False
+
+
     @inlineCallbacks
     def http_PUT(self, request):
 
@@ -2872,17 +2882,6 @@ class CalendarObjectResource(_CalendarObjectMetaDataMixin, _CommonObjectResource
                     (caldav_namespace, "valid-calendar-data"),
                     "Can't parse calendar data: %s" % (str(e),)
                 ))
-
-            # storeComponent needs to know who the auth'd user is for access control
-            # TODO: this needs to be done in a better way - ideally when the txn is created for the request,
-            # we should set a txn.authzid attribute.
-            authz = None
-            authz_principal = self._parentResource.currentPrincipal(request).children[0]
-            if isinstance(authz_principal, davxml.HRef):
-                principalURL = str(authz_principal)
-                if principalURL:
-                    authz = (yield request.locateResource(principalURL))
-                    self._parentResource._newStoreObject._txn._authz_uid = authz.record.uid
 
             try:
                 response = (yield self.storeComponent(component, smart_merge=schedule_tag_match))
@@ -3296,6 +3295,10 @@ class AddressBookCollectionResource(_CommonHomeChildCollectionMixin, CalDAVResou
         return carddavxml.AddressData
 
 
+    def canBeShared(self):
+        return config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled
+
+
     @inlineCallbacks
     def storeResourceData(self, newchild, component, returnChangedData=False):
 
@@ -3566,6 +3569,10 @@ class AddressBookObjectResource(_CommonObjectResource):
         returnValue(response)
 
 
+    def canBeShared(self):
+        return config.Sharing.Enabled and config.Sharing.AddressBooks.Enabled
+
+
     @inlineCallbacks
     def http_PUT(self, request):
 
@@ -3605,17 +3612,6 @@ class AddressBookObjectResource(_CommonObjectResource):
                     (carddav_namespace, "valid-address-data"),
                     "Could not parse vCard",
                 ))
-
-            # storeComponent needs to know who the auth'd user is for access control
-            # TODO: this needs to be done in a better way - ideally when the txn is created for the request,
-            # we should set a txn.authzid attribute.
-            authz = None
-            authz_principal = self._parentResource.currentPrincipal(request).children[0]
-            if isinstance(authz_principal, davxml.HRef):
-                principalURL = str(authz_principal)
-                if principalURL:
-                    authz = (yield request.locateResource(principalURL))
-                    self._parentResource._newStoreObject._txn._authz_uid = authz.record.uid
 
             try:
                 response = (yield self.storeComponent(component))

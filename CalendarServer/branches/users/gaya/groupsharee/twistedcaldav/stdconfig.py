@@ -280,9 +280,9 @@ DEFAULT_CONFIG = {
 
     "UseDatabase": True, # True: database; False: files
 
-    "TransactionTimeoutSeconds": 0, # Timeout transactions that take longer than
+    "TransactionTimeoutSeconds": 300, # Timeout transactions that take longer than
                               # the specified number of seconds. Zero means
-                              # no timeouts
+                              # no timeouts. 5 minute default.
 
     "DBType": "", # 2 possible values: empty, meaning 'spawn postgres
                            # yourself', or 'postgres', meaning 'connect to a
@@ -606,9 +606,31 @@ DEFAULT_CONFIG = {
             "IgnorePerUserProperties" : [
                 "X-APPLE-STRUCTURED-LOCATION",
             ],
+            "CollectionProperties": {
+                "Shadowable": [
+                    "{urn:ietf:params:xml:ns:caldav}calendar-description",
+                ],
+                "ProxyOverride": [
+                    "{urn:ietf:params:xml:ns:caldav}calendar-description",
+                    "{com.apple.ical:}calendarcolor",
+                    "{http://apple.com/ns/ical/}calendar-color",
+                    "{http://apple.com/ns/ical/}calendar-order",
+                ],
+                "Global": [
+                ],
+            },
         },
         "AddressBooks" : {
             "Enabled"         : False, # Address Books on/off switch
+            "CollectionProperties": {
+                "Shadowable": [
+                    "{urn:ietf:params:xml:ns:carddav}addressbook-description",
+                ],
+                "ProxyOverride": [
+                ],
+                "Global": [
+                ],
+            },
         },
     },
 
