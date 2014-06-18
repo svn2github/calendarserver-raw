@@ -1,0 +1,93 @@
+{
+	"folders":
+	[
+		{
+			"path": "..",
+            "folder_exclude_patterns": [
+                ".develop",
+                ".svn",
+                "CalendarServer.egg-info",
+                "data",
+                "subprojects"
+            ],
+            "file_exclude_patterns": [
+                "*.pyc",
+                ".project",
+                ".pydevproject",
+                "*.sublime-workspace",
+                "bin/calendarserver_*"
+            ]
+		},
+        {
+            "path": "../.develop/virtualenv/src/twextpy",
+            "folder_exclude_patterns": [
+                ".svn"
+            ],
+            "file_exclude_patterns": [
+                "*.pyc",
+                ".project",
+                ".pydevproject"
+            ]
+        },
+        {
+            "path": "../.develop/virtualenv/src/pycalendar",
+            "folder_exclude_patterns": [
+                ".svn"
+            ],
+            "file_exclude_patterns": [
+                "*.pyc",
+                ".project",
+                ".pydevproject"
+            ]
+        },
+        {
+            "path": "../.develop/virtualenv/src/kerberos",
+            "folder_exclude_patterns": [
+                ".svn"
+            ],
+            "file_exclude_patterns": [
+                "*.pyc"
+            ]
+        },
+        {
+            "path": "../.develop/virtualenv/src/caldavtester",
+            "folder_exclude_patterns": [
+                ".svn"
+            ],
+            "file_exclude_patterns": [
+                "*.pyc",
+                ".project",
+                ".pydevproject"
+            ]
+        },
+        {
+            "path": "../.develop/virtualenv/src/caldavclientlibrary",
+            "folder_exclude_patterns": [
+                ".svn"
+            ],
+            "file_exclude_patterns": [
+                "*.pyc",
+                ".project",
+                ".pydevproject"
+            ]
+        }
+	],
+    "settings":
+    {
+        "ensure_newline_at_eof_on_save": true,
+        "fallback_encoding": "UTF-8",
+        "rulers": [ 80 ],
+        "tab_size": 4,
+        "translate_tabs_to_spaces": true
+    },
+    "build_systems":
+    [
+        {
+            "name": "Unit Tests",
+            "cmd": [ "./bin/test", "$file" ],
+            "working_dir": "$project_path/..",
+            "path": "$PATH:/Applications/Server.app/Contents/ServerRoot/usr/sbin:/Applications/Server.app/Contents/ServerRoot/usr/bin",
+            "file_regex": "^[ ]*File \"(...*?)\", line ([0-9]*)"
+        }
+    ]
+}
