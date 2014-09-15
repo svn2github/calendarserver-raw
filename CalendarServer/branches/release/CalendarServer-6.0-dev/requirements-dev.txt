@@ -1,0 +1,10 @@
+# Get master requirements
+-r requirements-stable.txt
+
+# Additional dependencies for development and testing
+pyflakes
+docutils
+mockldap
+q
+--editable svn+http://svn.calendarserver.org/repository/calendarserver/CalDAVClientLibrary/trunk@13420#egg=CalDAVClientLibrary
+--editable svn+http://svn.calendarserver.org/repository/calendarserver/CalDAVTester/trunk@13914#egg=CalDAVTester
