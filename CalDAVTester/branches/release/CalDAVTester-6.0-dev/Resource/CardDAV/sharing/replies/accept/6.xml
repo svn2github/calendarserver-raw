@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<notification xmlns='http://calendarserver.org/ns/'>
+  <dtstamp></dtstamp>
+  <invite-reply shared-type="addressbook" xmlns='http://calendarserver.org/ns/'>
+    <href xmlns='DAV:'>$cuaddrurn2:</href>
+    <invite-accepted/>
+    <hosturl>
+      <href xmlns='DAV:'>$addressbookpath1:</href>
+    </hosturl>
+    <in-reply-to>$inviteuid:</in-reply-to>
+    <summary>My Shared Address Book</summary>
+    <common-name>$username2:</common-name>
+  </invite-reply>
+</notification>

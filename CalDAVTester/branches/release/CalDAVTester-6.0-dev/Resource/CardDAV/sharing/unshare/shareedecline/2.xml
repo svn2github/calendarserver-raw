@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<invite-reply shared-type="addressbook" xmlns='http://calendarserver.org/ns/'>
+  <href xmlns='DAV:'>$cuaddrurn2:</href>
+  <invite-declined/>
+  <hosturl>
+    <href xmlns='DAV:'>$addressbookpath1:</href>
+  </hosturl>
+  <in-reply-to>$inviteuid:</in-reply-to>
+  <summary>My Shared Address Book</summary>
+  <common-name>$username2:</common-name>
+</invite-reply>

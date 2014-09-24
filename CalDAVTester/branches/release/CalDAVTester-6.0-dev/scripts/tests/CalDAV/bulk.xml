@@ -1,0 +1,1222 @@
+<?xml version="1.0" standalone="no"?>
+
+<!DOCTYPE caldavtest SYSTEM "caldavtest.dtd">
+
+<!--
+ Copyright (c) 2006-2013 Apple Inc. All rights reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+<caldavtest>
+	<description>Test bulk POST method in CalDAV</description>
+
+	<require-feature>
+		<feature>caldav</feature>
+		<feature>bulk-post</feature>
+	</require-feature>
+
+	<start/>
+	
+	<test-suite name='bulk-requests property'>
+		<test name='1'>
+			<description>PROPFIND on calendar</description>
+			<request>
+				<method>PROPFIND</method>
+				<ruri>$calendarpath1:/</ruri>
+				<header>
+					<name>Depth</name>
+					<value>0</value>
+				</header>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/properties/1.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{http://me.com/_namespace/}bulk-requests/{http://me.com/_namespace/}simple</value>
+						<value>$verify-property-prefix:/{http://me.com/_namespace/}bulk-requests/{http://me.com/_namespace/}crud</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='2'>
+			<description>PROPFIND on calendar home</description>
+			<request>
+				<method>PROPFIND</method>
+				<ruri>$calendarhome1:/</ruri>
+				<header>
+					<name>Depth</name>
+					<value>0</value>
+				</header>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/properties/1.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{http://me.com/_namespace/}bulk-requests/{http://me.com/_namespace/}simple</value>
+						<value>$verify-property-prefix:/{http://me.com/_namespace/}bulk-requests/{http://me.com/_namespace/}crud</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+
+	<test-suite name='Simple POST - one event'>
+		<test name='1'>
+			<description>POST single new event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/1.ics</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid1:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='2'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/1.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='3'>
+			<description>POST single existing event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/2.ics</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-bad-response:[*403]</value>
+						<value>$verify-error-response:/{urn:ietf:params:xml:ns:caldav}no-uid-conflict</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='4'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/1.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='4'>
+			<description>POST single new different event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/3.ics</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid2:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href2:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag2:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='5'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/3.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag2:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='-1'>
+			<description>Clean up</description>
+			<request>
+				<method>DELETEALL</method>
+				<ruri>$calendarpath1:/</ruri>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+	
+	<test-suite name='Simple POST - multiple events'>
+		<test name='1'>
+			<description>POST multiple new events</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/4.ics</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid1:]</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid2:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href1:</variable>
+					<variable>$href2:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag1:</variable>
+					<variable>$etag2:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='2'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/5.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag1:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='3'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/6.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag2:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='4'>
+			<description>POST one new, one exsting events</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/7.ics</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid3:]</value>
+						<value>$verify-bad-response:[*403]</value>
+						<value>$verify-error-response:/{urn:ietf:params:xml:ns:caldav}no-uid-conflict</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href-ignore:</variable>
+					<variable>$href3:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag3:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='5'>
+			<description>Check unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/5.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag1:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='6'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href3:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/8.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag3:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='-1'>
+			<description>Clean up</description>
+			<request>
+				<method>DELETEALL</method>
+				<ruri>$calendarpath1:/</ruri>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+
+	<test-suite name='Simple POST - one event return data'>
+		<test name='1'>
+			<description>POST single new event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<header>
+					<name>X-MobileMe-DAV-Options</name>
+					<value>return-changed-data</value>
+				</header>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/9.ics</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='2'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/simple/10.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='-1'>
+			<description>Clean up</description>
+			<request>
+				<method>DELETEALL</method>
+				<ruri>$calendarpath1:/</ruri>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+	
+	<test-suite name='Simple POST - ctag condition'>
+		<test name='1'>
+			<description>PROPFIND on calendar</description>
+			<request>
+				<method>PROPFIND</method>
+				<ruri>$calendarpath1:/</ruri>
+				<header>
+					<name>Depth</name>
+					<value>0</value>
+				</header>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/Common/PROPFIND/getctag.xml</filepath>
+				</data>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+				<grabelement>
+					<name>$verify-property-prefix:/{http://calendarserver.org/ns/}getctag</name>
+					<variable>$ctag:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='2'>
+			<description>POST single new event conditional fail</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<header>
+					<name>X-MobileMe-DAV-Options</name>
+					<value>return-changed-data</value>
+				</header>
+				<header>
+					<name>If</name>
+					<value><![CDATA[<http://me.com/_namespace/ctag/$ctag:123>]]></value>
+				</header>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/9.ics</filepath>
+				</data>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>412</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='3'>
+			<description>POST single new event conditional ok</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<header>
+					<name>X-MobileMe-DAV-Options</name>
+					<value>return-changed-data</value>
+				</header>
+				<header>
+					<name>If</name>
+					<value><![CDATA[<http://me.com/_namespace/ctag/$ctag:>]]></value>
+				</header>
+				<data>
+					<content-type>text/calendar; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/simple/9.ics</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+					</arg>
+				</verify>
+				<grabheader>
+					<name>CTag</name>
+					<variable>$ctag-new:</variable>
+				</grabheader>
+			</request>
+		</test>
+		<test name='4'>
+			<description>PROPFIND on calendar</description>
+			<request>
+				<method>PROPFIND</method>
+				<ruri>$calendarpath1:/</ruri>
+				<header>
+					<name>Depth</name>
+					<value>0</value>
+				</header>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/Common/PROPFIND/getctag.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}getctag[=$ctag-new:]</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}getctag[!$ctag:]</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='-1'>
+			<description>Clean up</description>
+			<request>
+				<method>DELETEALL</method>
+				<ruri>$calendarpath1:/</ruri>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+	
+	<test-suite name='CRUD POST - one event create'>
+		<test name='1'>
+			<description>POST single new event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-one/1.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid1:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='2'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-one/2.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='3'>
+			<description>POST single existing event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-one/3.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-bad-response:[*403]</value>
+						<value>$verify-error-response:/{urn:ietf:params:xml:ns:caldav}no-uid-conflict</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='4'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-one/2.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='5'>
+			<description>POST single new different event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-one/4.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid2:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href2:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag2:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='6'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-one/5.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag2:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='-1'>
+			<description>Clean up</description>
+			<request>
+				<method>DELETEALL</method>
+				<ruri>$calendarpath1:/</ruri>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+	
+	<test-suite name='CRUD POST - multiple'>
+		<test name='1'>
+			<description>POST single new event</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-multiple/1.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid1:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href1:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag1:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='2'>
+			<description>Check valid data</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-multiple/2.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag1:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='3'>
+			<description>POST add new and update existing</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-multiple/3.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid2:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href1:</variable>
+					<variable>$href2:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag1:</variable>
+					<variable>$etag2:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='4'>
+			<description>Data changed</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-multiple/4.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag1:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='5'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-multiple/5.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag2:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='6'>
+			<description>POST delete and update existing</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-multiple/6.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href1:</variable>
+					<variable>$href2:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag2:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='7'>
+			<description>Data changed</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-multiple/7.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag1:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='8'>
+			<description>Data gone</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>404</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='-1'>
+			<description>Clean up</description>
+			<request>
+				<method>DELETEALL</method>
+				<ruri>$calendarpath1:/</ruri>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+	
+	<test-suite name='CRUD POST - multiple if-match'>
+		<test name='1'>
+			<description>POST two new events</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-ifmatch/1.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid1:]</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid2:]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href1:</variable>
+					<variable>$href2:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag1:</variable>
+					<variable>$etag2:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='2'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-ifmatch/2.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag1:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='3'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-ifmatch/3.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag2:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='4'>
+			<description>POST new, update and delete existing - if-match fail</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-ifmatch/4.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+						<value>$verify-property-prefix:/{http://calendarserver.org/ns/}uid[=$uid3:]</value>
+						<value>$verify-bad-response:[*412]</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href1:</variable>
+					<variable>$href2:</variable>
+					<variable>$href3:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag3:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='5'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-ifmatch/2.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag1:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='6'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-ifmatch/3.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag2:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='7'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href3:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-ifmatch/5.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag3:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='8'>
+			<description>POST update and delete existing - if-match ok</description>
+			<request>
+				<method>POST</method>
+				<ruri>$calendarpath1:/</ruri>
+				<data>
+					<content-type>text/xml; charset=utf-8</content-type>
+					<filepath>Resource/CalDAV/bulk/crud-ifmatch/6.xml</filepath>
+				</data>
+				<verify>
+					<callback>xmlElementMatch</callback>
+					<arg>
+						<name>exists</name>
+						<value>$verify-property-prefix:/{DAV:}getetag</value>
+					</arg>
+					<arg>
+						<name>notexists</name>
+						<value>$verify-property-prefix:/{urn:ietf:params:xml:ns:caldav}calendar-data</value>
+					</arg>
+				</verify>
+				<grabelement>
+					<name>$multistatus-href-prefix:</name>
+					<variable>$href1:</variable>
+					<variable>$href2:</variable>
+				</grabelement>
+				<grabelement>
+					<name>$verify-property-prefix:/{DAV:}getetag</name>
+					<variable>$etag2:</variable>
+				</grabelement>
+			</request>
+		</test>
+		<test name='9'>
+			<description>Data gone</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href1:</ruri>
+				<verify>
+					<callback>statusCode</callback>
+					<arg>
+						<name>status</name>
+						<value>404</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='10'>
+			<description>Data changed</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href2:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-ifmatch/7.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag2:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='11'>
+			<description>Data unchanged</description>
+			<request>
+				<method>GET</method>
+				<ruri>$href3:</ruri>
+				<verify>
+					<callback>calendarDataMatch</callback>
+					<arg>
+						<name>filepath</name>
+						<value>Resource/CalDAV/bulk/crud-ifmatch/5.ics</value>
+					</arg>
+				</verify>
+				<verify>
+					<callback>header</callback>
+					<arg>
+						<name>ETag</name>
+						<value>$etag3:</value>
+					</arg>
+				</verify>
+			</request>
+		</test>
+		<test name='-1'>
+			<description>Clean up</description>
+			<request>
+				<method>DELETEALL</method>
+				<ruri>$calendarpath1:/</ruri>
+				<verify>
+					<callback>statusCode</callback>
+				</verify>
+			</request>
+		</test>
+	</test-suite>
+	
+	<end/>
+	
+</caldavtest>
